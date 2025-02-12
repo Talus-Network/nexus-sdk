@@ -1,0 +1,40 @@
+# Github workflow to build and test the Nexus CLi code
+
+name: Nexus CLI
+on:
+  pull_request:
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli.yml"
+
+jobs:
+  # 1. Install Rust
+  # 2. Install Rust cache
+  # 3. Build and tests the Nexus CLI code
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # 1.
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          override: true
+
+      # 2.
+      - name: Cache Build
+        uses: Swatinem/rust-cache@v2
+
+      # 3.
+      - uses: taiki-e/install-action@just
+      - run: just cli build
+      - run: just cli test

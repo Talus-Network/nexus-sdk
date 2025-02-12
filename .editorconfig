@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.move]
+indent_size = 4
+
+[*.yml]
+indent_size = 2
+
+[*.rs]
+indent_size = 4
+
+[*.just]
+indent_size = 4
+[justfile]
+indent_size = 4
+
+[*.md]
+indent_size = 2
+
+[*.ts]
+indent_size = 2
