@@ -1,6 +1,10 @@
 use {
-    crate::{command_title, display::*, prelude::*},
-    std::path::Path,
+    crate::{command_title, display::*, loading, prelude::*},
+    std::{
+        path::Path,
+        sync::{Arc, Mutex},
+        thread,
+    },
     tokio::{fs::File, io::AsyncWriteExt},
 };
 
@@ -18,6 +22,8 @@ pub(crate) async fn create_new_tool(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Creating a new Nexus Tool '{name}' with template '{template:?}' in '{target}'");
 
+    let creating_file = loading!("Creating files...");
+
     // Join the target directory and the tool name.
     let path = Path::new(&target).join(&name);
 
@@ -25,9 +31,15 @@ pub(crate) async fn create_new_tool(
     let mut file = match File::create(path).await {
         Ok(file) => file,
         Err(e) => {
+            creating_file.error();
+
             return Err(NexusCliError::IoError(e));
         }
     };
+
+    creating_file.success();
+
+    let writing_file = loading!("Writing to file...");
 
     if let Err(e) = file
         .write_all(
@@ -39,8 +51,12 @@ pub(crate) async fn create_new_tool(
         )
         .await
     {
+        writing_file.error();
+
         return Err(NexusCliError::IoError(e));
     }
+
+    writing_file.success();
 
     Ok(())
 }
