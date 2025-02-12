@@ -234,7 +234,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "neuxus-cli"
+name = "nexus-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
