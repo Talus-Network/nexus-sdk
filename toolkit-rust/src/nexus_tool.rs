@@ -6,6 +6,7 @@ use {
     std::{future::Future, net::SocketAddr},
     warp::http::StatusCode,
 };
+
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
 ///
@@ -50,7 +51,7 @@ pub trait NexusTool: Send + 'static {
     /// Returns the health status of the tool. For now, this only returns an
     /// HTTP status code.
     ///
-    /// TODO: should this have a more detailed health check?
+    /// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/7>
     ///
     /// It is used to generate the `/health` endpoint.
     fn health() -> impl Future<Output = AnyResult<StatusCode>> + Send;
@@ -65,8 +66,7 @@ pub trait NexusTool: Send + 'static {
         json!(
             {
                 "fqn": Self::fqn(),
-                // TODO: This probably shouldn't be the IP. We need to somehow
-                // resolve this into a domain name. Same for the protocol.
+                // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/9>
                 "url": format!("http://{}:{}", addr.ip(), addr.port()),
                 "input_schema": input_schema,
                 "output_schema": output_schema,
