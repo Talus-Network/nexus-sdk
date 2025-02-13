@@ -1,5 +1,5 @@
 [package]
-name = "nexus-rust-toolkit"
+name = "nexus-toolkit-rust"
 version = "0.1.0"
 edition = "2021"
 

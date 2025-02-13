@@ -4,4 +4,4 @@ resolver = "2"
 members = ["toolkit-rust"]
 
 [workspace.dependencies]
-nexus-rust-toolkit = { path = "toolkit-rust" }
+nexus-toolkit-rust = { path = "toolkit-rust" }
