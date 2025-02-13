@@ -1,4 +1,4 @@
-pub use {
+pub(crate) use {
     anyhow::Result as AnyResult,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
