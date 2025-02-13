@@ -1,22 +1,22 @@
-# Github workflow to build and test the Nexus CLI code
+# Github workflow to build and test the Nexus Rust Toolkit code
 
-name: Nexus CLI
+name: Nexus Rust Toolkit
 on:
   pull_request:
     paths:
-      - "cli/**"
-      - ".github/workflows/cli.yml"
+      - "toolkit-rust/**"
+      - ".github/workflows/toolkit-rust.yml"
   push:
     branches:
       - main
     paths:
-      - "cli/**"
-      - ".github/workflows/cli.yml"
+      - "toolkit-rust/**"
+      - ".github/workflows/toolkit-rust.yml"
 
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
-  # 3. Build and tests the Nexus CLI code
+  # 3. Build and tests the Nexus Rust Toolkit code
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest

@@ -1,0 +1,3 @@
+# Specify the Nexus Rust Toolkit crate so that it can be installed.
+[workspace]
+members = ["toolkit-rust"]
