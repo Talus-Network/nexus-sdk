@@ -1,4 +1,4 @@
-use nexus_rust_toolkit::{prelude::*, *};
+use nexus_toolkit_rust::{prelude::*, *};
 
 // == Dummy tools setup ==
 

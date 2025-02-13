@@ -1,6 +1,6 @@
-# Github workflow to build and test the Nexus Rust Toolkit code
+# Github workflow to build and test the Nexus Toolkit for Rust code
 
-name: Nexus Rust Toolkit
+name: Nexus Toolkit for Rust
 on:
   pull_request:
     paths:
@@ -16,7 +16,7 @@ on:
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
-  # 3. Build and tests the Nexus Rust Toolkit code
+  # 3. Build and tests the Nexus Toolkit for Rust code
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest

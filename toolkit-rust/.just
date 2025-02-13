@@ -1,7 +1,7 @@
 #
 # $ just toolkit-rust
 #
-# Commands related the Nexus Rust Toolkit
+# Commands related the Nexus Toolkit for Rust
 #
 
 import '../just/_helpers.just'
@@ -17,4 +17,4 @@ build: _check-cargo
 
 # Run all tests in the Rust Toolkit project
 test: _check-cargo
-    cargo test --package nexus-rust-toolkit -- tests --show-output
+    cargo test --package nexus-toolkit-rust -- tests --show-output

@@ -1,7 +1,7 @@
-# Specify the Nexus Rust Toolkit crate so that it can be installed.
+# Specify the Nexus Toolkit for Rust crate so that it can be installed.
 [workspace]
 resolver = "2"
-members = ["toolkit-rust"]
+members = ["toolkit-rust", "cli"]
 
 [workspace.dependencies]
 nexus-toolkit-rust = { path = "toolkit-rust" }
