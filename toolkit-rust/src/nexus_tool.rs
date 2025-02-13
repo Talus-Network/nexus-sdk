@@ -42,6 +42,8 @@ pub trait NexusTool: Send + 'static {
     /// fact is validated by the CLI.
     type Output: JsonSchema + Serialize;
     /// Returns the version of the tool.
+    ///
+    /// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/11>
     fn fqn() -> &'static str;
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
