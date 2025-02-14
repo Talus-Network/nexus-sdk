@@ -1,10 +1,9 @@
 use {
-    anyhow::Result as AnyResult,
+    crate::prelude::*,
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
     serde_json::{json, Value},
     std::{future::Future, net::SocketAddr},
-    warp::http::StatusCode,
 };
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation

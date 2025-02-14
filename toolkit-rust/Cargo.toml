@@ -7,7 +7,9 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 schemars = "0.8.21"
-serde = { version = "1.0.217", features = ["derive"] }
+schemars_derive = "0.8.21"
+serde = "1.0.217"
+serde_derive = "1.0.217"
 serde_json = "1.0.138"
 warp = "0.3.7"
 
