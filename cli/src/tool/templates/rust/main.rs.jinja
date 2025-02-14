@@ -1,0 +1,48 @@
+use {
+    nexus_toolkit_rust::*,
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
+};
+
+#[derive(Deserialize, JsonSchema)]
+struct Input {
+    // Add your Tool's input ports
+}
+
+#[derive(Serialize, JsonSchema)]
+enum Output {
+    Ok {
+        // Add output ports for the `Ok` variant
+    },
+    // Add more output variants if needed
+}
+
+struct {{ name_pascal_case }};
+
+impl NexusTool for {{ name_pascal_case }} {
+    type Input = Input;
+    type Output = Output;
+
+    fn fqn() -> &'static str {
+        // The fully qualified name of the tool.
+
+        "xyz.{{ name_kebab_case }}@1"
+    }
+
+    async fn health() -> AnyResult<StatusCode> {
+        // The health endpoint should perform health checks on its dependencies.
+
+        Ok(StatusCode::OK)
+    }
+
+    async fn invoke(_: Self::Input) -> AnyResult<Self::Output> {
+        // Tool logic goes here.
+
+        Ok(Output::Ok {})
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    bootstrap::<{{ name_pascal_case }}>(([127, 0, 0, 1], 8080)).await;
+}

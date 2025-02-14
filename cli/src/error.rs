@@ -11,4 +11,6 @@ pub(crate) enum NexusCliError {
     SyntaxError(clap::error::Error),
     #[error("{error}{separator}\n{0}", error = "IO Error".red().bold(), separator = separator())]
     IoError(std::io::Error),
+    #[error("{error}{separator}\n{0}", error = "Error".red().bold(), separator = separator())]
+    AnyError(anyhow::Error),
 }
