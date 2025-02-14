@@ -3,6 +3,10 @@ name = "nexus-toolkit-rust"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+serde = ["serde_derive"]
+schemars = ["schemars_derive"]
 
 [dependencies]
 anyhow = "1.0.95"
