@@ -17,7 +17,7 @@ build: _check-cargo
 
 # Run all tests in the CLI project
 test: _check-cargo
-    cargo test --package nexus-cli -- tests --show-output
+    cargo test --package nexus-cli
 
 # Use the CLI locally for development purposes
 # `$ just cli run tool new --name my-tool --template rust`

@@ -14,7 +14,6 @@ _default:
 build: _check-cargo
     cargo build --release
 
-
 # Run all tests in the Rust Toolkit project
 test: _check-cargo
-    cargo test --package nexus-toolkit-rust -- tests --show-output
+    cargo test --package nexus-toolkit-rust
