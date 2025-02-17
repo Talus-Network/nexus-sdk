@@ -1,12 +1,23 @@
 use {
+    super::ToolMeta,
     crate::{
         command_title,
+        loading,
         prelude::*,
         tool::{tool_validate::*, ToolIdent},
         utils::*,
     },
+    move_core_types::ident_str,
     std::path::PathBuf,
 };
+
+/// Sui `std::ascii::string`
+const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
+const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
+
+// Nexus `tool_registry::register_off_chain_tool`
+const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
+const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("register_off_chain_tool");
 
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
@@ -44,70 +55,18 @@ pub(crate) async fn register_tool(
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     // Craft a TX to register the tool.
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
+    let tx_handle = loading!("Crafting transaction...");
 
-    // `self: &mut ToolRegistry`
-    let tool_registry = fetch_object_by_id(
-        &sui,
-        "0x741d0cd3cd69d375790bebd1eb603448e0b157250b8568db8f42cf292460da86"
-            .parse()
-            .unwrap(),
-    )
-    .await?;
+    let tx = match prepare_transaction(&sui, meta, collateral_coin).await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tx_handle.error();
 
-    let tool_registry = tx
-        .obj(sui::ObjectArg::SharedObject {
-            id: tool_registry.object_id,
-            initial_shared_version: tool_registry.version,
-            mutable: true,
-        })
-        .unwrap();
+            return Err(NexusCliError::AnyError(e));
+        }
+    };
 
-    // `fqn: AsciiString`
-    let fqn = tx.pure(meta.fqn.as_bytes()).unwrap();
-
-    let fqn = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        sui::Identifier::new("ascii").unwrap(),
-        sui::Identifier::new("string").unwrap(),
-        vec![],
-        vec![fqn],
-    );
-
-    // `url: vector<u8>`
-    let url = tx.pure(meta.url.as_bytes()).unwrap();
-
-    // `input_schema: vector<u8>`
-    let input_schema = tx.pure(meta.input_schema.to_string().as_bytes()).unwrap();
-
-    // `output_schema: vector<u8>`
-    let output_schema = tx.pure(meta.output_schema.to_string().as_bytes()).unwrap();
-
-    // `pay_with: Coin<SUI>`
-    let pay_with = tx
-        .obj(sui::ObjectArg::ImmOrOwnedObject(
-            collateral_coin.object_ref(),
-        ))
-        .unwrap();
-
-    // `register_off_chain_tool()`
-    tx.programmable_move_call(
-        // Workflow package ID.
-        "0x6f907d922b802b199b8638f15d18f1b6ba929772bb02fa1c0256617b67ed1e8a"
-            .parse()
-            .unwrap(),
-        sui::Identifier::new("tool_registry").unwrap(),
-        sui::Identifier::new("register_off_chain_tool").unwrap(),
-        vec![],
-        vec![
-            tool_registry,
-            fqn,
-            url,
-            input_schema,
-            output_schema,
-            pay_with,
-        ],
-    );
+    tx_handle.success();
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
@@ -169,4 +128,74 @@ async fn fetch_gas_and_collateral_coins(
         .unwrap_or_else(|| coins.remove(0));
 
     Ok((gas_coin, collateral_coin))
+}
+
+/// Build a programmable transaction to register a new tool.
+async fn prepare_transaction(
+    sui: &sui::Client,
+    meta: ToolMeta,
+    collateral_coin: sui::Coin,
+) -> AnyResult<sui::ProgrammableTransactionBuilder> {
+    let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+    // `self: &mut ToolRegistry`
+    let tool_registry = fetch_object_by_id(
+        sui,
+        "0x741d0cd3cd69d375790bebd1eb603448e0b157250b8568db8f42cf292460da86"
+            .parse()
+            .unwrap(),
+    )
+    .await?;
+
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: tool_registry.object_id,
+        initial_shared_version: tool_registry.version,
+        mutable: true,
+    })?;
+
+    // `fqn: AsciiString`
+    let fqn = tx.pure(meta.fqn.as_bytes())?;
+
+    let fqn = tx.programmable_move_call(
+        sui::MOVE_STDLIB_PACKAGE_ID,
+        SUI_ASCII_MODULE.into(),
+        SUI_ASCII_FROM_STRING.into(),
+        vec![],
+        vec![fqn],
+    );
+
+    // `url: vector<u8>`
+    let url = tx.pure(meta.url.as_bytes())?;
+
+    // `input_schema: vector<u8>`
+    let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;
+
+    // `output_schema: vector<u8>`
+    let output_schema = tx.pure(meta.output_schema.to_string().as_bytes())?;
+
+    // `pay_with: Coin<SUI>`
+    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
+        collateral_coin.object_ref(),
+    ))?;
+
+    // `register_off_chain_tool()`
+    tx.programmable_move_call(
+        // Workflow package ID.
+        "0x6f907d922b802b199b8638f15d18f1b6ba929772bb02fa1c0256617b67ed1e8a"
+            .parse()
+            .unwrap(),
+        NEXUS_TOOL_REGISTRY_MODULE.into(),
+        NEXUS_REGISTER_OFF_CHAIN_TOOL.into(),
+        vec![],
+        vec![
+            tool_registry,
+            fqn,
+            url,
+            input_schema,
+            output_schema,
+            pay_with,
+        ],
+    );
+
+    Ok(tx)
 }

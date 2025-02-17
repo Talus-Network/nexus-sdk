@@ -24,40 +24,45 @@ impl std::fmt::Display for SuiNet {
 }
 
 pub(crate) mod sui {
-    pub(crate) use sui_sdk::{
-        rpc_types::{
-            Coin,
-            EventFilter,
-            EventPage,
-            SuiEvent as Event,
-            SuiObjectData as ObjectData,
-            SuiObjectDataFilter as ObjectDataFilter,
-            SuiObjectDataOptions as ObjectDataOptions,
-            SuiObjectRef as ObjectRef,
-            SuiObjectResponse as ObjectResponse,
-            SuiObjectResponseQuery as ObjectResponseQuery,
-            SuiParsedData as ParsedData,
-            SuiTransactionBlockEffects as TransactionBlockEffects,
-            SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
+
+    pub(crate) use {
+        move_core_types::{
+            identifier::IdentStr as MoveIdentStr,
+            language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
         },
-        types::{
-            base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
-            crypto::SignatureScheme,
-            dynamic_field::{DynamicFieldInfo, DynamicFieldName},
-            event::EventID,
-            gas_coin::MIST_PER_SUI,
-            id::UID,
-            object::Owner,
-            programmable_transaction_builder::ProgrammableTransactionBuilder,
-            quorum_driver_types::ExecuteTransactionRequestType,
-            transaction::{ObjectArg, Transaction, TransactionData},
-            Identifier,
-            MOVE_STDLIB_PACKAGE_ID,
-            SUI_FRAMEWORK_PACKAGE_ID as FRAMEWORK_PACKAGE_ID,
+        sui_sdk::{
+            rpc_types::{
+                Coin,
+                EventFilter,
+                EventPage,
+                SuiEvent as Event,
+                SuiObjectData as ObjectData,
+                SuiObjectDataFilter as ObjectDataFilter,
+                SuiObjectDataOptions as ObjectDataOptions,
+                SuiObjectRef as ObjectRef,
+                SuiObjectResponse as ObjectResponse,
+                SuiObjectResponseQuery as ObjectResponseQuery,
+                SuiParsedData as ParsedData,
+                SuiTransactionBlockEffects as TransactionBlockEffects,
+                SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
+            },
+            types::{
+                base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
+                crypto::SignatureScheme,
+                dynamic_field::{DynamicFieldInfo, DynamicFieldName},
+                event::EventID,
+                gas_coin::MIST_PER_SUI,
+                id::UID,
+                object::Owner,
+                programmable_transaction_builder::ProgrammableTransactionBuilder,
+                quorum_driver_types::ExecuteTransactionRequestType,
+                transaction::{ObjectArg, TransactionData},
+                MOVE_STDLIB_PACKAGE_ID,
+            },
+            wallet_context::WalletContext,
+            SuiClient as Client,
+            SuiClientBuilder as ClientBuilder,
         },
-        wallet_context::WalletContext,
-        SuiClient as Client,
-        SuiClientBuilder as ClientBuilder,
     };
 }
 

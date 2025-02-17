@@ -256,10 +256,10 @@ pub(crate) async fn sign_transaction(
 pub(crate) async fn fetch_object_by_id(
     sui: &sui::Client,
     object_id: sui::ObjectID,
-) -> AnyResult<sui::ObjectData, NexusCliError> {
+) -> AnyResult<sui::ObjectRef, NexusCliError> {
     let object_handle = loading!("Fetching object {object_id}...");
 
-    let options = sui::ObjectDataOptions::new();
+    let options = sui::ObjectDataOptions::new().with_owner();
 
     let response = match sui
         .read_api()
@@ -280,18 +280,28 @@ pub(crate) async fn fetch_object_by_id(
         return Err(NexusCliError::AnyError(anyhow!(e)));
     }
 
-    match response.data {
-        Some(object) => {
-            object_handle.success();
-
-            Ok(object)
-        }
+    let object = match response.data {
+        Some(object) => object,
         None => {
             object_handle.error();
 
-            Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::AnyError(anyhow!(
                 "The object with ID {object_id} was not found"
-            )))
+            )));
         }
-    }
+    };
+
+    // Find initial shared version for shared objects or fallback to the
+    // object's version.
+    let version = object
+        .owner
+        .and_then(|owner| match owner {
+            sui::Owner::Shared {
+                initial_shared_version,
+            } => Some(initial_shared_version),
+            _ => None,
+        })
+        .unwrap_or(object.version);
+
+    Ok((object.object_id, version, object.digest).into())
 }
