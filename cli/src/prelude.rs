@@ -24,7 +24,6 @@ impl std::fmt::Display for SuiNet {
 }
 
 pub(crate) mod sui {
-
     pub(crate) use {
         move_core_types::{
             identifier::IdentStr as MoveIdentStr,
@@ -36,6 +35,7 @@ pub(crate) mod sui {
                 EventFilter,
                 EventPage,
                 SuiEvent as Event,
+                SuiExecutionStatus as ExecutionStatus,
                 SuiObjectData as ObjectData,
                 SuiObjectDataFilter as ObjectDataFilter,
                 SuiObjectDataOptions as ObjectDataOptions,

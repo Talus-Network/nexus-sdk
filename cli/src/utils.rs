@@ -2,6 +2,7 @@ use {
     crate::{loading, prelude::*},
     reqwest::{header, Client, StatusCode},
     std::path::PathBuf,
+    sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI,
 };
 
 /// Build Sui client for the provided Sui net.
@@ -245,9 +246,31 @@ pub(crate) async fn sign_transaction(
         }
     };
 
+    if response.errors.len() > 0 {
+        signing_handle.error();
+
+        return Err(NexusCliError::AnyError(anyhow!(
+            "Transaction failed with errors: {errors:?}",
+            errors = response.errors
+        )));
+    }
+
+    // Check if any effects failed in the TX.
+    if let Some(sui::TransactionBlockEffects::V1(effect)) = response.effects {
+        if let sui::ExecutionStatus::Failure { error } = effect.into_status() {
+            signing_handle.error();
+
+            return Err(NexusCliError::AnyError(anyhow!(error)));
+        }
+    }
+
     signing_handle.success();
 
-    println!("Transaction executed: {:#?}", response);
+    println!(
+        "[{check}] Transaction digest: {digest}",
+        check = "✔".green().bold(),
+        digest = response.digest.to_string().truecolor(100, 100, 100)
+    );
 
     Ok(())
 }
@@ -302,6 +325,8 @@ pub(crate) async fn fetch_object_by_id(
             _ => None,
         })
         .unwrap_or(object.version);
+
+    object_handle.success();
 
     Ok((object.object_id, version, object.digest).into())
 }

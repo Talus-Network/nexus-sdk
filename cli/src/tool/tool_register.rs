@@ -56,6 +56,16 @@ pub(crate) async fn register_tool(
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
+    // Fetch the tool registry object.
+    let tool_registry = fetch_object_by_id(
+        &sui,
+        // TODO: fetch this.
+        "0x741d0cd3cd69d375790bebd1eb603448e0b157250b8568db8f42cf292460da86"
+            .parse()
+            .unwrap(),
+    )
+    .await?;
+
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
@@ -66,7 +76,7 @@ pub(crate) async fn register_tool(
         todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
     }
 
-    let tx = match prepare_off_chain_tool_transaction(&sui, meta, collateral_coin).await {
+    let tx = match prepare_off_chain_tool_transaction(&sui, meta, collateral_coin, tool_registry) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -140,22 +150,15 @@ async fn fetch_gas_and_collateral_coins(
 }
 
 /// Build a programmable transaction to register a new off-chain tool.
-async fn prepare_off_chain_tool_transaction(
+fn prepare_off_chain_tool_transaction(
     sui: &sui::Client,
     meta: ToolMeta,
     collateral_coin: sui::Coin,
+    tool_registry: sui::ObjectRef,
 ) -> AnyResult<sui::ProgrammableTransactionBuilder> {
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
     // `self: &mut ToolRegistry`
-    let tool_registry = fetch_object_by_id(
-        sui,
-        "0x741d0cd3cd69d375790bebd1eb603448e0b157250b8568db8f42cf292460da86"
-            .parse()
-            .unwrap(),
-    )
-    .await?;
-
     let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
         id: tool_registry.object_id,
         initial_shared_version: tool_registry.version,
@@ -189,7 +192,7 @@ async fn prepare_off_chain_tool_transaction(
 
     // `nexus::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
-        // Workflow package ID.
+        // TODO: fetch this
         "0x6f907d922b802b199b8638f15d18f1b6ba929772bb02fa1c0256617b67ed1e8a"
             .parse()
             .unwrap(),
