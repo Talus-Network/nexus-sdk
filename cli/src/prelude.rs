@@ -1,6 +1,6 @@
 pub(crate) use {
     crate::error::NexusCliError,
-    anyhow::{anyhow, bail, Result as AnyResult},
+    anyhow::{anyhow, Result as AnyResult},
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
     serde::{Deserialize, Serialize},

@@ -27,6 +27,8 @@ pub(crate) async fn register_tool(
     sui_gas_coin: Option<sui::ObjectID>,
     sui_collateral_coin: Option<sui::ObjectID>,
 ) -> AnyResult<(), NexusCliError> {
+    let ident_check = ident.clone();
+
     let meta = validate_tool(ident).await?;
 
     command_title!(
@@ -57,7 +59,14 @@ pub(crate) async fn register_tool(
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    let tx = match prepare_transaction(&sui, meta, collateral_coin).await {
+    // Explicilty check that we're registering an off-chaint tool. This is
+    // mainly for when we implement logic for on-chain so that we don't forget
+    // to craft an on-chain TX here.
+    if ident_check.on_chain.is_some() {
+        todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
+    }
+
+    let tx = match prepare_off_chain_tool_transaction(&sui, meta, collateral_coin).await {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -130,8 +139,8 @@ async fn fetch_gas_and_collateral_coins(
     Ok((gas_coin, collateral_coin))
 }
 
-/// Build a programmable transaction to register a new tool.
-async fn prepare_transaction(
+/// Build a programmable transaction to register a new off-chain tool.
+async fn prepare_off_chain_tool_transaction(
     sui: &sui::Client,
     meta: ToolMeta,
     collateral_coin: sui::Coin,
@@ -178,7 +187,7 @@ async fn prepare_transaction(
         collateral_coin.object_ref(),
     ))?;
 
-    // `register_off_chain_tool()`
+    // `nexus::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
         // Workflow package ID.
         "0x6f907d922b802b199b8638f15d18f1b6ba929772bb02fa1c0256617b67ed1e8a"
