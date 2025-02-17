@@ -15,12 +15,12 @@ pub(crate) fn separator() -> ColoredString {
 /// Print the title of the currently executed command.
 #[macro_export]
 macro_rules! command_title {
-    ($fmt:expr) => {
+    ($($args:tt)*) => {
         println!(
-            "{arrow} {title}{separator}",
+            "\n{arrow} {title}{separator}",
             arrow = "▶".bold().purple(),
-            title = format!($fmt).bold(),
-            separator = separator()
+            title = format!($($args)*).bold(),
+            separator = $crate::display::separator()
         );
     };
 }
@@ -30,7 +30,11 @@ macro_rules! command_title {
 #[macro_export]
 macro_rules! loading {
     ($fmt:expr) => {{
-        use std::io::Write;
+        use std::{
+            io::Write,
+            sync::{Arc, Mutex},
+            thread,
+        };
 
         let success = Arc::new(Mutex::new(false));
         let error = Arc::new(Mutex::new(false));
@@ -76,7 +80,7 @@ macro_rules! loading {
             })
         };
 
-        LoadingHandle::new(success, error, thread)
+        $crate::display::LoadingHandle::new(success, error, thread)
     }};
 }
 

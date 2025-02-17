@@ -13,4 +13,8 @@ pub(crate) enum NexusCliError {
     IoError(std::io::Error),
     #[error("{error}{separator}\n{0}", error = "Error".red().bold(), separator = separator())]
     AnyError(anyhow::Error),
+    #[error("{error}{separator}\n{0}", error = "HTTP Error".red().bold(), separator = separator())]
+    HttpError(reqwest::Error),
+    #[error("{error}{separator}\n{0}", error = "Sui Error".red().bold(), separator = separator())]
+    SuiError(sui_sdk::error::Error),
 }

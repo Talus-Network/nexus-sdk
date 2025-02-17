@@ -2,6 +2,7 @@ mod display;
 mod error;
 mod prelude;
 mod tool;
+mod utils;
 
 use crate::prelude::*;
 
@@ -52,7 +53,7 @@ async fn main() {
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
-        eprintln!("{ballot} {e}", ballot = "✘".red().bold());
+        eprintln!("\n{ballot} {e}", ballot = "✘".red().bold());
 
         std::process::exit(1);
     }
