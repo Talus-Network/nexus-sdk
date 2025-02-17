@@ -1,4 +1,7 @@
 # Specify the Nexus Toolkit for Rust crate so that it can be installed.
 [workspace]
 resolver = "2"
-members = ["toolkit-rust", "cli"]
+members = ["toolkit-rust", "cli", "tools/llm-openai-chat-completion"]
+
+[workspace.dependencies]
+nexus-toolkit-rust = { path = "toolkit-rust" }

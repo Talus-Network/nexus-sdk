@@ -1,0 +1,12 @@
+[package]
+name = "llm-openai-chat-completion"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+schemars = "0.8.21"
+serde = { version = "1.0.217", features = ["derive"] }
+tokio = { version = "1.43.0", features = ["full"] }
+
+# Nexus Toolkit
+nexus-toolkit-rust.workspace = true
