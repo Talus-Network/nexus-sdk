@@ -41,18 +41,18 @@ pub(crate) struct ConfCommand {
 
 /// Handle the provided conf command. The [ConfCommand] instance is passed from
 /// [crate::main].
-pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError> {
-    let ConfCommand {
+pub(crate) async fn handle(
+    ConfCommand {
         sui_net,
         sui_wallet_path,
         nexus_workflow_id,
         nexus_tool_registry_id,
         conf_path,
-    } = command;
-
+    }: ConfCommand,
+) -> AnyResult<(), NexusCliError> {
     let mut conf = CliConf::load_from_path(&conf_path)
         .await
-        .unwrap_or(CliConf::default());
+        .unwrap_or_else(|_| CliConf::default());
 
     // If all fields are None, we just want to display the current config.
     if sui_net.is_none()

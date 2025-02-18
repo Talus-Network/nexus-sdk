@@ -38,14 +38,7 @@ pub(crate) async fn register_tool(
     // Load CLI configuration.
     let config_handle = loading!("Loading CLI configuration...");
 
-    let conf = match CliConf::load().await {
-        Ok(conf) => conf,
-        Err(e) => {
-            config_handle.error();
-
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
     // Workflow package and tool registry IDs must be present.
     //
