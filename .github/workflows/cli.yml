@@ -16,7 +16,8 @@ on:
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
-  # 3. Build and tests the Nexus CLI code
+  # 3. Install just
+  # 4. Build, fmt and test the CLI
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -28,13 +29,25 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: nightly
           override: true
 
       # 2.
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
 
-      # 3.
+      # 3
       - uses: taiki-e/install-action@just
-      - run: just cli build
-      - run: just cli test
+
+      # 4.1
+      - working-directory: cli
+        run: just cli build
+
+      # 4.2
+      - run: cargo +nightly fmt --check
+
+      # 4.3
+      - working-directory: cli
+        run: just cli test
