@@ -44,11 +44,11 @@ jobs:
 
       # 4.1
       - working-directory: toolkit-rust
-        run: just cli build
+        run: just toolkit-rust build
 
       # 4.2
       - run: cargo +nightly fmt --check && cargo clippy
 
       # 4.3
       - working-directory: toolkit-rust
-        run: just cli test
+        run: just toolkit-rust test
