@@ -43,7 +43,7 @@ jobs:
       - uses: taiki-e/install-action@just
 
       # 4
-      - run: just toolkit-rust build
+      - run: just toolkit-rust check
       - run: just toolkit-rust fmt-check
       - run: just toolkit-rust clippy
       - run: just toolkit-rust test

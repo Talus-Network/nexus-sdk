@@ -14,6 +14,9 @@ _default:
 build: _check-cargo
     cargo build --package nexus-cli --release
 
+# Check the CLI project
+check: _check-cargo
+    cargo check --package nexus-cli
 
 # Run all tests in the CLI project
 test: _check-cargo
