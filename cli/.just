@@ -19,6 +19,14 @@ build: _check-cargo
 test: _check-cargo
     cargo test --package nexus-cli
 
+# Run rustfmt on the CLI project
+fmt-check: _check-cargo
+    cargo +nightly fmt --package nexus-cli --check
+
+# Run clippy on the CLI project
+clippy: _check-cargo
+    cargo clippy --package nexus-cli
+
 # Use the CLI locally for development purposes
 # `$ just cli run tool new --name my-tool --template rust`
 #

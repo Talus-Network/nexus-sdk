@@ -17,7 +17,7 @@ jobs:
   # 1. Install Rust
   # 2. Install Rust cache
   # 3. Install just
-  # 4. Build, fmt and test the CLI
+  # 4. Build, fmt, clippy and test the CLI
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -42,13 +42,8 @@ jobs:
       # 3
       - uses: taiki-e/install-action@just
 
-      # 4.1
-      - working-directory: cli
-        run: just cli build
-
-      # 4.2
-      - run: cargo +nightly fmt --check && cargo clippy
-
-      # 4.3
-      - working-directory: cli
-        run: just cli test
+      # 4
+      - run: just cli build
+      - run: just cli fmt-check
+      - run: just cli clippy
+      - run: just cli test

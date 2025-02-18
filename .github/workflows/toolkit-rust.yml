@@ -17,7 +17,7 @@ jobs:
   # 1. Install Rust
   # 2. Install Rust cache
   # 3. Install just
-  # 4. Build, fmt and test the Toolkit for Rust
+  # 4. Build, fmt, clippy and test the Toolkit for Rust
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -42,13 +42,8 @@ jobs:
       # 3.
       - uses: taiki-e/install-action@just
 
-      # 4.1
-      - working-directory: toolkit-rust
-        run: just toolkit-rust build
-
-      # 4.2
-      - run: cargo +nightly fmt --check && cargo clippy
-
-      # 4.3
-      - working-directory: toolkit-rust
-        run: just toolkit-rust test
+      # 4
+      - run: just toolkit-rust build
+      - run: just toolkit-rust fmt-check
+      - run: just toolkit-rust clippy
+      - run: just toolkit-rust test
