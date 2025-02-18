@@ -59,8 +59,8 @@ pub(crate) async fn register_tool(
             config_handle.error();
 
             return Err(NexusCliError::AnyError(anyhow!(
-                "{description}\n\n{workflow_command}\n{tool_registry_command}",
-                description = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
+                "{message}\n\n{workflow_command}\n{tool_registry_command}",
+                message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
                 workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
                 tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
             )));

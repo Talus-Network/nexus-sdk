@@ -54,8 +54,16 @@ pub(crate) async fn create_wallet_context(
     if wallet.config.active_env != Some(net.to_string()) {
         wallet_handle.error();
 
+        if let Some(active_env) = wallet.config.active_env.as_ref() {
+            return Err(NexusCliError::AnyError(anyhow!(
+                "{message}\n\n{command}",
+                message = "The Sui net of the wallet does not match the provided Sui net. Either use a different wallet or run:",
+                command = format!("$ nexus conf --sui.net {active_env}").bold(),
+            )));
+        }
+
         return Err(NexusCliError::AnyError(anyhow!(
-            "The Sui net of the wallet does not match the provided Sui net"
+            "The Sui net of the wallet is not set. Please fix the Sui client configuration."
         )));
     }
 
