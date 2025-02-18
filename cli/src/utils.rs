@@ -6,7 +6,7 @@ use {
 };
 
 /// Build Sui client for the provided Sui net.
-pub(crate) async fn build_sui_client(net: &SuiNet) -> AnyResult<sui::Client, NexusCliError> {
+pub(crate) async fn build_sui_client(net: SuiNet) -> AnyResult<sui::Client, NexusCliError> {
     let building_handle = loading!("Building Sui client...");
 
     let builder = sui::ClientBuilder::default();
@@ -34,7 +34,7 @@ pub(crate) async fn build_sui_client(net: &SuiNet) -> AnyResult<sui::Client, Nex
 /// Create a wallet context from the provided path.
 pub(crate) async fn create_wallet_context(
     path: &PathBuf,
-    net: &SuiNet,
+    net: SuiNet,
 ) -> AnyResult<sui::WalletContext, NexusCliError> {
     let wallet_handle = loading!("Initiating SUI wallet...");
 

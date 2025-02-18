@@ -1,3 +1,4 @@
+mod conf;
 mod display;
 mod error;
 mod prelude;
@@ -17,6 +18,8 @@ struct Cli {
 enum Command {
     #[command(subcommand, about = "Manage Nexus Tools")]
     Tool(tool::ToolCommand),
+    #[command(about = "Manage Nexus Configuration")]
+    Conf(conf::ConfCommand),
 }
 
 #[tokio::main]
@@ -49,6 +52,7 @@ async fn main() {
     // Send each sub-command to the respective handler.
     let result = match cli.command {
         Command::Tool(tool) => tool::handle(tool).await,
+        Command::Conf(conf) => conf::handle(conf).await,
     };
 
     // Handle any errors that occurred during command execution.

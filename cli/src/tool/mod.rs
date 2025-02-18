@@ -2,7 +2,7 @@ mod tool_new;
 mod tool_register;
 mod tool_validate;
 
-use {crate::prelude::*, std::path::PathBuf, tool_new::*, tool_register::*, tool_validate::*};
+use {crate::prelude::*, tool_new::*, tool_register::*, tool_validate::*};
 
 #[derive(Subcommand)]
 pub(crate) enum ToolCommand {
@@ -29,6 +29,7 @@ pub(crate) enum ToolCommand {
         )]
         target: String,
     },
+
     Validate {
         /// The ident of the Tool to validate.
         #[command(flatten)]
@@ -39,26 +40,6 @@ pub(crate) enum ToolCommand {
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
-        /// Path to a SUI wallet to use for registration.
-        #[arg(
-            long = "sui-wallet-path",
-            short = 'w',
-            help = "The path to the SUI wallet to use for registration. The CLI assumes that the wallet has gas and collateral coins.",
-            value_name = "PATH",
-            default_value = "~/.sui/sui_config/client.yaml",
-            value_parser = ValueParser::from(expand_tilde)
-        )]
-        sui_wallet_path: PathBuf,
-        /// Sui net to use for the registration.
-        #[arg(
-            long = "sui-net",
-            short = 's',
-            help = "The Sui net to use for registration.",
-            value_name = "NET",
-            value_enum,
-            default_value = "localnet"
-        )]
-        sui_net: SuiNet,
         /// The gas coin object ID. First coin object is chosen if not present.
         #[arg(
             long = "sui-gas-coin",
@@ -76,6 +57,15 @@ pub(crate) enum ToolCommand {
             value_name = "OBJECT_ID"
         )]
         sui_collateral_coin: Option<sui::ObjectID>,
+        /// The gas budget for registering a Tool.
+        #[arg(
+            long = "sui-gas-budget",
+            short = 'b',
+            help = "The gas budget for registering a Tool",
+            value_name = "AMOUNT",
+            default_value_t = sui::MIST_PER_SUI / 10
+        )]
+        sui_gas_budget: u64,
     },
 }
 
@@ -129,19 +119,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool register` ==
         ToolCommand::Register {
             ident,
-            sui_wallet_path,
-            sui_net,
             sui_gas_coin,
             sui_collateral_coin,
-        } => {
-            register_tool(
-                ident,
-                sui_wallet_path,
-                sui_net,
-                sui_gas_coin,
-                sui_collateral_coin,
-            )
-            .await
-        }
+            sui_gas_budget,
+        } => register_tool(ident, sui_gas_coin, sui_collateral_coin, sui_gas_budget).await,
     }
 }

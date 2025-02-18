@@ -8,7 +8,6 @@ use {
         utils::*,
     },
     move_core_types::ident_str,
-    std::path::PathBuf,
 };
 
 /// Sui `std::ascii::string`
@@ -22,24 +21,57 @@ const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("register_o
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
     ident: ToolIdent,
-    sui_wallet_path: PathBuf,
-    sui_net: SuiNet,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_collateral_coin: Option<sui::ObjectID>,
+    sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let ident_check = ident.clone();
 
     let meta = validate_tool(ident).await?;
 
     command_title!(
-        "Registering Tool '{fqn}' at '{url}' on {sui_net}",
+        "Registering Tool '{fqn}' at '{url}'",
         fqn = meta.fqn,
         url = meta.url
     );
 
+    // Load CLI configuration.
+    let config_handle = loading!("Loading CLI configuration...");
+
+    let conf = match CliConf::load() {
+        Ok(conf) => conf,
+        Err(e) => {
+            config_handle.error();
+
+            return Err(NexusCliError::AnyError(e));
+        }
+    };
+
+    // Workflow package and tool registry IDs must be present.
+    //
+    // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
+    let (workflow_pkg_id, tool_registry_object_id) = match (
+        conf.nexus.workflow_id,
+        conf.nexus.tool_registry_id,
+    ) {
+        (Some(wid), Some(trid)) => (wid, trid),
+        _ => {
+            config_handle.error();
+
+            return Err(NexusCliError::AnyError(anyhow!(
+                "{description}\n\n{workflow_command}\n{tool_registry_command}",
+                description = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
+                workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
+                tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
+            )));
+        }
+    };
+
+    config_handle.success();
+
     // Create wallet context, Sui client and find the active address.
-    let mut wallet = create_wallet_context(&sui_wallet_path, &sui_net).await?;
-    let sui = build_sui_client(&sui_net).await?;
+    let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
+    let sui = build_sui_client(conf.sui.net).await?;
 
     let address = match wallet.active_address() {
         Ok(address) => address,
@@ -49,34 +81,32 @@ pub(crate) async fn register_tool(
     };
 
     // Fetch gas and collateral coin objects.
-    let (gas_coin, collateral_coin) =
-        fetch_gas_and_collateral_coins(&sui, sui_net, address, sui_gas_coin, sui_collateral_coin)
-            .await?;
+    let (gas_coin, collateral_coin) = fetch_gas_and_collateral_coins(
+        &sui,
+        conf.sui.net,
+        address,
+        sui_gas_coin,
+        sui_collateral_coin,
+    )
+    .await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     // Fetch the tool registry object.
-    let tool_registry = fetch_object_by_id(
-        &sui,
-        // TODO: fetch this.
-        "0x741d0cd3cd69d375790bebd1eb603448e0b157250b8568db8f42cf292460da86"
-            .parse()
-            .unwrap(),
-    )
-    .await?;
+    let tool_registry = fetch_object_by_id(&sui, tool_registry_object_id).await?;
 
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    // Explicilty check that we're registering an off-chaint tool. This is
-    // mainly for when we implement logic for on-chain so that we don't forget
-    // to craft an on-chain TX here.
+    // Explicilty check that we're registering an off-chain tool. This is mainly
+    // for when we implement logic for on-chain so that we don't forget to
+    // adjust `prepare_transaction`.
     if ident_check.on_chain.is_some() {
         todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
     }
 
-    let tx = match prepare_off_chain_tool_transaction(&sui, meta, collateral_coin, tool_registry) {
+    let tx = match prepare_transaction(meta, collateral_coin, tool_registry, workflow_pkg_id) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -91,8 +121,7 @@ pub(crate) async fn register_tool(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        // TODO: Should this be a command arg?
-        sui::MIST_PER_SUI / 10,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -150,11 +179,11 @@ async fn fetch_gas_and_collateral_coins(
 }
 
 /// Build a programmable transaction to register a new off-chain tool.
-fn prepare_off_chain_tool_transaction(
-    sui: &sui::Client,
+fn prepare_transaction(
     meta: ToolMeta,
     collateral_coin: sui::Coin,
     tool_registry: sui::ObjectRef,
+    workflow_pkg_id: sui::ObjectID,
 ) -> AnyResult<sui::ProgrammableTransactionBuilder> {
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
@@ -192,10 +221,7 @@ fn prepare_off_chain_tool_transaction(
 
     // `nexus::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
-        // TODO: fetch this
-        "0x6f907d922b802b199b8638f15d18f1b6ba929772bb02fa1c0256617b67ed1e8a"
-            .parse()
-            .unwrap(),
+        workflow_pkg_id,
         NEXUS_TOOL_REGISTRY_MODULE.into(),
         NEXUS_REGISTER_OFF_CHAIN_TOOL.into(),
         vec![],
