@@ -4,7 +4,7 @@ pub(crate) use {
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
     serde::{Deserialize, Serialize},
-    std::path::PathBuf,
+    std::path::{Path, PathBuf},
 };
 
 // Where to find config file.
@@ -114,10 +114,10 @@ pub(crate) mod sui {
 // == Used by clap ==
 
 /// Expands `~/` to the user's home directory in path arguments.
-pub(crate) fn expand_tilde(path: &str) -> AnyResult<std::path::PathBuf> {
-    if path.starts_with("~/") {
+pub(crate) fn expand_tilde(path: &str) -> AnyResult<PathBuf> {
+    if let Some(path) = path.strip_prefix("~/") {
         match home::home_dir() {
-            Some(home) => return Ok(home.join(&path[2..])),
+            Some(home) => return Ok(home.join(path)),
             None => return Err(anyhow!("Could not find home directory")),
         }
     }

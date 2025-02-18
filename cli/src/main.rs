@@ -42,7 +42,7 @@ async fn main() {
             eprintln!(
                 "{ballot} {error}",
                 ballot = "✘".red().bold(),
-                error = NexusCliError::SyntaxError(e)
+                error = NexusCliError::Syntax(e)
             );
 
             std::process::exit(1);

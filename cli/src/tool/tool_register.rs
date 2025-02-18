@@ -43,7 +43,7 @@ pub(crate) async fn register_tool(
         Err(e) => {
             config_handle.error();
 
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -58,7 +58,7 @@ pub(crate) async fn register_tool(
         _ => {
             config_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::Any(anyhow!(
                 "{message}\n\n{workflow_command}\n{tool_registry_command}",
                 message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
                 workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
@@ -76,7 +76,7 @@ pub(crate) async fn register_tool(
     let address = match wallet.active_address() {
         Ok(address) => address,
         Err(e) => {
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -111,7 +111,7 @@ pub(crate) async fn register_tool(
         Err(e) => {
             tx_handle.error();
 
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -151,7 +151,7 @@ async fn fetch_gas_and_collateral_coins(
             coins = fetch_all_coins_for_address(sui, addr).await?;
         }
         SuiNet::Mainnet if coins.len() < 2 => {
-            return Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::Any(anyhow!(
                 "The wallet does not have enough coins to register the tool"
             )));
         }
@@ -159,7 +159,7 @@ async fn fetch_gas_and_collateral_coins(
     }
 
     if coins.len() < 2 {
-        return Err(NexusCliError::AnyError(anyhow!(
+        return Err(NexusCliError::Any(anyhow!(
             "The wallet does not have enough coins to register the tool"
         )));
     }

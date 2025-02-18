@@ -10,10 +10,10 @@ import '../just/_helpers.just'
 _default:
     @just --list toolkit-rust
 
-# Build the Rust Toolkit project
+# Build the Toolkit for Rust project
 build: _check-cargo
-    cargo build --release
+    cargo build --package nexus-toolkit-rust --release
 
-# Run all tests in the Rust Toolkit project
+# Run all tests in the Toolkit for Rust project
 test: _check-cargo
     cargo test --package nexus-toolkit-rust

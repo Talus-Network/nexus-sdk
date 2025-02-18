@@ -1,7 +1,6 @@
 use {
     crate::{loading, prelude::*},
     reqwest::{header, Client, StatusCode},
-    std::path::PathBuf,
     sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI,
 };
 
@@ -26,14 +25,14 @@ pub(crate) async fn build_sui_client(net: SuiNet) -> AnyResult<sui::Client, Nexu
         Err(e) => {
             building_handle.error();
 
-            Err(NexusCliError::SuiError(e))
+            Err(NexusCliError::Sui(e))
         }
     }
 }
 
 /// Create a wallet context from the provided path.
 pub(crate) async fn create_wallet_context(
-    path: &PathBuf,
+    path: &Path,
     net: SuiNet,
 ) -> AnyResult<sui::WalletContext, NexusCliError> {
     let wallet_handle = loading!("Initiating SUI wallet...");
@@ -46,7 +45,7 @@ pub(crate) async fn create_wallet_context(
         Err(e) => {
             wallet_handle.error();
 
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -55,14 +54,14 @@ pub(crate) async fn create_wallet_context(
         wallet_handle.error();
 
         if let Some(active_env) = wallet.config.active_env.as_ref() {
-            return Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::Any(anyhow!(
                 "{message}\n\n{command}",
                 message = "The Sui net of the wallet does not match the provided Sui net. Either use a different wallet or run:",
                 command = format!("$ nexus conf --sui.net {active_env}").bold(),
             )));
         }
 
-        return Err(NexusCliError::AnyError(anyhow!(
+        return Err(NexusCliError::Any(anyhow!(
             "The Sui net of the wallet is not set. Please fix the Sui client configuration."
         )));
     }
@@ -96,7 +95,7 @@ pub(crate) async fn fetch_all_coins_for_address(
             Err(e) => {
                 coins_handle.error();
 
-                return Err(NexusCliError::SuiError(e));
+                return Err(NexusCliError::Sui(e));
             }
         };
 
@@ -129,9 +128,7 @@ pub async fn request_tokens_from_faucet(
         _ => {
             faucet_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(
-                "Mainnet faucet not supported"
-            )));
+            return Err(NexusCliError::Any(anyhow!("Mainnet faucet not supported")));
         }
     };
 
@@ -159,7 +156,7 @@ pub async fn request_tokens_from_faucet(
         Err(e) => {
             faucet_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(e)));
+            return Err(NexusCliError::Any(anyhow!(e)));
         }
     };
 
@@ -200,7 +197,7 @@ pub async fn request_tokens_from_faucet(
         Err(e) => {
             faucet_handle.error();
 
-            Err(NexusCliError::AnyError(anyhow!(e)))
+            Err(NexusCliError::Any(anyhow!(e)))
         }
     }
 }
@@ -214,7 +211,7 @@ pub(crate) async fn fetch_reference_gas_price(sui: &sui::Client) -> AnyResult<u6
         Err(e) => {
             gas_price_handle.error();
 
-            return Err(NexusCliError::SuiError(e));
+            return Err(NexusCliError::Sui(e));
         }
     };
 
@@ -250,14 +247,14 @@ pub(crate) async fn sign_transaction(
         Err(e) => {
             signing_handle.error();
 
-            return Err(NexusCliError::SuiError(e));
+            return Err(NexusCliError::Sui(e));
         }
     };
 
-    if response.errors.len() > 0 {
+    if !response.errors.is_empty() {
         signing_handle.error();
 
-        return Err(NexusCliError::AnyError(anyhow!(
+        return Err(NexusCliError::Any(anyhow!(
             "Transaction failed with errors: {errors:?}",
             errors = response.errors
         )));
@@ -268,7 +265,7 @@ pub(crate) async fn sign_transaction(
         if let sui::ExecutionStatus::Failure { error } = effect.into_status() {
             signing_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(error)));
+            return Err(NexusCliError::Any(anyhow!(error)));
         }
     }
 
@@ -301,14 +298,14 @@ pub(crate) async fn fetch_object_by_id(
         Err(e) => {
             object_handle.error();
 
-            return Err(NexusCliError::SuiError(e));
+            return Err(NexusCliError::Sui(e));
         }
     };
 
     if let Some(e) = response.error {
         object_handle.error();
 
-        return Err(NexusCliError::AnyError(anyhow!(e)));
+        return Err(NexusCliError::Any(anyhow!(e)));
     }
 
     let object = match response.data {
@@ -316,7 +313,7 @@ pub(crate) async fn fetch_object_by_id(
         None => {
             object_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::Any(anyhow!(
                 "The object with ID {object_id} was not found"
             )));
         }

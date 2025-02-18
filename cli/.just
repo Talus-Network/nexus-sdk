@@ -12,7 +12,7 @@ _default:
 
 # Build the CLI project
 build: _check-cargo
-    cargo build --release
+    cargo build --package nexus-cli --release
 
 
 # Run all tests in the CLI project
@@ -24,4 +24,4 @@ test: _check-cargo
 #
 # When released: `just cli run` == `nexus`
 run *args: _check-cargo
-    cargo run -- {{args}}
+    cargo run --package nexus-cli -- {{args}}

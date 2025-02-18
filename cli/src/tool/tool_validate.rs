@@ -33,14 +33,14 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         Ok(_) => {
             health_handle.error();
 
-            return Err(NexusCliError::AnyError(anyhow!(
+            return Err(NexusCliError::Any(anyhow!(
                 "The tool did not respond with a 200 OK status code"
             )));
         }
         Err(error) => {
             health_handle.error();
 
-            return Err(NexusCliError::HttpError(error));
+            return Err(NexusCliError::Http(error));
         }
     };
 
@@ -58,7 +58,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         Err(error) => {
             meta_handle.error();
 
-            return Err(NexusCliError::HttpError(error));
+            return Err(NexusCliError::Http(error));
         }
     };
 
@@ -67,7 +67,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         Err(error) => {
             meta_handle.error();
 
-            return Err(NexusCliError::HttpError(error));
+            return Err(NexusCliError::Http(error));
         }
     };
 
@@ -75,7 +75,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
     if meta.output_schema["oneOf"].is_null() {
         meta_handle.error();
 
-        return Err(NexusCliError::AnyError(anyhow!(
+        return Err(NexusCliError::Any(anyhow!(
             "The tool meta does not contain a top-level 'oneOf' key. Please make sure to use an enum as the Tool output type."
         )));
     }
@@ -86,7 +86,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
     if meta.url.parse::<reqwest::Url>() != Ok(url.clone()) {
         meta_handle.error();
 
-        return Err(NexusCliError::AnyError(anyhow!(
+        return Err(NexusCliError::Any(anyhow!(
             "The tool meta does not contain a 'url' key or it does not match the provided URL.\n\
             Found: {}\nExpected: {}",
             meta.url,

@@ -8,13 +8,13 @@ use {
 #[derive(Debug, Error)]
 pub(crate) enum NexusCliError {
     #[error("{error}{separator}\n{0}", error = "Syntax Error".red().bold(), separator = separator())]
-    SyntaxError(clap::error::Error),
+    Syntax(clap::error::Error),
     #[error("{error}{separator}\n{0}", error = "IO Error".red().bold(), separator = separator())]
-    IoError(std::io::Error),
+    Io(std::io::Error),
     #[error("{error}{separator}\n{0}", error = "Error".red().bold(), separator = separator())]
-    AnyError(anyhow::Error),
+    Any(anyhow::Error),
     #[error("{error}{separator}\n{0}", error = "HTTP Error".red().bold(), separator = separator())]
-    HttpError(reqwest::Error),
+    Http(reqwest::Error),
     #[error("{error}{separator}\n{0}", error = "Sui Error".red().bold(), separator = separator())]
-    SuiError(sui_sdk::error::Error),
+    Sui(sui_sdk::error::Error),
 }

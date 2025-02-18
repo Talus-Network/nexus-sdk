@@ -31,6 +31,7 @@ jobs:
         with:
           toolchain: nightly
           override: true
+          components: rustfmt, clippy
 
       # 2.
       - name: Cache Build
@@ -46,7 +47,7 @@ jobs:
         run: just cli build
 
       # 4.2
-      - run: cargo +nightly fmt --check
+      - run: cargo +nightly fmt --check && cargo clippy
 
       # 4.3
       - working-directory: cli

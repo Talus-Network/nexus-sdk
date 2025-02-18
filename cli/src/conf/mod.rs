@@ -85,7 +85,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         Err(e) => {
             config_handle.error();
 
-            Err(NexusCliError::AnyError(e))
+            Err(NexusCliError::Any(e))
         }
     }
 }

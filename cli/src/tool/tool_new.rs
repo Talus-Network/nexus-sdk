@@ -66,7 +66,7 @@ pub(crate) async fn create_new_tool(
         Err(e) => {
             transforming_template.error();
 
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -81,7 +81,7 @@ pub(crate) async fn create_new_tool(
     if let Err(e) = create_dir_all(root_directory).await {
         writing_file.error();
 
-        return Err(NexusCliError::IoError(e));
+        return Err(NexusCliError::Io(e));
     };
 
     for (path, content) in files {
@@ -94,7 +94,7 @@ pub(crate) async fn create_new_tool(
                 if let Err(e) = create_dir_all(path).await {
                     writing_file.error();
 
-                    return Err(NexusCliError::IoError(e));
+                    return Err(NexusCliError::Io(e));
                 }
 
                 continue;
@@ -106,14 +106,14 @@ pub(crate) async fn create_new_tool(
             Err(e) => {
                 writing_file.error();
 
-                return Err(NexusCliError::IoError(e));
+                return Err(NexusCliError::Io(e));
             }
         };
 
         if let Err(e) = file.write_all(content.as_bytes()).await {
             writing_file.error();
 
-            return Err(NexusCliError::IoError(e));
+            return Err(NexusCliError::Io(e));
         }
     }
 
