@@ -38,7 +38,7 @@ pub(crate) async fn register_tool(
     // Load CLI configuration.
     let config_handle = loading!("Loading CLI configuration...");
 
-    let conf = match CliConf::load() {
+    let conf = match CliConf::load().await {
         Ok(conf) => conf,
         Err(e) => {
             config_handle.error();

@@ -10,7 +10,7 @@ pub(crate) use {
 // Where to find config file.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 
-#[derive(Clone, Copy, Debug, Default, ValueEnum, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
     #[default]
     Localnet,
@@ -36,20 +36,24 @@ pub(crate) struct CliConf {
 }
 
 impl CliConf {
-    pub(crate) fn load() -> AnyResult<Self> {
+    pub(crate) async fn load() -> AnyResult<Self> {
         let conf_path = expand_tilde(CLI_CONF_PATH)?;
-        let conf = std::fs::read_to_string(&conf_path)?;
+
+        Self::load_from_path(&conf_path).await
+    }
+
+    pub(crate) async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
+        let conf = tokio::fs::read_to_string(path).await?;
 
         Ok(toml::from_str(&conf)?)
     }
 
-    pub(crate) fn save(&self) -> AnyResult<()> {
-        let conf_path = expand_tilde(CLI_CONF_PATH)?;
-        let parent_folder = conf_path.parent().expect("Parent folder must exist.");
+    pub(crate) async fn save(&self, path: &PathBuf) -> AnyResult<()> {
+        let parent_folder = path.parent().expect("Parent folder must exist.");
         let conf = toml::to_string_pretty(&self)?;
 
-        std::fs::create_dir_all(parent_folder)?;
-        std::fs::write(&conf_path, conf)?;
+        tokio::fs::create_dir_all(parent_folder).await?;
+        tokio::fs::write(path, conf).await?;
 
         Ok(())
     }

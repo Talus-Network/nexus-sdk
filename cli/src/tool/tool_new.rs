@@ -128,13 +128,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_tool() {
-        let result =
-            create_new_tool("test".to_string(), ToolTemplate::Rust, "/tmp".to_string()).await;
+        let result = create_new_tool(
+            "test".to_string(),
+            ToolTemplate::Rust,
+            "/tmp/nexus-tool".to_string(),
+        )
+        .await;
 
         assert_matches!(result, Ok(()));
 
-        // Check that file was written to `/tmp/test/src/main.rs` with the correct contents.
-        let path = Path::new("/tmp").join("test/src/main.rs");
+        // Check that file was written to `/tmp/nexus-tool/test/src/main.rs` with the correct contents.
+        let path = Path::new("/tmp/nexus-tool").join("test/src/main.rs");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains("xyz.test@1"));
@@ -142,10 +146,13 @@ mod tests {
         assert!(contents.contains("impl NexusTool for Test {"));
 
         // Check that file was written to `/tmp/test/Cargo.toml` with the correct contents.
-        let path = Path::new("/tmp").join("test/Cargo.toml");
+        let path = Path::new("/tmp/nexus-tool").join("test/Cargo.toml");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains(r#"name = "test""#));
         assert!(contents.contains("[dependencies.nexus-toolkit-rust]"));
+
+        // Remove any leftover artifacts.
+        tokio::fs::remove_dir_all("/tmp/nexus-tool").await.unwrap();
     }
 }

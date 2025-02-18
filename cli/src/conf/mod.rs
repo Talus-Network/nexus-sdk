@@ -28,6 +28,15 @@ pub(crate) struct ConfCommand {
         value_name = "ID"
     )]
     nexus_tool_registry_id: Option<sui::ObjectID>,
+    /// Hidden argument used for testing to set the path of the configuration
+    /// file.
+    #[arg(
+        long = "conf-path",
+        hide = true,
+        default_value = CLI_CONF_PATH,
+        value_parser = ValueParser::from(expand_tilde)
+    )]
+    conf_path: PathBuf,
 }
 
 /// Handle the provided conf command. The [ConfCommand] instance is passed from
@@ -38,9 +47,12 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         sui_wallet_path,
         nexus_workflow_id,
         nexus_tool_registry_id,
+        conf_path,
     } = command;
 
-    let mut conf = CliConf::load().unwrap_or(CliConf::default());
+    let mut conf = CliConf::load_from_path(&conf_path)
+        .await
+        .unwrap_or(CliConf::default());
 
     // If all fields are None, we just want to display the current config.
     if sui_net.is_none()
@@ -64,7 +76,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
     conf.nexus.workflow_id = nexus_workflow_id.or(conf.nexus.workflow_id);
     conf.nexus.tool_registry_id = nexus_tool_registry_id.or(conf.nexus.tool_registry_id);
 
-    match conf.save() {
+    match conf.save(&conf_path).await {
         Ok(()) => {
             config_handle.success();
 
@@ -75,5 +87,66 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
 
             Err(NexusCliError::AnyError(e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, assert_matches::assert_matches};
+
+    #[tokio::test]
+    async fn test_config_loads_and_saves() {
+        let path = PathBuf::from("/tmp/.nexus/conf.toml");
+
+        assert!(!tokio::fs::try_exists(&path).await.unwrap());
+
+        let nexus_workflow_id = Some(sui::ObjectID::random());
+        let nexus_tool_registry_id = Some(sui::ObjectID::random());
+
+        let command = ConfCommand {
+            sui_net: Some(SuiNet::Mainnet),
+            sui_wallet_path: Some(PathBuf::from("/tmp/.nexus/wallet")),
+            nexus_workflow_id,
+            nexus_tool_registry_id,
+            conf_path: path.clone(),
+        };
+
+        // Command saves values.
+        let result = handle(command).await;
+
+        assert_matches!(result, Ok(()));
+
+        // Check that file was written to `/tmp/.nexus/conf.toml` with the correct contents.
+        let contents = tokio::fs::read_to_string(&path).await.unwrap();
+        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+
+        assert_eq!(conf.sui.net, SuiNet::Mainnet);
+        assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
+        assert_eq!(conf.nexus.workflow_id, nexus_workflow_id);
+        assert_eq!(conf.nexus.tool_registry_id, nexus_tool_registry_id);
+
+        // Overriding one value will save that one value and leave other values intact.
+        let command = ConfCommand {
+            sui_net: Some(SuiNet::Testnet),
+            sui_wallet_path: None,
+            nexus_workflow_id: None,
+            nexus_tool_registry_id: None,
+            conf_path: path.clone(),
+        };
+
+        let result = handle(command).await;
+
+        assert_matches!(result, Ok(()));
+
+        let contents = tokio::fs::read_to_string(&path).await.unwrap();
+        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+
+        assert_eq!(conf.sui.net, SuiNet::Testnet);
+        assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
+        assert_eq!(conf.nexus.workflow_id, nexus_workflow_id);
+        assert_eq!(conf.nexus.tool_registry_id, nexus_tool_registry_id);
+
+        // Remove any leftover artifacts.
+        tokio::fs::remove_dir_all("/tmp/.nexus").await.unwrap();
     }
 }
