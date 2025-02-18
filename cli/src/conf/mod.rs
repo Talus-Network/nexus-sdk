@@ -54,7 +54,7 @@ pub(crate) async fn handle(
         .await
         .unwrap_or_else(|_| CliConf::default());
 
-    // If all fields are None, we just want to display the current config.
+    // If all fields are None, we just want to display the current configuration.
     if sui_net.is_none()
         && sui_wallet_path.is_none()
         && nexus_workflow_id.is_none()
@@ -69,7 +69,7 @@ pub(crate) async fn handle(
 
     command_title!("Updating Nexus CLI Configuration");
 
-    let config_handle = loading!("Updating configuration...");
+    let conf_handle = loading!("Updating configuration...");
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = sui_wallet_path.unwrap_or(conf.sui.wallet_path);
@@ -78,12 +78,12 @@ pub(crate) async fn handle(
 
     match conf.save(&conf_path).await {
         Ok(()) => {
-            config_handle.success();
+            conf_handle.success();
 
             Ok(())
         }
         Err(e) => {
-            config_handle.error();
+            conf_handle.error();
 
             Err(NexusCliError::Any(e))
         }
@@ -95,7 +95,7 @@ mod tests {
     use {super::*, assert_matches::assert_matches};
 
     #[tokio::test]
-    async fn test_config_loads_and_saves() {
+    async fn test_conf_loads_and_saves() {
         let path = PathBuf::from("/tmp/.nexus/conf.toml");
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());

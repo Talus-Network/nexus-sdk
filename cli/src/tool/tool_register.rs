@@ -36,7 +36,7 @@ pub(crate) async fn register_tool(
     );
 
     // Load CLI configuration.
-    let config_handle = loading!("Loading CLI configuration...");
+    let conf_handle = loading!("Loading CLI configuration...");
 
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
@@ -49,7 +49,7 @@ pub(crate) async fn register_tool(
     ) {
         (Some(wid), Some(trid)) => (wid, trid),
         _ => {
-            config_handle.error();
+            conf_handle.error();
 
             return Err(NexusCliError::Any(anyhow!(
                 "{message}\n\n{workflow_command}\n{tool_registry_command}",
@@ -60,7 +60,7 @@ pub(crate) async fn register_tool(
         }
     };
 
-    config_handle.success();
+    conf_handle.success();
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
