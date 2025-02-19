@@ -14,6 +14,7 @@ pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 pub(crate) enum SuiNet {
     #[default]
     Localnet,
+    Devnet,
     Testnet,
     Mainnet,
 }
@@ -22,6 +23,7 @@ impl std::fmt::Display for SuiNet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SuiNet::Localnet => write!(f, "localnet"),
+            SuiNet::Devnet => write!(f, "devnet"),
             SuiNet::Testnet => write!(f, "testnet"),
             SuiNet::Mainnet => write!(f, "mainnet"),
         }

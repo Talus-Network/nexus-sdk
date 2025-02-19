@@ -12,6 +12,7 @@ pub(crate) async fn build_sui_client(net: SuiNet) -> AnyResult<sui::Client, Nexu
 
     let client = match net {
         SuiNet::Localnet => builder.build_localnet().await,
+        SuiNet::Devnet => builder.build_devnet().await,
         SuiNet::Testnet => builder.build_testnet().await,
         SuiNet::Mainnet => todo!("Mainnet not yet supported"),
     };
@@ -124,6 +125,7 @@ pub(crate) async fn request_tokens_from_faucet(
 
     let url = match sui_net {
         SuiNet::Testnet => "https://faucet.testnet.sui.io/v1/gas",
+        SuiNet::Devnet => "https://faucet.devnet.sui.io/v1/gas",
         SuiNet::Localnet => "http://127.0.0.1:9123/gas",
         _ => {
             faucet_handle.error();

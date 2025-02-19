@@ -122,9 +122,9 @@ pub(crate) async fn register_tool(
     sign_transaction(&sui, &wallet, tx_data).await
 }
 
-/// Fetch the gas and collateral coins from the Sui client. On Localnet and
-/// Testnet, we can use the faucet to get the coins. On Mainnet, this fails if
-/// the coins are not present.
+/// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet
+/// and Testnet, we can use the faucet to get the coins. On Mainnet, this fails
+/// if the coins are not present.
 async fn fetch_gas_and_collateral_coins(
     sui: &sui::Client,
     sui_net: SuiNet,
@@ -134,12 +134,13 @@ async fn fetch_gas_and_collateral_coins(
 ) -> AnyResult<(sui::Coin, sui::Coin), NexusCliError> {
     let mut coins = fetch_all_coins_for_address(sui, addr).await?;
 
-    // We need at least 2 coins. We can create those on localnet and testnet.
+    // We need at least 2 coins. We can create those on Localnet, Devnet and
+    // Testnet.
     match sui_net {
-        SuiNet::Localnet | SuiNet::Testnet if coins.len() < 2 => {
-            for _ in coins.len()..2 {
-                request_tokens_from_faucet(sui_net, addr).await?;
-            }
+        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.len() < 2 => {
+            // Only call once because on Localnet and Devnet, we get 5 coins and
+            // on Testnet this will be rate-limited.
+            request_tokens_from_faucet(sui_net, addr).await?;
 
             coins = fetch_all_coins_for_address(sui, addr).await?;
         }
