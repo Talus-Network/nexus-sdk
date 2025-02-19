@@ -147,7 +147,7 @@ pub async fn request_tokens_from_faucet(
     let resp = match Client::new()
         .post(url)
         .header(header::CONTENT_TYPE, "application/json")
-        .header(header::USER_AGENT, "nexus-leader")
+        .header(header::USER_AGENT, "nexus-cli")
         .json(&json_body)
         .send()
         .await
