@@ -7,9 +7,10 @@ use {
 const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
 const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
 
-// Nexus `tool_registry::unregister_off_chain_tool`
+/// Nexus `tool_registry::unregister_off_chain_tool`
 const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
-const NEXUS_UNREGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("unregister_off_chain_tool");
+// TODO: The name of this fn will likely change.
+const NEXUS_UNREGISTER_TOOL: &sui::MoveIdentStr = ident_str!("unregister_off_chain_tool");
 
 /// Unregister a Tool based on the provided FQN.
 pub(crate) async fn unregister_tool(
@@ -150,11 +151,11 @@ fn prepare_transaction(
         mutable: false,
     })?;
 
-    // `nexus::tool_registry::unregister_off_chain_tool()`
+    // `nexus::tool_registry::unregister_tool()`
     tx.programmable_move_call(
         workflow_pkg_id,
         NEXUS_TOOL_REGISTRY_MODULE.into(),
-        NEXUS_UNREGISTER_OFF_CHAIN_TOOL.into(),
+        NEXUS_UNREGISTER_TOOL.into(),
         vec![],
         vec![tool_registry, fqn, clock],
     );
