@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, confirm, loading, prelude::*, utils::*},
+    crate::{command_title, loading, prelude::*, utils::*},
     move_core_types::ident_str,
 };
 
@@ -7,19 +7,18 @@ use {
 const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
 const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
 
-// Nexus `tool_registry::unregister_off_chain_tool`
+// Nexus `tool_registry::claim_collateral_for_off_chain_tool`
 const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
-const NEXUS_UNREGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("unregister_off_chain_tool");
+const NEXUS_CLAIM_COLLATERAL_FOR_OFF_CHAIN_TOOL: &sui::MoveIdentStr =
+    ident_str!("claim_collateral_for_off_chain_tool");
 
-/// Unregister a Tool based on the provided FQN.
-pub(crate) async fn unregister_tool(
+/// Claim collateral for a Tool based on the provided FQN.
+pub(crate) async fn claim_collateral(
     tool_fqn: ToolFqn,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Unregistering Tool '{tool_fqn}'");
-
-    confirm!("Unregistering a Tool will make all DAGs using it invalid. Do you want to proceed?");
+    command_title!("Claiming collateral for Tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
@@ -50,7 +49,7 @@ pub(crate) async fn unregister_tool(
     // Fetch the tool registry object.
     let tool_registry = fetch_object_by_id(&sui, tool_registry_object_id).await?;
 
-    // Craft a TX to unregister the tool.
+    // Craft a TX to claim the collaters for a Tool.
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match prepare_transaction(&tool_fqn, tool_registry, workflow_pkg_id) {
@@ -96,7 +95,7 @@ async fn fetch_gas_coin(
         }
         SuiNet::Mainnet if coins.is_empty() => {
             return Err(NexusCliError::Any(anyhow!(
-                "The wallet does not have enough coins to unregister the tool"
+                "The wallet does not have enough coins to claim the collateral for a Tool"
             )));
         }
         _ => (),
@@ -104,7 +103,7 @@ async fn fetch_gas_coin(
 
     if coins.len() < 2 {
         return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough coins to unregister the tool"
+            "The wallet does not have enough coins to claim the collateral for a Tool"
         )));
     }
 
@@ -117,7 +116,7 @@ async fn fetch_gas_coin(
     Ok(gas_coin)
 }
 
-/// Build a programmable transaction to unregister a Tool.
+/// Build a programmable transaction to claim the collateral for a tool.
 fn prepare_transaction(
     tool_fqn: &ToolFqn,
     tool_registry: sui::ObjectRef,
@@ -154,7 +153,7 @@ fn prepare_transaction(
     tx.programmable_move_call(
         workflow_pkg_id,
         NEXUS_TOOL_REGISTRY_MODULE.into(),
-        NEXUS_UNREGISTER_OFF_CHAIN_TOOL.into(),
+        NEXUS_CLAIM_COLLATERAL_FOR_OFF_CHAIN_TOOL.into(),
         vec![],
         vec![tool_registry, fqn, clock],
     );

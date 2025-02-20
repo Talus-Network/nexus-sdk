@@ -108,7 +108,7 @@ pub(crate) mod sui {
                 SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
             },
             types::{
-                base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
+                base_types::{ObjectID, SuiAddress as Address},
                 gas_coin::MIST_PER_SUI,
                 object::Owner,
                 programmable_transaction_builder::ProgrammableTransactionBuilder,
@@ -116,6 +116,7 @@ pub(crate) mod sui {
                 transaction::{ObjectArg, TransactionData},
                 MOVE_STDLIB_PACKAGE_ID,
                 SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
+                SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
             },
             wallet_context::WalletContext,
             SuiClient as Client,

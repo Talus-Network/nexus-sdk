@@ -1,9 +1,17 @@
+mod tool_claim_collateral;
 mod tool_new;
 mod tool_register;
 mod tool_unregister;
 mod tool_validate;
 
-use {crate::prelude::*, tool_new::*, tool_register::*, tool_unregister::*, tool_validate::*};
+use {
+    crate::prelude::*,
+    tool_claim_collateral::*,
+    tool_new::*,
+    tool_register::*,
+    tool_unregister::*,
+    tool_validate::*,
+};
 
 #[derive(Subcommand)]
 pub(crate) enum ToolCommand {
@@ -95,6 +103,33 @@ pub(crate) enum ToolCommand {
         )]
         sui_gas_budget: u64,
     },
+
+    ClaimCollateral {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to claim the collateral for.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        /// The gas coin object ID. First coin object is chosen if not present.
+        #[arg(
+            long = "sui-gas-coin",
+            short = 'g',
+            help = "The gas coin object ID. First coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        sui_gas_coin: Option<sui::ObjectID>,
+        /// The gas budget for claiming the collateral for a Tool.
+        #[arg(
+            long = "sui-gas-budget",
+            short = 'b',
+            help = "The gas budget for claiming the collateral for a Tool",
+            value_name = "AMOUNT",
+            default_value_t = sui::MIST_PER_SUI / 10
+        )]
+        sui_gas_budget: u64,
+    },
 }
 
 /// Struct holding an either on-chain or off-chain Tool identifier. Off-chain
@@ -156,5 +191,12 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             sui_gas_coin,
             sui_gas_budget,
         } => unregister_tool(tool_fqn, sui_gas_coin, sui_gas_budget).await,
+
+        // == `$ nexus tool claim-collateral` ==
+        ToolCommand::ClaimCollateral {
+            tool_fqn,
+            sui_gas_coin,
+            sui_gas_budget,
+        } => claim_collateral(tool_fqn, sui_gas_coin, sui_gas_budget).await,
     }
 }

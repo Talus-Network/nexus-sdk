@@ -153,7 +153,7 @@ async fn fetch_gas_and_collateral_coins(
     Ok((gas_coin, collateral_coin))
 }
 
-/// Build a programmable transaction to register a new off-chain tool.
+/// Build a programmable transaction to register a new off-chain Tool.
 fn prepare_transaction(
     meta: ToolMeta,
     collateral_coin: sui::Coin,
