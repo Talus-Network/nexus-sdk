@@ -337,3 +337,30 @@ pub(crate) async fn fetch_object_by_id(
 
     Ok((object.object_id, version, object.digest).into())
 }
+
+/// Wrapping some conf parsing functioality used around the CLI.
+// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
+pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, NexusCliError> {
+    let objects_handle = loading!("Loading Nexus object IDs configuration...");
+
+    match (conf.nexus.workflow_id, conf.nexus.tool_registry_id) {
+        (Some(wid), Some(trid)) => {
+            objects_handle.success();
+
+            Ok(NexusObjects {
+                workflow_pkg_id: wid,
+                tool_registry_object_id: trid,
+            })
+        }
+        _ => {
+            objects_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "{message}\n\n{workflow_command}\n{tool_registry_command}",
+                message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
+                workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
+                tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
+            )));
+        }
+    }
+}

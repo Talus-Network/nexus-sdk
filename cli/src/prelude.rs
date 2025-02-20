@@ -1,10 +1,13 @@
 pub(crate) use {
     crate::error::NexusCliError,
-    anyhow::{anyhow, Result as AnyResult},
+    anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    serde::{Deserialize, Serialize},
-    std::path::{Path, PathBuf},
+    serde::{Deserialize, Deserializer, Serialize},
+    std::{
+        path::{Path, PathBuf},
+        str::FromStr,
+    },
 };
 
 // Where to find config file.
@@ -84,6 +87,13 @@ pub(crate) struct NexusConf {
     pub(crate) tool_registry_id: Option<sui::ObjectID>,
 }
 
+/// Non-optional version of [NexusConf].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct NexusObjects {
+    pub(crate) workflow_pkg_id: sui::ObjectID,
+    pub(crate) tool_registry_object_id: sui::ObjectID,
+}
+
 /// Normalizing Sui sdk imports.
 pub(crate) mod sui {
     pub(crate) use {
@@ -98,19 +108,115 @@ pub(crate) mod sui {
                 SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
             },
             types::{
-                base_types::{ObjectID, SuiAddress as Address},
+                base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
                 gas_coin::MIST_PER_SUI,
                 object::Owner,
                 programmable_transaction_builder::ProgrammableTransactionBuilder,
                 quorum_driver_types::ExecuteTransactionRequestType,
                 transaction::{ObjectArg, TransactionData},
                 MOVE_STDLIB_PACKAGE_ID,
+                SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
             },
             wallet_context::WalletContext,
             SuiClient as Client,
             SuiClientBuilder as ClientBuilder,
         },
     };
+}
+
+/// Struct that holds a structured tool FQN. This FQN consists of the tool
+/// creator domain, the tool name and the tool version.
+// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/17>
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ToolFqn {
+    domain: String,
+    name: String,
+    version: u32,
+}
+
+/// Regex to match all the rules highlighted in the [FromStr] implementation.
+static FQN_REGEX: lazy_regex::Lazy<regex::Regex> = lazy_regex::lazy_regex!(
+    r"(?x)                                               # Enable verbose mode
+    ^                                                    # Start of string
+    (?P<domain>[a-z][a-z0-9_-]+(?:\.[a-z][a-z0-9_-]+)+)+ # Tool domain
+    \.                                                   # '.' literal
+    (?P<name>[a-z][a-z0-9_-]+)                           # Tool name
+    @                                                    # '@' literal
+    (?P<version>[0-9]+)                                  # Tool version
+    $                                                    # End of string
+    "
+);
+
+impl FromStr for ToolFqn {
+    type Err = AnyError;
+
+    /// This [FromStr] implementation expects a string with the following
+    /// format:
+    ///
+    /// `xyz.taluslabs.example@1`
+    ///
+    /// Where:
+    /// - `xyz.taluslabs` is the tool creator domain
+    /// - `example` is the tool name
+    /// - `1` is the tool version
+    ///
+    /// Constraints:
+    /// 1. Splitting by `.` must yield at least 3 parts.
+    /// 2. Each part must satisfy the `[a-z0-9_-]{2,}` regex.
+    /// 3. Each part must not start with a digit, an underscore or a hyphen.
+    /// 4. First N-1 parts when joined by `.` make the domain.
+    /// 5. N-th part is the tool name and its version separated by `@`.
+    /// 6. The version must be a positive u32 integer.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let Some((domain, name, version)) = FQN_REGEX.captures(s).map(|captures| {
+            (
+                captures["domain"].to_string(),
+                captures["name"].to_string(),
+                captures["version"].to_string(),
+            )
+        }) else {
+            bail!("Invalid tool FQN format");
+        };
+
+        // This only fails if u32 overflows as the format is already validated.
+        // If this happens, kudos to the tool devs.
+        let Ok(version) = version.parse::<u32>() else {
+            bail!("Tool version too large");
+        };
+
+        Ok(Self {
+            domain,
+            name,
+            version,
+        })
+    }
+}
+
+impl std::fmt::Display for ToolFqn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}@{}", self.domain, self.name, self.version)
+    }
+}
+
+impl Serialize for ToolFqn {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolFqn {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        let fqn = value.parse::<ToolFqn>().map_err(serde::de::Error::custom)?;
+
+        Ok(fqn)
+    }
 }
 
 // == Used by clap ==

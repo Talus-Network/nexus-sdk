@@ -9,7 +9,9 @@ clap = { version = "4.5.29", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"
 home = "0.5.11"
+lazy-regex = "3.4.1"
 minijinja = "2.7.0"
+regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"

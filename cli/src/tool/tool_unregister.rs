@@ -1,11 +1,5 @@
 use {
-    crate::{
-        command_title,
-        loading,
-        prelude::*,
-        tool::{tool_validate::*, ToolIdent, ToolMeta},
-        utils::*,
-    },
+    crate::{command_title, confirm, loading, prelude::*, utils::*},
     move_core_types::ident_str,
 };
 
@@ -13,26 +7,19 @@ use {
 const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
 const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
 
-// Nexus `tool_registry::register_off_chain_tool`
+// Nexus `tool_registry::unregister_off_chain_tool`
 const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
-const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("register_off_chain_tool");
+const NEXUS_UNREGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("unregister_off_chain_tool");
 
 /// Validate and then register a new Tool.
-pub(crate) async fn register_tool(
-    ident: ToolIdent,
+pub(crate) async fn unregister_tool(
+    tool_fqn: ToolFqn,
     sui_gas_coin: Option<sui::ObjectID>,
-    sui_collateral_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let ident_check = ident.clone();
+    command_title!("Unregistering Tool '{tool_fqn}'");
 
-    let meta = validate_tool(ident).await?;
-
-    command_title!(
-        "Registering Tool '{fqn}' at '{url}'",
-        fqn = meta.fqn,
-        url = meta.url
-    );
+    confirm!("Unregistering a Tool will make all DAGs using it invalid. Do you want to proceed?");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
@@ -54,15 +41,8 @@ pub(crate) async fn register_tool(
         }
     };
 
-    // Fetch gas and collateral coin objects.
-    let (gas_coin, collateral_coin) = fetch_gas_and_collateral_coins(
-        &sui,
-        conf.sui.net,
-        address,
-        sui_gas_coin,
-        sui_collateral_coin,
-    )
-    .await?;
+    // Fetch gas coin object.
+    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
@@ -73,14 +53,7 @@ pub(crate) async fn register_tool(
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    // Explicilty check that we're registering an off-chain tool. This is mainly
-    // for when we implement logic for on-chain so that we don't forget to
-    // adjust `prepare_transaction`.
-    if ident_check.on_chain.is_some() {
-        todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
-    }
-
-    let tx = match prepare_transaction(meta, collateral_coin, tool_registry, workflow_pkg_id) {
+    let tx = match prepare_transaction(&tool_fqn, tool_registry, workflow_pkg_id) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -103,29 +76,25 @@ pub(crate) async fn register_tool(
     sign_transaction(&sui, &wallet, tx_data).await
 }
 
-/// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet
-/// and Testnet, we can use the faucet to get the coins. On Mainnet, this fails
-/// if the coins are not present.
-async fn fetch_gas_and_collateral_coins(
+/// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
+/// can use the faucet to get the coin. On Mainnet, this fails if the coin is
+/// not present.
+async fn fetch_gas_coin(
     sui: &sui::Client,
     sui_net: SuiNet,
     addr: sui::Address,
     sui_gas_coin: Option<sui::ObjectID>,
-    sui_collateral_coin: Option<sui::ObjectID>,
-) -> AnyResult<(sui::Coin, sui::Coin), NexusCliError> {
+) -> AnyResult<sui::Coin, NexusCliError> {
     let mut coins = fetch_all_coins_for_address(sui, addr).await?;
 
-    // We need at least 2 coins. We can create those on Localnet, Devnet and
-    // Testnet.
+    // We need at least 1 coin. We can create it on Localnet, Devnet and Testnet.
     match sui_net {
-        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.len() < 2 => {
-            // Only call once because on Localnet and Devnet, we get 5 coins and
-            // on Testnet this will be rate-limited.
+        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.is_empty() => {
             request_tokens_from_faucet(sui_net, addr).await?;
 
             coins = fetch_all_coins_for_address(sui, addr).await?;
         }
-        SuiNet::Mainnet if coins.len() < 2 => {
+        SuiNet::Mainnet if coins.is_empty() => {
             return Err(NexusCliError::Any(anyhow!(
                 "The wallet does not have enough coins to register the tool"
             )));
@@ -145,18 +114,12 @@ async fn fetch_gas_and_collateral_coins(
         .cloned()
         .unwrap_or_else(|| coins.remove(0));
 
-    let collateral_coin = sui_collateral_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
-
-    Ok((gas_coin, collateral_coin))
+    Ok(gas_coin)
 }
 
 /// Build a programmable transaction to register a new off-chain tool.
 fn prepare_transaction(
-    meta: ToolMeta,
-    collateral_coin: sui::Coin,
+    tool_fqn: &ToolFqn,
     tool_registry: sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> AnyResult<sui::ProgrammableTransactionBuilder> {
@@ -170,7 +133,7 @@ fn prepare_transaction(
     })?;
 
     // `fqn: AsciiString`
-    let fqn = tx.pure(meta.fqn.to_string().as_bytes())?;
+    let fqn = tx.pure(tool_fqn.to_string().as_bytes())?;
 
     let fqn = tx.programmable_move_call(
         sui::MOVE_STDLIB_PACKAGE_ID,
@@ -180,34 +143,20 @@ fn prepare_transaction(
         vec![fqn],
     );
 
-    // `url: vector<u8>`
-    let url = tx.pure(meta.url.as_bytes())?;
+    // `clock: &Clock`
+    let clock = tx.obj(sui::ObjectArg::SharedObject {
+        id: sui::CLOCK_OBJECT_ID,
+        initial_shared_version: sui::SequenceNumber::MIN,
+        mutable: false,
+    })?;
 
-    // `input_schema: vector<u8>`
-    let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;
-
-    // `output_schema: vector<u8>`
-    let output_schema = tx.pure(meta.output_schema.to_string().as_bytes())?;
-
-    // `pay_with: Coin<SUI>`
-    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
-        collateral_coin.object_ref(),
-    ))?;
-
-    // `nexus::tool_registry::register_off_chain_tool()`
+    // `nexus::tool_registry::unregister_off_chain_tool()`
     tx.programmable_move_call(
         workflow_pkg_id,
         NEXUS_TOOL_REGISTRY_MODULE.into(),
-        NEXUS_REGISTER_OFF_CHAIN_TOOL.into(),
+        NEXUS_UNREGISTER_OFF_CHAIN_TOOL.into(),
         vec![],
-        vec![
-            tool_registry,
-            fqn,
-            url,
-            input_schema,
-            output_schema,
-            pay_with,
-        ],
+        vec![tool_registry, fqn, clock],
     );
 
     Ok(tx)
