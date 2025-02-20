@@ -102,7 +102,7 @@ async fn fetch_gas_coin(
         _ => (),
     }
 
-    if coins.len() < 2 {
+    if coins.is_empty() {
         return Err(NexusCliError::Any(anyhow!(
             "The wallet does not have enough coins to claim the collateral for a Tool"
         )));

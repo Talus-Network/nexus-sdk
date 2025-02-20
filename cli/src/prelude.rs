@@ -94,6 +94,28 @@ pub(crate) struct NexusObjects {
     pub(crate) tool_registry_object_id: sui::ObjectID,
 }
 
+/// Reusable Sui gas command args.
+#[derive(Args, Clone, Debug)]
+pub(crate) struct GasArgs {
+    /// The gas coin object ID. First coin object is chosen if not present.
+    #[arg(
+        long = "sui-gas-coin",
+        short = 'g',
+        help = "The gas coin object ID. First coin object is chosen if not present.",
+        value_name = "OBJECT_ID"
+    )]
+    pub(crate) sui_gas_coin: Option<sui::ObjectID>,
+    /// The gas budget for claiming the collateral for a Tool.
+    #[arg(
+        long = "sui-gas-budget",
+        short = 'b',
+        help = "The gas budget for claiming the collateral for a Tool",
+        value_name = "AMOUNT",
+        default_value_t = sui::MIST_PER_SUI / 10
+    )]
+    pub(crate) sui_gas_budget: u64,
+}
+
 /// Normalizing Sui sdk imports.
 pub(crate) mod sui {
     pub(crate) use {
