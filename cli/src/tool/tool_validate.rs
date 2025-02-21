@@ -126,8 +126,8 @@ mod tests {
         type Input = Input;
         type Output = Output;
 
-        fn fqn() -> &'static str {
-            "xyz.dummy.tool@1"
+        fn fqn() -> ToolFqn {
+            fqn!("xyz.dummy.tool@1")
         }
 
         async fn health() -> AnyResult<StatusCode> {

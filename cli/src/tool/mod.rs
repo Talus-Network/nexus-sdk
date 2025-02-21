@@ -15,6 +15,7 @@ use {
 
 #[derive(Subcommand)]
 pub(crate) enum ToolCommand {
+    #[command(about = "Create a new tool scaffolding with the specified name and template.")]
     New {
         /// The name of the tool to create. This will be the name of the
         /// directory that contains the newly created tool.
@@ -39,12 +40,14 @@ pub(crate) enum ToolCommand {
         target: String,
     },
 
+    #[command(about = "Validate a tool based on its identifier.")]
     Validate {
         /// The ident of the Tool to validate.
         #[command(flatten)]
         ident: ToolIdent,
     },
 
+    #[command(about = "Register a tool based on its identifier.")]
     Register {
         /// The collateral coin object ID. Second coin object is chosen if not
         /// present.
@@ -62,6 +65,7 @@ pub(crate) enum ToolCommand {
         gas: GasArgs,
     },
 
+    #[command(about = "Unregister a tool identified by its FQN.")]
     Unregister {
         #[arg(
             long = "tool-fqn",
@@ -74,6 +78,7 @@ pub(crate) enum ToolCommand {
         gas: GasArgs,
     },
 
+    #[command(about = "Claim collateral for a tool identified by its FQN.")]
     ClaimCollateral {
         #[arg(
             long = "tool-fqn",
