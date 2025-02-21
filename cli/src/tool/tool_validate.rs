@@ -153,6 +153,8 @@ mod tests {
         })
         .await;
 
+        println!("{:#?}", meta);
+
         // Wait for the server to start.
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
