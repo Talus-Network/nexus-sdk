@@ -4,16 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.95"
+nexus-types.workspace = true
+
+anyhow.workspace = true
 clap = { version = "4.5.29", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"
 home = "0.5.11"
-lazy-regex = "3.4.1"
 minijinja = "2.7.0"
-regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["json"] }
-serde = { version = "1.0.217", features = ["derive"] }
+serde.workspace = true
 serde_json = "1.0.138"
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
@@ -30,4 +30,8 @@ tag = "testnet-v1.38.1"
 package = "move-core-types"
 
 [dev-dependencies]
+nexus-toolkit-rust.workspace = true
+
 assert_matches = "1.5.0"
+schemars = "0.8.21"
+warp = "0.3.7"

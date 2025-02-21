@@ -1,4 +1,10 @@
-# Specify the Nexus Toolkit for Rust crate so that it can be installed.
 [workspace]
 resolver = "2"
-members = ["toolkit-rust", "cli"]
+members = ["toolkit-rust", "cli", "types"]
+
+[workspace.dependencies]
+nexus-toolkit-rust = { path = "toolkit-rust" }
+nexus-types = { path = "types" }
+
+anyhow = "1.0.95"
+serde = { version = "1.0.217", features = ["derive"] }

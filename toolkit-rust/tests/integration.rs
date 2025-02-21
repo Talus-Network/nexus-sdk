@@ -1,6 +1,7 @@
 use {
     anyhow::Result as AnyResult,
     nexus_toolkit_rust::*,
+    nexus_types::{fqn, ToolFqn},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     warp::http::StatusCode,
@@ -24,8 +25,8 @@ impl NexusTool for DummyTool {
     type Input = Input;
     type Output = Output;
 
-    fn fqn() -> &'static str {
-        "xyz.dummy.tool@1"
+    fn fqn() -> ToolFqn {
+        fqn!("xyz.dummy.tool@1")
     }
 
     async fn health() -> AnyResult<StatusCode> {
@@ -45,8 +46,8 @@ impl NexusTool for Dummy500Tool {
     type Input = Input;
     type Output = Output;
 
-    fn fqn() -> &'static str {
-        "xyz.dummy.tool@1"
+    fn fqn() -> ToolFqn {
+        fqn!("xyz.dummy.tool@1")
     }
 
     async fn health() -> AnyResult<StatusCode> {

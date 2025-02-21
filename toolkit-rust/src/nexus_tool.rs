@@ -1,5 +1,6 @@
 use {
     anyhow::Result as AnyResult,
+    nexus_types::ToolFqn,
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
     serde_json::{json, Value},
@@ -41,10 +42,8 @@ pub trait NexusTool: Send + 'static {
     /// `oneOf` is generated. This is to adhere to Nexus' output variants. This
     /// fact is validated by the CLI.
     type Output: JsonSchema + Serialize;
-    /// Returns the version of the tool.
-    ///
-    /// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/11>
-    fn fqn() -> &'static str;
+    /// Returns the FQN of the Tool.
+    fn fqn() -> ToolFqn;
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
     ///
