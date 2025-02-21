@@ -141,7 +141,7 @@ mod tests {
         let path = Path::new("/tmp/nexus-tool").join("test/src/main.rs");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
-        assert!(contents.contains("xyz.test@1"));
+        assert!(contents.contains("domain.author.test@1"));
         assert!(contents.contains("struct Test;"));
         assert!(contents.contains("impl NexusTool for Test {"));
 
