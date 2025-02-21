@@ -83,7 +83,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
     // Check that URL is present and matches the provided.
     //
     // TODO: check that URL is reachable publicly somehow.
-    if meta.url.parse::<reqwest::Url>() != Ok(url.clone()) {
+    if meta.url != url.clone() {
         meta_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
@@ -130,6 +130,10 @@ mod tests {
             fqn!("xyz.dummy.tool@1")
         }
 
+        fn url() -> reqwest::Url {
+            reqwest::Url::parse("http://localhost:8080").unwrap()
+        }
+
         async fn health() -> AnyResult<StatusCode> {
             Ok(StatusCode::OK)
         }
@@ -144,19 +148,14 @@ mod tests {
     #[tokio::test]
     async fn test_validate_oks_valid_off_chain_tool() {
         tokio::spawn(async move {
-            bootstrap::<DummyTool>(([127, 0, 0, 1], 8082)).await;
+            bootstrap::<DummyTool>(([127, 0, 0, 1], 8080)).await;
         });
 
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://127.0.0.1:8082").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8080").unwrap()),
             on_chain: None,
         })
         .await;
-
-        println!("{:#?}", meta);
-
-        // Wait for the server to start.
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         assert!(meta.is_ok());
 

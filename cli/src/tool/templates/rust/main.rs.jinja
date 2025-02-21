@@ -30,6 +30,12 @@ impl NexusTool for {{ name_pascal_case }} {
         fqn!("domain.author.{{ name_kebab_case }}@1")
     }
 
+    fn url() -> Url {
+        // The URL on which the Tool is hosted.
+
+        Url::parse("http://localhost:8080").unwrap()
+    }
+
     async fn health() -> AnyResult<StatusCode> {
         // The health endpoint should perform health checks on its dependencies.
 

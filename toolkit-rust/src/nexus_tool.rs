@@ -1,10 +1,11 @@
 use {
     anyhow::Result as AnyResult,
     nexus_types::ToolFqn,
+    reqwest::Url,
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
     serde_json::{json, Value},
-    std::{future::Future, net::SocketAddr},
+    std::future::Future,
     warp::http::StatusCode,
 };
 
@@ -44,6 +45,8 @@ pub trait NexusTool: Send + 'static {
     type Output: JsonSchema + Serialize;
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
+    /// Returns the URL that the Tool is hosten on.
+    fn url() -> Url;
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
     ///
@@ -60,15 +63,14 @@ pub trait NexusTool: Send + 'static {
     /// input schema, and output schema.
     ///
     /// It is used to generate the `/meta` endpoint.
-    fn meta(addr: SocketAddr) -> Value {
+    fn meta() -> Value {
         let input_schema = schemars::schema_for!(Self::Input);
         let output_schema = schemars::schema_for!(Self::Output);
 
         json!(
             {
                 "fqn": Self::fqn(),
-                // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/9>
-                "url": format!("http://{}:{}", addr.ip(), addr.port()),
+                "url": Self::url().to_string(),
                 "input_schema": input_schema,
                 "output_schema": output_schema,
             }

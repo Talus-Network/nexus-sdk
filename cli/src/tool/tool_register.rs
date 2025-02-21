@@ -181,7 +181,7 @@ fn prepare_transaction(
     );
 
     // `url: vector<u8>`
-    let url = tx.pure(meta.url.as_bytes())?;
+    let url = tx.pure(meta.url.to_string().as_bytes())?;
 
     // `input_schema: vector<u8>`
     let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;

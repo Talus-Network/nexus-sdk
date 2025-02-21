@@ -142,6 +142,7 @@ mod tests {
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains("domain.author.test@1"));
+        assert!(contents.contains("http://localhost:8080"));
         assert!(contents.contains("struct Test;"));
         assert!(contents.contains("impl NexusTool for Test {"));
 
