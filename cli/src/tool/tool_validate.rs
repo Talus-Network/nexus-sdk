@@ -144,14 +144,17 @@ mod tests {
     #[tokio::test]
     async fn test_validate_oks_valid_off_chain_tool() {
         tokio::spawn(async move {
-            bootstrap::<DummyTool>(([127, 0, 0, 1], 8080)).await;
+            bootstrap::<DummyTool>(([127, 0, 0, 1], 8082)).await;
         });
 
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://127.0.0.1:8080").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://127.0.0.1:8082").unwrap()),
             on_chain: None,
         })
         .await;
+
+        // Wait for the server to start.
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         assert!(meta.is_ok());
 
