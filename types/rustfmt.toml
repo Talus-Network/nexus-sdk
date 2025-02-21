@@ -1,0 +1,17 @@
+edition = "2021"
+
+reorder_imports = true
+use_try_shorthand = true
+remove_nested_parens = true
+reorder_modules = true
+use_field_init_shorthand = true
+
+imports_granularity = "One"
+group_imports = "One"
+imports_layout = "HorizontalVertical"
+enum_discrim_align_threshold = 40
+hex_literal_case = "Lower"
+newline_style = "Unix"
+normalize_comments = true
+normalize_doc_attributes = true
+reorder_impl_items = true

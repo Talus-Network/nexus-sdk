@@ -1,0 +1,13 @@
+[package]
+name = "nexus-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+lazy-regex = "3.4.1"
+regex = "1.11.1"
+serde.workspace = true
+
+[dev-dependencies]
+assert_matches = "1.5.0"
