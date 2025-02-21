@@ -97,7 +97,6 @@ pub(crate) struct NexusObjects {
 /// Reusable Sui gas command args.
 #[derive(Args, Clone, Debug)]
 pub(crate) struct GasArgs {
-    /// The gas coin object ID. First coin object is chosen if not present.
     #[arg(
         long = "sui-gas-coin",
         short = 'g',
@@ -105,11 +104,10 @@ pub(crate) struct GasArgs {
         value_name = "OBJECT_ID"
     )]
     pub(crate) sui_gas_coin: Option<sui::ObjectID>,
-    /// The gas budget for claiming the collateral for a Tool.
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
-        help = "The gas budget for claiming the collateral for a Tool",
+        help = "The gas budget for the transaciton.",
         value_name = "AMOUNT",
         default_value_t = sui::MIST_PER_SUI / 10
     )]
