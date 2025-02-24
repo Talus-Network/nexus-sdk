@@ -1,46 +1,341 @@
+//! This is a Nexus tool that interacts with the OpenAI Chat Completion API.
+//!
+//! It defines the input and output structures, as well as the logic for
+//! invoking the OpenAI API to generate chat completions.
+//!
+//! It uses the `async-openai` crate to interact with the OpenAI API, and the
+//! `nexus-toolkit-rust` crate to integrate as a Nexus tool.
+
+use async_openai::config::OpenAIConfig;
+use async_openai::types::{
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
+    CreateChatCompletionRequestArgs,
+};
+use async_openai::Client;
+use std::str::FromStr;
+use strum_macros::EnumString;
 use {
     nexus_toolkit_rust::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
 
-#[derive(Deserialize, JsonSchema)]
-struct Input {
-    // Add your Tool's input ports
+/// The maximum number of tokens to generate in a chat completion.
+const MAX_TOKENS: u32 = 512;
+/// The default model to use for chat completions.
+const DEFAULT_MODEL: &str = "gpt-4o-mini";
+
+/// Represents a message that can be sent to the OpenAI Chat Completion API.
+///
+/// It can be either a full message with an explicit message type or a
+/// short message, defaulting to the `User` type.
+#[derive(Debug, Deserialize, JsonSchema, PartialEq)]
+#[serde(untagged)]
+enum Message {
+    /// A full message with an explicit message type and content.
+    Full {
+        /// The type of the message.
+        #[serde(default, rename = "type")]
+        message_type: MessageType,
+        /// The content of the message.
+        value: String,
+    },
+    /// A short message, which defaults to the `User` message type.
+    Short(String),
 }
 
+/// Represents the type of a message in a chat completion.
+///
+/// It can be `System`, `User`, or `Assistant`. This enum supports
+/// case-insensitive deserialization from JSON and provides a default
+/// value of `User`.
+#[derive(Debug, Deserialize, JsonSchema, EnumString, Default, PartialEq)]
+#[strum(ascii_case_insensitive)]
+#[serde(rename_all = "lowercase", try_from = "String")]
+enum MessageType {
+    /// A system message, used to set the behavior of the assistant.
+    System,
+    #[default]
+    /// A user message, representing a message from the user.
+    User,
+    /// An assistant message, representing a message from the assistant.
+    Assistant,
+}
+
+impl TryFrom<String> for MessageType {
+    type Error = String;
+
+    /// Converts a `String` to a `MessageType`, performing a case-insensitive
+    /// match.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The string to convert.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `MessageType` if the conversion is
+    /// successful, or an error string if the conversion fails.
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        MessageType::from_str(&value).map_err(|_| format!("Invalid MessageType: {}", value))
+    }
+}
+
+/// Represents the input for the OpenAI Chat Completion tool.
+///
+/// It defines the structure for the input data required to invoke the tool,
+/// including the API key, the model to use, and the messages to send.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Input {
+    /// The OpenAI API key.
+    pub api_key: String,
+    #[serde(default)]
+    /// The model to use for chat completion.
+    /// If not specified, the [DEFAULT_MODEL] will be used.
+    pub model: Option<String>,
+    /// The messages to send to the chat completion API.
+    pub messages: Vec<Message>,
+}
+
+/// Represents a single response choice from the OpenAI Chat Completion API.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Response {
+    /// The role of the author of the message.
+    pub role: String,
+    /// The content of the message.
+    pub message: String,
+}
+
+/// Represents the output of the OpenAI Chat Completion tool.
+///
+/// It defines the structure for the output data returned by the tool,
+/// including the list of response choices.
 #[derive(Serialize, JsonSchema)]
 enum Output {
-    Ok {
-        // Add output ports for the `Ok` variant
-    },
-    // Add more output variants if needed
+    Ok { choices: Vec<Response> },
 }
 
+/// The OpenAI Chat Completion tool.
+///
+/// This struct implements the `NexusTool` trait to integrate with the Nexus
+/// framework. It provides the logic for invoking the OpenAI Chat Completion
+/// API and handling the input and output data.
 struct OpenaiChatCompletion;
 
 impl NexusTool for OpenaiChatCompletion {
     type Input = Input;
     type Output = Output;
 
+    /// Returns the fully qualified name of the tool.
     fn fqn() -> &'static str {
         "xyz.taluslabs.llm.openai.chat-completion@1"
     }
 
+    /// Performs a health check on the tool's dependencies.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the HTTP status code indicating the health of
+    /// the tool.
     async fn health() -> AnyResult<StatusCode> {
         // The health endpoint should perform health checks on its dependencies.
+        println!("Health check for OpenAI Chat Completion tool");
 
         Ok(StatusCode::OK)
     }
 
-    async fn invoke(_: Self::Input) -> AnyResult<Self::Output> {
-        // Tool logic goes here.
+    /// Invokes the tool logic to generate a chat completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The input data for the tool.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the output of the tool or an error if the
+    /// invocation fails.
+    async fn invoke(request: Self::Input) -> AnyResult<Self::Output> {
+        let cfg = OpenAIConfig::new().with_api_key(request.api_key);
+        let client = Client::with_config(cfg);
 
-        Ok(Output::Ok {})
+        let request = CreateChatCompletionRequestArgs::default()
+            .max_tokens(MAX_TOKENS)
+            .model(request.model.unwrap_or(DEFAULT_MODEL.to_string()))
+            .messages(
+                request
+                    .messages
+                    .into_iter()
+                    .map(|m| {
+                        match m {
+                            Message::Full {
+                                message_type,
+                                value,
+                            } => match message_type {
+                                MessageType::System => {
+                                    ChatCompletionRequestSystemMessageArgs::default()
+                                        .content(value)
+                                        .build()
+                                        .map(|m| m.into())
+                                }
+                                MessageType::User => {
+                                    ChatCompletionRequestUserMessageArgs::default()
+                                        .content(value)
+                                        .build()
+                                        .map(|m| m.into())
+                                }
+                                MessageType::Assistant => {
+                                    ChatCompletionRequestAssistantMessageArgs::default()
+                                        .content(value)
+                                        .build()
+                                        .map(|m| m.into())
+                                }
+                            },
+                            Message::Short(value) => {
+                                ChatCompletionRequestUserMessageArgs::default()
+                                    .content(value)
+                                    .build()
+                                    .map(|m| m.into())
+                            }
+                        }
+                        .unwrap()
+                    })
+                    .collect::<Vec<ChatCompletionRequestMessage>>(),
+            )
+            .build()?;
+
+        let response = client.chat().create(request).await?;
+
+        Ok(Output::Ok {
+            choices: response
+                .choices
+                .into_iter()
+                .map(|resp| Response {
+                    role: resp.message.role.to_string(),
+                    message: resp
+                        .message
+                        .content
+                        .expect("Invalid message in API response")
+                        .to_string(),
+                })
+                .collect(),
+        })
     }
 }
 
+/// The main entry point for the OpenAI Chat Completion tool.
+///
+/// This function bootstraps the tool and starts the server.
 #[tokio::main]
 async fn main() {
     bootstrap::<OpenaiChatCompletion>(([127, 0, 0, 1], 8080)).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_openai::types::Role;
+    use serde_json::json;
+
+    #[test]
+    fn test_message_type_deserialization_case_insensitive() {
+        let json = r#""system""#;
+        let message_type: MessageType = serde_json::from_str(json).unwrap();
+        assert_eq!(message_type, MessageType::System);
+
+        let json = r#""USER""#;
+        let message_type: MessageType = serde_json::from_str(json).unwrap();
+        assert_eq!(message_type, MessageType::User);
+
+        let json = r#""aSsIsTaNt""#;
+        let message_type: MessageType = serde_json::from_str(json).unwrap();
+        assert_eq!(message_type, MessageType::Assistant);
+    }
+
+    #[test]
+    fn test_message_deserialization_full() {
+        let json = r#"{"type": "system", "value": "Hello"}"#;
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            message,
+            Message::Full {
+                message_type: MessageType::System,
+                value: "Hello".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_message_deserialization_short() {
+        let json = r#""Hello""#;
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(message, Message::Short("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_message_deserialization_default_type() {
+        let json = r#"{"value": "Hello"}"#;
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            message,
+            Message::Full {
+                message_type: MessageType::User,
+                value: "Hello".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_input_deserialization() {
+        let json = r#"{
+            "apiKey": "your_api_key",
+            "messages": [
+                {"type": "system", "value": "You are a helpful assistant."},
+                "Hello",
+                {"type": "assistant", "value": "The Los Angeles Dodgers won the World Series in 2020."}
+            ]
+        }"#;
+        let input: Input = serde_json::from_str(json).unwrap();
+        assert_eq!(input.api_key, "your_api_key");
+        assert_eq!(input.model, None);
+        assert_eq!(
+            input.messages,
+            vec![
+                Message::Full {
+                    message_type: MessageType::System,
+                    value: "You are a helpful assistant.".to_string()
+                },
+                Message::Short("Hello".to_string()),
+                Message::Full {
+                    message_type: MessageType::Assistant,
+                    value: "The Los Angeles Dodgers won the World Series in 2020.".to_string()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_input_empty_message() {
+        let json = r#"{
+            "apiKey": "your_api_key",
+            "messages": []
+        }"#;
+        let input: Input = serde_json::from_str(json).unwrap();
+        assert_eq!(input.api_key, "your_api_key");
+        assert_eq!(input.model, None);
+        assert!(input.messages.is_empty());
+    }
+
+    #[test]
+    fn test_input_missing_message() {
+        let json = r#"{
+            "apiKey": "your_api_key"
+        }"#;
+
+        let input: Result<Input, _> = serde_json::from_str(json);
+
+        assert!(input.is_err());
+    }
 }
