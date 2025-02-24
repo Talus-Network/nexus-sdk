@@ -1,7 +1,9 @@
+mod conf;
 mod display;
 mod error;
 mod prelude;
 mod tool;
+mod utils;
 
 use crate::prelude::*;
 
@@ -16,6 +18,8 @@ struct Cli {
 enum Command {
     #[command(subcommand, about = "Manage Nexus Tools")]
     Tool(tool::ToolCommand),
+    #[command(about = "Manage Nexus Configuration")]
+    Conf(conf::ConfCommand),
 }
 
 #[tokio::main]
@@ -38,7 +42,7 @@ async fn main() {
             eprintln!(
                 "{ballot} {error}",
                 ballot = "✘".red().bold(),
-                error = NexusCliError::SyntaxError(e)
+                error = NexusCliError::Syntax(e)
             );
 
             std::process::exit(1);
@@ -48,11 +52,12 @@ async fn main() {
     // Send each sub-command to the respective handler.
     let result = match cli.command {
         Command::Tool(tool) => tool::handle(tool).await,
+        Command::Conf(conf) => conf::handle(conf).await,
     };
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
-        eprintln!("{ballot} {e}", ballot = "✘".red().bold());
+        eprintln!("\n{ballot} {e}", ballot = "✘".red().bold());
 
         std::process::exit(1);
     }

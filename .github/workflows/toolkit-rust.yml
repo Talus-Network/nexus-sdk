@@ -16,7 +16,8 @@ on:
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
-  # 3. Build and tests the Nexus Toolkit for Rust code
+  # 3. Install just
+  # 4. Build, fmt, clippy and test the Toolkit for Rust
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -28,13 +29,21 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: nightly
           override: true
+          components: rustfmt, clippy
 
       # 2.
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: toolkit-rust
 
       # 3.
       - uses: taiki-e/install-action@just
-      - run: just cli build
-      - run: just cli test
+
+      # 4
+      - run: just toolkit-rust check
+      - run: just toolkit-rust fmt-check
+      - run: just toolkit-rust clippy
+      - run: just toolkit-rust test

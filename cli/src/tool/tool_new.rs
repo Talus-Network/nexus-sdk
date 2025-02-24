@@ -1,12 +1,8 @@
 use {
-    crate::{command_title, display::*, loading, prelude::*},
+    crate::{command_title, loading, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
-    std::{
-        path::Path,
-        sync::{Arc, Mutex},
-        thread,
-    },
+    std::path::Path,
     tokio::{
         fs::{create_dir_all, File},
         io::AsyncWriteExt,
@@ -70,7 +66,7 @@ pub(crate) async fn create_new_tool(
         Err(e) => {
             transforming_template.error();
 
-            return Err(NexusCliError::AnyError(e));
+            return Err(NexusCliError::Any(e));
         }
     };
 
@@ -85,7 +81,7 @@ pub(crate) async fn create_new_tool(
     if let Err(e) = create_dir_all(root_directory).await {
         writing_file.error();
 
-        return Err(NexusCliError::IoError(e));
+        return Err(NexusCliError::Io(e));
     };
 
     for (path, content) in files {
@@ -98,7 +94,7 @@ pub(crate) async fn create_new_tool(
                 if let Err(e) = create_dir_all(path).await {
                     writing_file.error();
 
-                    return Err(NexusCliError::IoError(e));
+                    return Err(NexusCliError::Io(e));
                 }
 
                 continue;
@@ -110,14 +106,14 @@ pub(crate) async fn create_new_tool(
             Err(e) => {
                 writing_file.error();
 
-                return Err(NexusCliError::IoError(e));
+                return Err(NexusCliError::Io(e));
             }
         };
 
         if let Err(e) = file.write_all(content.as_bytes()).await {
             writing_file.error();
 
-            return Err(NexusCliError::IoError(e));
+            return Err(NexusCliError::Io(e));
         }
     }
 
@@ -132,13 +128,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_tool() {
-        let result =
-            create_new_tool("test".to_string(), ToolTemplate::Rust, "/tmp".to_string()).await;
+        let result = create_new_tool(
+            "test".to_string(),
+            ToolTemplate::Rust,
+            "/tmp/nexus-tool".to_string(),
+        )
+        .await;
 
         assert_matches!(result, Ok(()));
 
-        // Check that file was written to `/tmp/test/src/main.rs` with the correct contents.
-        let path = Path::new("/tmp").join("test/src/main.rs");
+        // Check that file was written to `/tmp/nexus-tool/test/src/main.rs` with the correct contents.
+        let path = Path::new("/tmp/nexus-tool").join("test/src/main.rs");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains("xyz.test@1"));
@@ -146,10 +146,13 @@ mod tests {
         assert!(contents.contains("impl NexusTool for Test {"));
 
         // Check that file was written to `/tmp/test/Cargo.toml` with the correct contents.
-        let path = Path::new("/tmp").join("test/Cargo.toml");
+        let path = Path::new("/tmp/nexus-tool").join("test/Cargo.toml");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains(r#"name = "test""#));
         assert!(contents.contains("[dependencies.nexus-toolkit-rust]"));
+
+        // Remove any leftover artifacts.
+        tokio::fs::remove_dir_all("/tmp/nexus-tool").await.unwrap();
     }
 }

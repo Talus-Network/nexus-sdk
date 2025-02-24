@@ -77,10 +77,10 @@ async fn invoke_handler<T: NexusTool>(input: serde_json::Value) -> Result<impl R
             });
 
             // Reply with 500 if the tool invocation fails.
-            return Ok(warp::reply::with_status(
+            Ok(warp::reply::with_status(
                 warp::reply::json(&reply),
                 StatusCode::INTERNAL_SERVER_ERROR,
-            ));
+            ))
         }
     }
 }

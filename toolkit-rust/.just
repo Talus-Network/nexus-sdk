@@ -10,10 +10,22 @@ import '../just/_helpers.just'
 _default:
     @just --list toolkit-rust
 
-# Build the Rust Toolkit project
+# Build the Toolkit for Rust project
 build: _check-cargo
-    cargo build --release
+    cargo build --package nexus-toolkit-rust --release
 
-# Run all tests in the Rust Toolkit project
+# Check the Toolkit for Rust project
+check: _check-cargo
+    cargo check --package nexus-toolkit-rust
+
+# Run all tests in the Toolkit for Rust project
 test: _check-cargo
     cargo test --package nexus-toolkit-rust
+
+# Run rustfmt on the Toolkit for Rust project
+fmt-check: _check-cargo
+    cargo +nightly fmt --package nexus-toolkit-rust --check
+
+# Run clippy on the Toolkit for Rust project
+clippy: _check-cargo
+    cargo clippy --package nexus-toolkit-rust
