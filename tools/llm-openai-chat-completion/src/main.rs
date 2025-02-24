@@ -6,19 +6,23 @@
 //! It uses the `async-openai` crate to interact with the OpenAI API, and the
 //! `nexus-toolkit-rust` crate to integrate as a Nexus tool.
 
-use async_openai::config::OpenAIConfig;
-use async_openai::types::{
-    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-    CreateChatCompletionRequestArgs,
-};
-use async_openai::Client;
-use std::str::FromStr;
-use strum_macros::EnumString;
 use {
+    async_openai::{
+        config::OpenAIConfig,
+        types::{
+            ChatCompletionRequestAssistantMessageArgs,
+            ChatCompletionRequestMessage,
+            ChatCompletionRequestSystemMessageArgs,
+            ChatCompletionRequestUserMessageArgs,
+            CreateChatCompletionRequestArgs,
+        },
+        Client,
+    },
     nexus_toolkit_rust::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
+    std::str::FromStr,
+    strum_macros::EnumString,
 };
 
 /// The maximum number of tokens to generate in a chat completion.
@@ -235,9 +239,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use async_openai::types::Role;
-    use serde_json::json;
+    use {super::*, async_openai::types::Role, serde_json::json};
 
     #[test]
     fn test_message_type_deserialization_case_insensitive() {
