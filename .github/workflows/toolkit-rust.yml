@@ -43,7 +43,8 @@ jobs:
       - uses: taiki-e/install-action@just
 
       # 4
-      - run: cargo --version
+      - run: cargo +stable --version
+      - run: cargo +nightly --version
       - run: just toolkit-rust check
       - run: just toolkit-rust fmt-check
       - run: just toolkit-rust clippy
