@@ -43,6 +43,7 @@ jobs:
       - uses: taiki-e/install-action@just
 
       # 4
+      - run: cargo --version
       - run: just types check
       - run: just types fmt-check
       - run: just types clippy
