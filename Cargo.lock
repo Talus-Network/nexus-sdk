@@ -4003,7 +4003,7 @@ dependencies = [
  "home",
  "minijinja",
  "move-core-types",
- "nexus-toolkit-rust",
+ "nexus-toolkit",
  "nexus-types",
  "reqwest",
  "schemars",
@@ -4017,7 +4017,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexus-toolkit-rust"
+name = "nexus-toolkit"
 version = "0.1.0"
 dependencies = [
  "anyhow",

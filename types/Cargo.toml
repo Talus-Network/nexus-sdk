@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-lazy-regex = "3.4.1"
-regex = "1.11.1"
+lazy-regex.workspace = true
+regex.workspace = true
 serde.workspace = true
 
 [dev-dependencies]

@@ -151,7 +151,7 @@ mod tests {
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains(r#"name = "test""#));
-        assert!(contents.contains("[dependencies.nexus-toolkit-rust]"));
+        assert!(contents.contains("[dependencies.nexus-toolkit]"));
 
         // Remove any leftover artifacts.
         tokio::fs::remove_dir_all("/tmp/nexus-tool").await.unwrap();

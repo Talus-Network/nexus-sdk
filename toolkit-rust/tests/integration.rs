@@ -1,6 +1,6 @@
 use {
     anyhow::Result as AnyResult,
-    nexus_toolkit_rust::*,
+    nexus_toolkit::*,
     nexus_types::{fqn, ToolFqn},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},

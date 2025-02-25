@@ -106,7 +106,7 @@ async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliE
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_toolkit_rust::*, schemars::JsonSchema, warp::http::StatusCode};
+    use {super::*, nexus_toolkit::*, schemars::JsonSchema, warp::http::StatusCode};
 
     // == Dummy tools setup ==
 
