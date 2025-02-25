@@ -12,15 +12,15 @@ _default:
 
 # Build the Toolkit for Rust project
 build: _check-cargo
-    cargo build --package nexus-toolkit --release
+    cargo +stable build --package nexus-toolkit --release
 
 # Check the Toolkit for Rust project
 check: _check-cargo
-    cargo check --package nexus-toolkit
+    cargo +stable check --package nexus-toolkit
 
 # Run all tests in the Toolkit for Rust project
 test: _check-cargo
-    cargo test --package nexus-toolkit
+    cargo +stable test --package nexus-toolkit
 
 # Run rustfmt on the Toolkit for Rust project
 fmt-check: _check-cargo
@@ -28,4 +28,4 @@ fmt-check: _check-cargo
 
 # Run clippy on the Toolkit for Rust project
 clippy: _check-cargo
-    cargo clippy --package nexus-toolkit
+    cargo +stable clippy --package nexus-toolkit

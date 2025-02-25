@@ -12,15 +12,15 @@ _default:
 
 # Build the Nexus Types library
 build: _check-cargo
-    cargo build --package nexus-types --release
+    cargo +stable build --package nexus-types --release
 
 # Check the Nexus Types library
 check: _check-cargo
-    cargo check --package nexus-types
+    cargo +stable check --package nexus-types
 
 # Run all tests in the Nexus Types library
 test: _check-cargo
-    cargo test --package nexus-types
+    cargo +stable test --package nexus-types
 
 # Run rustfmt on the Nexus Types library
 fmt-check: _check-cargo
@@ -28,4 +28,4 @@ fmt-check: _check-cargo
 
 # Run clippy on the Nexus Types library
 clippy: _check-cargo
-    cargo clippy --package nexus-types
+    cargo +stable clippy --package nexus-types
