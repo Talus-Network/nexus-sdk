@@ -95,12 +95,16 @@ impl TryFrom<String> for MessageType {
 struct Input {
     /// The OpenAI API key.
     pub api_key: String,
-    #[serde(default)]
     /// The model to use for chat completion.
     /// If not specified, the [DEFAULT_MODEL] will be used.
-    pub model: Option<String>,
+    #[serde(default = "default_model")]
+    pub model: String,
     /// The messages to send to the chat completion API.
     pub messages: Vec<Message>,
+}
+
+fn default_model() -> String {
+    DEFAULT_MODEL.to_string()
 }
 
 /// Represents a single response choice from the OpenAI Chat Completion API.
@@ -167,7 +171,7 @@ impl NexusTool for OpenaiChatCompletion {
 
         let request = CreateChatCompletionRequestArgs::default()
             .max_tokens(MAX_TOKENS)
-            .model(request.model.unwrap_or(DEFAULT_MODEL.to_string()))
+            .model(request.model)
             .messages(
                 request
                     .messages
@@ -239,7 +243,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, async_openai::types::Role, serde_json::json};
+    use super::*;
 
     #[test]
     fn test_message_type_deserialization_case_insensitive() {
@@ -301,7 +305,7 @@ mod tests {
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
         assert_eq!(input.api_key, "your_api_key");
-        assert_eq!(input.model, None);
+        assert_eq!(input.model, DEFAULT_MODEL);
         assert_eq!(
             input.messages,
             vec![
@@ -326,7 +330,7 @@ mod tests {
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
         assert_eq!(input.api_key, "your_api_key");
-        assert_eq!(input.model, None);
+        assert_eq!(input.model, DEFAULT_MODEL);
         assert!(input.messages.is_empty());
     }
 
