@@ -76,47 +76,6 @@ pub(crate) async fn claim_collateral(
     sign_transaction(&sui, &wallet, tx_data).await
 }
 
-/// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
-/// can use the faucet to get the coin. On Mainnet, this fails if the coin is
-/// not present.
-async fn fetch_gas_coin(
-    sui: &sui::Client,
-    sui_net: SuiNet,
-    addr: sui::Address,
-    sui_gas_coin: Option<sui::ObjectID>,
-) -> AnyResult<sui::Coin, NexusCliError> {
-    let mut coins = fetch_all_coins_for_address(sui, addr).await?;
-
-    // We need at least 1 coin. We can create it on Localnet, Devnet and Testnet.
-    match sui_net {
-        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.is_empty() => {
-            request_tokens_from_faucet(sui_net, addr).await?;
-
-            coins = fetch_all_coins_for_address(sui, addr).await?;
-        }
-        SuiNet::Mainnet if coins.is_empty() => {
-            return Err(NexusCliError::Any(anyhow!(
-                "The wallet does not have enough coins to claim the collateral for a Tool"
-            )));
-        }
-        _ => (),
-    }
-
-    if coins.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough coins to claim the collateral for a Tool"
-        )));
-    }
-
-    // If object IDs were specified, use them.
-    let gas_coin = sui_gas_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
-
-    Ok(gas_coin)
-}
-
 /// Build a programmable transaction to claim the collateral for a tool.
 fn prepare_transaction(
     tool_fqn: &ToolFqn,

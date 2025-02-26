@@ -139,16 +139,25 @@ async fn fetch_gas_and_collateral_coins(
         )));
     }
 
-    // If object IDs were specified, use them.
-    let gas_coin = sui_gas_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
+    // If object IDs were specified, use them. If any of the specified coins is
+    // not found, return error.
+    let gas_coin = match sui_gas_coin {
+        Some(id) => coins
+            .iter()
+            .find(|coin| coin.coin_object_id == id)
+            .cloned()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
+        None => coins.remove(0),
+    };
 
-    let collateral_coin = sui_collateral_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
+    let collateral_coin = match sui_collateral_coin {
+        Some(id) => coins
+            .iter()
+            .find(|coin| coin.coin_object_id == id)
+            .cloned()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
+        None => coins.remove(0),
+    };
 
     Ok((gas_coin, collateral_coin))
 }
