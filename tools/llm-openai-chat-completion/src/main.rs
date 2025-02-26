@@ -25,6 +25,8 @@ use {
     strum_macros::EnumString,
 };
 
+mod status;
+
 /// The maximum number of tokens to generate in a chat completion.
 const MAX_TOKENS: u32 = 512;
 /// The default model to use for chat completions.
@@ -149,10 +151,7 @@ impl NexusTool for OpenaiChatCompletion {
     /// A `Result` containing the HTTP status code indicating the health of
     /// the tool.
     async fn health() -> AnyResult<StatusCode> {
-        // The health endpoint should perform health checks on its dependencies.
-        println!("Health check for OpenAI Chat Completion tool");
-
-        Ok(StatusCode::OK)
+        status::check_api_health().await
     }
 
     /// Invokes the tool logic to generate a chat completion.

@@ -3393,7 +3393,9 @@ name = "llm-openai-chat-completion"
 version = "0.1.0"
 dependencies = [
  "async-openai",
+ "chrono",
  "nexus-toolkit-rust",
+ "reqwest",
  "schemars",
  "serde",
  "serde_json",
