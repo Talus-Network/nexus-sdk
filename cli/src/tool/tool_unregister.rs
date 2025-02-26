@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, confirm, loading, prelude::*, utils::*},
+    crate::{command_title, confirm, loading, prelude::*, sui::*},
     move_core_types::ident_str,
 };
 

@@ -3,8 +3,8 @@ use {
         command_title,
         loading,
         prelude::*,
+        sui::*,
         tool::{tool_validate::*, ToolIdent, ToolMeta},
-        utils::*,
     },
     move_core_types::ident_str,
 };
