@@ -1,4 +1,5 @@
 mod conf;
+mod dag;
 mod display;
 mod error;
 mod prelude;
@@ -20,6 +21,8 @@ enum Command {
     Tool(tool::ToolCommand),
     #[command(about = "Manage Nexus Configuration")]
     Conf(conf::ConfCommand),
+    #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
+    Dag(dag::DagCommand),
 }
 
 #[tokio::main]
@@ -53,6 +56,7 @@ async fn main() {
     let result = match cli.command {
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
+        Command::Dag(dag) => dag::handle(dag).await,
     };
 
     // Handle any errors that occurred during command execution.

@@ -2100,6 +2100,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
 name = "flate2"
 version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3505,7 +3511,7 @@ dependencies = [
  "indexmap 2.7.1",
  "move-binary-format",
  "move-core-types",
- "petgraph",
+ "petgraph 0.5.1",
  "serde-reflection",
 ]
 
@@ -3521,7 +3527,7 @@ dependencies = [
  "move-bytecode-verifier-meter",
  "move-core-types",
  "move-vm-config",
- "petgraph",
+ "petgraph 0.5.1",
 ]
 
 [[package]]
@@ -3576,7 +3582,7 @@ dependencies = [
  "move-proc-macros",
  "move-symbol-pool",
  "once_cell",
- "petgraph",
+ "petgraph 0.5.1",
  "rayon",
  "regex",
  "serde",
@@ -3628,7 +3634,7 @@ dependencies = [
  "move-command-line-common",
  "move-core-types",
  "move-ir-types",
- "petgraph",
+ "petgraph 0.5.1",
  "serde",
 ]
 
@@ -4005,6 +4011,7 @@ dependencies = [
  "move-core-types",
  "nexus-toolkit",
  "nexus-types",
+ "petgraph 0.7.1",
  "reqwest",
  "schemars",
  "serde",
@@ -4566,8 +4573,18 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
 dependencies = [
- "fixedbitset",
+ "fixedbitset 0.2.0",
  "indexmap 1.9.3",
+]
+
+[[package]]
+name = "petgraph"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+dependencies = [
+ "fixedbitset 0.5.7",
+ "indexmap 2.7.1",
 ]
 
 [[package]]

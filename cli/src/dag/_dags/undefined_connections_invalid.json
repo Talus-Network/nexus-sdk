@@ -1,0 +1,37 @@
+{
+  "vertices": [
+    {
+      "name": "a",
+      "input_ports": [{ "name": "input" }],
+      "output_variants": [
+        {
+          "name": "1",
+          "output_ports": [{ "name": "1.0" }]
+        }
+      ]
+    },
+    {
+      "name": "b",
+      "input_ports": [{ "name": "1" }],
+      "output_variants": [
+        {
+          "name": "1",
+          "output_ports": [{ "name": "1.0" }]
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "d",
+        "output_variant": "1",
+        "output_port": "1.0"
+      },
+      "to": {
+        "vertex": "e",
+        "input_port": "1"
+      }
+    }
+  ]
+}

@@ -35,9 +35,10 @@ pub(crate) enum ToolCommand {
             long = "target",
             short = 'd',
             help = "The target directory to create the tool in",
-            default_value = "./"
+            default_value = "./",
+            value_parser = ValueParser::from(expand_tilde)
         )]
-        target: String,
+        target: PathBuf,
     },
 
     #[command(about = "Validate a tool based on its identifier.")]

@@ -1,0 +1,319 @@
+{
+  "vertices": [
+    {
+      "name": "ig_post_reader",
+      "input_ports": [{ "name": "post_id" }],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [
+            { "name": "handle" },
+            { "name": "img" },
+            { "name": "description" }
+          ]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "restaurant_event_decider",
+      "input_ports": [
+        { "name": "description" },
+        {
+          "name": "llm_prompt",
+          "default": {
+            "type": "inline",
+            "data:": [
+              [
+                100, 101, 99, 105, 100, 101, 32, 114, 101, 115, 116, 97, 117,
+                114, 97, 110, 116, 32, 111, 114, 32, 101, 118, 101, 110, 1168
+              ]
+            ]
+          }
+        }
+      ],
+      "output_variants": [
+        {
+          "name": "events",
+          "output_ports": [{ "name": "city" }]
+        },
+        {
+          "name": "restaurants",
+          "output_ports": [{ "name": "address" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "event_bride_searcher",
+      "input_ports": [{ "name": "city" }],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "events" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "google_maps_searcher",
+      "input_ports": [{ "name": "address" }],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "restaurants" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "events_llm_summarizer",
+      "input_ports": [
+        { "name": "events" },
+        {
+          "name": "llm_prompt",
+          "default": {
+            "type": "inline",
+            "data": [
+              [
+                103, 105, 118, 101, 32, 106, 115, 111, 110, 32, 119, 105, 116,
+                104, 32, 109, 111, 111, 100, 32, 97, 110, 100, 32, 114, 101, 99,
+                111, 109, 109, 101, 110, 100, 97, 116, 105, 111, 110
+              ]
+            ]
+          }
+        }
+      ],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "response" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "restaurants_llm_summarizer",
+      "input_ports": [
+        { "name": "restaurants" },
+        {
+          "name": "llm_prompt",
+          "default": {
+            "type": "inline",
+            "data": [
+              [
+                103, 105, 118, 101, 32, 106, 115, 111, 110, 32, 119, 105, 116,
+                104, 32, 109, 111, 111, 100, 32, 97, 110, 100, 32, 114, 101, 99,
+                111, 109, 109, 101, 110, 100, 97, 116, 105, 111, 110
+              ]
+            ]
+          }
+        }
+      ],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "response" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "llm_response_parser",
+      "input_ports": [{ "name": "response" }],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "mood" }, { "name": "suggestion" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "stable_diffusion_editor",
+      "input_ports": [{ "name": "img" }, { "name": "mood" }],
+      "output_variants": [
+        {
+          "name": "ok",
+          "output_ports": [{ "name": "img" }]
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    },
+    {
+      "name": "ig_story_writer",
+      "input_ports": [
+        { "name": "handle" },
+        { "name": "img" },
+        { "name": "description" }
+      ],
+      "output_variants": [
+        {
+          "name": "ok"
+        },
+        {
+          "name": "err",
+          "output_ports": [{ "name": "reason" }]
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "ig_post_reader",
+        "output_variant": "ok",
+        "output_port": "description"
+      },
+      "to": {
+        "vertex": "restaurant_event_decider",
+        "input_port": "description"
+      }
+    },
+    {
+      "from": {
+        "vertex": "ig_post_reader",
+        "output_variant": "ok",
+        "output_port": "img"
+      },
+      "to": {
+        "vertex": "stable_diffusion_editor",
+        "input_port": "img"
+      }
+    },
+    {
+      "from": {
+        "vertex": "ig_post_reader",
+        "output_variant": "ok",
+        "output_port": "handle"
+      },
+      "to": {
+        "vertex": "ig_story_writer",
+        "input_port": "handle"
+      }
+    },
+    {
+      "from": {
+        "vertex": "restaurant_event_decider",
+        "output_variant": "events",
+        "output_port": "city"
+      },
+      "to": {
+        "vertex": "event_bride_searcher",
+        "input_port": "city"
+      }
+    },
+    {
+      "from": {
+        "vertex": "restaurant_event_decider",
+        "output_variant": "restaurants",
+        "output_port": "address"
+      },
+      "to": {
+        "vertex": "google_maps_searcher",
+        "input_port": "address"
+      }
+    },
+    {
+      "from": {
+        "vertex": "event_bride_searcher",
+        "output_variant": "ok",
+        "output_port": "events"
+      },
+      "to": {
+        "vertex": "events_llm_summarizer",
+        "input_port": "events"
+      }
+    },
+    {
+      "from": {
+        "vertex": "google_maps_searcher",
+        "output_variant": "ok",
+        "output_port": "restaurants"
+      },
+      "to": {
+        "vertex": "restaurants_llm_summarizer",
+        "input_port": "restaurants"
+      }
+    },
+    {
+      "from": {
+        "vertex": "events_llm_summarizer",
+        "output_variant": "ok",
+        "output_port": "response"
+      },
+      "to": {
+        "vertex": "llm_response_parser",
+        "input_port": "response"
+      }
+    },
+    {
+      "from": {
+        "vertex": "restaurants_llm_summarizer",
+        "output_variant": "ok",
+        "output_port": "response"
+      },
+      "to": {
+        "vertex": "llm_response_parser",
+        "input_port": "response"
+      }
+    },
+    {
+      "from": {
+        "vertex": "llm_response_parser",
+        "output_variant": "ok",
+        "output_port": "mood"
+      },
+      "to": {
+        "vertex": "stable_diffusion_editor",
+        "input_port": "mood"
+      }
+    },
+    {
+      "from": {
+        "vertex": "llm_response_parser",
+        "output_variant": "ok",
+        "output_port": "suggestion"
+      },
+      "to": {
+        "vertex": "ig_story_writer",
+        "input_port": "description"
+      }
+    },
+    {
+      "from": {
+        "vertex": "stable_diffusion_editor",
+        "output_variant": "ok",
+        "output_port": "img"
+      },
+      "to": {
+        "vertex": "ig_story_writer",
+        "input_port": "img"
+      }
+    }
+  ]
+}
