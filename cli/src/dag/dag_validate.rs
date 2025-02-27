@@ -191,8 +191,6 @@ mod tests {
         assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
     }
 
-    // TODO: test more weird shapes here.
-
     // == Cyclic or no input graphs ==
 
     #[test]
