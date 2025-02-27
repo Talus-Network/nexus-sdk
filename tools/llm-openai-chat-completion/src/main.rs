@@ -125,7 +125,12 @@ pub struct Response {
 /// including the list of response choices.
 #[derive(Serialize, JsonSchema)]
 enum Output {
+    /// The API call was successful, and the response contains a list of choices.
     Ok { choices: Vec<Response> },
+    /// An error occurred during the creation of the messages.
+    ErrInvalidMessage(String),
+    /// An unexpected error occurred.
+    ErrUnexpected(String),
 }
 
 /// The OpenAI Chat Completion tool.
@@ -162,56 +167,68 @@ impl NexusTool for OpenaiChatCompletion {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the output of the tool or an error if the
-    /// invocation fails.
+    /// A `Result` containing the output of the tool. Possible output variants are:
+    ///
+    /// *   `Ok(Output::Ok { choices: Vec<Response> })`: The API call was successful, and the response contains a list of choices.
+    /// *   `Ok(Output::ErrInvalidMessage(String))`: An error occurred during the creation of the messages. The `String` contains a description of the error.
+    /// *   `Ok(Output::ErrUnexpected(String))`: An unexpected error occurred. The `String` contains a description of the error.
     async fn invoke(request: Self::Input) -> AnyResult<Self::Output> {
         let cfg = OpenAIConfig::new().with_api_key(request.api_key);
         let client = Client::with_config(cfg);
 
+        let message_results: Vec<Result<ChatCompletionRequestMessage, String>> = request
+            .messages
+            .into_iter()
+            .map(|m| match m {
+                Message::Full {
+                    message_type,
+                    value,
+                } => match message_type {
+                    MessageType::System => ChatCompletionRequestSystemMessageArgs::default()
+                        .content(value)
+                        .build()
+                        .map(|m| m.into())
+                        .map_err(|e| e.to_string()),
+                    MessageType::User => ChatCompletionRequestUserMessageArgs::default()
+                        .content(value)
+                        .build()
+                        .map(|m| m.into())
+                        .map_err(|e| e.to_string()),
+                    MessageType::Assistant => ChatCompletionRequestAssistantMessageArgs::default()
+                        .content(value)
+                        .build()
+                        .map(|m| m.into())
+                        .map_err(|e| e.to_string()),
+                },
+                Message::Short(value) => ChatCompletionRequestUserMessageArgs::default()
+                    .content(value)
+                    .build()
+                    .map(|m| m.into())
+                    .map_err(|e| e.to_string()),
+            })
+            .collect();
+
+        let messages: Result<Vec<ChatCompletionRequestMessage>, String> =
+            message_results.into_iter().collect();
+
+        let messages = match messages {
+            Ok(messages) => messages,
+            Err(err) => return Ok(Output::ErrInvalidMessage(err)),
+        };
+
         let request = CreateChatCompletionRequestArgs::default()
             .max_tokens(MAX_TOKENS)
             .model(request.model)
-            .messages(
-                request
-                    .messages
-                    .into_iter()
-                    .map(|m| {
-                        match m {
-                            Message::Full {
-                                message_type,
-                                value,
-                            } => match message_type {
-                                MessageType::System => {
-                                    ChatCompletionRequestSystemMessageArgs::default()
-                                        .content(value)
-                                        .build()
-                                        .map(|m| m.into())
-                                }
-                                MessageType::User => {
-                                    ChatCompletionRequestUserMessageArgs::default()
-                                        .content(value)
-                                        .build()
-                                        .map(|m| m.into())
-                                }
-                                MessageType::Assistant => {
-                                    ChatCompletionRequestAssistantMessageArgs::default()
-                                        .content(value)
-                                        .build()
-                                        .map(|m| m.into())
-                                }
-                            },
-                            Message::Short(value) => {
-                                ChatCompletionRequestUserMessageArgs::default()
-                                    .content(value)
-                                    .build()
-                                    .map(|m| m.into())
-                            }
-                        }
-                        .unwrap()
-                    })
-                    .collect::<Vec<ChatCompletionRequestMessage>>(),
-            )
-            .build()?;
+            .messages(messages)
+            .build();
+
+        if request.is_err() {
+            return Ok(Output::ErrUnexpected(format!(
+                "Error building request: {}",
+                request.err().unwrap()
+            )));
+        }
+        let request = request.unwrap();
 
         let response = client.chat().create(request).await?;
 
