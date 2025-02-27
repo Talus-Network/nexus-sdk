@@ -32,4 +32,4 @@ clippy: _check-cargo
 
 # Runs the `which` native Nexus Tool
 run which: _check-cargo
-    @cargo +stable run --bin which
+    @cargo +stable run --bin {{which}}
