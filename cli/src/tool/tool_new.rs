@@ -2,7 +2,6 @@ use {
     crate::{command_title, loading, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
-    std::path::Path,
     tokio::{
         fs::{create_dir_all, File},
         io::AsyncWriteExt,

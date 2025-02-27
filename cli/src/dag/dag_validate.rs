@@ -66,3 +66,165 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, assert_matches::assert_matches};
+
+    // == Various graph shapes ==
+
+    #[test]
+    fn test_ig_story_planner_valid() {
+        let conf: Dag = include_str!("_dags/ig_story_planner_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_immediately_converges_valid() {
+        let conf: Dag = include_str!("_dags/immediately_converges_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_immediately_converges_invalid() {
+        let conf: Dag = include_str!("_dags/immediately_converges_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    #[test]
+    fn test_intertwined_valid() {
+        let conf: Dag = include_str!("_dags/intertwined_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_intertwined_invalid() {
+        let conf: Dag = include_str!("_dags/intertwined_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    #[test]
+    fn test_multiple_output_ports_invalid() {
+        let conf: Dag = include_str!("_dags/multiple_output_ports_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    #[test]
+    fn test_multiple_output_ports_valid() {
+        let conf: Dag = include_str!("_dags/multiple_output_ports_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_goals_valid() {
+        let conf: Dag = include_str!("_dags/multiple_goals_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_dead_ends_valid() {
+        let conf: Dag = include_str!("_dags/dead_ends_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_entry_multiple_goal_valid() {
+        let conf: Dag = include_str!("_dags/multiple_entry_multiple_goal_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_entry_multiple_goal_invalid() {
+        let conf: Dag = include_str!("_dags/multiple_entry_multiple_goal_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    #[test]
+    fn test_branched_net_zero_invalid() {
+        let conf: Dag = include_str!("_dags/branched_net_zero_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    // TODO: test more weird shapes here.
+
+    // == Cyclic or no input graphs ==
+
+    #[test]
+    fn test_cyclic_invalid() {
+        let conf: Dag = include_str!("_dags/cyclic_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("The provided graph is not a DAG."));
+    }
+
+    #[test]
+    fn test_empty_invalid() {
+        let conf: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
+    }
+
+    // == Parser tests ==
+
+    #[test]
+    fn test_undefined_connections_invalid() {
+        let conf: Dag = include_str!("_dags/undefined_connections_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res: AnyResult<DiGraph<VertexType, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("The vertex FromPort { vertex: \"d\", output_variant: \"1\", output_port: \"1.0\" } is not defined."));
+    }
+}

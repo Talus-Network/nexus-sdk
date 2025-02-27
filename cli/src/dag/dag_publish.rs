@@ -4,10 +4,10 @@ use crate::{command_title, dag::dag_validate::validate_dag, prelude::*};
 /// performs validation on the DAG before publishing.
 pub(crate) async fn publish_dag(
     path: PathBuf,
-    sui_gas_coin: Option<sui::ObjectID>,
-    sui_gas_budget: u64,
+    _sui_gas_coin: Option<sui::ObjectID>,
+    _sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let dag = validate_dag(path).await?;
+    let _dag = validate_dag(path).await?;
 
     command_title!("Publishing Nexus DAG");
 
