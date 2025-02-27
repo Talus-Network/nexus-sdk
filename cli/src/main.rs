@@ -2,8 +2,8 @@ mod conf;
 mod display;
 mod error;
 mod prelude;
+mod sui;
 mod tool;
-mod utils;
 
 use crate::prelude::*;
 

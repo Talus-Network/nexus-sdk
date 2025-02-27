@@ -337,3 +337,77 @@ pub(crate) async fn fetch_object_by_id(
 
     Ok((object.object_id, version, object.digest).into())
 }
+
+/// Wrapping some conf parsing functioality used around the CLI.
+// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
+pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, NexusCliError> {
+    let objects_handle = loading!("Loading Nexus object IDs configuration...");
+
+    match (conf.nexus.workflow_id, conf.nexus.tool_registry_id) {
+        (Some(wid), Some(trid)) => {
+            objects_handle.success();
+
+            Ok(NexusObjects {
+                workflow_pkg_id: wid,
+                tool_registry_object_id: trid,
+            })
+        }
+        _ => {
+            objects_handle.error();
+
+            Err(NexusCliError::Any(anyhow!(
+                "{message}\n\n{workflow_command}\n{tool_registry_command}",
+                message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
+                workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
+                tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
+            )))
+        }
+    }
+}
+
+/// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
+/// can use the faucet to get the coin. On Mainnet, this fails if the coin is
+/// not present.
+pub(crate) async fn fetch_gas_coin(
+    sui: &sui::Client,
+    sui_net: SuiNet,
+    addr: sui::Address,
+    sui_gas_coin: Option<sui::ObjectID>,
+) -> AnyResult<sui::Coin, NexusCliError> {
+    let mut coins = fetch_all_coins_for_address(sui, addr).await?;
+
+    // We need at least 1 coin. We can create it on Localnet, Devnet and Testnet.
+    match sui_net {
+        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.is_empty() => {
+            request_tokens_from_faucet(sui_net, addr).await?;
+
+            coins = fetch_all_coins_for_address(sui, addr).await?;
+        }
+        SuiNet::Mainnet if coins.is_empty() => {
+            return Err(NexusCliError::Any(anyhow!(
+                "The wallet does not have enough coins to submit the transaction"
+            )));
+        }
+        _ => (),
+    }
+
+    if coins.is_empty() {
+        return Err(NexusCliError::Any(anyhow!(
+            "The wallet does not have enough coins to submit the transaction"
+        )));
+    }
+
+    // If object gas coing object ID was specified, use it. If it was specified
+    // and could not be found, return error.
+    match sui_gas_coin {
+        Some(id) => {
+            let coin = coins
+                .into_iter()
+                .find(|coin| coin.coin_object_id == id)
+                .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?;
+
+            Ok(coin)
+        }
+        None => Ok(coins.remove(0)),
+    }
+}

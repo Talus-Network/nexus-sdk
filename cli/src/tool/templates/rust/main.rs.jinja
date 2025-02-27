@@ -1,5 +1,6 @@
 use {
-    nexus_toolkit_rust::*,
+    nexus_types::*,
+    nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -23,10 +24,16 @@ impl NexusTool for {{ name_pascal_case }} {
     type Input = Input;
     type Output = Output;
 
-    fn fqn() -> &'static str {
+    fn fqn() -> ToolFqn {
         // The fully qualified name of the tool.
 
-        "xyz.{{ name_kebab_case }}@1"
+        fqn!("domain.author.{{ name_kebab_case }}@1")
+    }
+
+    fn url() -> Url {
+        // The URL on which the Tool is hosted.
+
+        Url::parse("http://localhost:8080").unwrap()
     }
 
     async fn health() -> AnyResult<StatusCode> {

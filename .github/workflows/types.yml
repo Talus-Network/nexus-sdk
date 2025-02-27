@@ -1,23 +1,23 @@
-# Github workflow to build and test the Nexus Toolkit for Rust code
+# Github workflow to build and test the Nexus Types library code
 
-name: Nexus Toolkit for Rust
+name: Nexus Types library
 on:
   pull_request:
     paths:
-      - "toolkit-rust/**"
-      - ".github/workflows/toolkit-rust.yml"
+      - "types/**"
+      - ".github/workflows/types.yml"
   push:
     branches:
       - main
     paths:
-      - "toolkit-rust/**"
-      - ".github/workflows/toolkit-rust.yml"
+      - "types/**"
+      - ".github/workflows/types.yml"
 
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
   # 3. Install just
-  # 4. Build, fmt, clippy and test the Toolkit for Rust
+  # 4. Build, fmt, clippy and test the Nexus Types library
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -37,7 +37,7 @@ jobs:
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: toolkit-rust
+          workspaces: types
 
       # 3.
       - uses: taiki-e/install-action@just
@@ -45,7 +45,7 @@ jobs:
       # 4
       - run: cargo +stable --version
       - run: cargo +nightly --version
-      - run: just toolkit-rust check
-      - run: just toolkit-rust fmt-check
-      - run: just toolkit-rust clippy
-      - run: just toolkit-rust test
+      - run: just types check
+      - run: just types fmt-check
+      - run: just types clippy
+      - run: just types test

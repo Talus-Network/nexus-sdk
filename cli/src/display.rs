@@ -25,6 +25,27 @@ macro_rules! command_title {
     };
 }
 
+/// Ask the user for confirmation before proceeding.
+#[macro_export]
+macro_rules! confirm {
+    ($($args:tt)*) => {
+    {
+        use std::io::{self, Write};
+
+        print!("{warning} {message} {yn}: ", warning = "⚠".bold().yellow(), message = format!($($args)*).bold(), yn = "[y/N]".truecolor(100, 100, 100));
+
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+
+        if input.trim().to_lowercase() != "y" {
+            std::process::exit(1);
+        }
+    }
+};
+}
+
 /// Macro to print a loading state. Accepts a message and returns `success` and
 /// `error` handles to change the state of the loading.
 #[macro_export]

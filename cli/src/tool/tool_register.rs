@@ -1,11 +1,10 @@
 use {
-    super::ToolMeta,
     crate::{
         command_title,
         loading,
         prelude::*,
-        tool::{tool_validate::*, ToolIdent},
-        utils::*,
+        sui::*,
+        tool::{tool_validate::*, ToolIdent, ToolMeta},
     },
     move_core_types::ident_str,
 };
@@ -36,31 +35,13 @@ pub(crate) async fn register_tool(
     );
 
     // Load CLI configuration.
-    let conf_handle = loading!("Loading CLI configuration...");
-
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
     // Workflow package and tool registry IDs must be present.
-    //
-    // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
-    let (workflow_pkg_id, tool_registry_object_id) = match (
-        conf.nexus.workflow_id,
-        conf.nexus.tool_registry_id,
-    ) {
-        (Some(wid), Some(trid)) => (wid, trid),
-        _ => {
-            conf_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(
-                "{message}\n\n{workflow_command}\n{tool_registry_command}",
-                message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
-                workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
-                tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
-            )));
-        }
-    };
-
-    conf_handle.success();
+    let NexusObjects {
+        workflow_pkg_id,
+        tool_registry_object_id,
+    } = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -158,21 +139,30 @@ async fn fetch_gas_and_collateral_coins(
         )));
     }
 
-    // If object IDs were specified, use them.
-    let gas_coin = sui_gas_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
+    // If object IDs were specified, use them. If any of the specified coins is
+    // not found, return error.
+    let gas_coin = match sui_gas_coin {
+        Some(id) => coins
+            .iter()
+            .find(|coin| coin.coin_object_id == id)
+            .cloned()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
+        None => coins.remove(0),
+    };
 
-    let collateral_coin = sui_collateral_coin
-        .and_then(|id| coins.iter().find(|coin| coin.coin_object_id == id))
-        .cloned()
-        .unwrap_or_else(|| coins.remove(0));
+    let collateral_coin = match sui_collateral_coin {
+        Some(id) => coins
+            .iter()
+            .find(|coin| coin.coin_object_id == id)
+            .cloned()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
+        None => coins.remove(0),
+    };
 
     Ok((gas_coin, collateral_coin))
 }
 
-/// Build a programmable transaction to register a new off-chain tool.
+/// Build a programmable transaction to register a new off-chain Tool.
 fn prepare_transaction(
     meta: ToolMeta,
     collateral_coin: sui::Coin,
@@ -189,7 +179,7 @@ fn prepare_transaction(
     })?;
 
     // `fqn: AsciiString`
-    let fqn = tx.pure(meta.fqn.as_bytes())?;
+    let fqn = tx.pure(meta.fqn.to_string().as_bytes())?;
 
     let fqn = tx.programmable_move_call(
         sui::MOVE_STDLIB_PACKAGE_ID,
@@ -200,7 +190,7 @@ fn prepare_transaction(
     );
 
     // `url: vector<u8>`
-    let url = tx.pure(meta.url.as_bytes())?;
+    let url = tx.pure(meta.url.to_string().as_bytes())?;
 
     // `input_schema: vector<u8>`
     let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;

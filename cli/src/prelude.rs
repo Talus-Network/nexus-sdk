@@ -3,6 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, Result as AnyResult},
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
+    nexus_types::*,
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
 };
@@ -84,6 +85,33 @@ pub(crate) struct NexusConf {
     pub(crate) tool_registry_id: Option<sui::ObjectID>,
 }
 
+/// Non-optional version of [NexusConf].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct NexusObjects {
+    pub(crate) workflow_pkg_id: sui::ObjectID,
+    pub(crate) tool_registry_object_id: sui::ObjectID,
+}
+
+/// Reusable Sui gas command args.
+#[derive(Args, Clone, Debug)]
+pub(crate) struct GasArgs {
+    #[arg(
+        long = "sui-gas-coin",
+        short = 'g',
+        help = "The gas coin object ID. First coin object is chosen if not present.",
+        value_name = "OBJECT_ID"
+    )]
+    pub(crate) sui_gas_coin: Option<sui::ObjectID>,
+    #[arg(
+        long = "sui-gas-budget",
+        short = 'b',
+        help = "The gas budget for the transaciton.",
+        value_name = "AMOUNT",
+        default_value_t = sui::MIST_PER_SUI / 10
+    )]
+    pub(crate) sui_gas_budget: u64,
+}
+
 /// Normalizing Sui sdk imports.
 pub(crate) mod sui {
     pub(crate) use {
@@ -105,6 +133,8 @@ pub(crate) mod sui {
                 quorum_driver_types::ExecuteTransactionRequestType,
                 transaction::{ObjectArg, TransactionData},
                 MOVE_STDLIB_PACKAGE_ID,
+                SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
+                SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
             },
             wallet_context::WalletContext,
             SuiClient as Client,

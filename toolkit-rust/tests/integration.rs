@@ -1,6 +1,7 @@
 use {
     anyhow::Result as AnyResult,
-    nexus_toolkit_rust::*,
+    nexus_toolkit::*,
+    nexus_types::{fqn, ToolFqn},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     warp::http::StatusCode,
@@ -24,8 +25,12 @@ impl NexusTool for DummyTool {
     type Input = Input;
     type Output = Output;
 
-    fn fqn() -> &'static str {
-        "xyz.dummy.tool@1"
+    fn fqn() -> ToolFqn {
+        fqn!("xyz.dummy.tool@1")
+    }
+
+    fn url() -> Url {
+        Url::parse("http://localhost:8080").unwrap()
     }
 
     async fn health() -> AnyResult<StatusCode> {
@@ -45,8 +50,12 @@ impl NexusTool for Dummy500Tool {
     type Input = Input;
     type Output = Output;
 
-    fn fqn() -> &'static str {
-        "xyz.dummy.tool@1"
+    fn fqn() -> ToolFqn {
+        fqn!("xyz.dummy.tool@1")
+    }
+
+    fn url() -> Url {
+        Url::parse("http://localhost:8080").unwrap()
     }
 
     async fn health() -> AnyResult<StatusCode> {
@@ -62,9 +71,11 @@ impl NexusTool for Dummy500Tool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reqwest::Client, serde_json::json};
+    use {super::*, reqwest::Client, serde_json::json, serial_test::serial};
 
     #[tokio::test]
+    #[serial]
+
     async fn test_endpoints_generated_correctly() {
         tokio::spawn(async move {
             bootstrap::<DummyTool>(([127, 0, 0, 1], 8080)).await;
@@ -81,7 +92,7 @@ mod tests {
         let meta_json = meta.json::<serde_json::Value>().await.unwrap();
 
         assert_eq!(meta_json["fqn"], "xyz.dummy.tool@1");
-        assert_eq!(meta_json["url"], "http://127.0.0.1:8080");
+        assert_eq!(meta_json["url"], "http://localhost:8080/");
         assert_eq!(
             meta_json["input_schema"]["properties"]["prompt"]["type"],
             "string"
@@ -120,13 +131,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_422_when_input_malformed() {
         tokio::spawn(async move {
-            bootstrap::<DummyTool>(([127, 0, 0, 1], 8081)).await;
+            bootstrap::<DummyTool>(([127, 0, 0, 1], 8080)).await;
         });
 
         let invoke = Client::new()
-            .post("http://localhost:8081/invoke")
+            .post("http://localhost:8080/invoke")
             .json(&json!({ "invalid": "Hello, world!" }))
             .send()
             .await
@@ -140,13 +152,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_500_when_execution_fails() {
         tokio::spawn(async move {
-            bootstrap::<Dummy500Tool>(([127, 0, 0, 1], 8082)).await;
+            bootstrap::<Dummy500Tool>(([127, 0, 0, 1], 8080)).await;
         });
 
         let invoke = Client::new()
-            .post("http://localhost:8082/invoke")
+            .post("http://localhost:8080/invoke")
             .json(&json!({ "prompt": "Hello, world!" }))
             .send()
             .await
