@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["toolkit-rust", "cli", "types"]
+members = ["toolkit-rust", "cli", "types", "tools/llm-openai-chat-completion"]
 
 [workspace.dependencies]
 anyhow = "1.0.95"
+chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.29", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"

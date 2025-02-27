@@ -18,7 +18,8 @@ use {
         },
         Client,
     },
-    nexus_toolkit_rust::*,
+    nexus_toolkit::*,
+    nexus_types::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::str::FromStr,
@@ -145,8 +146,13 @@ impl NexusTool for OpenaiChatCompletion {
     type Output = Output;
 
     /// Returns the fully qualified name of the tool.
-    fn fqn() -> &'static str {
-        "xyz.taluslabs.llm.openai.chat-completion@1"
+    fn fqn() -> ToolFqn {
+        fqn!("xyz.taluslabs.llm.openai.chat-completion@1")
+    }
+
+    /// Returns the URL of the tool.
+    fn url() -> Url {
+        Url::parse("http://localhost:8080").unwrap()
     }
 
     /// Performs a health check on the tool's dependencies.

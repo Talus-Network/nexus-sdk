@@ -5,7 +5,7 @@
 
 use {
     chrono::{DateTime, FixedOffset},
-    nexus_toolkit_rust::{AnyResult, StatusCode},
+    nexus_toolkit::{AnyResult, StatusCode},
     reqwest::Client,
     serde::Deserialize,
 };
