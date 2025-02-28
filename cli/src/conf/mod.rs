@@ -23,6 +23,12 @@ pub(crate) struct ConfCommand {
     )]
     nexus_workflow_id: Option<sui::ObjectID>,
     #[arg(
+        long = "nexus.primitives-id",
+        help = "Set the Nexus Primitives package ID",
+        value_name = "ID"
+    )]
+    nexus_primitives_id: Option<sui::ObjectID>,
+    #[arg(
         long = "nexus.tool-registry-id",
         help = "Set the Nexus Tool Registry object ID",
         value_name = "ID"
@@ -46,6 +52,7 @@ pub(crate) async fn handle(
         sui_net,
         sui_wallet_path,
         nexus_workflow_id,
+        nexus_primitives_id,
         nexus_tool_registry_id,
         conf_path,
     }: ConfCommand,
@@ -59,6 +66,7 @@ pub(crate) async fn handle(
         && sui_wallet_path.is_none()
         && nexus_workflow_id.is_none()
         && nexus_tool_registry_id.is_none()
+        && nexus_primitives_id.is_none()
     {
         command_title!("Current Nexus CLI Configuration");
 
@@ -74,6 +82,7 @@ pub(crate) async fn handle(
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = sui_wallet_path.unwrap_or(conf.sui.wallet_path);
     conf.nexus.workflow_id = nexus_workflow_id.or(conf.nexus.workflow_id);
+    conf.nexus.primitives_id = nexus_primitives_id.or(conf.nexus.primitives_id);
     conf.nexus.tool_registry_id = nexus_tool_registry_id.or(conf.nexus.tool_registry_id);
 
     match conf.save(&conf_path).await {
@@ -101,12 +110,14 @@ mod tests {
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
 
         let nexus_workflow_id = Some(sui::ObjectID::random());
+        let nexus_primitives_id = Some(sui::ObjectID::random());
         let nexus_tool_registry_id = Some(sui::ObjectID::random());
 
         let command = ConfCommand {
             sui_net: Some(SuiNet::Mainnet),
             sui_wallet_path: Some(PathBuf::from("/tmp/.nexus/wallet")),
             nexus_workflow_id,
+            nexus_primitives_id,
             nexus_tool_registry_id,
             conf_path: path.clone(),
         };
@@ -123,6 +134,7 @@ mod tests {
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
         assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
         assert_eq!(conf.nexus.workflow_id, nexus_workflow_id);
+        assert_eq!(conf.nexus.primitives_id, nexus_primitives_id);
         assert_eq!(conf.nexus.tool_registry_id, nexus_tool_registry_id);
 
         // Overriding one value will save that one value and leave other values intact.
@@ -130,6 +142,7 @@ mod tests {
             sui_net: Some(SuiNet::Testnet),
             sui_wallet_path: None,
             nexus_workflow_id: None,
+            nexus_primitives_id: None,
             nexus_tool_registry_id: None,
             conf_path: path.clone(),
         };
@@ -144,6 +157,7 @@ mod tests {
         assert_eq!(conf.sui.net, SuiNet::Testnet);
         assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
         assert_eq!(conf.nexus.workflow_id, nexus_workflow_id);
+        assert_eq!(conf.nexus.primitives_id, nexus_primitives_id);
         assert_eq!(conf.nexus.tool_registry_id, nexus_tool_registry_id);
 
         // Remove any leftover artifacts.

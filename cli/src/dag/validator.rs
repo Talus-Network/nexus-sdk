@@ -323,17 +323,17 @@ impl TryFrom<Dag> for DiGraph<VertexType, ()> {
             // Note that we don't need to insert the nodes as they must exist
             // at this point.
             let entry_node = nodes_named
-                .get(&[entry_vertex.vertex.as_str(), "", ""])
+                .get(&[entry_vertex.name.as_str(), "", ""])
                 .copied()
                 .ok_or_else(|| {
                     anyhow!(
                         "Entry vertex '{}' does not exist in the graph.",
-                        entry_vertex.vertex
+                        entry_vertex.name
                     )
                 })?;
 
             for input_port in &entry_vertex.input_ports {
-                let input_port = [entry_vertex.vertex.as_str(), "", input_port.as_str()];
+                let input_port = [entry_vertex.name.as_str(), "", input_port.as_str()];
 
                 // Opposite of the tool node, the input ports must not exist
                 // at this time.

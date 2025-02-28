@@ -33,17 +33,6 @@ pub(crate) enum VertexKind {
     },
 }
 
-impl VertexKind {
-    pub(crate) fn get_name(&self) -> String {
-        match self {
-            Self::OffChain { tool_fqn } => tool_fqn.to_string(),
-            Self::OnChain { .. } => {
-                todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Vertex {
     pub(crate) kind: VertexKind,
@@ -52,7 +41,8 @@ pub(crate) struct Vertex {
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct EntryVertex {
-    pub(crate) vertex: String,
+    pub(crate) kind: VertexKind,
+    pub(crate) name: String,
     pub(crate) input_ports: Vec<String>,
 }
 

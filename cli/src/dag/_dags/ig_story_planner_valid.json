@@ -1,7 +1,11 @@
 {
   "entry_vertices": [
     {
-      "vertex": "ig_post_reader",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "ig_post_reader",
       "input_ports": ["post_id"]
     }
   ],
@@ -32,13 +36,6 @@
     }
   ],
   "vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "ig_post_reader"
-    },
     {
       "kind": {
         "variant": "off_chain",

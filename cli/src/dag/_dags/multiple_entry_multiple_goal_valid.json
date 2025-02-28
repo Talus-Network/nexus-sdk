@@ -1,29 +1,23 @@
 {
   "entry_vertices": [
     {
-      "vertex": "a",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
       "input_ports": ["input"]
     },
     {
-      "vertex": "b",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b",
       "input_ports": ["input"]
     }
   ],
   "vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "a"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "b"
-    },
     {
       "kind": {
         "variant": "off_chain",

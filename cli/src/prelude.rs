@@ -82,6 +82,7 @@ impl Default for SuiConf {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct NexusConf {
     pub(crate) workflow_id: Option<sui::ObjectID>,
+    pub(crate) primitives_id: Option<sui::ObjectID>,
     pub(crate) tool_registry_id: Option<sui::ObjectID>,
 }
 
@@ -89,6 +90,7 @@ pub(crate) struct NexusConf {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct NexusObjects {
     pub(crate) workflow_pkg_id: sui::ObjectID,
+    pub(crate) primitives_pkg_id: sui::ObjectID,
     pub(crate) tool_registry_object_id: sui::ObjectID,
 }
 
@@ -115,7 +117,11 @@ pub(crate) struct GasArgs {
 /// Normalizing Sui sdk imports.
 pub(crate) mod sui {
     pub(crate) use {
-        move_core_types::identifier::IdentStr as MoveIdentStr,
+        move_core_types::{
+            ident_str as move_ident_str,
+            identifier::IdentStr as MoveIdentStr,
+            language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
+        },
         sui_sdk::{
             rpc_types::{
                 Coin,
@@ -123,6 +129,7 @@ pub(crate) mod sui {
                 SuiObjectDataOptions as ObjectDataOptions,
                 SuiObjectRef as ObjectRef,
                 SuiTransactionBlockEffects as TransactionBlockEffects,
+                SuiTransactionBlockEffectsV1 as TransactionBlockEffectsV1,
                 SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
             },
             types::{
@@ -131,10 +138,11 @@ pub(crate) mod sui {
                 object::Owner,
                 programmable_transaction_builder::ProgrammableTransactionBuilder,
                 quorum_driver_types::ExecuteTransactionRequestType,
-                transaction::{ObjectArg, TransactionData},
+                transaction::{Argument, ObjectArg, TransactionData},
                 MOVE_STDLIB_PACKAGE_ID,
                 SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
                 SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
+                SUI_FRAMEWORK_PACKAGE_ID as FRAMEWORK_PACKAGE_ID,
             },
             wallet_context::WalletContext,
             SuiClient as Client,

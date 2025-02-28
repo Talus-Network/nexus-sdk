@@ -1,21 +1,19 @@
-use {
-    crate::{
-        command_title,
-        loading,
-        prelude::*,
-        sui::*,
-        tool::{tool_validate::*, ToolIdent, ToolMeta},
-    },
-    move_core_types::ident_str,
+use crate::{
+    command_title,
+    loading,
+    prelude::*,
+    sui::*,
+    tool::{tool_validate::*, ToolIdent, ToolMeta},
 };
 
 /// Sui `std::ascii::string`
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
+const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
+const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
 
 // Nexus `tool_registry::register_off_chain_tool`
-const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
-const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr = ident_str!("register_off_chain_tool");
+const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
+const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr =
+    sui::move_ident_str!("register_off_chain_tool");
 
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
@@ -37,10 +35,11 @@ pub(crate) async fn register_tool(
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
-    // Workflow package and tool registry IDs must be present.
+    // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id,
         tool_registry_object_id,
+        ..
     } = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
@@ -100,7 +99,7 @@ pub(crate) async fn register_tool(
     );
 
     // Sign and submit the TX.
-    sign_transaction(&sui, &wallet, tx_data).await
+    sign_transaction(&sui, &wallet, tx_data).await.map(|_| ())
 }
 
 /// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet

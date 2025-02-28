@@ -1,18 +1,15 @@
 {
   "entry_vertices": [
     {
-      "vertex": "a",
-      "input_ports": ["input"]
-    }
-  ],
-  "vertices": [
-    {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "com.test.test@1"
       },
-      "name": "a"
-    },
+      "name": "a",
+      "input_ports": ["input"]
+    }
+  ],
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",

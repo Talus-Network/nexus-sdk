@@ -1,16 +1,13 @@
-use {
-    crate::{command_title, confirm, loading, prelude::*, sui::*},
-    move_core_types::ident_str,
-};
+use crate::{command_title, confirm, loading, prelude::*, sui::*};
 
 /// Sui `std::ascii::string`
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = ident_str!("string");
+const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
+const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
 
 /// Nexus `tool_registry::unregister_off_chain_tool`
-const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = ident_str!("tool_registry");
+const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
 // TODO: The name of this fn will likely change.
-const NEXUS_UNREGISTER_TOOL: &sui::MoveIdentStr = ident_str!("unregister_off_chain_tool");
+const NEXUS_UNREGISTER_TOOL: &sui::MoveIdentStr = sui::move_ident_str!("unregister_off_chain_tool");
 
 /// Unregister a Tool based on the provided FQN.
 pub(crate) async fn unregister_tool(
@@ -25,10 +22,11 @@ pub(crate) async fn unregister_tool(
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
-    // Workflow package and tool registry IDs must be present.
+    // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id,
         tool_registry_object_id,
+        ..
     } = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
@@ -74,7 +72,7 @@ pub(crate) async fn unregister_tool(
     );
 
     // Sign and submit the TX.
-    sign_transaction(&sui, &wallet, tx_data).await
+    sign_transaction(&sui, &wallet, tx_data).await.map(|_| ())
 }
 
 /// Build a programmable transaction to unregister a Tool.

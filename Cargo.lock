@@ -1962,7 +1962,7 @@ dependencies = [
  "readonly",
  "rfc6979 0.4.0",
  "rsa",
- "schemars",
+ "schemars 0.8.21",
  "secp256k1",
  "serde",
  "serde_json",
@@ -2030,7 +2030,7 @@ dependencies = [
  "once_cell",
  "regex",
  "reqwest",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
  "typenum",
@@ -4013,7 +4013,7 @@ dependencies = [
  "nexus-types",
  "petgraph 0.7.1",
  "reqwest",
- "schemars",
+ "schemars 1.0.0-alpha.17",
  "serde",
  "serde_json",
  "sui-sdk",
@@ -4030,7 +4030,7 @@ dependencies = [
  "anyhow",
  "nexus-types",
  "reqwest",
- "schemars",
+ "schemars 1.0.0-alpha.17",
  "serde",
  "serde_json",
  "serial_test",
@@ -4272,7 +4272,7 @@ version = "2.0.0"
 source = "git+https://github.com/bmwill/openapiv3.git?rev=ca4b4845b7c159a39f5c68ad8f7f76cb6f4d6963#ca4b4845b7c159a39f5c68ad8f7f76cb6f4d6963"
 dependencies = [
  "indexmap 2.7.1",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
 ]
@@ -5532,7 +5532,20 @@ checksum = "09c024468a378b7e36765cd36702b7a90cc3cba11654f6685c8f233408e89e92"
 dependencies = [
  "dyn-clone",
  "either",
- "schemars_derive",
+ "schemars_derive 0.8.21",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars"
+version = "1.0.0-alpha.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88ef2a6523400a2228db974a8ddc9e1d3deaa04f51bddd7832ef8d7e531bafcc"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
+ "schemars_derive 1.0.0-alpha.17",
  "serde",
  "serde_json",
 ]
@@ -5542,6 +5555,18 @@ name = "schemars_derive"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1eee588578aff73f856ab961cd2f79e36bc45d7ded33a7562adba4667aecc0e"
+dependencies = [
+ "proc-macro2 1.0.93",
+ "quote 1.0.38",
+ "serde_derive_internals",
+ "syn 2.0.98",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "1.0.0-alpha.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6d4e1945a3c9e58edaa708449b026519f7f4197185e1b5dbc689615c1ad724d"
 dependencies = [
  "proc-macro2 1.0.93",
  "quote 1.0.38",
@@ -6244,7 +6269,7 @@ dependencies = [
  "move-binary-format",
  "move-bytecode-utils",
  "move-core-types",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
  "sui-types",
@@ -6286,7 +6311,7 @@ dependencies = [
  "move-bytecode-utils",
  "move-core-types",
  "mysten-metrics",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
  "serde_with",
@@ -6336,7 +6361,7 @@ version = "1.38.1"
 source = "git+https://github.com/MystenLabs/sui?tag=testnet-v1.38.1#b164e321fc9c51745043a3dc148ef95d258a6b0c"
 dependencies = [
  "bcs",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
  "versions",
@@ -6394,7 +6419,7 @@ dependencies = [
  "clap",
  "insta",
  "move-vm-config",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde-env",
  "serde_with",
@@ -6433,7 +6458,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "reqwest",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_json",
  "serde_with",
@@ -6492,7 +6517,7 @@ dependencies = [
  "bs58 0.5.1",
  "hex",
  "roaring",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde_derive",
  "serde_json",
@@ -6565,7 +6590,7 @@ dependencies = [
  "proptest-derive",
  "rand 0.8.5",
  "roaring",
- "schemars",
+ "schemars 0.8.21",
  "serde",
  "serde-name",
  "serde_json",

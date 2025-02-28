@@ -227,7 +227,7 @@ pub(crate) async fn sign_transaction(
     sui: &sui::Client,
     wallet: &sui::WalletContext,
     tx_data: sui::TransactionData,
-) -> AnyResult<(), NexusCliError> {
+) -> AnyResult<sui::TransactionBlockEffectsV1, NexusCliError> {
     let signing_handle = loading!("Signing transaction...");
 
     let envelope = wallet.sign_transaction(&tx_data);
@@ -263,12 +263,18 @@ pub(crate) async fn sign_transaction(
     }
 
     // Check if any effects failed in the TX.
-    if let Some(sui::TransactionBlockEffects::V1(effect)) = response.effects {
-        if let sui::ExecutionStatus::Failure { error } = effect.into_status() {
-            signing_handle.error();
+    let Some(sui::TransactionBlockEffects::V1(effect)) = response.effects else {
+        signing_handle.error();
 
-            return Err(NexusCliError::Any(anyhow!(error)));
-        }
+        return Err(NexusCliError::Any(anyhow!(
+            "Transaction failed with no effects"
+        )));
+    };
+
+    if let sui::ExecutionStatus::Failure { error } = effect.clone().into_status() {
+        signing_handle.error();
+
+        return Err(NexusCliError::Any(anyhow!(error)));
     }
 
     signing_handle.success();
@@ -279,7 +285,7 @@ pub(crate) async fn sign_transaction(
         digest = response.digest.to_string().truecolor(100, 100, 100)
     );
 
-    Ok(())
+    Ok(effect)
 }
 
 /// Fetch a single object from Sui by its ID.
@@ -343,12 +349,17 @@ pub(crate) async fn fetch_object_by_id(
 pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, NexusCliError> {
     let objects_handle = loading!("Loading Nexus object IDs configuration...");
 
-    match (conf.nexus.workflow_id, conf.nexus.tool_registry_id) {
-        (Some(wid), Some(trid)) => {
+    match (
+        conf.nexus.workflow_id,
+        conf.nexus.primitives_id,
+        conf.nexus.tool_registry_id,
+    ) {
+        (Some(wid), Some(pid), Some(trid)) => {
             objects_handle.success();
 
             Ok(NexusObjects {
                 workflow_pkg_id: wid,
+                primitives_pkg_id: pid,
                 tool_registry_object_id: trid,
             })
         }
@@ -356,9 +367,10 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, Nexus
             objects_handle.error();
 
             Err(NexusCliError::Any(anyhow!(
-                "{message}\n\n{workflow_command}\n{tool_registry_command}",
-                message = "The Nexus Workflow package ID and Tool Registry object ID must be set. Use the following commands to update the configuration:",
+                "{message}\n\n{workflow_command}\n{primitives_command}\n{tool_registry_command}",
+                message = "The Nexus Workflow and Primitives package IDs and Tool Registry object ID must be set. Use the following commands to update the configuration:",
                 workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
+                primitives_command = "$ nexus conf --nexus.primitives-id <ID>".bold(),
                 tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
             )))
         }
