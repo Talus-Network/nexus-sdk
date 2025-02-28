@@ -54,22 +54,9 @@ pub(crate) struct DefaultValue {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct Port {
-    pub(crate) name: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "storage", rename_all = "snake_case")]
 pub(crate) enum Data {
     Inline { data: serde_json::Value },
-}
-
-impl Data {
-    pub(crate) fn get_data(&self) -> &serde_json::Value {
-        match self {
-            Self::Inline { data } => data,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -91,7 +78,7 @@ pub(crate) struct ToPort {
     pub(crate) input_port: String,
 }
 
-/// == Dag Impls ==
+// == Dag Impls ==
 
 impl TryFrom<&str> for Dag {
     type Error = AnyError;

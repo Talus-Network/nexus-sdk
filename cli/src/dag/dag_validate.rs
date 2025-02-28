@@ -62,7 +62,7 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         Err(e) => {
             validation_handle.error();
 
-            return Err(NexusCliError::Any(e));
+            Err(NexusCliError::Any(e))
         }
     }
 }

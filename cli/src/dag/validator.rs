@@ -138,7 +138,7 @@ fn check_concurrency_in_subgraph(
     // Initial concurrency is just the number of entry vertices minus the number of goal "tool" vertices.
     let initial_concurrency = entry_vertices_count as isize - 1;
 
-    let net_concurrency = nodes.into_iter().fold(initial_concurrency, |acc, &node| {
+    let net_concurrency = nodes.iter().fold(initial_concurrency, |acc, &node| {
         match graph[node] {
             VertexType::Tool => {
                 // Calculate the maximum number of concurrent tasks that can be spawned by this tool.
@@ -216,7 +216,7 @@ impl TryFrom<Dag> for DiGraph<VertexType, ()> {
         // between input ports with default values and input ports without
         // default values.
         let mut default_values = Vec::new();
-        let dag_default_values = dag.default_values.unwrap_or_else(Vec::new);
+        let dag_default_values = dag.default_values.unwrap_or_default();
 
         for default_value in &dag_default_values {
             let input_port_node = [
