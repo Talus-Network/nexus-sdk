@@ -227,14 +227,15 @@ pub(crate) async fn sign_transaction(
     sui: &sui::Client,
     wallet: &sui::WalletContext,
     tx_data: sui::TransactionData,
-) -> AnyResult<sui::TransactionBlockEffectsV1, NexusCliError> {
+) -> AnyResult<sui::TransactionBlockResponse, NexusCliError> {
     let signing_handle = loading!("Signing transaction...");
 
     let envelope = wallet.sign_transaction(&tx_data);
 
     let resp_options = sui::TransactionBlockResponseOptions::new()
         .with_balance_changes()
-        .with_effects();
+        .with_effects()
+        .with_object_changes();
 
     // We want to confirm that the tx was executed (the name of this variant is
     // misleading).
@@ -263,19 +264,13 @@ pub(crate) async fn sign_transaction(
     }
 
     // Check if any effects failed in the TX.
-    let Some(sui::TransactionBlockEffects::V1(effect)) = response.effects else {
-        signing_handle.error();
+    if let Some(sui::TransactionBlockEffects::V1(effect)) = &response.effects {
+        if let sui::ExecutionStatus::Failure { error } = effect.clone().into_status() {
+            signing_handle.error();
 
-        return Err(NexusCliError::Any(anyhow!(
-            "Transaction failed with no effects"
-        )));
+            return Err(NexusCliError::Any(anyhow!(error)));
+        }
     };
-
-    if let sui::ExecutionStatus::Failure { error } = effect.clone().into_status() {
-        signing_handle.error();
-
-        return Err(NexusCliError::Any(anyhow!(error)));
-    }
 
     signing_handle.success();
 
@@ -285,7 +280,7 @@ pub(crate) async fn sign_transaction(
         digest = response.digest.to_string().truecolor(100, 100, 100)
     );
 
-    Ok(effect)
+    Ok(response)
 }
 
 /// Fetch a single object from Sui by its ID.

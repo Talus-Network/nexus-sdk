@@ -27,6 +27,7 @@ const SUI_TRANSFER_PUBLIC_SHARE_OBJECT: &sui::MoveIdentStr =
 // Nexus `workflow::dag` module and its functions.
 const WORKFLOW_DAG_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("dag");
 const WORKFLOW_DAG_NEW: &sui::MoveIdentStr = sui::move_ident_str!("new");
+const WORKFLOW_DAG_DAG: &sui::MoveIdentStr = sui::move_ident_str!("DAG");
 
 const WORKFLOW_DAG_WITH_VERTEX: &sui::MoveIdentStr = sui::move_ident_str!("with_vertex");
 const WORKFLOW_DAG_WITH_EDGE: &sui::MoveIdentStr = sui::move_ident_str!("with_edge");
@@ -96,7 +97,7 @@ pub(crate) async fn publish_dag(
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
     // Create an empty DAG.
-    let dag_arg = tx.programmable_move_call(
+    let mut dag_arg = tx.programmable_move_call(
         workflow_pkg_id,
         WORKFLOW_DAG_MODULE.into(),
         WORKFLOW_DAG_NEW.into(),
@@ -106,8 +107,20 @@ pub(crate) async fn publish_dag(
 
     // Create all entry vertices.
     for entry_vertex in dag.entry_vertices {
-        match create_entry_vertex(&mut tx, workflow_pkg_id, dag_arg, entry_vertex) {
-            Ok(()) => (),
+        dag_arg = match create_entry_vertex(&mut tx, workflow_pkg_id, dag_arg, entry_vertex) {
+            Ok(dag_arg) => dag_arg,
+            Err(e) => {
+                tx_handle.error();
+
+                return Err(NexusCliError::Any(e));
+            }
+        }
+    }
+
+    // Create all vertices.
+    for vertex in dag.vertices {
+        dag_arg = match create_vertex(&mut tx, workflow_pkg_id, dag_arg, &vertex) {
+            Ok(dag_arg) => dag_arg,
             Err(e) => {
                 tx_handle.error();
 
@@ -119,14 +132,14 @@ pub(crate) async fn publish_dag(
     // Create all default values if present.
     if let Some(default_values) = dag.default_values {
         for default_value in default_values {
-            match create_default_value(
+            dag_arg = match create_default_value(
                 &mut tx,
                 workflow_pkg_id,
                 primitives_pkg_id,
                 dag_arg,
                 &default_value,
             ) {
-                Ok(()) => (),
+                Ok(dag_arg) => dag_arg,
                 Err(e) => {
                     tx_handle.error();
 
@@ -136,22 +149,10 @@ pub(crate) async fn publish_dag(
         }
     }
 
-    // Create all vertices.
-    for vertex in dag.vertices {
-        match create_vertex(&mut tx, workflow_pkg_id, dag_arg, &vertex) {
-            Ok(()) => (),
-            Err(e) => {
-                tx_handle.error();
-
-                return Err(NexusCliError::Any(e));
-            }
-        }
-    }
-
     // Create all edges.
     for edge in dag.edges {
-        match create_edge(&mut tx, workflow_pkg_id, dag_arg, &edge) {
-            Ok(()) => (),
+        dag_arg = match create_edge(&mut tx, workflow_pkg_id, dag_arg, &edge) {
+            Ok(dag_arg) => dag_arg,
             Err(e) => {
                 tx_handle.error();
 
@@ -161,11 +162,18 @@ pub(crate) async fn publish_dag(
     }
 
     // Public share the DAG, locking it.
+    let dag_type = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+        address: *workflow_pkg_id,
+        module: WORKFLOW_DAG_MODULE.into(),
+        name: WORKFLOW_DAG_DAG.into(),
+        type_params: vec![],
+    }));
+
     tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
         SUI_TRANSFER_MODULE.into(),
         SUI_TRANSFER_PUBLIC_SHARE_OBJECT.into(),
-        vec![],
+        vec![dag_type],
         vec![dag_arg],
     );
 
@@ -179,9 +187,43 @@ pub(crate) async fn publish_dag(
         reference_gas_price,
     );
 
-    let effects = sign_transaction(&sui, &wallet, tx_data).await?;
+    // Sign the transaction and send it to the network.
+    let response = sign_transaction(&sui, &wallet, tx_data).await?;
 
-    println!("{:#?}", effects);
+    // We need to parse the DAG object ID from the response.
+    let dag = response
+        .object_changes
+        .unwrap_or_default()
+        .into_iter()
+        .find_map(|change| match change {
+            sui::ObjectChange::Created {
+                object_type,
+                object_id,
+                ..
+            } => {
+                if object_type.address != *workflow_pkg_id
+                    || object_type.module != WORKFLOW_DAG_MODULE.into()
+                    || object_type.name != WORKFLOW_DAG_DAG.into()
+                {
+                    return None;
+                }
+
+                Some(object_id)
+            }
+            _ => None,
+        });
+
+    let Some(object_id) = dag else {
+        return Err(NexusCliError::Any(anyhow!(
+            "Could not find the DAG object ID in the transaction response."
+        )));
+    };
+
+    println!(
+        "[{check}] Published DAG with object ID: {id}",
+        check = "✔".green().bold(),
+        id = object_id.to_string().truecolor(100, 100, 100)
+    );
 
     Ok(())
 }
@@ -193,7 +235,7 @@ fn create_entry_vertex(
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
     vertex: EntryVertex,
-) -> AnyResult<()> {
+) -> AnyResult<sui::Argument> {
     // `name: Vertex`
     let name = into_sui_ascii_string(tx, vertex.name.as_str())?;
 
@@ -263,15 +305,60 @@ fn create_entry_vertex(
     }
 
     // `dag.with_entry_vertex(name, kind, input_ports)`
-    tx.programmable_move_call(
+    Ok(tx.programmable_move_call(
         workflow_pkg_id,
         WORKFLOW_DAG_MODULE.into(),
         WORKFLOW_DAG_WITH_ENTRY_VERTEX.into(),
         vec![],
         vec![dag, name, kind, input_ports],
+    ))
+}
+
+/// Craft transaction arguments to create a [crate::dag::parser::Vertex] on-chain.
+fn create_vertex(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    workflow_pkg_id: sui::ObjectID,
+    dag: sui::Argument,
+    vertex: &Vertex,
+) -> AnyResult<sui::Argument> {
+    // `name: Vertex`
+    let name = into_sui_ascii_string(tx, vertex.name.as_str())?;
+
+    let name = tx.programmable_move_call(
+        workflow_pkg_id,
+        WORKFLOW_DAG_MODULE.into(),
+        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
+        vec![],
+        vec![name],
     );
 
-    Ok(())
+    // `kind: VertexKind`
+    let kind = match &vertex.kind {
+        VertexKind::OffChain { tool_fqn } => {
+            // `tool_fqn: AsciiString`
+            let tool_fqn = into_sui_ascii_string(tx, tool_fqn.to_string().as_str())?;
+
+            tx.programmable_move_call(
+                workflow_pkg_id,
+                WORKFLOW_DAG_MODULE.into(),
+                WORKFLOW_DAG_VERTEX_OFF_CHAIN.into(),
+                vec![],
+                vec![tool_fqn],
+            )
+        }
+        VertexKind::OnChain { .. } => {
+            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+        }
+    };
+
+    // `dag.with_vertex(name, kind)`
+    Ok(tx.programmable_move_call(
+        workflow_pkg_id,
+        WORKFLOW_DAG_MODULE.into(),
+        WORKFLOW_DAG_WITH_VERTEX.into(),
+        vec![],
+        vec![dag, name, kind],
+    ))
 }
 
 /// Craft transaction arguments to set the default value for
@@ -282,7 +369,7 @@ fn create_default_value(
     primitives_pkg_id: sui::ObjectID,
     dag: sui::Argument,
     default_value: &DefaultValue,
-) -> AnyResult<()> {
+) -> AnyResult<sui::Argument> {
     // `vertex: Vertex`
     let vertex = into_sui_ascii_string(tx, default_value.vertex.as_str())?;
 
@@ -326,64 +413,13 @@ fn create_default_value(
     };
 
     // `dag.with_default_value(vertex, port, value)`
-    tx.programmable_move_call(
+    Ok(tx.programmable_move_call(
         workflow_pkg_id,
         WORKFLOW_DAG_MODULE.into(),
         WORKFLOW_DAG_WITH_DEFAULT_VALUE.into(),
         vec![],
         vec![dag, vertex, port, value],
-    );
-
-    Ok(())
-}
-
-/// Craft transaction arguments to create a [crate::dag::parser::Vertex] on-chain.
-fn create_vertex(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
-    dag: sui::Argument,
-    vertex: &Vertex,
-) -> AnyResult<()> {
-    // `name: Vertex`
-    let name = into_sui_ascii_string(tx, vertex.name.as_str())?;
-
-    let name = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![name],
-    );
-
-    // `kind: VertexKind`
-    let kind = match &vertex.kind {
-        VertexKind::OffChain { tool_fqn } => {
-            // `tool_fqn: AsciiString`
-            let tool_fqn = into_sui_ascii_string(tx, tool_fqn.to_string().as_str())?;
-
-            tx.programmable_move_call(
-                workflow_pkg_id,
-                WORKFLOW_DAG_MODULE.into(),
-                WORKFLOW_DAG_VERTEX_OFF_CHAIN.into(),
-                vec![],
-                vec![tool_fqn],
-            )
-        }
-        VertexKind::OnChain { .. } => {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
-        }
-    };
-
-    // `dag.with_vertex(name, kind)`
-    tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_WITH_VERTEX.into(),
-        vec![],
-        vec![dag, name, kind],
-    );
-
-    Ok(())
+    ))
 }
 
 /// Craft transaction arguments to create a [crate::dag::parser::Edge] on-chain.
@@ -392,7 +428,7 @@ fn create_edge(
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
     edge: &Edge,
-) -> AnyResult<()> {
+) -> AnyResult<sui::Argument> {
     // `from_vertex: Vertex`
     let from_vertex = into_sui_ascii_string(tx, edge.from.vertex.as_str())?;
 
@@ -449,7 +485,7 @@ fn create_edge(
     );
 
     // `dag.with_edge(frpm_vertex, from_variant, from_port, to_vertex, to_port)`
-    tx.programmable_move_call(
+    Ok(tx.programmable_move_call(
         workflow_pkg_id,
         WORKFLOW_DAG_MODULE.into(),
         WORKFLOW_DAG_WITH_EDGE.into(),
@@ -462,9 +498,7 @@ fn create_edge(
             to_vertex,
             to_port,
         ],
-    );
-
-    Ok(())
+    ))
 }
 
 /// Transform a string to Sui `std::ascii::string`.

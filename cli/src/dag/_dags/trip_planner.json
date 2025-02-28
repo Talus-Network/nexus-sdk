@@ -5,34 +5,17 @@
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
-      "name": "location_decider"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.weather.openweather.onecall@1"
-      },
-      "name": "weather_lookup"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
-      },
-      "name": "itinerary_builder"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
-      },
       "name": "animator"
     }
   ],
   "entry_vertices": [
     {
-      "vertex": "location_decider",
-      "input_ports": ["context", "messages"]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
+      },
+      "name": "location_decider",
+      "input_ports": ["messages"]
     }
   ],
   "default_values": [
@@ -48,6 +31,19 @@
           }
         ]
       }
+    },
+    {
+      "vertex": "animator",
+      "input_port": "context",
+      "value": {
+        "storage": "inline",
+        "data": [
+          {
+            "type": "system",
+            "value": "You are an expert animator. Your task is to animate the location that the user has chosen for their trip."
+          }
+        ]
+      }
     }
   ],
   "edges": [
@@ -58,8 +54,8 @@
         "output_port": "choices"
       },
       "to": {
-        "vertex": "restaurant_event_decider",
-        "input_port": "description"
+        "vertex": "animator",
+        "input_port": "messages"
       }
     }
   ]

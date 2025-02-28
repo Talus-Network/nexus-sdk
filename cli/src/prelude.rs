@@ -125,11 +125,12 @@ pub(crate) mod sui {
         sui_sdk::{
             rpc_types::{
                 Coin,
+                ObjectChange,
                 SuiExecutionStatus as ExecutionStatus,
                 SuiObjectDataOptions as ObjectDataOptions,
                 SuiObjectRef as ObjectRef,
                 SuiTransactionBlockEffects as TransactionBlockEffects,
-                SuiTransactionBlockEffectsV1 as TransactionBlockEffectsV1,
+                SuiTransactionBlockResponse as TransactionBlockResponse,
                 SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
             },
             types::{
