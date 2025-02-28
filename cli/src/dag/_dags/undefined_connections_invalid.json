@@ -1,24 +1,24 @@
 {
+  "entry_vertices": [
+    {
+      "vertex": "a",
+      "input_ports": ["input"]
+    }
+  ],
   "vertices": [
     {
-      "name": "a",
-      "input_ports": [{ "name": "input" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a"
     },
     {
-      "name": "b",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b"
     }
   ],
   "edges": [

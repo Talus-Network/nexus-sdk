@@ -2,8 +2,8 @@ use {
     crate::{
         command_title,
         dag::{
-            parser::{Dag, VertexType},
-            validator::validate,
+            parser::Dag,
+            validator::{validate, VertexType},
         },
         loading,
         prelude::*,
@@ -223,6 +223,6 @@ mod tests {
 
         let res: AnyResult<DiGraph<VertexType, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("The vertex FromPort { vertex: \"d\", output_variant: \"1\", output_port: \"1.0\" } is not defined."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry vertex 'a' does not exist in the graph."));
     }
 }

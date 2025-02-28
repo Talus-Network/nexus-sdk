@@ -1,67 +1,52 @@
 {
+  "entry_vertices": [
+    {
+      "vertex": "a",
+      "input_ports": ["input"]
+    }
+  ],
   "vertices": [
     {
-      "name": "a",
-      "input_ports": [{ "name": "input" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }, { "name": "1.1" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a"
     },
     {
-      "name": "b",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }, { "name": "1.1" }]
-        },
-        {
-          "name": "2",
-          "output_ports": [{ "name": "2.0" }, { "name": "2.1" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b"
     },
     {
-      "name": "c",
-      "input_ports": [{ "name": "1" }, { "name": "2" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "c"
     },
     {
-      "name": "d",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "d"
     },
     {
-      "name": "e",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "1",
-          "output_ports": [{ "name": "1.0" }]
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "e"
     },
     {
-      "name": "f",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "ok"
-        }
-      ]
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "f"
     }
   ],
   "edges": [

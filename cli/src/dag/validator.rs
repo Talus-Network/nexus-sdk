@@ -1,7 +1,8 @@
 use {
-    crate::{dag::parser::VertexType, prelude::*},
+    super::parser::Dag,
+    crate::prelude::*,
     petgraph::graph::{DiGraph, NodeIndex},
-    std::collections::HashSet,
+    std::collections::{HashMap, HashSet},
 };
 
 /// Validate function takes a graph and validates it based on nexus execution rules.
@@ -77,12 +78,12 @@ fn has_correct_order_of_actions(graph: &DiGraph<VertexType, ()>) -> bool {
             // Input ports must have exactly 1 outgoing edge.
             VertexType::InputPort if neighbors.len() != 1 => return false,
             VertexType::InputPortWithDefault if neighbors.len() != 1 => return false,
-            // Tools must have at least 1 outgoing edge.
-            VertexType::Tool if neighbors.is_empty() => return false,
-            // Output variants can be the last vertex and can have any number of edges
-            VertexType::OutputVariant => (),
-            // Output ports must have 0 or 1 outgoing edges.
-            VertexType::OutputPort if neighbors.len() > 1 => return false,
+            // Tools can be the last vertex and can have any number of edges.
+            VertexType::Tool => (),
+            // Output variants must have at least 1 outgoing edge.
+            VertexType::OutputVariant if neighbors.is_empty() => return false,
+            // Output ports must have exactly 1 outgoing edge.
+            VertexType::OutputPort if neighbors.len() != 1 => return false,
             _ => (),
         };
 
@@ -193,4 +194,158 @@ fn find_all_nodes_in_paths_to(
     }
 
     visited
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) enum VertexType {
+    InputPort,
+    InputPortWithDefault,
+    Tool,
+    OutputVariant,
+    OutputPort,
+}
+
+/// [Dag] to [petgraph::graph::DiGraph].
+impl TryFrom<Dag> for DiGraph<VertexType, ()> {
+    type Error = AnyError;
+
+    fn try_from(dag: Dag) -> AnyResult<Self> {
+        let mut graph = DiGraph::<VertexType, ()>::new();
+
+        // Find default values for input ports. This way we differentiate
+        // between input ports with default values and input ports without
+        // default values.
+        let mut default_values = Vec::new();
+        let dag_default_values = dag.default_values.unwrap_or_else(Vec::new);
+
+        for default_value in &dag_default_values {
+            let input_port_node = [
+                default_value.vertex.as_str(),
+                "",
+                default_value.input_port.as_str(),
+            ];
+
+            default_values.push(input_port_node);
+        }
+
+        // Edges are always between an output port and an input port. We also
+        // need to create edges between the tool, the output variant and the
+        // output port if they don't exist yet.
+        let mut nodes_named: HashMap<[&str; 3], NodeIndex> = HashMap::new();
+
+        for edge in &dag.edges {
+            // Create unique keys for each node in this edge.
+            let origin_vertex = [edge.from.vertex.as_str(), "", ""];
+            let output_variant = [
+                edge.from.vertex.as_str(),
+                edge.from.output_variant.as_str(),
+                "",
+            ];
+            let output_port = [
+                edge.from.vertex.as_str(),
+                edge.from.output_variant.as_str(),
+                edge.from.output_port.as_str(),
+            ];
+            let destination_vertex = [edge.to.vertex.as_str(), "", ""];
+            let input_port = [edge.to.vertex.as_str(), "", edge.to.input_port.as_str()];
+
+            // Create nodes if they don't exist yet.
+            let origin_node = nodes_named.get(&origin_vertex).copied().unwrap_or_else(|| {
+                let node = graph.add_node(VertexType::Tool);
+
+                nodes_named.insert(origin_vertex, node);
+
+                node
+            });
+
+            let output_variant_node =
+                nodes_named
+                    .get(&output_variant)
+                    .copied()
+                    .unwrap_or_else(|| {
+                        let node = graph.add_node(VertexType::OutputVariant);
+
+                        nodes_named.insert(output_variant, node);
+
+                        node
+                    });
+
+            let output_port_node = nodes_named.get(&output_port).copied().unwrap_or_else(|| {
+                let node = graph.add_node(VertexType::OutputPort);
+
+                nodes_named.insert(output_port, node);
+
+                node
+            });
+
+            let destination_node = nodes_named
+                .get(&destination_vertex)
+                .copied()
+                .unwrap_or_else(|| {
+                    let node = graph.add_node(VertexType::Tool);
+
+                    nodes_named.insert(destination_vertex, node);
+
+                    node
+                });
+
+            let input_port_node = nodes_named.get(&input_port).copied().unwrap_or_else(|| {
+                let node = graph.add_node(match default_values.contains(&input_port) {
+                    true => VertexType::InputPortWithDefault,
+                    false => VertexType::InputPort,
+                });
+
+                nodes_named.insert(input_port, node);
+
+                node
+            });
+
+            // Create edges between the nodes if they don't exist yet.
+            if !graph.contains_edge(origin_node, output_variant_node) {
+                graph.add_edge(origin_node, output_variant_node, ());
+            }
+
+            if !graph.contains_edge(output_variant_node, output_port_node) {
+                graph.add_edge(output_variant_node, output_port_node, ());
+            }
+
+            if !graph.contains_edge(output_port_node, input_port_node) {
+                graph.add_edge(output_port_node, input_port_node, ());
+            }
+
+            if !graph.contains_edge(input_port_node, destination_node) {
+                graph.add_edge(input_port_node, destination_node, ());
+            }
+        }
+
+        // Create edges between the entry vertices and their input ports.
+        for entry_vertex in &dag.entry_vertices {
+            // Note that we don't need to insert the nodes as they must exist
+            // at this point.
+            let entry_node = nodes_named
+                .get(&[entry_vertex.vertex.as_str(), "", ""])
+                .copied()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Entry vertex '{}' does not exist in the graph.",
+                        entry_vertex.vertex
+                    )
+                })?;
+
+            for input_port in &entry_vertex.input_ports {
+                let input_port = [entry_vertex.vertex.as_str(), "", input_port.as_str()];
+
+                // Opposite of the tool node, the input ports must not exist
+                // at this time.
+                let input_port_node = graph.add_node(match default_values.contains(&input_port) {
+                    true => VertexType::InputPortWithDefault,
+                    false => VertexType::InputPort,
+                });
+
+                graph.add_edge(input_port_node, entry_node, ());
+            }
+        }
+
+        Ok(graph)
+    }
 }
