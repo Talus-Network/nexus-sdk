@@ -345,17 +345,21 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, Nexus
     let objects_handle = loading!("Loading Nexus object IDs configuration...");
 
     match (
-        conf.nexus.workflow_id,
-        conf.nexus.primitives_id,
-        conf.nexus.tool_registry_id,
+        conf.nexus.workflow_pkg_id,
+        conf.nexus.primitives_pkg_id,
+        conf.nexus.tool_registry_object_id,
+        conf.nexus.default_sap_object_id,
+        conf.nexus.network_id,
     ) {
-        (Some(wid), Some(pid), Some(trid)) => {
+        (Some(wid), Some(pid), Some(trid), Some(dsid), Some(nid)) => {
             objects_handle.success();
 
             Ok(NexusObjects {
                 workflow_pkg_id: wid,
                 primitives_pkg_id: pid,
                 tool_registry_object_id: trid,
+                default_sap_object_id: dsid,
+                network_id: nid,
             })
         }
         _ => {

@@ -81,9 +81,11 @@ impl Default for SuiConf {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct NexusConf {
-    pub(crate) workflow_id: Option<sui::ObjectID>,
-    pub(crate) primitives_id: Option<sui::ObjectID>,
-    pub(crate) tool_registry_id: Option<sui::ObjectID>,
+    pub(crate) workflow_pkg_id: Option<sui::ObjectID>,
+    pub(crate) primitives_pkg_id: Option<sui::ObjectID>,
+    pub(crate) tool_registry_object_id: Option<sui::ObjectID>,
+    pub(crate) default_sap_object_id: Option<sui::ObjectID>,
+    pub(crate) network_id: Option<sui::ObjectID>,
 }
 
 /// Non-optional version of [NexusConf].
@@ -92,6 +94,8 @@ pub(crate) struct NexusObjects {
     pub(crate) workflow_pkg_id: sui::ObjectID,
     pub(crate) primitives_pkg_id: sui::ObjectID,
     pub(crate) tool_registry_object_id: sui::ObjectID,
+    pub(crate) default_sap_object_id: sui::ObjectID,
+    pub(crate) network_id: sui::ObjectID,
 }
 
 /// Reusable Sui gas command args.
@@ -164,6 +168,11 @@ pub(crate) fn expand_tilde(path: &str) -> AnyResult<PathBuf> {
     }
 
     Ok(path.into())
+}
+
+/// Parses JSON string into a serde_json::Value.
+pub(crate) fn parse_json_string(json: &str) -> AnyResult<serde_json::Value> {
+    serde_json::from_str(json).map_err(AnyError::from)
 }
 
 // == Used by serde ==

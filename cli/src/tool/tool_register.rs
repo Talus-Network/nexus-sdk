@@ -202,7 +202,7 @@ fn prepare_transaction(
         collateral_coin.object_ref(),
     ))?;
 
-    // `nexus::tool_registry::register_off_chain_tool()`
+    // `workflow::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
         workflow_pkg_id,
         NEXUS_TOOL_REGISTRY_MODULE.into(),

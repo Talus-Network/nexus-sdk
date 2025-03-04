@@ -43,13 +43,21 @@ pub(crate) enum DagCommand {
         /// The object ID of the Nexus DAG.
         #[arg(long = "dag-id", short = 'd', help = "The object ID of the Nexus DAG")]
         dag_id: sui::ObjectID,
+        /// The entry vertex to invoke.
+        #[arg(
+            long = "entry-vertex",
+            short = 'e',
+            help = "The entry vertex to invoke"
+        )]
+        entry_vertex: String,
         /// The initial input data for the DAG.
         #[arg(
-            long = "input-data",
+            long = "input-json",
             short = 'i',
-            help = "The initial input data for the DAG"
+            help = "The initial input data for the DAG as a JSON object.",
+            value_parser = ValueParser::from(parse_json_string)
         )]
-        input_data: serde_json::Value,
+        input_json: serde_json::Value,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -70,8 +78,18 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         // == `$ nexus dag execute` ==
         DagCommand::Execute {
             dag_id,
-            input_data,
+            entry_vertex,
+            input_json,
             gas,
-        } => execute_dag(dag_id, input_data, gas.sui_gas_coin, gas.sui_gas_budget).await,
+        } => {
+            execute_dag(
+                dag_id,
+                entry_vertex,
+                input_json,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }
