@@ -154,9 +154,9 @@ pub(crate) async fn publish_dag(
                 object_type,
                 object_id,
                 ..
-            } if object_type.address != *workflow_pkg_id
-                || object_type.module != workflow::Dag::DAG.module.into()
-                || object_type.name != workflow::Dag::DAG.name.into() =>
+            } if object_type.address == *workflow_pkg_id
+                && object_type.module == workflow::Dag::DAG.module.into()
+                && object_type.name == workflow::Dag::DAG.name.into() =>
             {
                 Some(object_id)
             }
