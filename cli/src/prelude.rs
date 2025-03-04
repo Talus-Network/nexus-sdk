@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_types::*,
+    nexus_types::{sui::TransactionBlockEffectsAPI, *},
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
 };
@@ -116,44 +116,6 @@ pub(crate) struct GasArgs {
         default_value_t = sui::MIST_PER_SUI / 10
     )]
     pub(crate) sui_gas_budget: u64,
-}
-
-/// Normalizing Sui sdk imports.
-pub(crate) mod sui {
-    pub(crate) use {
-        move_core_types::{
-            ident_str as move_ident_str,
-            identifier::IdentStr as MoveIdentStr,
-            language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
-        },
-        sui_sdk::{
-            rpc_types::{
-                Coin,
-                ObjectChange,
-                SuiExecutionStatus as ExecutionStatus,
-                SuiObjectDataOptions as ObjectDataOptions,
-                SuiObjectRef as ObjectRef,
-                SuiTransactionBlockEffects as TransactionBlockEffects,
-                SuiTransactionBlockResponse as TransactionBlockResponse,
-                SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
-            },
-            types::{
-                base_types::{ObjectID, SuiAddress as Address},
-                gas_coin::MIST_PER_SUI,
-                object::Owner,
-                programmable_transaction_builder::ProgrammableTransactionBuilder,
-                quorum_driver_types::ExecuteTransactionRequestType,
-                transaction::{Argument, ObjectArg, TransactionData},
-                MOVE_STDLIB_PACKAGE_ID,
-                SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
-                SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
-                SUI_FRAMEWORK_PACKAGE_ID as FRAMEWORK_PACKAGE_ID,
-            },
-            wallet_context::WalletContext,
-            SuiClient as Client,
-            SuiClientBuilder as ClientBuilder,
-        },
-    };
 }
 
 // == Used by clap ==

@@ -1,42 +1,7 @@
-use crate::{command_title, loading, prelude::*, sui::*};
-
-/// Sui `sui::object`
-const SUI_OBJECT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("object");
-const SUI_OBJECT_ID_FROM_ADDRESS: &sui::MoveIdentStr = sui::move_ident_str!("id_from_address");
-
-/// Sui `sui::address`
-const SUI_ADDRESS_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("address");
-const SUI_ADDRESS_FROM_ASCII_BYTES: &sui::MoveIdentStr = sui::move_ident_str!("from_ascii_bytes");
-
-/// Sui `sui::vec_map`
-const SUI_VEC_MAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("vec_map");
-const SUI_VEC_MAP_EMPTY: &sui::MoveIdentStr = sui::move_ident_str!("empty");
-const SUI_VEC_MAP_INSERT: &sui::MoveIdentStr = sui::move_ident_str!("insert");
-
-/// Sui `std::ascii::string`
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
-
-// Nexus `workflow::default_sap` module and its functions.
-const WORKFLOW_DEFAULT_SAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_sap");
-const WORKFLOW_DEFAULT_SAP_BEGIN_DAG_EXECUTION: &sui::MoveIdentStr =
-    sui::move_ident_str!("begin_dag_execution");
-
-// Nexus `workflow::dag` module and its functions.
-const WORKFLOW_DAG_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("dag");
-
-const WORKFLOW_DAG_VERTEX_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("vertex_from_string");
-const WORKFLOW_DAG_INPUT_PORT_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("input_port_from_string");
-
-const WORKFLOW_INPUT_PORT: &sui::MoveIdentStr = sui::move_ident_str!("InputPort");
-
-// Nexus `primitives::data` module and its functions.
-const PRIMITIVES_DATA_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("data");
-const PRIMITIVES_DATA_INLINE_ONE: &sui::MoveIdentStr = sui::move_ident_str!("inline_one");
-
-const PRIMITIVES_DATA_NEXUS_DATA: &sui::MoveIdentStr = sui::move_ident_str!("NexusData");
+use {
+    crate::{command_title, loading, prelude::*, sui::*},
+    nexus_types::idents::{primitives, sui_framework, workflow},
+};
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 pub(crate) async fn execute_dag(
@@ -146,55 +111,21 @@ fn prepare_transaction(
     })?;
 
     // `network: ID`
-    let network = tx.pure(network_id.to_canonical_string(false).as_bytes())?;
-
-    let network = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        SUI_ADDRESS_MODULE.into(),
-        SUI_ADDRESS_FROM_ASCII_BYTES.into(),
-        vec![],
-        vec![network],
-    );
-
-    let network = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        SUI_OBJECT_MODULE.into(),
-        SUI_OBJECT_ID_FROM_ADDRESS.into(),
-        vec![],
-        vec![network],
-    );
+    let network = sui_framework::Object::id_from_object_id(&mut tx, network_id)?;
 
     // `entry_vertex: Vertex`
-    let entry_vertex = into_sui_ascii_string(&mut tx, entry_vertex.as_str())?;
-
-    let entry_vertex = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![entry_vertex],
-    );
+    let entry_vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, entry_vertex)?;
 
     // `with_vertex_input: VecMap<InputPort, NexusData>`
     let vec_map_type = vec![
-        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: *workflow_pkg_id,
-            module: WORKFLOW_DAG_MODULE.into(),
-            name: WORKFLOW_INPUT_PORT.into(),
-            type_params: vec![],
-        })),
-        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: *primitives_pkg_id,
-            module: PRIMITIVES_DATA_MODULE.into(),
-            name: PRIMITIVES_DATA_NEXUS_DATA.into(),
-            type_params: vec![],
-        })),
+        workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        primitives::into_type_tag(primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
     let with_vertex_input = tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
-        SUI_VEC_MAP_MODULE.into(),
-        SUI_VEC_MAP_EMPTY.into(),
+        sui_framework::VecMap::EMPTY.module.into(),
+        sui_framework::VecMap::EMPTY.name.into(),
         vec_map_type.clone(),
         vec![],
     );
@@ -206,30 +137,17 @@ fn prepare_transaction(
     };
 
     for (port, value) in data {
-        let port = into_sui_ascii_string(&mut tx, port.as_str())?;
+        // `port: InputPort`
+        let port = workflow::Dag::input_port_from_str(&mut tx, workflow_pkg_id, port)?;
 
-        let port = tx.programmable_move_call(
-            workflow_pkg_id,
-            WORKFLOW_DAG_MODULE.into(),
-            WORKFLOW_DAG_INPUT_PORT_FROM_STRING.into(),
-            vec![],
-            vec![port],
-        );
+        // `value: NexusData`
+        let value = primitives::Data::nexus_data_from_json(&mut tx, primitives_pkg_id, value)?;
 
-        let value = tx.pure(serde_json::to_string(value)?.into_bytes())?;
-
-        let value = tx.programmable_move_call(
-            primitives_pkg_id,
-            PRIMITIVES_DATA_MODULE.into(),
-            PRIMITIVES_DATA_INLINE_ONE.into(),
-            vec![],
-            vec![value],
-        );
-
+        // `with_vertex_input.insert(port, value)`
         tx.programmable_move_call(
             sui::FRAMEWORK_PACKAGE_ID,
-            SUI_VEC_MAP_MODULE.into(),
-            SUI_VEC_MAP_INSERT.into(),
+            sui_framework::VecMap::INSERT.module.into(),
+            sui_framework::VecMap::INSERT.name.into(),
             vec_map_type.clone(),
             vec![with_vertex_input, port, value],
         );
@@ -238,28 +156,11 @@ fn prepare_transaction(
     // `workflow::default_sap::begin_dag_execution()`
     tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DEFAULT_SAP_MODULE.into(),
-        WORKFLOW_DEFAULT_SAP_BEGIN_DAG_EXECUTION.into(),
+        workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.into(),
+        workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.into(),
         vec![],
         vec![default_sap, dag, network, entry_vertex, with_vertex_input],
     );
 
     Ok(tx)
-}
-
-/// Transform a string to Sui `std::ascii::string`.
-// TODO: extract this.
-fn into_sui_ascii_string(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    string: &str,
-) -> AnyResult<sui::Argument> {
-    let ascii = tx.pure(string.as_bytes())?;
-
-    Ok(tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        SUI_ASCII_MODULE.into(),
-        SUI_ASCII_FROM_STRING.into(),
-        vec![],
-        vec![ascii],
-    ))
 }

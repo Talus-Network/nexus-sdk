@@ -16,5 +16,5 @@ pub(crate) enum NexusCliError {
     #[error("{error}{separator}\n{0}", error = "HTTP Error".red().bold(), separator = separator())]
     Http(reqwest::Error),
     #[error("{error}{separator}\n{0}", error = "Sui Error".red().bold(), separator = separator())]
-    Sui(sui_sdk::error::Error),
+    Sui(sui::Error),
 }

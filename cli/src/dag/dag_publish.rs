@@ -1,57 +1,16 @@
-use crate::{
-    command_title,
-    dag::{
-        dag_validate::validate_dag,
-        parser::{Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind},
+use {
+    crate::{
+        command_title,
+        dag::{
+            dag_validate::validate_dag,
+            parser::{Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind},
+        },
+        loading,
+        prelude::*,
+        sui::*,
     },
-    loading,
-    prelude::*,
-    sui::*,
+    nexus_types::idents::{primitives, sui_framework, workflow},
 };
-
-/// Sui `std::ascii::string`
-// TODO: idents can be moved to a common module (nexus-types)
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
-
-// Sui `sui::vec_set`
-const SUI_VEC_SET_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("vec_set");
-const SUI_VEC_SET_EMPTY: &sui::MoveIdentStr = sui::move_ident_str!("empty");
-const SUI_VEC_SET_INSERT: &sui::MoveIdentStr = sui::move_ident_str!("insert");
-
-// Sui `sui::transfer`
-const SUI_TRANSFER_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("transfer");
-const SUI_TRANSFER_PUBLIC_SHARE_OBJECT: &sui::MoveIdentStr =
-    sui::move_ident_str!("public_share_object");
-
-// Nexus `workflow::dag` module and its functions.
-const WORKFLOW_DAG_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("dag");
-const WORKFLOW_DAG_NEW: &sui::MoveIdentStr = sui::move_ident_str!("new");
-const WORKFLOW_DAG_DAG: &sui::MoveIdentStr = sui::move_ident_str!("DAG");
-
-const WORKFLOW_DAG_WITH_VERTEX: &sui::MoveIdentStr = sui::move_ident_str!("with_vertex");
-const WORKFLOW_DAG_WITH_EDGE: &sui::MoveIdentStr = sui::move_ident_str!("with_edge");
-const WORKFLOW_DAG_WITH_DEFAULT_VALUE: &sui::MoveIdentStr =
-    sui::move_ident_str!("with_default_value");
-const WORKFLOW_DAG_WITH_ENTRY_VERTEX: &sui::MoveIdentStr =
-    sui::move_ident_str!("with_entry_vertex");
-
-const WORKFLOW_DAG_VERTEX_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("vertex_from_string");
-const WORKFLOW_DAG_INPUT_PORT_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("input_port_from_string");
-const WORKFLOW_DAG_OUTPUT_VARIANT_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("output_variant_from_string");
-const WORKFLOW_DAG_OUTPUT_PORT_FROM_STRING: &sui::MoveIdentStr =
-    sui::move_ident_str!("output_port_from_string");
-
-const WORKFLOW_DAG_VERTEX_OFF_CHAIN: &sui::MoveIdentStr = sui::move_ident_str!("vertex_off_chain");
-
-const WORKFLOW_INPUT_PORT: &sui::MoveIdentStr = sui::move_ident_str!("InputPort");
-
-// Nexus `primitives::data` module and its functions.
-const PRIMITIVES_DATA_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("data");
-const PRIMITIVES_DATA_INLINE_ONE: &sui::MoveIdentStr = sui::move_ident_str!("inline_one");
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
 /// performs validation on the DAG before publishing.
@@ -99,8 +58,8 @@ pub(crate) async fn publish_dag(
     // Create an empty DAG.
     let mut dag_arg = tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_NEW.into(),
+        workflow::Dag::NEW.module.into(),
+        workflow::Dag::NEW.name.into(),
         vec![],
         vec![],
     );
@@ -162,17 +121,12 @@ pub(crate) async fn publish_dag(
     }
 
     // Public share the DAG, locking it.
-    let dag_type = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-        address: *workflow_pkg_id,
-        module: WORKFLOW_DAG_MODULE.into(),
-        name: WORKFLOW_DAG_DAG.into(),
-        type_params: vec![],
-    }));
+    let dag_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::DAG);
 
     tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
-        SUI_TRANSFER_MODULE.into(),
-        SUI_TRANSFER_PUBLIC_SHARE_OBJECT.into(),
+        sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module.into(),
+        sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name.into(),
         vec![dag_type],
         vec![dag_arg],
     );
@@ -202,8 +156,8 @@ pub(crate) async fn publish_dag(
                 ..
             } => {
                 if object_type.address != *workflow_pkg_id
-                    || object_type.module != WORKFLOW_DAG_MODULE.into()
-                    || object_type.name != WORKFLOW_DAG_DAG.into()
+                    || object_type.module != workflow::Dag::DAG.module.into()
+                    || object_type.name != workflow::Dag::DAG.name.into()
                 {
                     return None;
                 }
@@ -237,29 +191,13 @@ fn create_entry_vertex(
     vertex: EntryVertex,
 ) -> AnyResult<sui::Argument> {
     // `name: Vertex`
-    let name = into_sui_ascii_string(tx, vertex.name.as_str())?;
-
-    let name = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![name],
-    );
+    let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
-            let tool_fqn = into_sui_ascii_string(tx, tool_fqn.to_string().as_str())?;
-
-            tx.programmable_move_call(
-                workflow_pkg_id,
-                WORKFLOW_DAG_MODULE.into(),
-                WORKFLOW_DAG_VERTEX_OFF_CHAIN.into(),
-                vec![],
-                vec![tool_fqn],
-            )
+            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
         }
         VertexKind::OnChain { .. } => {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
@@ -267,38 +205,25 @@ fn create_entry_vertex(
     };
 
     // `input_ports: VecSet<InputPort>`
-    let input_port_type = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-        address: *workflow_pkg_id,
-        module: WORKFLOW_DAG_MODULE.into(),
-        name: WORKFLOW_INPUT_PORT.into(),
-        type_params: vec![],
-    }));
+    let input_port_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT);
 
     let input_ports = tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
-        SUI_VEC_SET_MODULE.into(),
-        SUI_VEC_SET_EMPTY.into(),
+        sui_framework::VecSet::EMPTY.module.into(),
+        sui_framework::VecSet::EMPTY.name.into(),
         vec![input_port_type.clone()],
         vec![],
     );
 
     for input_port in vertex.input_ports {
         // `input_port: InputPort`
-        let input_port = into_sui_ascii_string(tx, input_port.as_str())?;
-
-        let input_port = tx.programmable_move_call(
-            workflow_pkg_id,
-            WORKFLOW_DAG_MODULE.into(),
-            WORKFLOW_DAG_INPUT_PORT_FROM_STRING.into(),
-            vec![],
-            vec![input_port],
-        );
+        let input_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, input_port)?;
 
         // `input_ports.insert(input_port)`
         tx.programmable_move_call(
             sui::FRAMEWORK_PACKAGE_ID,
-            SUI_VEC_SET_MODULE.into(),
-            SUI_VEC_SET_INSERT.into(),
+            sui_framework::VecSet::INSERT.module.into(),
+            sui_framework::VecSet::INSERT.name.into(),
             vec![input_port_type.clone()],
             vec![input_ports, input_port],
         );
@@ -307,8 +232,8 @@ fn create_entry_vertex(
     // `dag.with_entry_vertex(name, kind, input_ports)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_WITH_ENTRY_VERTEX.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX.module.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX.name.into(),
         vec![],
         vec![dag, name, kind, input_ports],
     ))
@@ -322,29 +247,13 @@ fn create_vertex(
     vertex: &Vertex,
 ) -> AnyResult<sui::Argument> {
     // `name: Vertex`
-    let name = into_sui_ascii_string(tx, vertex.name.as_str())?;
-
-    let name = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![name],
-    );
+    let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
-            let tool_fqn = into_sui_ascii_string(tx, tool_fqn.to_string().as_str())?;
-
-            tx.programmable_move_call(
-                workflow_pkg_id,
-                WORKFLOW_DAG_MODULE.into(),
-                WORKFLOW_DAG_VERTEX_OFF_CHAIN.into(),
-                vec![],
-                vec![tool_fqn],
-            )
+            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
         }
         VertexKind::OnChain { .. } => {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
@@ -354,8 +263,8 @@ fn create_vertex(
     // `dag.with_vertex(name, kind)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_WITH_VERTEX.into(),
+        workflow::Dag::WITH_VERTEX.module.into(),
+        workflow::Dag::WITH_VERTEX.name.into(),
         vec![],
         vec![dag, name, kind],
     ))
@@ -371,39 +280,15 @@ fn create_default_value(
     default_value: &DefaultValue,
 ) -> AnyResult<sui::Argument> {
     // `vertex: Vertex`
-    let vertex = into_sui_ascii_string(tx, default_value.vertex.as_str())?;
-
-    let vertex = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![vertex],
-    );
+    let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &default_value.vertex)?;
 
     // `port: InputPort`
-    let port = into_sui_ascii_string(tx, default_value.input_port.as_str())?;
-
-    let port = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_INPUT_PORT_FROM_STRING.into(),
-        vec![],
-        vec![port],
-    );
+    let port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, &default_value.input_port)?;
 
     // `value: NexusData`
     let value = match &default_value.value {
         Data::Inline { data } => {
-            let value = tx.pure(serde_json::to_string(data)?.into_bytes())?;
-
-            tx.programmable_move_call(
-                primitives_pkg_id,
-                PRIMITIVES_DATA_MODULE.into(),
-                PRIMITIVES_DATA_INLINE_ONE.into(),
-                vec![],
-                vec![value],
-            )
+            primitives::Data::nexus_data_from_json(tx, primitives_pkg_id, data)?
         }
         // Allowing to remind us that any other data storages can be added here.
         #[allow(unreachable_patterns)]
@@ -415,8 +300,8 @@ fn create_default_value(
     // `dag.with_default_value(vertex, port, value)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_WITH_DEFAULT_VALUE.into(),
+        workflow::Dag::WITH_DEFAULT_VALUE.module.into(),
+        workflow::Dag::WITH_DEFAULT_VALUE.name.into(),
         vec![],
         vec![dag, vertex, port, value],
     ))
@@ -430,65 +315,27 @@ fn create_edge(
     edge: &Edge,
 ) -> AnyResult<sui::Argument> {
     // `from_vertex: Vertex`
-    let from_vertex = into_sui_ascii_string(tx, edge.from.vertex.as_str())?;
-
-    let from_vertex = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![from_vertex],
-    );
+    let from_vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &edge.from.vertex)?;
 
     // `from_variant: OutputVariant`
-    let from_variant = into_sui_ascii_string(tx, edge.from.output_variant.as_str())?;
-
-    let from_variant = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_OUTPUT_VARIANT_FROM_STRING.into(),
-        vec![],
-        vec![from_variant],
-    );
+    let from_variant =
+        workflow::Dag::output_variant_from_str(tx, workflow_pkg_id, &edge.from.output_variant)?;
 
     // `from_port: OutputPort`
-    let from_port = into_sui_ascii_string(tx, edge.from.output_port.as_str())?;
-
-    let from_port = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_OUTPUT_PORT_FROM_STRING.into(),
-        vec![],
-        vec![from_port],
-    );
+    let from_port =
+        workflow::Dag::output_port_from_str(tx, workflow_pkg_id, &edge.from.output_port)?;
 
     // `to_vertex: Vertex`
-    let to_vertex = into_sui_ascii_string(tx, edge.to.vertex.as_str())?;
-
-    let to_vertex = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_VERTEX_FROM_STRING.into(),
-        vec![],
-        vec![to_vertex],
-    );
+    let to_vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &edge.to.vertex)?;
 
     // `to_port: InputPort`
-    let to_port = into_sui_ascii_string(tx, edge.to.input_port.as_str())?;
-
-    let to_port = tx.programmable_move_call(
-        workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_INPUT_PORT_FROM_STRING.into(),
-        vec![],
-        vec![to_port],
-    );
+    let to_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, &edge.to.input_port)?;
 
     // `dag.with_edge(frpm_vertex, from_variant, from_port, to_vertex, to_port)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        WORKFLOW_DAG_MODULE.into(),
-        WORKFLOW_DAG_WITH_EDGE.into(),
+        workflow::Dag::WITH_EDGE.module.into(),
+        workflow::Dag::WITH_EDGE.name.into(),
         vec![],
         vec![
             dag,
@@ -498,21 +345,5 @@ fn create_edge(
             to_vertex,
             to_port,
         ],
-    ))
-}
-
-/// Transform a string to Sui `std::ascii::string`.
-fn into_sui_ascii_string(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    string: &str,
-) -> AnyResult<sui::Argument> {
-    let ascii = tx.pure(string.as_bytes())?;
-
-    Ok(tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        SUI_ASCII_MODULE.into(),
-        SUI_ASCII_FROM_STRING.into(),
-        vec![],
-        vec![ascii],
     ))
 }

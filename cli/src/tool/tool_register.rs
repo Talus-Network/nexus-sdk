@@ -1,19 +1,13 @@
-use crate::{
-    command_title,
-    loading,
-    prelude::*,
-    sui::*,
-    tool::{tool_validate::*, ToolIdent, ToolMeta},
+use {
+    crate::{
+        command_title,
+        loading,
+        prelude::*,
+        sui::*,
+        tool::{tool_validate::*, ToolIdent, ToolMeta},
+    },
+    nexus_types::idents::{move_std, workflow},
 };
-
-/// Sui `std::ascii::string`
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
-
-// Nexus `tool_registry::register_off_chain_tool`
-const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
-const NEXUS_REGISTER_OFF_CHAIN_TOOL: &sui::MoveIdentStr =
-    sui::move_ident_str!("register_off_chain_tool");
 
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
@@ -178,15 +172,7 @@ fn prepare_transaction(
     })?;
 
     // `fqn: AsciiString`
-    let fqn = tx.pure(meta.fqn.to_string().as_bytes())?;
-
-    let fqn = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        SUI_ASCII_MODULE.into(),
-        SUI_ASCII_FROM_STRING.into(),
-        vec![],
-        vec![fqn],
-    );
+    let fqn = move_std::Ascii::ascii_string_from_str(&mut tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
     let url = tx.pure(meta.url.to_string().as_bytes())?;
@@ -202,11 +188,13 @@ fn prepare_transaction(
         collateral_coin.object_ref(),
     ))?;
 
-    // `workflow::tool_registry::register_off_chain_tool()`
+    // `nexus_workflow::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
         workflow_pkg_id,
-        NEXUS_TOOL_REGISTRY_MODULE.into(),
-        NEXUS_REGISTER_OFF_CHAIN_TOOL.into(),
+        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
+            .module
+            .into(),
+        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name.into(),
         vec![],
         vec![
             tool_registry,

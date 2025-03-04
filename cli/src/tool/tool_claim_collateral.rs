@@ -1,14 +1,7 @@
-use crate::{command_title, loading, prelude::*, sui::*};
-
-/// Sui `std::ascii::string`
-const SUI_ASCII_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("ascii");
-const SUI_ASCII_FROM_STRING: &sui::MoveIdentStr = sui::move_ident_str!("string");
-
-/// Nexus `tool_registry::claim_collateral_for_tool`
-const NEXUS_TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
-// TODO: The name of this fn will likely change.
-const NEXUS_CLAIM_COLLATERAL_FOR_TOOL: &sui::MoveIdentStr =
-    sui::move_ident_str!("claim_collateral_for_off_chain_tool");
+use {
+    crate::{command_title, loading, prelude::*, sui::*},
+    nexus_types::idents::{move_std, workflow},
+};
 
 /// Claim collateral for a Tool based on the provided FQN.
 pub(crate) async fn claim_collateral(
@@ -90,15 +83,7 @@ fn prepare_transaction(
     })?;
 
     // `fqn: AsciiString`
-    let fqn = tx.pure(tool_fqn.to_string().as_bytes())?;
-
-    let fqn = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        SUI_ASCII_MODULE.into(),
-        SUI_ASCII_FROM_STRING.into(),
-        vec![],
-        vec![fqn],
-    );
+    let fqn = move_std::Ascii::ascii_string_from_str(&mut tx, tool_fqn.to_string())?;
 
     // `clock: &Clock`
     let clock = tx.obj(sui::ObjectArg::SharedObject {
@@ -110,8 +95,12 @@ fn prepare_transaction(
     // `nexus::tool_registry::claim_collateral_for_tool()`
     tx.programmable_move_call(
         workflow_pkg_id,
-        NEXUS_TOOL_REGISTRY_MODULE.into(),
-        NEXUS_CLAIM_COLLATERAL_FOR_TOOL.into(),
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            .module
+            .into(),
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            .name
+            .into(),
         vec![],
         vec![tool_registry, fqn, clock],
     );

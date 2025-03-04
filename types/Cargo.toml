@@ -8,6 +8,11 @@ anyhow.workspace = true
 lazy-regex.workspace = true
 regex.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+
+# === Sui deps ===
+sui_sdk.workspace = true
+move_core_types.workspace = true
 
 [dev-dependencies]
 assert_matches = "1.5.0"

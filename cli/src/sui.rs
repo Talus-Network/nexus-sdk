@@ -1,7 +1,6 @@
 use {
     crate::{loading, prelude::*},
     reqwest::{header, Client, StatusCode},
-    sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI,
 };
 
 /// Build Sui client for the provided Sui net.
