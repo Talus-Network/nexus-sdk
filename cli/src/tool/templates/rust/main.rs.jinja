@@ -11,6 +11,7 @@ struct Input {
 }
 
 #[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 enum Output {
     Ok {
         // Add output ports for the `Ok` variant
