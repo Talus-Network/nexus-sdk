@@ -21,7 +21,7 @@ toml.workspace = true
 # === Nexus deps ===
 [dependencies.nexus-types]
 workspace = true
-features = ["tool_fqn", "sui_idents"]
+features = ["full"]
 
 [dev-dependencies]
 assert_matches = "1.5.0"

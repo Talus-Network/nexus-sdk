@@ -17,6 +17,9 @@ sui_types = ["sui_sdk", "move_core_types", "sui_keys", "shared_crypto"]
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
+# Enable all features.
+full = ["tool_fqn", "sui_types", "sui_idents"]
+
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
