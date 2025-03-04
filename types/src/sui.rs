@@ -14,6 +14,7 @@ pub use {
         identifier::IdentStr as MoveIdentStr,
         language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
     },
+    shared_crypto::intent::Intent,
     sui_sdk::{
         error::Error,
         rpc_types::{
@@ -30,7 +31,6 @@ pub use {
             SuiObjectResponseQuery as ObjectResponseQuery,
             SuiParsedData as ParsedData,
             SuiTransactionBlockEffects as TransactionBlockEffects,
-            SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
             SuiTransactionBlockResponse as TransactionBlockResponse,
             SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
         },
@@ -56,3 +56,11 @@ pub use {
         SuiClientBuilder as ClientBuilder,
     },
 };
+
+/// Sui traits re-exported so that we can `use sui::traits::*` in our code.
+pub mod traits {
+    pub use {
+        sui_keys::keystore::AccountKeystore,
+        sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
+    };
+}

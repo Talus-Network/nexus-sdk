@@ -19,7 +19,9 @@ tokio.workspace = true
 toml.workspace = true
 
 # === Nexus deps ===
-nexus-types.workspace = true
+[dependencies.nexus-types]
+workspace = true
+features = ["tool_fqn", "sui_idents"]
 
 [dev-dependencies]
 assert_matches = "1.5.0"

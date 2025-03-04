@@ -25,14 +25,3 @@ warp = "0.3.7"
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-types = { path = "types" }
-
-# === Sui deps ===
-[workspace.dependencies.sui_sdk]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
-package = "sui-sdk"
-
-[workspace.dependencies.move_core_types]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
-package = "move-core-types"

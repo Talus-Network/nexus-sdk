@@ -3,16 +3,61 @@ name = "nexus-types"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["tool_fqn"]
+
+# Tool FQN feature enables the use of the `ToolFqn` struct and `fqn!` macro.
+# This feature is enabled by default.
+tool_fqn = ["regex", "lazy-regex"]
+
+# Sui Types feature gives access to the re-exported Sui types.
+sui_types = ["sui_sdk", "move_core_types", "sui_keys", "shared_crypto"]
+
+# Sui idents feature enables the use of the `idents` module and adds sui-sdk
+# and move-core-types as dependencies.
+sui_idents = ["tool_fqn", "sui_types", "serde_json"]
+
 [dependencies]
 anyhow.workspace = true
-lazy-regex.workspace = true
-regex.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+
+# === Optional deps ===
+[dependencies.lazy-regex]
+workspace = true
+optional = true
+
+[dependencies.regex]
+workspace = true
+optional = true
+
+[dependencies.serde_json]
+workspace = true
+optional = true
 
 # === Sui deps ===
-sui_sdk.workspace = true
-move_core_types.workspace = true
+[dependencies.sui_sdk]
+git = "https://github.com/MystenLabs/sui"
+tag = "testnet-v1.38.1"
+package = "sui-sdk"
+optional = true
+
+[dependencies.move_core_types]
+git = "https://github.com/MystenLabs/sui"
+tag = "testnet-v1.38.1"
+package = "move-core-types"
+optional = true
+
+[dependencies.sui_keys]
+git = "https://github.com/MystenLabs/sui"
+tag = "testnet-v1.38.1"
+package = "sui-keys"
+optional = true
+
+[dependencies.shared_crypto]
+git = "https://github.com/mystenlabs/sui"
+tag = "testnet-v1.38.1"
+package = "shared-crypto"
+optional = true
 
 [dev-dependencies]
 assert_matches = "1.5.0"

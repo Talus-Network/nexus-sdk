@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_types::{sui::TransactionBlockEffectsAPI, *},
+    nexus_types::{sui::traits::*, *},
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
 };
