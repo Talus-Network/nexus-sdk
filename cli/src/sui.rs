@@ -365,11 +365,13 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, Nexus
             objects_handle.error();
 
             Err(NexusCliError::Any(anyhow!(
-                "{message}\n\n{workflow_command}\n{primitives_command}\n{tool_registry_command}",
-                message = "The Nexus Workflow and Primitives package IDs and Tool Registry object ID must be set. Use the following commands to update the configuration:",
-                workflow_command = "$ nexus conf --nexus.workflow-id <ID>".bold(),
-                primitives_command = "$ nexus conf --nexus.primitives-id <ID>".bold(),
-                tool_registry_command = "$ nexus conf --nexus.tool-registry-id <ID>".bold()
+                "{message}\n\n{workflow_command}\n{primitives_command}\n{tool_registry_command}\n{default_sap_command}\n{network_command}",
+                message = "References to Nexus objects are missing in the CLI configuration. Use the following commands to update it:",
+                workflow_command = "$ nexus conf --nexus.workflow-pkg-id <ID>".bold(),
+                primitives_command = "$ nexus conf --nexus.primitives-pkg-id <ID>".bold(),
+                tool_registry_command = "$ nexus conf --nexus.tool-registry-object-id <ID>".bold(),
+                default_sap_command = "$ nexus conf --nexus.default-sap-object-id <ID>".bold(),
+                network_command = "$ nexus conf --nexus.network-id <ID>".bold()
             )))
         }
     }
