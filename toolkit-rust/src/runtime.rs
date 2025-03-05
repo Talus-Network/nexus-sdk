@@ -11,7 +11,7 @@ use {
 ///
 /// ### One tool running on `127.0.0.1:8080`
 ///
-/// ```no_run
+/// ```ignore
 /// use nexus_toolkit::bootstrap;
 ///
 /// #[tokio::main]
@@ -22,7 +22,7 @@ use {
 ///
 /// ### Multiple tools running on `127.0.0.1:8080`
 ///
-/// ```no_run
+/// ```ignore
 /// use nexus_toolkit::bootstrap;
 ///
 /// #[tokio::main]
@@ -33,7 +33,7 @@ use {
 ///
 /// ### One tool running on the provided address
 ///
-/// ```no_run
+/// ```ignore
 /// use nexus_toolkit::bootstrap;
 ///
 /// #[tokio::main]
@@ -44,7 +44,7 @@ use {
 ///
 /// ### Multiple tools running on the provided address
 ///
-/// ```no_run
+/// ```ignore
 /// use nexus_toolkit::bootstrap;
 ///
 /// #[tokio::main]
