@@ -147,9 +147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_oks_valid_off_chain_tool() {
-        tokio::spawn(async move {
-            bootstrap::<DummyTool>(([127, 0, 0, 1], 8080)).await;
-        });
+        tokio::spawn(async move { bootstrap!(DummyTool) });
 
         let meta = validate_tool(ToolIdent {
             off_chain: Some(reqwest::Url::parse("http://localhost:8080").unwrap()),

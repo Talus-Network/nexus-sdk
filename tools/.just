@@ -1,0 +1,36 @@
+#
+# $ just tools
+#
+# Commands related to native Nexus Tools.
+#
+
+import '../just/_helpers.just'
+
+[private]
+_default:
+    @just --list tools
+
+# Build all native Nexus Tools
+build: _check-cargo
+    cargo +stable build --package math --release
+
+# Check all native Nexus Tools
+check: _check-cargo
+    cargo +stable check --package math
+
+# Run all tests in all native Nexus Tools
+test: _check-cargo
+    cargo +stable test --package math
+
+# Run rustfmt on all native Nexus Tools
+fmt-check: _check-cargo
+    cargo +nightly fmt --package math --check
+
+# Run clippy on all native Nexus Tools
+clippy: _check-cargo
+    cargo +stable clippy --package math
+
+# Runs the `which` native Nexus Tool. Note that some Tools might need some
+# environment variables to be set.
+run which: _check-cargo
+    cargo +stable run --package {{which}}

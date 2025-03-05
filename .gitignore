@@ -1,2 +1,5 @@
 # Build files
 target
+
+# Environment
+.env

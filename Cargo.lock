@@ -3387,6 +3387,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
+name = "math"
+version = "0.1.0"
+dependencies = [
+ "nexus-toolkit",
+ "nexus-types",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
