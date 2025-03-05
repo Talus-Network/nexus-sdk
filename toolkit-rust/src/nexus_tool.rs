@@ -30,7 +30,7 @@ use {
 ///
 /// The metadata of the tool includes the domain, name, version, input schema,
 /// and output schema.
-pub trait NexusTool: Send + Sized + 'static {
+pub trait NexusTool: Send + 'static {
     /// The input type of the tool. It must implement `JsonSchema` and
     /// `DeserializeOwned`. It is used to generate the input schema of the tool.
     /// It is also used to deserialize the input payload.
