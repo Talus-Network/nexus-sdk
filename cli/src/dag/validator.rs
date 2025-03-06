@@ -1,49 +1,34 @@
 use {
-    super::parser::Dag,
-    crate::prelude::*,
+    crate::{
+        dag::parser::{Dag, DefaultValue, FromPort, ToPort, Vertex},
+        prelude::*,
+    },
     petgraph::graph::{DiGraph, NodeIndex},
     std::collections::{HashMap, HashSet},
 };
 
 /// Validate function takes a graph and validates it based on nexus execution rules.
 ///
-/// 1. The graph has to be a directed acyclic graph.
-/// 2. There has to be at least 1 [entry vertex].
-/// 3. [Default values] can only be set on input ports and such input ports must not have any other incoming edges.
-/// 4. Graph must follow order of actions: input port N -> 1 tool 1 -> N output variant 1 -> N output port N -> 1 input port
-/// 5. Calculate maximum possible spawned concurrent tasks and then subtract the number of concurrent tasks we consume.
-///    The result must be equal to 0.
-///    - A concurrent task is spawned each time there is more than 1 output port per output variant. We need to, however,
-///      consider that a tool can only execute 1 output variant, so we take the max number of output ports per output
-///      variant per tool, and then we sum all of these up.
-///    - A concurrent task is consumed when there is more than 1 input port per tool. This does not, however, include
-///      input ports with default values.
+/// For details about these rules, refer to our wiki:
+/// <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>
 ///
 /// TODO: <https://github.com/Talus-Network/nexus-next/issues/123>
-pub(crate) fn validate(graph: &DiGraph<VertexType, ()>) -> AnyResult<()> {
-    // 1.
+pub(crate) fn validate(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
         bail!("The provided graph contains one or more cycles.");
     }
 
-    // 2.
     let entry_vertices = find_entry_vertices(graph);
 
+    // Check that we have at least one entry vertex.
     if entry_vertices.is_empty() {
         bail!("The DAG has no entry vertices.");
     }
 
-    // 3.
-    if has_edges_to_input_ports_with_defaults(graph) {
-        bail!("Input ports with default values must not have any incoming edges.");
-    }
+    // Check that the shape of the graph is correct.
+    has_correct_order_of_actions(graph)?;
 
-    // 4.
-    if !has_correct_order_of_actions(graph) {
-        bail!("Graph must follow the order of actions: input port N -> 1 tool 1 -> N output variant 1 -> N output port N -> 1 input port");
-    }
-
-    // 5.
+    // Check that no walks in the graph violate the concurrency rules.
     if !follows_concurrency_rules(graph, entry_vertices) {
         bail!("Graph does not follow concurrency rules.");
     }
@@ -51,68 +36,71 @@ pub(crate) fn validate(graph: &DiGraph<VertexType, ()>) -> AnyResult<()> {
     Ok(())
 }
 
-fn find_entry_vertices(graph: &DiGraph<VertexType, ()>) -> Vec<NodeIndex> {
+fn find_entry_vertices(graph: &DiGraph<NodeIdent, ()>) -> Vec<NodeIndex> {
     graph
         .node_indices()
         .filter(|&node| {
-            graph[node] == VertexType::InputPort
+            graph[node].kind == VertexKind::InputPort
                 && graph.neighbors_directed(node, petgraph::Incoming).count() == 0
         })
         .collect()
 }
 
-fn has_edges_to_input_ports_with_defaults(graph: &DiGraph<VertexType, ()>) -> bool {
-    graph
-        .node_indices()
-        .filter(|&node| graph[node] == VertexType::InputPortWithDefault)
-        .any(|node| graph.neighbors_directed(node, petgraph::Incoming).count() > 0)
-}
-
-fn has_correct_order_of_actions(graph: &DiGraph<VertexType, ()>) -> bool {
-    graph.node_indices().all(|node| {
+fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
+    for node in graph.node_indices() {
         let vertex = &graph[node];
         let neighbors = graph
             .neighbors_directed(node, petgraph::Direction::Outgoing)
             .collect::<Vec<NodeIndex>>();
 
         // Check if the vertex has the correct number of edges.
-        match vertex {
+        match vertex.kind {
             // Input ports must have exactly 1 outgoing edge.
-            VertexType::InputPort if neighbors.len() != 1 => return false,
-            VertexType::InputPortWithDefault if neighbors.len() != 1 => return false,
+            VertexKind::InputPort if neighbors.len() != 1 => {
+                bail!("'{vertex}' must have exactly 1 outgoing edge")
+            }
             // Tools can be the last vertex and can have any number of edges.
-            VertexType::Tool => (),
+            VertexKind::Tool => (),
             // Output variants must have at least 1 outgoing edge.
-            VertexType::OutputVariant if neighbors.is_empty() => return false,
+            VertexKind::OutputVariant if neighbors.is_empty() => {
+                bail!("'{vertex}' must have at least 1 outgoing edge")
+            }
             // Output ports must have exactly 1 outgoing edge.
-            VertexType::OutputPort if neighbors.len() != 1 => return false,
+            VertexKind::OutputPort if neighbors.len() != 1 => {
+                bail!("'{vertex}' must have exactly 1 outgoing edge")
+            }
             _ => (),
         };
 
         // Check if the edges are connected in the correct order.
-        neighbors.iter().all(|&node| {
-            let neighbor = graph[node];
+        for node in neighbors {
+            let neighbor = graph[node].clone();
 
-            match vertex {
-                VertexType::InputPort => neighbor == VertexType::Tool,
-                VertexType::InputPortWithDefault => neighbor == VertexType::Tool,
-                VertexType::Tool => neighbor == VertexType::OutputVariant,
-                VertexType::OutputVariant => neighbor == VertexType::OutputPort,
-                VertexType::OutputPort => neighbor == VertexType::InputPort,
+            let is_ok = match vertex.kind {
+                VertexKind::InputPort => neighbor.kind == VertexKind::Tool,
+                VertexKind::Tool => neighbor.kind == VertexKind::OutputVariant,
+                VertexKind::OutputVariant => neighbor.kind == VertexKind::OutputPort,
+                VertexKind::OutputPort => neighbor.kind == VertexKind::InputPort,
+            };
+
+            if !is_ok {
+                bail!("The edge from '{vertex}' to '{neighbor}' is invalid.");
             }
-        })
-    })
+        }
+    }
+
+    Ok(())
 }
 
 fn follows_concurrency_rules(
-    graph: &DiGraph<VertexType, ()>,
+    graph: &DiGraph<NodeIdent, ()>,
     entry_vertices: Vec<NodeIndex>,
 ) -> bool {
     // For each merge point on an input port, check that the net concurrency leading into that point is 0.
     graph
         .node_indices()
         .filter(|&node| {
-            graph[node] == VertexType::InputPort
+            graph[node].kind == VertexKind::InputPort
                 && graph.neighbors_directed(node, petgraph::Incoming).count() > 1
         })
         .all(|node| {
@@ -133,7 +121,7 @@ fn follows_concurrency_rules(
 }
 
 fn check_concurrency_in_subgraph(
-    graph: &DiGraph<VertexType, ()>,
+    graph: &DiGraph<NodeIdent, ()>,
     nodes: &HashSet<NodeIndex>,
     entry_vertices_count: usize,
 ) -> bool {
@@ -141,8 +129,8 @@ fn check_concurrency_in_subgraph(
     let initial_concurrency = entry_vertices_count as isize - 1;
 
     let net_concurrency = nodes.iter().fold(initial_concurrency, |acc, &node| {
-        match graph[node] {
-            VertexType::Tool => {
+        match graph[node].kind {
+            VertexKind::Tool => {
                 // Calculate the maximum number of concurrent tasks that can be spawned by this tool.
                 let max_tool_concurrency = graph
                     .neighbors_directed(node, petgraph::Outgoing)
@@ -164,7 +152,7 @@ fn check_concurrency_in_subgraph(
                 acc + max_tool_concurrency + 1
             }
             // Input ports with no default values reduce concurrency.
-            VertexType::InputPort => acc - 1,
+            VertexKind::InputPort => acc - 1,
             _ => acc,
         }
     });
@@ -174,7 +162,7 @@ fn check_concurrency_in_subgraph(
 }
 
 fn find_all_nodes_in_paths_to(
-    graph: &DiGraph<VertexType, ()>,
+    graph: &DiGraph<NodeIdent, ()>,
     end: NodeIndex,
 ) -> HashSet<NodeIndex> {
     let mut visited = HashSet::new();
@@ -198,106 +186,194 @@ fn find_all_nodes_in_paths_to(
     visited
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) enum VertexType {
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+enum VertexKind {
     InputPort,
-    InputPortWithDefault,
     Tool,
     OutputVariant,
     OutputPort,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct NodeIdent {
+    kind: VertexKind,
+    vertex: (Option<String>, Option<String>, Option<String>),
+}
+
+impl From<FromPort> for (NodeIdent, NodeIdent, NodeIdent) {
+    fn from(from_port: FromPort) -> Self {
+        let vertex = Some(from_port.vertex);
+        let variant = Some(from_port.output_variant);
+        let port = Some(from_port.output_port);
+
+        let tool = (vertex.clone(), None, None);
+        let output_variant = (vertex.clone(), variant.clone(), None);
+        let output_port = (vertex, variant, port);
+
+        (
+            NodeIdent {
+                kind: VertexKind::Tool,
+                vertex: tool,
+            },
+            NodeIdent {
+                kind: VertexKind::OutputVariant,
+                vertex: output_variant,
+            },
+            NodeIdent {
+                kind: VertexKind::OutputPort,
+                vertex: output_port,
+            },
+        )
+    }
+}
+
+impl From<ToPort> for (NodeIdent, NodeIdent) {
+    fn from(to_port: ToPort) -> Self {
+        let vertex = Some(to_port.vertex);
+
+        let tool = (vertex.clone(), None, None);
+        let input_port = (vertex, None, Some(to_port.input_port));
+
+        (
+            NodeIdent {
+                kind: VertexKind::Tool,
+                vertex: tool,
+            },
+            NodeIdent {
+                kind: VertexKind::InputPort,
+                vertex: input_port,
+            },
+        )
+    }
+}
+
+impl From<Vertex> for NodeIdent {
+    fn from(vertex: Vertex) -> Self {
+        let vertex = (Some(vertex.name), None, None);
+
+        Self {
+            kind: VertexKind::Tool,
+            vertex,
+        }
+    }
+}
+
+impl From<(Option<String>, Option<String>, Option<String>)> for NodeIdent {
+    fn from(vertex: (Option<String>, Option<String>, Option<String>)) -> Self {
+        match vertex {
+            (Some(_), None, None) => Self {
+                kind: VertexKind::Tool,
+                vertex,
+            },
+            (Some(_), Some(_), None) => Self {
+                kind: VertexKind::OutputVariant,
+                vertex,
+            },
+            (Some(_), Some(_), Some(_)) => Self {
+                kind: VertexKind::OutputPort,
+                vertex,
+            },
+            (Some(_), None, Some(_)) => Self {
+                kind: VertexKind::InputPort,
+                vertex,
+            },
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<DefaultValue> for NodeIdent {
+    fn from(default_value: DefaultValue) -> Self {
+        let vertex = (
+            Some(default_value.vertex),
+            None,
+            Some(default_value.input_port),
+        );
+
+        Self {
+            kind: VertexKind::InputPort,
+            vertex,
+        }
+    }
+}
+
+impl std::fmt::Display for NodeIdent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.vertex {
+            (Some(vertex), None, None) => write!(f, "Vertex: {}", vertex),
+            (Some(vertex), Some(variant), None) => {
+                write!(f, "Output variant: {}.{}", vertex, variant)
+            }
+            (Some(vertex), Some(variant), Some(port)) => {
+                write!(f, "Output port: {}.{}.{}", vertex, variant, port)
+            }
+            (Some(vertex), None, Some(port)) => write!(f, "Input port: {}.{}", vertex, port),
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// [Dag] to [petgraph::graph::DiGraph].
-impl TryFrom<Dag> for DiGraph<VertexType, ()> {
+impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
     type Error = AnyError;
 
     fn try_from(dag: Dag) -> AnyResult<Self> {
-        let mut graph = DiGraph::<VertexType, ()>::new();
-
-        // Find default values for input ports. This way we differentiate
-        // between input ports with default values and input ports without
-        // default values.
-        let mut default_values = Vec::new();
-        let dag_default_values = dag.default_values.unwrap_or_default();
-
-        for default_value in &dag_default_values {
-            let input_port_node = [
-                default_value.vertex.as_str(),
-                "",
-                default_value.input_port.as_str(),
-            ];
-
-            default_values.push(input_port_node);
-        }
+        let mut graph = DiGraph::<NodeIdent, ()>::new();
 
         // Edges are always between an output port and an input port. We also
         // need to create edges between the tool, the output variant and the
         // output port if they don't exist yet.
-        let mut nodes_named: HashMap<[&str; 3], NodeIndex> = HashMap::new();
+        let mut node_idents: HashMap<NodeIdent, NodeIndex> = HashMap::new();
 
-        for edge in &dag.edges {
+        for edge in dag.edges {
             // Create unique keys for each node in this edge.
-            let origin_vertex = [edge.from.vertex.as_str(), "", ""];
-            let output_variant = [
-                edge.from.vertex.as_str(),
-                edge.from.output_variant.as_str(),
-                "",
-            ];
-            let output_port = [
-                edge.from.vertex.as_str(),
-                edge.from.output_variant.as_str(),
-                edge.from.output_port.as_str(),
-            ];
-            let destination_vertex = [edge.to.vertex.as_str(), "", ""];
-            let input_port = [edge.to.vertex.as_str(), "", edge.to.input_port.as_str()];
+            let (origin_vertex, output_variant, output_port) = edge.from.into();
+            let (destination_vertex, input_port) = edge.to.into();
 
             // Create nodes if they don't exist yet.
-            let origin_node = nodes_named.get(&origin_vertex).copied().unwrap_or_else(|| {
-                let node = graph.add_node(VertexType::Tool);
+            let origin_node = node_idents.get(&origin_vertex).copied().unwrap_or_else(|| {
+                let node = graph.add_node(origin_vertex.clone());
 
-                nodes_named.insert(origin_vertex, node);
+                node_idents.insert(origin_vertex, node);
 
                 node
             });
 
             let output_variant_node =
-                nodes_named
+                node_idents
                     .get(&output_variant)
                     .copied()
                     .unwrap_or_else(|| {
-                        let node = graph.add_node(VertexType::OutputVariant);
+                        let node = graph.add_node(output_variant.clone());
 
-                        nodes_named.insert(output_variant, node);
+                        node_idents.insert(output_variant, node);
 
                         node
                     });
 
-            let output_port_node = nodes_named.get(&output_port).copied().unwrap_or_else(|| {
-                let node = graph.add_node(VertexType::OutputPort);
+            let output_port_node = node_idents.get(&output_port).copied().unwrap_or_else(|| {
+                let node = graph.add_node(output_port.clone());
 
-                nodes_named.insert(output_port, node);
+                node_idents.insert(output_port, node);
 
                 node
             });
 
-            let destination_node = nodes_named
+            let destination_node = node_idents
                 .get(&destination_vertex)
                 .copied()
                 .unwrap_or_else(|| {
-                    let node = graph.add_node(VertexType::Tool);
+                    let node = graph.add_node(destination_vertex.clone());
 
-                    nodes_named.insert(destination_vertex, node);
+                    node_idents.insert(destination_vertex, node);
 
                     node
                 });
 
-            let input_port_node = nodes_named.get(&input_port).copied().unwrap_or_else(|| {
-                let node = graph.add_node(match default_values.contains(&input_port) {
-                    true => VertexType::InputPortWithDefault,
-                    false => VertexType::InputPort,
-                });
+            let input_port_node = node_idents.get(&input_port).copied().unwrap_or_else(|| {
+                let node = graph.add_node(input_port.clone());
 
-                nodes_named.insert(input_port, node);
+                node_idents.insert(input_port, node);
 
                 node
             });
@@ -324,27 +400,48 @@ impl TryFrom<Dag> for DiGraph<VertexType, ()> {
         for entry_vertex in &dag.entry_vertices {
             // Note that we don't need to insert the nodes as they must exist
             // at this point.
-            let entry_node = nodes_named
-                .get(&[entry_vertex.name.as_str(), "", ""])
+            let entry_vertex_ident = (Some(entry_vertex.name.clone()), None, None).into();
+
+            let entry_node = node_idents
+                .get(&entry_vertex_ident)
                 .copied()
                 .ok_or_else(|| {
-                    anyhow!(
-                        "Entry vertex '{}' does not exist in the graph.",
-                        entry_vertex.name
-                    )
+                    anyhow!("Entry '{entry_vertex_ident}' does not exist in the graph.",)
                 })?;
 
             for input_port in &entry_vertex.input_ports {
-                let input_port = [entry_vertex.name.as_str(), "", input_port.as_str()];
+                let input_port: NodeIdent = (
+                    Some(entry_vertex.name.clone()),
+                    None,
+                    Some(input_port.clone()),
+                )
+                    .into();
 
                 // Opposite of the tool node, the input ports must not exist
                 // at this time.
-                let input_port_node = graph.add_node(match default_values.contains(&input_port) {
-                    true => VertexType::InputPortWithDefault,
-                    false => VertexType::InputPort,
-                });
+                let input_port_node = graph.add_node(input_port.clone());
+
+                if node_idents
+                    .insert(input_port.clone(), input_port_node)
+                    .is_some()
+                {
+                    bail!("Entry '{input_port}' is specified multiple times.",);
+                }
 
                 graph.add_edge(input_port_node, entry_node, ());
+            }
+        }
+
+        // Check that none of the default value input ports are in the graph.
+        let default_values = dag.default_values.unwrap_or_default();
+
+        for default_value in default_values {
+            let default_value = default_value.into();
+
+            if node_idents.contains_key(&default_value) {
+                bail!(
+                    "'{default_value}' is already present in the graph or has an edge leading into it and therefore cannot have a default value.",
+                );
             }
         }
 
