@@ -23,7 +23,7 @@ use {
 pub(crate) fn validate(graph: &DiGraph<VertexType, ()>) -> AnyResult<()> {
     // 1.
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
-        bail!("The provided graph is not a DAG.");
+        bail!("The provided graph contains one or more cycles.");
     }
 
     // 2.
