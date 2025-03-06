@@ -18,6 +18,8 @@ use {
 ///      variant per tool, and then we sum all of these up.
 ///    - A concurrent task is consumed when there is more than 1 input port per tool. This does not, however, include
 ///      input ports with default values.
+///
+/// TODO: <https://github.com/Talus-Network/nexus-next/issues/123>
 pub(crate) fn validate(graph: &DiGraph<VertexType, ()>) -> AnyResult<()> {
     // 1.
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
