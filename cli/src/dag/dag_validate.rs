@@ -48,7 +48,9 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         Err(e) => {
             validation_handle.error();
 
-            return Err(NexusCliError::Any(e));
+            return Err(NexusCliError::Any(anyhow!(
+                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+            )));
         }
     };
 
@@ -62,7 +64,9 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         Err(e) => {
             validation_handle.error();
 
-            Err(NexusCliError::Any(e))
+            return Err(NexusCliError::Any(anyhow!(
+                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+            )));
         }
     }
 }
