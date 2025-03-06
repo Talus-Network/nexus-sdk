@@ -9,10 +9,6 @@ use {
     reqwest::Client,
     serde::Deserialize,
 };
-// use {
-//     chrono::Utc,
-//     chrono_tz::Tz,
-// }
 
 /// The URL of the OpenAI status API.
 const HEALTH_URL: &str = "https://status.openai.com/api/v2/status.json";
@@ -70,14 +66,6 @@ pub async fn check_api_health() -> AnyResult<StatusCode> {
 
     // Send GET request and parse JSON response
     let response: ApiResponse = client.get(HEALTH_URL).send().await?.json().await?;
-
-    // TODO: Maybe we should communicate the update time in the response.
-
-    // Convert updated_at to Utc and then to the specified time zone
-    // let utc_time = response.page.updated_at.with_timezone(&Utc);
-    // let time_zone: Tz = response.page.time_zone.parse().unwrap_or(chrono_tz::UTC);
-    // let local_time = utc_time.with_timezone(&time_zone);
-
     if response.status.indicator != HEALTH_OK {
         return Ok(StatusCode::SERVICE_UNAVAILABLE);
     }
