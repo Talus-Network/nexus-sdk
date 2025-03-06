@@ -96,6 +96,7 @@ impl TryFrom<String> for MessageType {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Input {
+    // TODO: Add encryption to the API key.
     /// The OpenAI API key.
     pub api_key: String,
     /// The model to use for chat completion.
@@ -239,20 +240,21 @@ impl NexusTool for OpenaiChatCompletion {
             }
         };
 
-        Ok(Output::Ok {
-            choices: response
-                .choices
-                .into_iter()
-                .map(|resp| Response {
-                    role: resp.message.role.to_string(),
-                    message: resp
-                        .message
-                        .content
-                        .expect("Invalid message in API response")
-                        .to_string(),
-                })
-                .collect(),
-        })
+        let mut choices = Vec::with_capacity(response.choices.len());
+        for choice in response.choices.into_iter() {
+            let role = choice.message.role.to_string();
+            let message = if let Some(msg) = choice.message.content {
+                msg.to_string()
+            } else {
+                return Ok(Output::Err {
+                    reason: "Invalid message in API response".to_string(),
+                });
+            };
+
+            choices.push(Response { role, message });
+        }
+
+        Ok(Output::Ok { choices })
     }
 }
 
