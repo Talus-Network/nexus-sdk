@@ -126,12 +126,8 @@ pub struct Response {
 /// including the list of response choices.
 #[derive(Serialize, JsonSchema)]
 enum Output {
-    /// The API call was successful, and the response contains a list of choices.
     Ok { choices: Vec<Response> },
-    /// An error occurred during the creation of the messages.
-    ErrInvalidMessage(String),
-    /// An unexpected error occurred.
-    ErrUnexpected(String),
+    Err { reason: String },
 }
 
 /// The OpenAI Chat Completion tool.
@@ -176,8 +172,7 @@ impl NexusTool for OpenaiChatCompletion {
     /// A `Result` containing the output of the tool. Possible output variants are:
     ///
     /// *   `Ok(Output::Ok { choices: Vec<Response> })`: The API call was successful, and the response contains a list of choices.
-    /// *   `Ok(Output::ErrInvalidMessage(String))`: An error occurred during the creation of the messages. The `String` contains a description of the error.
-    /// *   `Ok(Output::ErrUnexpected(String))`: An unexpected error occurred. The `String` contains a description of the error.
+    /// *   `Ok(Output::Err { reason: String })`: An error occurred. The `reason` contains a description of the error.
     async fn invoke(request: Self::Input) -> AnyResult<Self::Output> {
         let cfg = OpenAIConfig::new().with_api_key(request.api_key);
         let client = Client::with_config(cfg);
@@ -219,7 +214,7 @@ impl NexusTool for OpenaiChatCompletion {
 
         let messages = match messages {
             Ok(messages) => messages,
-            Err(err) => return Ok(Output::ErrInvalidMessage(err)),
+            Err(err) => return Ok(Output::Err { reason: err }),
         };
 
         let request = CreateChatCompletionRequestArgs::default()
@@ -229,10 +224,9 @@ impl NexusTool for OpenaiChatCompletion {
             .build();
 
         if request.is_err() {
-            return Ok(Output::ErrUnexpected(format!(
-                "Error building request: {}",
-                request.err().unwrap()
-            )));
+            return Ok(Output::Err {
+                reason: format!("Error building request: {}", request.err().unwrap()),
+            });
         }
         let request = request.unwrap();
 
