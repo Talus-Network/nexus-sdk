@@ -230,7 +230,14 @@ impl NexusTool for OpenaiChatCompletion {
         }
         let request = request.unwrap();
 
-        let response = client.chat().create(request).await?;
+        let response = match client.chat().create(request).await {
+            Ok(response) => response,
+            Err(err) => {
+                return Ok(Output::Err {
+                    reason: format!("Error calling OpenAI API: {}", err),
+                })
+            }
+        };
 
         Ok(Output::Ok {
             choices: response
