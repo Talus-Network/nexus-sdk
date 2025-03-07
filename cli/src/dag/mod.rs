@@ -41,13 +41,19 @@ pub(crate) enum DagCommand {
     )]
     Execute {
         /// The object ID of the Nexus DAG.
-        #[arg(long = "dag-id", short = 'd', help = "The object ID of the Nexus DAG")]
+        #[arg(
+            long = "dag-id",
+            short = 'd',
+            help = "The object ID of the Nexus DAG",
+            value_name = "OBJECT_ID"
+        )]
         dag_id: sui::ObjectID,
         /// The entry vertex to invoke.
         #[arg(
             long = "entry-vertex",
             short = 'e',
-            help = "The entry vertex to invoke"
+            help = "The entry vertex to invoke",
+            value_name = "NAME"
         )]
         entry_vertex: String,
         /// The initial input data for the DAG.
@@ -55,7 +61,8 @@ pub(crate) enum DagCommand {
             long = "input-json",
             short = 'i',
             help = "The initial input data for the DAG as a JSON object.",
-            value_parser = ValueParser::from(parse_json_string)
+            value_parser = ValueParser::from(parse_json_string),
+            value_name = "DATA"
         )]
         input_json: serde_json::Value,
         #[command(flatten)]

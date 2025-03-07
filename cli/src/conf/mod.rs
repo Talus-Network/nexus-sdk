@@ -19,31 +19,31 @@ pub(crate) struct ConfCommand {
     #[arg(
         long = "nexus.workflow-pkg-id",
         help = "Set the Nexus Workflow package ID",
-        value_name = "ID"
+        value_name = "PKG_ID"
     )]
     nexus_workflow_pkg_id: Option<sui::ObjectID>,
     #[arg(
         long = "nexus.primitives-pkg-id",
         help = "Set the Nexus Primitives package ID",
-        value_name = "ID"
+        value_name = "PKG_ID"
     )]
     nexus_primitives_pkg_id: Option<sui::ObjectID>,
     #[arg(
         long = "nexus.tool-registry-object-id",
         help = "Set the Nexus Tool Registry object ID",
-        value_name = "ID"
+        value_name = "OBJECT_ID"
     )]
     nexus_tool_registry_object_id: Option<sui::ObjectID>,
     #[arg(
         long = "nexus.default-sap-object-id",
         help = "Set the Nexus Default SAP object ID",
-        value_name = "ID"
+        value_name = "OBJECT_ID"
     )]
     nexus_default_sap_object_id: Option<sui::ObjectID>,
     #[arg(
         long = "nexus.network_id",
         help = "Set the Nexus Network ID",
-        value_name = "ID"
+        value_name = "OBJECT_ID"
     )]
     nexus_network_id: Option<sui::ObjectID>,
     /// Hidden argument used for testing to set the path of the configuration
