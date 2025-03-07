@@ -24,7 +24,7 @@ pub(crate) struct Dag {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
-pub(crate) enum NodeIdent {
+pub(crate) enum VertexKind {
     OffChain {
         tool_fqn: ToolFqn,
     },
@@ -35,13 +35,13 @@ pub(crate) enum NodeIdent {
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Vertex {
-    pub(crate) kind: NodeIdent,
+    pub(crate) kind: VertexKind,
     pub(crate) name: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct EntryVertex {
-    pub(crate) kind: NodeIdent,
+    pub(crate) kind: VertexKind,
     pub(crate) name: String,
     pub(crate) input_ports: Vec<String>,
 }
