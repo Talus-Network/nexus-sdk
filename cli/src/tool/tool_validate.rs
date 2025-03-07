@@ -85,20 +85,6 @@ async fn validate_off_chain_tool(mut url: reqwest::Url) -> AnyResult<ToolMeta, N
         )));
     }
 
-    // Check that URL is present and matches the provided.
-    //
-    // TODO: check that URL is reachable publicly somehow.
-    if meta.url != url.clone() {
-        meta_handle.error();
-
-        return Err(NexusCliError::Any(anyhow!(
-            "The tool meta does not contain a 'url' key or it does not match the provided URL.\n\
-            Found: {}\nExpected: {}",
-            meta.url,
-            url.as_str()
-        )));
-    }
-
     meta_handle.success();
 
     Ok(meta)
@@ -133,10 +119,6 @@ mod tests {
 
         fn fqn() -> ToolFqn {
             fqn!("xyz.dummy.tool@1")
-        }
-
-        fn url() -> reqwest::Url {
-            reqwest::Url::parse("http://localhost:8080").unwrap()
         }
 
         async fn health() -> AnyResult<StatusCode> {

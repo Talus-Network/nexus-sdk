@@ -45,8 +45,6 @@ pub trait NexusTool: Send + 'static {
     type Output: JsonSchema + Serialize;
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
-    /// Returns the URL that the Tool is hosten on.
-    fn url() -> Url;
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
     ///
@@ -59,18 +57,24 @@ pub trait NexusTool: Send + 'static {
     ///
     /// It is used to generate the `/health` endpoint.
     fn health() -> impl Future<Output = AnyResult<StatusCode>> + Send;
+    /// Returns the path on a webserver that the tool resides on. This defaults
+    /// to '/'. But can be overriden by the implementor. Tool paths **must**
+    /// include a trailing slash.
+    fn path() -> &'static str {
+        ""
+    }
     /// Returns the metadata of the tool. It includes the domain, name, version,
     /// input schema, and output schema.
     ///
     /// It is used to generate the `/meta` endpoint.
-    fn meta() -> Value {
+    fn meta(url: Url) -> Value {
         let input_schema = schemars::schema_for!(Self::Input);
         let output_schema = schemars::schema_for!(Self::Output);
 
         json!(
             {
                 "fqn": Self::fqn(),
-                "url": Self::url().to_string(),
+                "url": url.to_string(),
                 "input_schema": input_schema,
                 "output_schema": output_schema,
             }

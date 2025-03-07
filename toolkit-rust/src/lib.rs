@@ -12,7 +12,6 @@ mod runtime;
 pub use {
     crate::nexus_tool::NexusTool,
     anyhow::Result as AnyResult,
-    reqwest::Url,
     runtime::routes_for_,
     warp::{self, http::StatusCode},
 };

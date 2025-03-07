@@ -52,11 +52,8 @@ impl NexusTool for I64Cmp {
         fqn!("xyz.taluslabs.math.i64.cmp@1")
     }
 
-    fn url() -> Url {
-        let base = std::env::var("BASE_URL").unwrap();
-        let url = format!("{base}/i64/cmp/");
-
-        Url::parse(&url).unwrap()
+    fn path() -> &'static str {
+        "/i64/cmp"
     }
 
     async fn health() -> AnyResult<StatusCode> {

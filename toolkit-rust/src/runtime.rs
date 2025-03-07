@@ -1,7 +1,14 @@
 use {
     crate::NexusTool,
+    reqwest::Url,
     serde_json::json,
-    warp::{http::StatusCode, Filter, Rejection, Reply},
+    warp::{
+        filters::{host::Authority, path::FullPath},
+        http::StatusCode,
+        Filter,
+        Rejection,
+        Reply,
+    },
 };
 
 /// Macro to bootstrap the runtime for a set of tools. The macro generates the
@@ -100,14 +107,8 @@ pub fn routes_for_<T: NexusTool>() -> impl Filter<Extract = impl Reply, Error = 
         panic!("The output type must be an enum to generate the correct output schema.");
     }
 
-    // Force trailing slash in the base URL.
-    if !T::url().path().ends_with('/') {
-        panic!("Tool URL must include a trailing slash.");
-    }
-
-    let base_path = T::url()
-        .path_segments()
-        .expect("Tool URL must be a valid HTTP URL.")
+    let base_path = T::path()
+        .split("/")
         .filter(|s| !s.is_empty())
         .fold(warp::any().boxed(), |filter, segment| {
             filter.and(warp::path(segment.to_string())).boxed()
@@ -122,7 +123,9 @@ pub fn routes_for_<T: NexusTool>() -> impl Filter<Extract = impl Reply, Error = 
     let meta_route = warp::get()
         .and(base_path.clone())
         .and(warp::path("meta"))
-        .map(move || warp::reply::json(&T::meta()));
+        .and(warp::filters::host::optional())
+        .and(warp::path::full())
+        .and_then(meta_handler::<T>);
 
     // Invoke path is tool base URL path and `/invoke`.
     let invoke_route = warp::post()
@@ -140,6 +143,74 @@ async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     Ok(warp::reply::with_status("", status))
+}
+
+async fn meta_handler<T: NexusTool>(
+    host: Option<Authority>,
+    path: FullPath,
+) -> Result<impl Reply, Rejection> {
+    // If the host is malformed or not present, return a 400.
+    let host = match host {
+        Some(host) => host,
+        None => {
+            let reply = json!({
+                "error": "host_header_required",
+                "details": "Host header is required.",
+            });
+
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&reply),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    // Stripping 'meta' suffix from the path will give us the base path.
+    let base_path = match path.as_str().strip_suffix("meta") {
+        Some(base_path) => base_path,
+        None => {
+            // This is probably never reached as we create the endpoints
+            // ourselves.
+            let reply = json!({
+                "error": "invalid_path",
+                "details": "Meta path must end with '/meta'.",
+            });
+
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&reply),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    // Assume `http` for localhost, otherwise use `https`.
+    //
+    // TODO: This could probably be improved.
+    let scheme = if host.host() == "localhost" {
+        "http"
+    } else {
+        "https"
+    };
+
+    let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
+        Ok(url) => url,
+        Err(e) => {
+            let reply = json!({
+                "error": "url_parsing_error",
+                "details": e.to_string(),
+            });
+
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&reply),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&T::meta(url)),
+        StatusCode::OK,
+    ))
 }
 
 async fn invoke_handler<T: NexusTool>(input: serde_json::Value) -> Result<impl Reply, Rejection> {

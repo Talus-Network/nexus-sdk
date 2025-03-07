@@ -10,7 +10,7 @@
 //! ## Output Variants
 //!
 //! - `ok`: The addition was successful.
-//! - `cerr`: The addition failed due to overflow.
+//! - `err`: The addition failed due to overflow.
 //!
 //! ## Output Ports
 //!
@@ -52,11 +52,8 @@ impl NexusTool for I64Add {
         fqn!("xyz.taluslabs.math.i64.add@1")
     }
 
-    fn url() -> Url {
-        let base = std::env::var("BASE_URL").unwrap();
-        let url = format!("{base}/i64/add/");
-
-        Url::parse(&url).unwrap()
+    fn path() -> &'static str {
+        "/i64/add"
     }
 
     async fn health() -> AnyResult<StatusCode> {

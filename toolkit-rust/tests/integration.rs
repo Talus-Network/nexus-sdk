@@ -29,10 +29,6 @@ impl NexusTool for DummyTool {
         fqn!("xyz.dummy.tool@1")
     }
 
-    fn url() -> Url {
-        Url::parse("http://localhost:8080").unwrap()
-    }
-
     async fn health() -> AnyResult<StatusCode> {
         Ok(StatusCode::OK)
     }
@@ -54,8 +50,8 @@ impl NexusTool for Dummy500Tool {
         fqn!("xyz.dummy.tool@1")
     }
 
-    fn url() -> Url {
-        Url::parse("http://localhost:8080/path").unwrap()
+    fn path() -> &'static str {
+        "path"
     }
 
     async fn health() -> AnyResult<StatusCode> {

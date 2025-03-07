@@ -52,11 +52,8 @@ impl NexusTool for I64Mul {
         fqn!("xyz.taluslabs.math.i64.mul@1")
     }
 
-    fn url() -> Url {
-        let base = std::env::var("BASE_URL").unwrap();
-        let url = format!("{base}/i64/mul/");
-
-        Url::parse(&url).unwrap()
+    fn path() -> &'static str {
+        "/i64/mul"
     }
 
     async fn health() -> AnyResult<StatusCode> {

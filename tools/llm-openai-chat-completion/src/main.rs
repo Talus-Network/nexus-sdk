@@ -147,11 +147,6 @@ impl NexusTool for OpenaiChatCompletion {
         fqn!("xyz.taluslabs.llm.openai.chat-completion@1")
     }
 
-    /// Returns the URL of the tool.
-    fn url() -> Url {
-        Url::parse("http://localhost:8080").unwrap()
-    }
-
     /// Performs a health check on the tool's dependencies.
     ///
     /// # Returns
