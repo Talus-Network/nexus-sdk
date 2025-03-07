@@ -2,10 +2,7 @@ use {
     super::parser::DEFAULT_ENTRY_GROUP,
     crate::{dag::parser::Dag, prelude::*},
     petgraph::graph::{DiGraph, NodeIndex},
-    std::{
-        collections::{HashMap, HashSet},
-        isize,
-    },
+    std::collections::{HashMap, HashSet},
 };
 
 /// Validate function takes a graph and validates it based on nexus execution
@@ -443,9 +440,8 @@ impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
         }
 
         // Ensure vertex is not specified as a vertex and an entry vertex.
-        match all_vertices.intersection(&all_entry_vertices).next() {
-            Some(vertex) => bail!("{vertex} is both a vertex and an entry vertex."),
-            None => (),
+        if let Some(vertex) = all_vertices.intersection(&all_entry_vertices).next() {
+            bail!("{vertex} is both a vertex and an entry vertex.")
         }
 
         // Check that none of the default value input ports are in the graph.
