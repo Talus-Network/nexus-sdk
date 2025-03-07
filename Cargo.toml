@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["toolkit-rust", "cli", "types", "tools/math"]
+members = ["toolkit-rust", "cli", "types", "tools/math", "tools/llm-openai-chat-completion"]
 
 [workspace.dependencies]
 anyhow = "1.0.95"
+chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.29", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"
@@ -17,6 +18,8 @@ reqwest = "0.12.12"
 schemars = "1.0.0-alpha.17"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
+strum = "0.27"
+strum_macros = "0.27"
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
 toml = "0.8.20"

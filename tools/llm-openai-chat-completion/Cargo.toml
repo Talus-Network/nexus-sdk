@@ -1,0 +1,19 @@
+[package]
+name = "llm-openai-chat-completion"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-openai = "0.27"
+chrono.workspace = true
+reqwest.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+tokio.workspace = true
+
+# === Nexus deps ===
+nexus-toolkit.workspace = true
+nexus-types.workspace = true

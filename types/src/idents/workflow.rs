@@ -125,7 +125,7 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("vertex_from_string"),
     };
-    /// Create a new off-chain VertexKind from an ASCII string.
+    /// Create a new off-chain NodeIdent from an ASCII string.
     ///
     /// `nexus_workflow::dag::vertex_off_chain`
     pub const VERTEX_OFF_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -231,7 +231,7 @@ impl Dag {
         ))
     }
 
-    /// Create a new off-chain VertexKind from a string.
+    /// Create a new off-chain NodeIdent from a string.
     pub fn off_chain_vertex_kind_from_fqn(
         tx: &mut sui::ProgrammableTransactionBuilder,
         workflow_pkg_id: sui::ObjectID,

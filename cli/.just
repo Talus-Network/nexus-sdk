@@ -30,9 +30,9 @@ fmt-check: _check-cargo
 clippy: _check-cargo
     cargo +stable clippy --package nexus-cli
 
-# Use the CLI locally for development purposes
-# `$ just cli run tool new --name my-tool --template rust`
-#
 # When released: `just cli run` == `nexus`
+#
+# Use the CLI locally for development purposes
+[positional-arguments]
 run *args: _check-cargo
-    cargo +stable run --package nexus-cli -- {{args}}
+    cargo +stable run --package nexus-cli -- "$@"

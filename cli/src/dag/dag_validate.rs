@@ -3,7 +3,7 @@ use {
         command_title,
         dag::{
             parser::Dag,
-            validator::{validate, VertexType},
+            validator::{validate, NodeIdent},
         },
         loading,
         prelude::*,
@@ -43,12 +43,14 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
     let validation_handle = loading!("Validating Nexus DAG...");
 
     // Parse the struct into a [petgraph::graph::DiGraph].
-    let graph: DiGraph<VertexType, ()> = match dag.clone().try_into() {
+    let graph: DiGraph<NodeIdent, ()> = match dag.clone().try_into() {
         Ok(graph) => graph,
         Err(e) => {
             validation_handle.error();
 
-            return Err(NexusCliError::Any(e));
+            return Err(NexusCliError::Any(anyhow!(
+                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+            )));
         }
     };
 
@@ -62,7 +64,9 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         Err(e) => {
             validation_handle.error();
 
-            Err(NexusCliError::Any(e))
+            Err(NexusCliError::Any(anyhow!(
+                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+            )))
         }
     }
 }
@@ -195,13 +199,13 @@ mod tests {
 
     #[test]
     fn test_cyclic_invalid() {
-        let conf: Dag = include_str!("_dags/cyclic_invalid.json")
+        let conf: Dag = include_str!("_dags/undefined_connections_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("The provided graph is not a DAG."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' does not exist in the graph."));
     }
 
     #[test]
@@ -221,8 +225,30 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<VertexType, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry vertex 'a' does not exist in the graph."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' does not exist in the graph."));
+    }
+
+    #[test]
+    fn test_def_val_on_input_port_invalid() {
+        let conf: Dag = include_str!("_dags/has_def_on_input_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is already present in the graph or has an edge leading into it and therefore cannot have a default value."));
+    }
+
+    #[test]
+    fn test_multiple_same_entry_ports_invalid() {
+        let conf: Dag = include_str!("_dags/has_multiple_same_entry_inputs_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is specified multiple times."));
     }
 }
