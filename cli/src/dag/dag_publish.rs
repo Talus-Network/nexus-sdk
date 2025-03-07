@@ -3,7 +3,7 @@ use {
         command_title,
         dag::{
             dag_validate::validate_dag,
-            parser::{Data, DefaultValue, Edge, EntryVertex, NodeIdent, Vertex},
+            parser::{Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind},
         },
         loading,
         prelude::*,
@@ -189,13 +189,13 @@ fn create_entry_vertex(
     // `name: Vertex`
     let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex.name)?;
 
-    // `kind: NodeIdent`
+    // `kind: VertexKind`
     let kind = match &vertex.kind {
-        NodeIdent::OffChain { tool_fqn } => {
+        VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
         }
-        NodeIdent::OnChain { .. } => {
+        VertexKind::OnChain { .. } => {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
         }
     };
@@ -245,13 +245,13 @@ fn create_vertex(
     // `name: Vertex`
     let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &vertex.name)?;
 
-    // `kind: NodeIdent`
+    // `kind: VertexKind`
     let kind = match &vertex.kind {
-        NodeIdent::OffChain { tool_fqn } => {
+        VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
         }
-        NodeIdent::OnChain { .. } => {
+        VertexKind::OnChain { .. } => {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
         }
     };
