@@ -3,6 +3,10 @@
     {
       "name": "group_a",
       "vertices": ["a", "b"]
+    },
+    {
+      "name": "group_b",
+      "vertices": ["c", "d", "f"]
     }
   ],
   "entry_vertices": [
@@ -21,23 +25,33 @@
       },
       "name": "b",
       "input_ports": ["input"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "c",
+      "input_ports": ["input"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "d",
+      "input_ports": ["input"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "f",
+      "input_ports": ["input"]
     }
   ],
   "vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "c"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "d"
-    },
     {
       "kind": {
         "variant": "off_chain",
@@ -54,7 +68,7 @@
         "output_port": "1.0"
       },
       "to": {
-        "vertex": "c",
+        "vertex": "e",
         "input_port": "1"
       }
     },
@@ -65,8 +79,8 @@
         "output_port": "1.0"
       },
       "to": {
-        "vertex": "c",
-        "input_port": "1"
+        "vertex": "e",
+        "input_port": "2"
       }
     },
     {
@@ -76,19 +90,30 @@
         "output_port": "1.0"
       },
       "to": {
-        "vertex": "d",
+        "vertex": "e",
         "input_port": "1"
       }
     },
     {
       "from": {
-        "vertex": "c",
+        "vertex": "d",
         "output_variant": "1",
-        "output_port": "1.1"
+        "output_port": "1.0"
       },
       "to": {
         "vertex": "e",
-        "input_port": "1"
+        "input_port": "2"
+      }
+    },
+    {
+      "from": {
+        "vertex": "f",
+        "output_variant": "1",
+        "output_port": "1.0"
+      },
+      "to": {
+        "vertex": "e",
+        "input_port": "2"
       }
     }
   ]

@@ -13,6 +13,9 @@
 
 use crate::prelude::*;
 
+/// Name of the default entry group.
+pub(crate) const DEFAULT_ENTRY_GROUP: &str = "_in_default_group";
+
 /// Struct representing the Nexus DAG JSON file.
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Dag {
@@ -20,6 +23,10 @@ pub(crate) struct Dag {
     pub(crate) edges: Vec<Edge>,
     pub(crate) entry_vertices: Vec<EntryVertex>,
     pub(crate) default_values: Option<Vec<DefaultValue>>,
+    /// If there are no entry groups specified, all entry vertices are considered
+    /// to be in the [DEFAULT_ENTRY_GROUP] that is automatically created on-chain
+    /// when a new DAG object is created.
+    pub(crate) entry_groups: Option<Vec<EntryGroup>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -37,6 +44,12 @@ pub(crate) enum VertexKind {
 pub(crate) struct Vertex {
     pub(crate) kind: VertexKind,
     pub(crate) name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct EntryGroup {
+    pub(crate) name: String,
+    pub(crate) vertices: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

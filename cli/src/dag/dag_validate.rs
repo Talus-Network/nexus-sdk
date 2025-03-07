@@ -195,6 +195,36 @@ mod tests {
         assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
     }
 
+    #[test]
+    fn test_entry_groups_valid() {
+        let conf: Dag = include_str!("_dags/entry_groups_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_entry_groups_ne_invalid() {
+        let conf: Dag = include_str!("_dags/entry_groups_ne_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
+
+    #[test]
+    fn test_entry_groups_tm_invalid() {
+        let conf: Dag = include_str!("_dags/entry_groups_tm_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res = validate(&conf.try_into().unwrap());
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+    }
     // == Cyclic or no input graphs ==
 
     #[test]
@@ -205,16 +235,7 @@ mod tests {
 
         let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' does not exist in the graph."));
-    }
-
-    #[test]
-    fn test_empty_invalid() {
-        let conf: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
-
-        let res = validate(&conf.try_into().unwrap());
-
-        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
 
     // == Parser tests ==
@@ -227,7 +248,7 @@ mod tests {
 
         let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' does not exist in the graph."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
 
     #[test]
@@ -249,6 +270,15 @@ mod tests {
 
         let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is specified multiple times."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is defined multiple times."));
+    }
+
+    #[test]
+    fn test_empty_invalid() {
+        let conf: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
+
+        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
     }
 }

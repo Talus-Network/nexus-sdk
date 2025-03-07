@@ -1,4 +1,10 @@
 {
+  "entry_groups": [
+    {
+      "name": "group_a",
+      "vertices": ["a", "b"]
+    }
+  ],
   "entry_vertices": [
     {
       "kind": {
@@ -37,13 +43,7 @@
         "variant": "off_chain",
         "tool_fqn": "com.test.test@1"
       },
-      "name": "e",
-      "input_ports": [{ "name": "1" }],
-      "output_variants": [
-        {
-          "name": "ok"
-        }
-      ]
+      "name": "e"
     }
   ],
   "edges": [

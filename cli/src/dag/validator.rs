@@ -7,43 +7,26 @@ use {
     std::collections::{HashMap, HashSet},
 };
 
-/// Validate function takes a graph and validates it based on nexus execution rules.
+/// Validate function takes a graph and validates it based on nexus execution
+/// rules.
 ///
-/// For details about these rules, refer to our wiki:
+/// See our wiki for more information on the rules:
 /// <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>
-///
-/// TODO: <https://github.com/Talus-Network/nexus-next/issues/123>
+/// <https://github.com/Talus-Network/nexus-next/wiki/CLI#nexus-dag>
 pub(crate) fn validate(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
         bail!("The provided graph contains one or more cycles.");
-    }
-
-    let entry_vertices = find_entry_vertices(graph);
-
-    // Check that we have at least one entry vertex.
-    if entry_vertices.is_empty() {
-        bail!("The DAG has no entry vertices.");
     }
 
     // Check that the shape of the graph is correct.
     has_correct_order_of_actions(graph)?;
 
     // Check that no walks in the graph violate the concurrency rules.
-    if !follows_concurrency_rules(graph, entry_vertices) {
+    if !follows_concurrency_rules(graph) {
         bail!("Graph does not follow concurrency rules.");
     }
 
     Ok(())
-}
-
-fn find_entry_vertices(graph: &DiGraph<NodeIdent, ()>) -> Vec<NodeIndex> {
-    graph
-        .node_indices()
-        .filter(|&node| {
-            graph[node].kind == VertexKind::InputPort
-                && graph.neighbors_directed(node, petgraph::Incoming).count() == 0
-        })
-        .collect()
 }
 
 fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
@@ -92,43 +75,29 @@ fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()>
     Ok(())
 }
 
-fn follows_concurrency_rules(
-    graph: &DiGraph<NodeIdent, ()>,
-    entry_vertices: Vec<NodeIndex>,
-) -> bool {
-    // For each merge point on an input port, check that the net concurrency leading into that point is 0.
+fn follows_concurrency_rules(graph: &DiGraph<NodeIdent, ()>) -> bool {
+    // For each input port, check that the net concurrency leading into that
+    // node is 1.
     graph
         .node_indices()
-        .filter(|&node| {
-            graph[node].kind == VertexKind::InputPort
-                && graph.neighbors_directed(node, petgraph::Incoming).count() > 1
-        })
+        .filter(|&node| graph[node].kind == VertexKind::InputPort)
         .all(|node| {
+            // TODO: this needs to be limited to an entry group.
+            //
             // Find all nodes that are included in the paths leading to the merge point.
             let all_nodes_in_paths = find_all_nodes_in_paths_to(graph, node);
 
-            // Find all entry vertices that are included in the paths leading to the merge point. This way we can find
-            // our initial concurrency.
-            let included_entry_vertices = entry_vertices
-                .iter()
-                .filter(|entry| all_nodes_in_paths.contains(entry))
-                .count();
-
             // Note that if this fails we can debug which node is causing the issues. If the concurrency is negative on
             // any given node, it means it's unreachable.
-            check_concurrency_in_subgraph(graph, &all_nodes_in_paths, included_entry_vertices)
+            check_concurrency_in_subgraph(graph, &all_nodes_in_paths)
         })
 }
 
 fn check_concurrency_in_subgraph(
     graph: &DiGraph<NodeIdent, ()>,
     nodes: &HashSet<NodeIndex>,
-    entry_vertices_count: usize,
 ) -> bool {
-    // Initial concurrency is just the number of entry vertices minus the number of goal "tool" vertices.
-    let initial_concurrency = entry_vertices_count as isize - 1;
-
-    let net_concurrency = nodes.iter().fold(initial_concurrency, |acc, &node| {
+    let net_concurrency = nodes.iter().fold(0, |acc, &node| {
         match graph[node].kind {
             VertexKind::Tool => {
                 // Calculate the maximum number of concurrent tasks that can be spawned by this tool.
@@ -157,8 +126,8 @@ fn check_concurrency_in_subgraph(
         }
     });
 
-    // If the net concurrency is 0, the graph follows the concurrency rules.
-    net_concurrency == 0
+    // If the net concurrency is 1, the graph follows the concurrency rules.
+    net_concurrency == 1
 }
 
 fn find_all_nodes_in_paths_to(
@@ -334,7 +303,7 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
             let origin_node = node_idents.get(&origin_vertex).copied().unwrap_or_else(|| {
                 let node = graph.add_node(origin_vertex.clone());
 
-                node_idents.insert(origin_vertex, node);
+                node_idents.insert(origin_vertex.clone(), node);
 
                 node
             });
@@ -346,7 +315,7 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
                     .unwrap_or_else(|| {
                         let node = graph.add_node(output_variant.clone());
 
-                        node_idents.insert(output_variant, node);
+                        node_idents.insert(output_variant.clone(), node);
 
                         node
                     });
@@ -354,7 +323,7 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
             let output_port_node = node_idents.get(&output_port).copied().unwrap_or_else(|| {
                 let node = graph.add_node(output_port.clone());
 
-                node_idents.insert(output_port, node);
+                node_idents.insert(output_port.clone(), node);
 
                 node
             });
@@ -365,7 +334,7 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
                 .unwrap_or_else(|| {
                     let node = graph.add_node(destination_vertex.clone());
 
-                    node_idents.insert(destination_vertex, node);
+                    node_idents.insert(destination_vertex.clone(), node);
 
                     node
                 });
@@ -373,62 +342,105 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
             let input_port_node = node_idents.get(&input_port).copied().unwrap_or_else(|| {
                 let node = graph.add_node(input_port.clone());
 
-                node_idents.insert(input_port, node);
+                node_idents.insert(input_port.clone(), node);
 
                 node
             });
 
-            // Create edges between the nodes if they don't exist yet.
+            // Check that these edges don't already exist.
+            if graph.contains_edge(output_variant_node, output_port_node) {
+                bail!("Edge from '{output_variant}' to '{output_port}' already exists.",);
+            }
+
+            if graph.contains_edge(output_port_node, input_port_node) {
+                bail!("Edge from '{output_port}' to '{input_port}' already exists.",);
+            }
+
+            // These are allowed.
             if !graph.contains_edge(origin_node, output_variant_node) {
                 graph.add_edge(origin_node, output_variant_node, ());
-            }
-
-            if !graph.contains_edge(output_variant_node, output_port_node) {
-                graph.add_edge(output_variant_node, output_port_node, ());
-            }
-
-            if !graph.contains_edge(output_port_node, input_port_node) {
-                graph.add_edge(output_port_node, input_port_node, ());
             }
 
             if !graph.contains_edge(input_port_node, destination_node) {
                 graph.add_edge(input_port_node, destination_node, ());
             }
+
+            graph.add_edge(output_variant_node, output_port_node, ());
+            graph.add_edge(output_port_node, input_port_node, ());
         }
 
-        // Create edges between the entry vertices and their input ports.
+        // Check that there is at least one entry vertex.
+        if dag.entry_vertices.is_empty() {
+            bail!("The DAG has no entry vertices.");
+        }
+
+        // Ensure we don't have duplicate vertices.
+        let mut all_entry_vertices = HashSet::new();
+        let mut all_vertices = HashSet::new();
+        let mut all_entry_input_ports = HashSet::new();
+
+        // Check that all entry vertices are in the graph. Note that connecting
+        // entry input ports to these entry vertices is not necessary as they do
+        // not matter for the validation.
         for entry_vertex in &dag.entry_vertices {
-            // Note that we don't need to insert the nodes as they must exist
-            // at this point.
             let entry_vertex_ident = (Some(entry_vertex.name.clone()), None, None).into();
 
-            let entry_node = node_idents
-                .get(&entry_vertex_ident)
-                .copied()
-                .ok_or_else(|| {
-                    anyhow!("Entry '{entry_vertex_ident}' does not exist in the graph.",)
-                })?;
+            if !node_idents.contains_key(&entry_vertex_ident) {
+                bail!("Entry '{entry_vertex_ident}' is not connected to the DAG.",);
+            }
 
+            if !all_entry_vertices.insert(entry_vertex_ident.clone()) {
+                bail!("Entry '{entry_vertex_ident}' is a duplicate vertex.",);
+            }
+
+            // Add entry input ports to the map so we can check that they do not
+            // have a default value.
             for input_port in &entry_vertex.input_ports {
-                let input_port: NodeIdent = (
+                let input_port_ident: NodeIdent = (
                     Some(entry_vertex.name.clone()),
                     None,
                     Some(input_port.clone()),
                 )
                     .into();
 
-                // Opposite of the tool node, the input ports must not exist
-                // at this time.
-                let input_port_node = graph.add_node(input_port.clone());
-
-                if node_idents
-                    .insert(input_port.clone(), input_port_node)
-                    .is_some()
-                {
-                    bail!("Entry '{input_port}' is specified multiple times.",);
+                if !all_entry_input_ports.insert(input_port_ident.clone()) {
+                    bail!("Entry '{input_port_ident}' is defined multiple times.",);
                 }
+            }
+        }
 
-                graph.add_edge(input_port_node, entry_node, ());
+        // Check that all normal vertices are in the graph.
+        for vertex in &dag.vertices {
+            let vertex_ident = vertex.clone().into();
+
+            if !node_idents.contains_key(&vertex_ident) {
+                bail!("'{vertex_ident}' is not connected to the DAG.",);
+            }
+
+            if !all_vertices.insert(vertex_ident.clone()) {
+                bail!("'{vertex_ident}' is a duplicate vertex.",);
+            }
+        }
+
+        // Ensure vertex is not specified as a vertex and an entry vertex.
+        match all_vertices.intersection(&all_entry_vertices).next() {
+            Some(vertex) => bail!("{vertex} is both a vertex and an entry vertex."),
+            None => (),
+        }
+
+        // Check that all entry groups reference vertices that are entry vertices.
+        let entry_groups = dag.entry_groups.unwrap_or_default();
+
+        for entry_group in &entry_groups {
+            for vertex in &entry_group.vertices {
+                let vertex_ident = (Some(vertex.clone()), None, None).into();
+                let entry_group_name = &entry_group.name;
+
+                if !all_entry_vertices.contains(&vertex_ident) {
+                    bail!(
+                        "'{vertex_ident}' is not an entry vertex but is referenced in the '{entry_group_name}' entry group.",
+                    );
+                }
             }
         }
 
@@ -438,7 +450,9 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
         for default_value in default_values {
             let default_value = default_value.into();
 
-            if node_idents.contains_key(&default_value) {
+            if node_idents.contains_key(&default_value)
+                || all_entry_input_ports.contains(&default_value)
+            {
                 bail!(
                     "'{default_value}' is already present in the graph or has an edge leading into it and therefore cannot have a default value.",
                 );
