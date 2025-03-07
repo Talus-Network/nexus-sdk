@@ -93,10 +93,16 @@ macro_rules! bootstrap {
 /// used directly.**
 #[doc(hidden)]
 pub fn routes_for_<T: NexusTool>() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    // Force output schema to be an enum.
     let output_schema = json!(schemars::schema_for!(T::Output));
 
     if output_schema["oneOf"].is_null() {
         panic!("The output type must be an enum to generate the correct output schema.");
+    }
+
+    // Force trailing slash in the base URL.
+    if !T::url().path().ends_with('/') {
+        panic!("Tool URL must include a trailing slash.");
     }
 
     let base_path = T::url()

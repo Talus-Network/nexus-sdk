@@ -54,7 +54,7 @@ impl NexusTool for I64Cmp {
 
     fn url() -> Url {
         let base = std::env::var("BASE_URL").unwrap();
-        let url = format!("{base}/i64/cmp");
+        let url = format!("{base}/i64/cmp/");
 
         Url::parse(&url).unwrap()
     }

@@ -54,7 +54,7 @@ impl NexusTool for I64Mul {
 
     fn url() -> Url {
         let base = std::env::var("BASE_URL").unwrap();
-        let url = format!("{base}/i64/mul");
+        let url = format!("{base}/i64/mul/");
 
         Url::parse(&url).unwrap()
     }

@@ -18,8 +18,13 @@ pub(crate) async fn validate_tool(ident: ToolIdent) -> AnyResult<ToolMeta, Nexus
 }
 
 /// Validate an off-chain tool based on the provided URL.
-async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, NexusCliError> {
+async fn validate_off_chain_tool(mut url: reqwest::Url) -> AnyResult<ToolMeta, NexusCliError> {
     command_title!("Validating off-chain Tool at '{url}'");
+
+    // Ensure that trailing slash exists.
+    if !url.path().ends_with('/') {
+        url.set_path(&format!("{}/", url.path()));
+    }
 
     // Check health.
     let health_handle = loading!("Checking tool health...");
