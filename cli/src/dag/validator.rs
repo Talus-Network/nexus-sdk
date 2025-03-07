@@ -289,11 +289,10 @@ impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
 
         for entry_group in &entry_groups {
             for vertex in &entry_group.vertices {
-                if dag
+                if !dag
                     .entry_vertices
                     .iter()
-                    .find(|entry_vertex| entry_vertex.name == *vertex)
-                    .is_none()
+                    .any(|entry_vertex| entry_vertex.name == *vertex)
                 {
                     bail!(
                         "Entry group '{}' references a non-entry 'Vertex: {vertex}'.",
