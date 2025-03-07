@@ -205,6 +205,15 @@ mod tests {
     }
 
     #[test]
+    fn test_entry_groups_twice_valid() {
+        let conf: Dag = include_str!("_dags/entry_groups_twice_valid.json")
+            .try_into()
+            .unwrap();
+
+        assert!(validate(&conf.try_into().unwrap()).is_ok());
+    }
+
+    #[test]
     fn test_entry_groups_ne_invalid() {
         let conf: Dag = include_str!("_dags/entry_groups_ne_invalid.json")
             .try_into()
@@ -226,9 +235,7 @@ mod tests {
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
     }
 
-    // TODO: vertex in multiple groups.
     // TODO: both vertex and entry vertex.
-    // TODO: normal vertex in group?
 
     // == Cyclic or no input graphs ==
 
@@ -285,5 +292,27 @@ mod tests {
         let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
+    }
+
+    #[test]
+    fn test_normal_vertex_in_group_invalid() {
+        let conf: Dag = include_str!("_dags/normal_vertex_in_group_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_b' references a non-entry 'Vertex: e'."));
+    }
+
+    #[test]
+    fn test_both_vertex_and_entry_vertex_invalid() {
+        let conf: Dag = include_str!("_dags/both_vertex_and_entry_vertex_invalid.json")
+            .try_into()
+            .unwrap();
+
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is both a vertex and an entry vertex."));
     }
 }

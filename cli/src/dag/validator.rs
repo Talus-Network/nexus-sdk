@@ -200,10 +200,9 @@ pub(crate) enum GraphNode {
     Vertex {
         name: String,
         /// `groups` is:
-        /// - `Some(vec) if !vec.is_empty()` when it's an entry vertex and
-        ///    belongs to a custom group
-        /// - `Some(vec) if vec.len() == 1 && vec[0] == DEFAULT_ENTRY_GROUP`
-        ///    when it's an entry vertex and belongs to the default group
+        /// - `Some(vec) if !vec.is_empty()` when it's an entry vertex
+        /// - `Some(vec) if vec.is_empty()` is unreachable as default group is
+        ///    provided in case one is missing
         /// - `None` when it's a normal vertex
         groups: Option<Vec<String>>,
     },
@@ -281,6 +280,25 @@ impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
                             vertex_entry_groups.insert(entry_vertex.name.clone(), entry_groups);
                         }
                     }
+                }
+            }
+        }
+
+        // Check that entry groups only reference entry vertices.
+        let entry_groups = dag.entry_groups.unwrap_or_default();
+
+        for entry_group in &entry_groups {
+            for vertex in &entry_group.vertices {
+                if dag
+                    .entry_vertices
+                    .iter()
+                    .find(|entry_vertex| entry_vertex.name == *vertex)
+                    .is_none()
+                {
+                    bail!(
+                        "Entry group '{}' references a non-entry 'Vertex: {vertex}'.",
+                        entry_group.name
+                    );
                 }
             }
         }
@@ -441,7 +459,7 @@ impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
 
         // Ensure vertex is not specified as a vertex and an entry vertex.
         if let Some(vertex) = all_vertices.intersection(&all_entry_vertices).next() {
-            bail!("{vertex} is both a vertex and an entry vertex.")
+            bail!("'{vertex}' is both a vertex and an entry vertex.")
         }
 
         // Check that none of the default value input ports are in the graph.
