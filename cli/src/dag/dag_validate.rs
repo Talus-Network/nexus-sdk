@@ -3,7 +3,7 @@ use {
         command_title,
         dag::{
             parser::Dag,
-            validator::{validate, NodeIdent},
+            validator::{validate, GraphNode},
         },
         loading,
         prelude::*,
@@ -43,7 +43,7 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
     let validation_handle = loading!("Validating Nexus DAG...");
 
     // Parse the struct into a [petgraph::graph::DiGraph].
-    let graph: DiGraph<NodeIdent, ()> = match dag.clone().try_into() {
+    let graph: DiGraph<GraphNode, ()> = match dag.clone().try_into() {
         Ok(graph) => graph,
         Err(e) => {
             validation_handle.error();
@@ -103,7 +103,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
@@ -123,7 +123,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: c.1' has a race condition on it when invoking group 'group_a'"));
     }
 
     #[test]
@@ -192,7 +192,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' is unreachable when invoking group 'group_b'"));
     }
 
     #[test]
@@ -223,8 +223,13 @@ mod tests {
 
         let res = validate(&conf.try_into().unwrap());
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Graph does not follow concurrency rules."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
     }
+
+    // TODO: vertex in multiple groups.
+    // TODO: both vertex and entry vertex.
+    // TODO: normal vertex in group?
+
     // == Cyclic or no input graphs ==
 
     #[test]
@@ -233,7 +238,7 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
@@ -246,7 +251,7 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
@@ -257,7 +262,7 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is already present in the graph or has an edge leading into it and therefore cannot have a default value."));
     }
@@ -268,7 +273,7 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is defined multiple times."));
     }
@@ -277,7 +282,7 @@ mod tests {
     fn test_empty_invalid() {
         let conf: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
 
-        let res: AnyResult<DiGraph<NodeIdent, ()>> = conf.try_into();
+        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
 
         assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
     }

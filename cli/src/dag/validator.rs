@@ -1,10 +1,11 @@
 use {
-    crate::{
-        dag::parser::{Dag, DefaultValue, FromPort, ToPort, Vertex},
-        prelude::*,
-    },
+    super::parser::DEFAULT_ENTRY_GROUP,
+    crate::{dag::parser::Dag, prelude::*},
     petgraph::graph::{DiGraph, NodeIndex},
-    std::collections::{HashMap, HashSet},
+    std::{
+        collections::{HashMap, HashSet},
+        isize,
+    },
 };
 
 /// Validate function takes a graph and validates it based on nexus execution
@@ -13,7 +14,7 @@ use {
 /// See our wiki for more information on the rules:
 /// <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>
 /// <https://github.com/Talus-Network/nexus-next/wiki/CLI#nexus-dag>
-pub(crate) fn validate(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
+pub(crate) fn validate(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
         bail!("The provided graph contains one or more cycles.");
     }
@@ -22,14 +23,12 @@ pub(crate) fn validate(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
     has_correct_order_of_actions(graph)?;
 
     // Check that no walks in the graph violate the concurrency rules.
-    if !follows_concurrency_rules(graph) {
-        bail!("Graph does not follow concurrency rules.");
-    }
+    follows_concurrency_rules(graph)?;
 
     Ok(())
 }
 
-fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()> {
+fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
     for node in graph.node_indices() {
         let vertex = &graph[node];
         let neighbors = graph
@@ -37,19 +36,19 @@ fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()>
             .collect::<Vec<NodeIndex>>();
 
         // Check if the vertex has the correct number of edges.
-        match vertex.kind {
+        match vertex {
             // Input ports must have exactly 1 outgoing edge.
-            VertexKind::InputPort if neighbors.len() != 1 => {
+            GraphNode::InputPort { .. } if neighbors.len() != 1 => {
                 bail!("'{vertex}' must have exactly 1 outgoing edge")
             }
             // Tools can be the last vertex and can have any number of edges.
-            VertexKind::Tool => (),
+            GraphNode::Vertex { .. } => (),
             // Output variants must have at least 1 outgoing edge.
-            VertexKind::OutputVariant if neighbors.is_empty() => {
+            GraphNode::OutputVariant { .. } if neighbors.is_empty() => {
                 bail!("'{vertex}' must have at least 1 outgoing edge")
             }
             // Output ports must have exactly 1 outgoing edge.
-            VertexKind::OutputPort if neighbors.len() != 1 => {
+            GraphNode::OutputPort { .. } if neighbors.len() != 1 => {
                 bail!("'{vertex}' must have exactly 1 outgoing edge")
             }
             _ => (),
@@ -59,11 +58,11 @@ fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()>
         for node in neighbors {
             let neighbor = graph[node].clone();
 
-            let is_ok = match vertex.kind {
-                VertexKind::InputPort => neighbor.kind == VertexKind::Tool,
-                VertexKind::Tool => neighbor.kind == VertexKind::OutputVariant,
-                VertexKind::OutputVariant => neighbor.kind == VertexKind::OutputPort,
-                VertexKind::OutputPort => neighbor.kind == VertexKind::InputPort,
+            let is_ok = match vertex {
+                GraphNode::InputPort { .. } => matches!(neighbor, GraphNode::Vertex { .. }),
+                GraphNode::Vertex { .. } => matches!(neighbor, GraphNode::OutputVariant { .. }),
+                GraphNode::OutputVariant { .. } => matches!(neighbor, GraphNode::OutputPort { .. }),
+                GraphNode::OutputPort { .. } => matches!(neighbor, GraphNode::InputPort { .. }),
             };
 
             if !is_ok {
@@ -75,31 +74,96 @@ fn has_correct_order_of_actions(graph: &DiGraph<NodeIdent, ()>) -> AnyResult<()>
     Ok(())
 }
 
-fn follows_concurrency_rules(graph: &DiGraph<NodeIdent, ()>) -> bool {
-    // For each input port, check that the net concurrency leading into that
-    // node is 1.
-    graph
+/// For each distinct group of entry vertices, check that the net concurrency
+/// leading from these nodes into any input port is always 0.
+fn follows_concurrency_rules(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
+    // Get all distinct groups of entry vertices.
+    let groups = graph
         .node_indices()
-        .filter(|&node| graph[node].kind == VertexKind::InputPort)
-        .all(|node| {
-            // TODO: this needs to be limited to an entry group.
-            //
-            // Find all nodes that are included in the paths leading to the merge point.
-            let all_nodes_in_paths = find_all_nodes_in_paths_to(graph, node);
-
-            // Note that if this fails we can debug which node is causing the issues. If the concurrency is negative on
-            // any given node, it means it's unreachable.
-            check_concurrency_in_subgraph(graph, &all_nodes_in_paths)
+        .flat_map(|node| match &graph[node] {
+            GraphNode::Vertex { groups, .. } => groups.clone().unwrap_or_default(),
+            _ => vec![],
         })
+        .collect::<HashSet<_>>();
+
+    // For each group...
+    for group in groups {
+        // ... find the entry vertices in that group.
+        let entry_vertices = graph
+            .node_indices()
+            .filter(|&node| match &graph[node] {
+                GraphNode::Vertex {
+                    groups: Some(groups),
+                    ..
+                } => groups.contains(&group),
+                _ => false,
+            })
+            .collect::<Vec<_>>();
+
+        let input_ports = graph
+            .node_indices()
+            .filter(|&node| matches!(graph[node], GraphNode::InputPort { .. }));
+
+        // And then for each input port ...
+        for input_port in input_ports {
+            // ... find all nodes that are included in the paths leading to
+            // the input port.
+            let all_nodes_in_paths = entry_vertices
+                .iter()
+                .flat_map(|&entry_vertex| {
+                    let min_intermediate_nodes = 0;
+                    let max_intermediate_nodes = None;
+
+                    petgraph::algo::all_simple_paths(
+                        graph,
+                        entry_vertex,
+                        input_port,
+                        min_intermediate_nodes,
+                        max_intermediate_nodes,
+                    )
+                    .flat_map(|path: HashSet<_>| path)
+                })
+                .collect::<HashSet<_>>();
+
+            // If there is no path to this input port then it is unreachable.
+            if all_nodes_in_paths.is_empty() {
+                bail!(
+                    "'{}' is unreachable when invoking group '{}'",
+                    graph[input_port],
+                    group
+                );
+            }
+
+            let concurrency = get_net_concurrency_in_subgraph(graph, &all_nodes_in_paths);
+
+            if concurrency < 0 {
+                bail!(
+                    "'{}' is unreachable when invoking group '{}'",
+                    graph[input_port],
+                    group
+                )
+            }
+
+            if concurrency > 0 {
+                bail!(
+                    "'{}' has a race condition on it when invoking group '{}'",
+                    graph[input_port],
+                    group
+                )
+            }
+        }
+    }
+
+    Ok(())
 }
 
-fn check_concurrency_in_subgraph(
-    graph: &DiGraph<NodeIdent, ()>,
+fn get_net_concurrency_in_subgraph(
+    graph: &DiGraph<GraphNode, ()>,
     nodes: &HashSet<NodeIndex>,
-) -> bool {
+) -> isize {
     let net_concurrency = nodes.iter().fold(0, |acc, &node| {
-        match graph[node].kind {
-            VertexKind::Tool => {
+        match graph[node] {
+            GraphNode::Vertex { .. } => {
                 // Calculate the maximum number of concurrent tasks that can be spawned by this tool.
                 let max_tool_concurrency = graph
                     .neighbors_directed(node, petgraph::Outgoing)
@@ -121,228 +185,185 @@ fn check_concurrency_in_subgraph(
                 acc + max_tool_concurrency + 1
             }
             // Input ports with no default values reduce concurrency.
-            VertexKind::InputPort => acc - 1,
+            GraphNode::InputPort { .. } => acc - 1,
             _ => acc,
         }
     });
 
-    // If the net concurrency is 1, the graph follows the concurrency rules.
-    net_concurrency == 1
-}
-
-fn find_all_nodes_in_paths_to(
-    graph: &DiGraph<NodeIdent, ()>,
-    end: NodeIndex,
-) -> HashSet<NodeIndex> {
-    let mut visited = HashSet::new();
-    let mut stack = graph
-        .neighbors_directed(end, petgraph::Incoming)
-        .collect::<Vec<NodeIndex>>();
-
-    while let Some(node) = stack.pop() {
-        // Skip already visited nodes.
-        if !visited.insert(node) {
-            continue;
-        }
-
-        for neighbor in graph.neighbors_directed(node, petgraph::Incoming) {
-            if !visited.contains(&neighbor) {
-                stack.push(neighbor);
-            }
-        }
-    }
-
-    visited
+    // If the net concurrency is 0, the graph follows the concurrency rules.
+    net_concurrency
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum VertexKind {
-    InputPort,
-    Tool,
-    OutputVariant,
-    OutputPort,
+pub(crate) enum GraphNode {
+    InputPort {
+        vertex: String,
+        name: String,
+    },
+    Vertex {
+        name: String,
+        /// `groups` is:
+        /// - `Some(vec) if !vec.is_empty()` when it's an entry vertex and
+        ///    belongs to a custom group
+        /// - `Some(vec) if vec.len() == 1 && vec[0] == DEFAULT_ENTRY_GROUP`
+        ///    when it's an entry vertex and belongs to the default group
+        /// - `None` when it's a normal vertex
+        groups: Option<Vec<String>>,
+    },
+    OutputVariant {
+        vertex: String,
+        name: String,
+    },
+    OutputPort {
+        vertex: String,
+        variant: String,
+        name: String,
+    },
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct NodeIdent {
-    kind: VertexKind,
-    vertex: (Option<String>, Option<String>, Option<String>),
-}
-
-impl From<FromPort> for (NodeIdent, NodeIdent, NodeIdent) {
-    fn from(from_port: FromPort) -> Self {
-        let vertex = Some(from_port.vertex);
-        let variant = Some(from_port.output_variant);
-        let port = Some(from_port.output_port);
-
-        let tool = (vertex.clone(), None, None);
-        let output_variant = (vertex.clone(), variant.clone(), None);
-        let output_port = (vertex, variant, port);
-
-        (
-            NodeIdent {
-                kind: VertexKind::Tool,
-                vertex: tool,
-            },
-            NodeIdent {
-                kind: VertexKind::OutputVariant,
-                vertex: output_variant,
-            },
-            NodeIdent {
-                kind: VertexKind::OutputPort,
-                vertex: output_port,
-            },
-        )
-    }
-}
-
-impl From<ToPort> for (NodeIdent, NodeIdent) {
-    fn from(to_port: ToPort) -> Self {
-        let vertex = Some(to_port.vertex);
-
-        let tool = (vertex.clone(), None, None);
-        let input_port = (vertex, None, Some(to_port.input_port));
-
-        (
-            NodeIdent {
-                kind: VertexKind::Tool,
-                vertex: tool,
-            },
-            NodeIdent {
-                kind: VertexKind::InputPort,
-                vertex: input_port,
-            },
-        )
-    }
-}
-
-impl From<Vertex> for NodeIdent {
-    fn from(vertex: Vertex) -> Self {
-        let vertex = (Some(vertex.name), None, None);
-
-        Self {
-            kind: VertexKind::Tool,
-            vertex,
-        }
-    }
-}
-
-impl From<(Option<String>, Option<String>, Option<String>)> for NodeIdent {
-    fn from(vertex: (Option<String>, Option<String>, Option<String>)) -> Self {
-        match vertex {
-            (Some(_), None, None) => Self {
-                kind: VertexKind::Tool,
-                vertex,
-            },
-            (Some(_), Some(_), None) => Self {
-                kind: VertexKind::OutputVariant,
-                vertex,
-            },
-            (Some(_), Some(_), Some(_)) => Self {
-                kind: VertexKind::OutputPort,
-                vertex,
-            },
-            (Some(_), None, Some(_)) => Self {
-                kind: VertexKind::InputPort,
-                vertex,
-            },
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<DefaultValue> for NodeIdent {
-    fn from(default_value: DefaultValue) -> Self {
-        let vertex = (
-            Some(default_value.vertex),
-            None,
-            Some(default_value.input_port),
-        );
-
-        Self {
-            kind: VertexKind::InputPort,
-            vertex,
-        }
-    }
-}
-
-impl std::fmt::Display for NodeIdent {
+impl std::fmt::Display for GraphNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.vertex {
-            (Some(vertex), None, None) => write!(f, "Vertex: {}", vertex),
-            (Some(vertex), Some(variant), None) => {
-                write!(f, "Output variant: {}.{}", vertex, variant)
+        match self {
+            GraphNode::InputPort { vertex, name } => write!(f, "Input port: {vertex}.{name}"),
+            GraphNode::Vertex { name, .. } => write!(f, "Vertex: {name}"),
+            GraphNode::OutputVariant { vertex, name } => {
+                write!(f, "Output variant: {vertex}.{name}")
             }
-            (Some(vertex), Some(variant), Some(port)) => {
-                write!(f, "Output port: {}.{}.{}", vertex, variant, port)
+            GraphNode::OutputPort {
+                vertex,
+                variant,
+                name,
+            } => {
+                write!(f, "Output port: {vertex}.{variant}.{name}")
             }
-            (Some(vertex), None, Some(port)) => write!(f, "Input port: {}.{}", vertex, port),
-            _ => unreachable!(),
         }
     }
 }
 
-/// [Dag] to [petgraph::graph::DiGraph].
-impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
+/// [Dag] to [petgraph::graph::DiGraph]. Also performs structure checks on the
+/// graph.
+impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
     type Error = AnyError;
 
     fn try_from(dag: Dag) -> AnyResult<Self> {
-        let mut graph = DiGraph::<NodeIdent, ()>::new();
+        let mut graph = DiGraph::<GraphNode, ()>::new();
+
+        // Check that there is at least one entry vertex.
+        if dag.entry_vertices.is_empty() {
+            bail!("The DAG has no entry vertices.");
+        }
+
+        // For each entry vertex, find a set of entry groups it belongs to.
+        let mut vertex_entry_groups: HashMap<String, Vec<String>> = HashMap::new();
+
+        for entry_vertex in &dag.entry_vertices {
+            match &dag.entry_groups {
+                None => {
+                    vertex_entry_groups.insert(
+                        entry_vertex.name.clone(),
+                        vec![DEFAULT_ENTRY_GROUP.to_string()],
+                    );
+                }
+                Some(entry_groups) => {
+                    let entry_groups = entry_groups
+                        .iter()
+                        .filter(|entry_group| entry_group.vertices.contains(&entry_vertex.name))
+                        .map(|entry_group| entry_group.name.clone())
+                        .collect::<Vec<String>>();
+
+                    // If the entry vertex does not belong to any group, add it
+                    // to the default group.
+                    match entry_groups.len() {
+                        0 => {
+                            vertex_entry_groups.insert(
+                                entry_vertex.name.clone(),
+                                vec![DEFAULT_ENTRY_GROUP.to_string()],
+                            );
+                        }
+                        _ => {
+                            vertex_entry_groups.insert(entry_vertex.name.clone(), entry_groups);
+                        }
+                    }
+                }
+            }
+        }
 
         // Edges are always between an output port and an input port. We also
         // need to create edges between the tool, the output variant and the
         // output port if they don't exist yet.
-        let mut node_idents: HashMap<NodeIdent, NodeIndex> = HashMap::new();
+        let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
 
         for edge in dag.edges {
-            // Create unique keys for each node in this edge.
-            let (origin_vertex, output_variant, output_port) = edge.from.into();
-            let (destination_vertex, input_port) = edge.to.into();
+            let origin_vertex = GraphNode::Vertex {
+                name: edge.from.vertex.clone(),
+                groups: vertex_entry_groups.get(&edge.from.vertex).cloned(),
+            };
+
+            let output_variant = GraphNode::OutputVariant {
+                vertex: edge.from.vertex.clone(),
+                name: edge.from.output_variant.clone(),
+            };
+
+            let output_port = GraphNode::OutputPort {
+                vertex: edge.from.vertex.clone(),
+                variant: edge.from.output_variant.clone(),
+                name: edge.from.output_port.clone(),
+            };
+
+            let destination_vertex = GraphNode::Vertex {
+                name: edge.to.vertex.clone(),
+                groups: vertex_entry_groups.get(&edge.to.vertex).cloned(),
+            };
+
+            let input_port = GraphNode::InputPort {
+                vertex: edge.to.vertex.clone(),
+                name: edge.to.input_port.clone(),
+            };
 
             // Create nodes if they don't exist yet.
-            let origin_node = node_idents.get(&origin_vertex).copied().unwrap_or_else(|| {
+            let origin_node = graph_nodes.get(&origin_vertex).copied().unwrap_or_else(|| {
                 let node = graph.add_node(origin_vertex.clone());
 
-                node_idents.insert(origin_vertex.clone(), node);
+                graph_nodes.insert(origin_vertex.clone(), node);
 
                 node
             });
 
             let output_variant_node =
-                node_idents
+                graph_nodes
                     .get(&output_variant)
                     .copied()
                     .unwrap_or_else(|| {
                         let node = graph.add_node(output_variant.clone());
 
-                        node_idents.insert(output_variant.clone(), node);
+                        graph_nodes.insert(output_variant.clone(), node);
 
                         node
                     });
 
-            let output_port_node = node_idents.get(&output_port).copied().unwrap_or_else(|| {
+            let output_port_node = graph_nodes.get(&output_port).copied().unwrap_or_else(|| {
                 let node = graph.add_node(output_port.clone());
 
-                node_idents.insert(output_port.clone(), node);
+                graph_nodes.insert(output_port.clone(), node);
 
                 node
             });
 
-            let destination_node = node_idents
+            let destination_node = graph_nodes
                 .get(&destination_vertex)
                 .copied()
                 .unwrap_or_else(|| {
                     let node = graph.add_node(destination_vertex.clone());
 
-                    node_idents.insert(destination_vertex.clone(), node);
+                    graph_nodes.insert(destination_vertex.clone(), node);
 
                     node
                 });
 
-            let input_port_node = node_idents.get(&input_port).copied().unwrap_or_else(|| {
+            let input_port_node = graph_nodes.get(&input_port).copied().unwrap_or_else(|| {
                 let node = graph.add_node(input_port.clone());
 
-                node_idents.insert(input_port.clone(), node);
+                graph_nodes.insert(input_port.clone(), node);
 
                 node
             });
@@ -369,11 +390,6 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
             graph.add_edge(output_port_node, input_port_node, ());
         }
 
-        // Check that there is at least one entry vertex.
-        if dag.entry_vertices.is_empty() {
-            bail!("The DAG has no entry vertices.");
-        }
-
         // Ensure we don't have duplicate vertices.
         let mut all_entry_vertices = HashSet::new();
         let mut all_vertices = HashSet::new();
@@ -383,25 +399,26 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
         // entry input ports to these entry vertices is not necessary as they do
         // not matter for the validation.
         for entry_vertex in &dag.entry_vertices {
-            let entry_vertex_ident = (Some(entry_vertex.name.clone()), None, None).into();
+            let entry_vertex_ident = GraphNode::Vertex {
+                name: entry_vertex.name.clone(),
+                groups: vertex_entry_groups.get(&entry_vertex.name).cloned(),
+            };
 
-            if !node_idents.contains_key(&entry_vertex_ident) {
+            if !graph_nodes.contains_key(&entry_vertex_ident) {
                 bail!("Entry '{entry_vertex_ident}' is not connected to the DAG.",);
             }
 
             if !all_entry_vertices.insert(entry_vertex_ident.clone()) {
-                bail!("Entry '{entry_vertex_ident}' is a duplicate vertex.",);
+                bail!("Entry '{entry_vertex_ident}' is defined multiple times.",);
             }
 
             // Add entry input ports to the map so we can check that they do not
             // have a default value.
             for input_port in &entry_vertex.input_ports {
-                let input_port_ident: NodeIdent = (
-                    Some(entry_vertex.name.clone()),
-                    None,
-                    Some(input_port.clone()),
-                )
-                    .into();
+                let input_port_ident = GraphNode::InputPort {
+                    vertex: entry_vertex.name.clone(),
+                    name: input_port.clone(),
+                };
 
                 if !all_entry_input_ports.insert(input_port_ident.clone()) {
                     bail!("Entry '{input_port_ident}' is defined multiple times.",);
@@ -411,14 +428,17 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
 
         // Check that all normal vertices are in the graph.
         for vertex in &dag.vertices {
-            let vertex_ident = vertex.clone().into();
+            let vertex_ident = GraphNode::Vertex {
+                name: vertex.name.clone(),
+                groups: vertex_entry_groups.get(&vertex.name).cloned(),
+            };
 
-            if !node_idents.contains_key(&vertex_ident) {
+            if !graph_nodes.contains_key(&vertex_ident) {
                 bail!("'{vertex_ident}' is not connected to the DAG.",);
             }
 
             if !all_vertices.insert(vertex_ident.clone()) {
-                bail!("'{vertex_ident}' is a duplicate vertex.",);
+                bail!("'{vertex_ident}' is defined multiple times.",);
             }
         }
 
@@ -428,29 +448,16 @@ impl TryFrom<Dag> for DiGraph<NodeIdent, ()> {
             None => (),
         }
 
-        // Check that all entry groups reference vertices that are entry vertices.
-        let entry_groups = dag.entry_groups.unwrap_or_default();
-
-        for entry_group in &entry_groups {
-            for vertex in &entry_group.vertices {
-                let vertex_ident = (Some(vertex.clone()), None, None).into();
-                let entry_group_name = &entry_group.name;
-
-                if !all_entry_vertices.contains(&vertex_ident) {
-                    bail!(
-                        "'{vertex_ident}' is not an entry vertex but is referenced in the '{entry_group_name}' entry group.",
-                    );
-                }
-            }
-        }
-
         // Check that none of the default value input ports are in the graph.
         let default_values = dag.default_values.unwrap_or_default();
 
         for default_value in default_values {
-            let default_value = default_value.into();
+            let default_value = GraphNode::InputPort {
+                vertex: default_value.vertex,
+                name: default_value.input_port,
+            };
 
-            if node_idents.contains_key(&default_value)
+            if graph_nodes.contains_key(&default_value)
                 || all_entry_input_ports.contains(&default_value)
             {
                 bail!(
