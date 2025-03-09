@@ -235,8 +235,6 @@ mod tests {
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
     }
 
-    // TODO: both vertex and entry vertex.
-
     // == Cyclic or no input graphs ==
 
     #[test]

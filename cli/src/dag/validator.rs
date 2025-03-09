@@ -1,6 +1,8 @@
 use {
-    super::parser::DEFAULT_ENTRY_GROUP,
-    crate::{dag::parser::Dag, prelude::*},
+    crate::{
+        dag::parser::{Dag, DEFAULT_ENTRY_GROUP},
+        prelude::*,
+    },
     petgraph::graph::{DiGraph, NodeIndex},
     std::collections::{HashMap, HashSet},
 };
