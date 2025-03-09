@@ -13,16 +13,19 @@ use {
 /// See our wiki for more information on the rules:
 /// <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>
 /// <https://github.com/Talus-Network/nexus-next/wiki/CLI#nexus-dag>
-pub(crate) fn validate(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
-    if !graph.is_directed() || petgraph::algo::is_cyclic_directed(graph) {
+pub(crate) fn validate(dag: Dag) -> AnyResult<()> {
+    // Parse the dag into a petgraph DiGraph.
+    let graph: DiGraph<GraphNode, ()> = dag.try_into()?;
+
+    if !graph.is_directed() || petgraph::algo::is_cyclic_directed(&graph) {
         bail!("The provided graph contains one or more cycles.");
     }
 
     // Check that the shape of the graph is correct.
-    has_correct_order_of_actions(graph)?;
+    has_correct_order_of_actions(&graph)?;
 
     // Check that no walks in the graph violate the concurrency rules.
-    follows_concurrency_rules(graph)?;
+    follows_concurrency_rules(&graph)?;
 
     Ok(())
 }
@@ -194,7 +197,7 @@ fn get_net_concurrency_in_subgraph(
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum GraphNode {
+enum GraphNode {
     InputPort {
         vertex: String,
         name: String,

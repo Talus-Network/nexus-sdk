@@ -1,14 +1,8 @@
-use {
-    crate::{
-        command_title,
-        dag::{
-            parser::Dag,
-            validator::{validate, GraphNode},
-        },
-        loading,
-        prelude::*,
-    },
-    petgraph::graph::DiGraph,
+use crate::{
+    command_title,
+    dag::{parser::Dag, validator::validate},
+    loading,
+    prelude::*,
 };
 
 /// Validate if a JSON file at the provided location is a valid Nexus DAG. If so,
@@ -42,20 +36,8 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
 
     let validation_handle = loading!("Validating Nexus DAG...");
 
-    // Parse the struct into a [petgraph::graph::DiGraph].
-    let graph: DiGraph<GraphNode, ()> = match dag.clone().try_into() {
-        Ok(graph) => graph,
-        Err(e) => {
-            validation_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(
-                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
-            )));
-        }
-    };
-
-    // Validate the graph.
-    match validate(&graph) {
+    // Validate the dag.
+    match validate(dag.clone()) {
         Ok(()) => {
             validation_handle.success();
 
@@ -79,158 +61,158 @@ mod tests {
 
     #[test]
     fn test_ig_story_planner_valid() {
-        let conf: Dag = include_str!("_dags/ig_story_planner_valid.json")
+        let dag: Dag = include_str!("_dags/ig_story_planner_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_valid() {
-        let conf: Dag = include_str!("_dags/immediately_converges_valid.json")
+        let dag: Dag = include_str!("_dags/immediately_converges_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_invalid() {
-        let conf: Dag = include_str!("_dags/immediately_converges_invalid.json")
+        let dag: Dag = include_str!("_dags/immediately_converges_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
     fn test_intertwined_valid() {
-        let conf: Dag = include_str!("_dags/intertwined_valid.json")
+        let dag: Dag = include_str!("_dags/intertwined_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_intertwined_invalid() {
-        let conf: Dag = include_str!("_dags/intertwined_invalid.json")
+        let dag: Dag = include_str!("_dags/intertwined_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
     fn test_multiple_output_ports_invalid() {
-        let conf: Dag = include_str!("_dags/multiple_output_ports_invalid.json")
+        let dag: Dag = include_str!("_dags/multiple_output_ports_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
     fn test_multiple_output_ports_valid() {
-        let conf: Dag = include_str!("_dags/multiple_output_ports_valid.json")
+        let dag: Dag = include_str!("_dags/multiple_output_ports_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_goals_valid() {
-        let conf: Dag = include_str!("_dags/multiple_goals_valid.json")
+        let dag: Dag = include_str!("_dags/multiple_goals_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_dead_ends_valid() {
-        let conf: Dag = include_str!("_dags/dead_ends_valid.json")
+        let dag: Dag = include_str!("_dags/dead_ends_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_valid() {
-        let conf: Dag = include_str!("_dags/multiple_entry_multiple_goal_valid.json")
+        let dag: Dag = include_str!("_dags/multiple_entry_multiple_goal_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_invalid() {
-        let conf: Dag = include_str!("_dags/multiple_entry_multiple_goal_invalid.json")
+        let dag: Dag = include_str!("_dags/multiple_entry_multiple_goal_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: c.1' has a race condition on it when invoking group 'group_a'"));
     }
 
     #[test]
     fn test_branched_net_zero_invalid() {
-        let conf: Dag = include_str!("_dags/branched_net_zero_invalid.json")
+        let dag: Dag = include_str!("_dags/branched_net_zero_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
     }
 
     #[test]
     fn test_entry_groups_valid() {
-        let conf: Dag = include_str!("_dags/entry_groups_valid.json")
+        let dag: Dag = include_str!("_dags/entry_groups_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_twice_valid() {
-        let conf: Dag = include_str!("_dags/entry_groups_twice_valid.json")
+        let dag: Dag = include_str!("_dags/entry_groups_twice_valid.json")
             .try_into()
             .unwrap();
 
-        assert!(validate(&conf.try_into().unwrap()).is_ok());
+        assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_ne_invalid() {
-        let conf: Dag = include_str!("_dags/entry_groups_ne_invalid.json")
+        let dag: Dag = include_str!("_dags/entry_groups_ne_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' is unreachable when invoking group 'group_b'"));
     }
 
     #[test]
     fn test_entry_groups_tm_invalid() {
-        let conf: Dag = include_str!("_dags/entry_groups_tm_invalid.json")
+        let dag: Dag = include_str!("_dags/entry_groups_tm_invalid.json")
             .try_into()
             .unwrap();
 
-        let res = validate(&conf.try_into().unwrap());
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
     }
@@ -239,11 +221,11 @@ mod tests {
 
     #[test]
     fn test_cyclic_invalid() {
-        let conf: Dag = include_str!("_dags/undefined_connections_invalid.json")
+        let dag: Dag = include_str!("_dags/undefined_connections_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
@@ -252,64 +234,64 @@ mod tests {
 
     #[test]
     fn test_undefined_connections_invalid() {
-        let conf: Dag = include_str!("_dags/undefined_connections_invalid.json")
+        let dag: Dag = include_str!("_dags/undefined_connections_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
     }
 
     #[test]
     fn test_def_val_on_input_port_invalid() {
-        let conf: Dag = include_str!("_dags/has_def_on_input_invalid.json")
+        let dag: Dag = include_str!("_dags/has_def_on_input_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is already present in the graph or has an edge leading into it and therefore cannot have a default value."));
     }
 
     #[test]
     fn test_multiple_same_entry_ports_invalid() {
-        let conf: Dag = include_str!("_dags/has_multiple_same_entry_inputs_invalid.json")
+        let dag: Dag = include_str!("_dags/has_multiple_same_entry_inputs_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is defined multiple times."));
     }
 
     #[test]
     fn test_empty_invalid() {
-        let conf: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
+        let dag: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
     }
 
     #[test]
     fn test_normal_vertex_in_group_invalid() {
-        let conf: Dag = include_str!("_dags/normal_vertex_in_group_invalid.json")
+        let dag: Dag = include_str!("_dags/normal_vertex_in_group_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_b' references a non-entry 'Vertex: e'."));
     }
 
     #[test]
     fn test_both_vertex_and_entry_vertex_invalid() {
-        let conf: Dag = include_str!("_dags/both_vertex_and_entry_vertex_invalid.json")
+        let dag: Dag = include_str!("_dags/both_vertex_and_entry_vertex_invalid.json")
             .try_into()
             .unwrap();
 
-        let res: AnyResult<DiGraph<GraphNode, ()>> = conf.try_into();
+        let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is both a vertex and an entry vertex."));
     }
