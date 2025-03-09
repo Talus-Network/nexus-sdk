@@ -31,6 +31,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAG"),
     };
+    /// Create an EntryGroup from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::entry_group_from_string`
+    pub const ENTRY_GROUP_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("entry_group_from_string"),
+    };
     /// The InputPort struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::InputPort`
@@ -155,6 +162,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_entry_vertex"),
     };
+    /// Add an entry vertex that is in a specific group to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_entry_vertex_in_group`
+    pub const WITH_ENTRY_VERTEX_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_entry_vertex_in_group"),
+    };
     /// Add a Vertex to a DAG.
     ///
     /// `nexus_workflow::dag::with_vertex`
@@ -162,6 +176,23 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_vertex"),
     };
+
+    /// Create an EntryGroup from a string.
+    pub fn entry_group_from_str<T: AsRef<str>>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        str: T,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::ENTRY_GROUP_FROM_STRING.module.into(),
+            Self::ENTRY_GROUP_FROM_STRING.name.into(),
+            vec![],
+            vec![str],
+        ))
+    }
 
     /// Create an InputPort from a string.
     pub fn input_port_from_str<T: AsRef<str>>(

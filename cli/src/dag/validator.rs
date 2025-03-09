@@ -7,7 +7,7 @@ use {
     std::collections::{HashMap, HashSet},
 };
 
-/// Validate function takes a graph and validates it based on nexus execution
+/// Validate function takes a DAG and validates it based on nexus execution
 /// rules.
 ///
 /// See our wiki for more information on the rules:
