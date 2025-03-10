@@ -31,6 +31,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAG"),
     };
+    /// The EntryGroup struct. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::dag::EntryGroup`
+    pub const ENTRY_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("EntryGroup"),
+    };
     /// Create an EntryGroup from an ASCII string.
     ///
     /// `nexus_workflow::dag::entry_group_from_string`

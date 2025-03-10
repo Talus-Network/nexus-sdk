@@ -97,6 +97,11 @@ impl VecMap {
         module: VEC_MAP_MODULE,
         name: sui::move_ident_str!("insert"),
     };
+    /// `sui::vec_map::VecMap`
+    pub const VEC_MAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VEC_MAP_MODULE,
+        name: sui::move_ident_str!("VecMap"),
+    };
 }
 
 // == `sui::transfer` ==

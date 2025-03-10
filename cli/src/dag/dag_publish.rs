@@ -3,7 +3,15 @@ use {
         command_title,
         dag::{
             dag_validate::validate_dag,
-            parser::{Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind},
+            parser::{
+                Data,
+                DefaultValue,
+                Edge,
+                EntryVertex,
+                Vertex,
+                VertexKind,
+                DEFAULT_ENTRY_GROUP,
+            },
         },
         loading,
         prelude::*,
@@ -66,7 +74,26 @@ pub(crate) async fn publish_dag(
 
     // Create all entry vertices.
     for entry_vertex in dag.entry_vertices {
-        dag_arg = match create_entry_vertex(&mut tx, workflow_pkg_id, dag_arg, entry_vertex) {
+        // Find which entry groups this vertex belongs to.
+        let entry_groups = dag
+            .entry_groups
+            .as_ref()
+            .map(|groups| {
+                groups
+                    .iter()
+                    .filter(|group| group.vertices.contains(&entry_vertex.name))
+                    .map(|group| group.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| vec![DEFAULT_ENTRY_GROUP.to_string()]);
+
+        dag_arg = match create_entry_vertex(
+            &mut tx,
+            workflow_pkg_id,
+            dag_arg,
+            entry_vertex,
+            entry_groups,
+        ) {
             Ok(dag_arg) => dag_arg,
             Err(e) => {
                 tx_handle.error();
@@ -185,7 +212,33 @@ fn create_entry_vertex(
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
     vertex: EntryVertex,
+    groups: Vec<String>,
 ) -> AnyResult<sui::Argument> {
+    // `entry_groups: VecSet<EntryGroup>`
+    let entry_group_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::ENTRY_GROUP);
+
+    let entry_groups = tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::VecSet::EMPTY.module.into(),
+        sui_framework::VecSet::EMPTY.name.into(),
+        vec![entry_group_type.clone()],
+        vec![],
+    );
+
+    for entry_group in groups {
+        // `entry_group: EntryGroup`
+        let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
+
+        // `entry_groups.insert(entry_group)`
+        tx.programmable_move_call(
+            sui::FRAMEWORK_PACKAGE_ID,
+            sui_framework::VecSet::INSERT.module.into(),
+            sui_framework::VecSet::INSERT.name.into(),
+            vec![entry_group_type.clone()],
+            vec![entry_groups, entry_group],
+        );
+    }
+
     // `name: Vertex`
     let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex.name)?;
 
@@ -228,10 +281,10 @@ fn create_entry_vertex(
     // `dag.with_entry_vertex(name, kind, input_ports)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        workflow::Dag::WITH_ENTRY_VERTEX.module.into(),
-        workflow::Dag::WITH_ENTRY_VERTEX.name.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUP.module.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUP.name.into(),
         vec![],
-        vec![dag, name, kind, input_ports],
+        vec![dag, entry_groups, name, kind, input_ports],
     ))
 }
 

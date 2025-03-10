@@ -4,7 +4,13 @@ mod dag_validate;
 mod parser;
 mod validator;
 
-use {crate::prelude::*, dag_execute::*, dag_publish::*, dag_validate::*};
+use {
+    crate::prelude::*,
+    dag_execute::*,
+    dag_publish::*,
+    dag_validate::*,
+    parser::DEFAULT_ENTRY_GROUP,
+};
 
 #[derive(Subcommand)]
 pub(crate) enum DagCommand {
@@ -48,19 +54,20 @@ pub(crate) enum DagCommand {
             value_name = "OBJECT_ID"
         )]
         dag_id: sui::ObjectID,
-        /// The entry vertex to invoke.
+        /// The entry group to invoke.
         #[arg(
-            long = "entry-vertex",
+            long = "entry-group",
             short = 'e',
-            help = "The entry vertex to invoke",
-            value_name = "NAME"
+            help = "The entry group to invoke",
+            value_name = "NAME",
+            default_value = DEFAULT_ENTRY_GROUP,
         )]
-        entry_vertex: String,
+        entry_group: String,
         /// The initial input data for the DAG.
         #[arg(
             long = "input-json",
             short = 'i',
-            help = "The initial input data for the DAG as a JSON object.",
+            help = "The initial input data for the DAG as a JSON object. Keys are names of entry vertices and values are the input data.",
             value_parser = ValueParser::from(parse_json_string),
             value_name = "DATA"
         )]
@@ -85,13 +92,13 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         // == `$ nexus dag execute` ==
         DagCommand::Execute {
             dag_id,
-            entry_vertex,
+            entry_group,
             input_json,
             gas,
         } => {
             execute_dag(
                 dag_id,
-                entry_vertex,
+                entry_group,
                 input_json,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
