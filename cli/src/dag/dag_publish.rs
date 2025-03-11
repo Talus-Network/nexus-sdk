@@ -214,7 +214,7 @@ fn create_entry_vertex(
     vertex: EntryVertex,
     groups: Vec<String>,
 ) -> AnyResult<sui::Argument> {
-    // `entry_groups: VecSet<EntryGroup>`
+    // `entry_groups: vector<EntryGroup>`
     let entry_group_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::ENTRY_GROUP);
 
     let entry_groups = tx.programmable_move_call(
