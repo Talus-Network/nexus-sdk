@@ -31,6 +31,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAG"),
     };
+    /// The DAGExecution struct. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::dag::DAGExecution`
+    pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("DAGExecution"),
+    };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::EntryGroup`
