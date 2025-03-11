@@ -192,7 +192,7 @@ mod tests {
         tokio::spawn(async move { bootstrap!(DummyToolWithPath) });
 
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool/").unwrap()),
             on_chain: None,
         })
         .await;
@@ -202,5 +202,14 @@ mod tests {
         let meta = meta.unwrap();
 
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+
+        // No trailing slash in command.
+        let meta = validate_tool(ToolIdent {
+            off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool").unwrap()),
+            on_chain: None,
+        })
+        .await;
+
+        assert!(meta.is_ok());
     }
 }
