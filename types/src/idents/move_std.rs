@@ -29,3 +29,22 @@ impl Ascii {
         ))
     }
 }
+
+// == `std::vector` ==
+
+pub struct Vector;
+
+const VECTOR_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("vector");
+
+impl Vector {
+    /// `std::vector::empty`
+    pub const EMPTY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VECTOR_MODULE,
+        name: sui::move_ident_str!("empty"),
+    };
+    /// `std::vector::push_back`
+    pub const PUSH_BACK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VECTOR_MODULE,
+        name: sui::move_ident_str!("push_back"),
+    };
+}

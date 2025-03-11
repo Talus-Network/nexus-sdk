@@ -289,10 +289,18 @@ impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
             }
         }
 
-        // Check that entry groups only reference entry vertices.
+        // Check that entry groups only reference entry vertices and that entry
+        // group names don't use the reserved keyword.
         let entry_groups = dag.entry_groups.unwrap_or_default();
 
         for entry_group in &entry_groups {
+            if entry_group.name == DEFAULT_ENTRY_GROUP {
+                bail!(
+                    "Entry group '{}' uses a reserved keyword.",
+                    DEFAULT_ENTRY_GROUP
+                );
+            }
+
             for vertex in &entry_group.vertices {
                 if !dag
                     .entry_vertices

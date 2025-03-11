@@ -17,7 +17,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_types::idents::{primitives, sui_framework, workflow},
+    nexus_types::idents::{move_std, primitives, sui_framework, workflow},
 };
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
@@ -218,9 +218,9 @@ fn create_entry_vertex(
     let entry_group_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::ENTRY_GROUP);
 
     let entry_groups = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        sui_framework::VecSet::EMPTY.module.into(),
-        sui_framework::VecSet::EMPTY.name.into(),
+        sui::MOVE_STDLIB_PACKAGE_ID,
+        move_std::Vector::EMPTY.module.into(),
+        move_std::Vector::EMPTY.name.into(),
         vec![entry_group_type.clone()],
         vec![],
     );
@@ -229,11 +229,11 @@ fn create_entry_vertex(
         // `entry_group: EntryGroup`
         let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
 
-        // `entry_groups.insert(entry_group)`
+        // `entry_groups.push_back(entry_group)`
         tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecSet::INSERT.module.into(),
-            sui_framework::VecSet::INSERT.name.into(),
+            sui::MOVE_STDLIB_PACKAGE_ID,
+            move_std::Vector::PUSH_BACK.module.into(),
+            move_std::Vector::PUSH_BACK.name.into(),
             vec![entry_group_type.clone()],
             vec![entry_groups, entry_group],
         );
@@ -281,8 +281,8 @@ fn create_entry_vertex(
     // `dag.with_entry_vertex(name, kind, input_ports)`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUP.module.into(),
-        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUP.name.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.module.into(),
+        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.into(),
         vec![],
         vec![dag, entry_groups, name, kind, input_ports],
     ))

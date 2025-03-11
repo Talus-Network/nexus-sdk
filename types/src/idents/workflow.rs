@@ -172,9 +172,9 @@ impl Dag {
     /// Add an entry vertex that is in a specific group to a DAG.
     ///
     /// `nexus_workflow::dag::with_entry_vertex_in_group`
-    pub const WITH_ENTRY_VERTEX_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const WITH_ENTRY_VERTEX_IN_GROUPS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::move_ident_str!("with_entry_vertex_in_group"),
+        name: sui::move_ident_str!("with_entry_vertex_in_groups"),
     };
     /// Add a Vertex to a DAG.
     ///

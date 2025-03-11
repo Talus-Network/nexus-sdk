@@ -14,7 +14,7 @@
 use crate::prelude::*;
 
 /// Name of the default entry group.
-pub(crate) const DEFAULT_ENTRY_GROUP: &str = "_in_default_group";
+pub(crate) const DEFAULT_ENTRY_GROUP: &str = "_default_group";
 
 /// Struct representing the Nexus DAG JSON file.
 #[derive(Clone, Debug, Deserialize)]

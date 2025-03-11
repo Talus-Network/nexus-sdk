@@ -85,7 +85,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_in_default_group'"));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
@@ -105,7 +105,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_in_default_group'"));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
