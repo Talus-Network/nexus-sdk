@@ -57,9 +57,9 @@ pub trait NexusTool: Send + 'static {
     ///
     /// It is used to generate the `/health` endpoint.
     fn health() -> impl Future<Output = AnyResult<StatusCode>> + Send;
-    /// Returns the path on a webserver that the tool resides on. This defaults
-    /// to '/'. But can be overriden by the implementor. Tool paths **must**
-    /// include a trailing slash.
+    /// Returns the relative path on a webserver that the tool resides on. This
+    /// defaults to an empty path (root URL). But can be overriden by the
+    /// implementor.
     fn path() -> &'static str {
         ""
     }
