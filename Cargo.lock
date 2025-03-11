@@ -4163,6 +4163,7 @@ dependencies = [
  "lazy-regex",
  "move-core-types",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "shared-crypto",
