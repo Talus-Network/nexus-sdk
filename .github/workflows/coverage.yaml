@@ -1,0 +1,102 @@
+name: CI Coverage Check
+
+on:
+  pull_request:
+    paths:
+      - cli/**
+      - sdk/**
+      - toolkit-rust/**
+      - tools/**
+jobs:
+  base_branch_coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Cache Cargo Registry and Build Artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
+          workspaces: be
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.11.2
+
+      - name: Install cargo-llvm-cov
+        run: cargo binstall cargo-llvm-cov --force
+
+      - name: Generate Coverage (Base Branch)
+        run: |
+          cargo llvm-cov --lcov --output-path lcov.info
+        env:
+          CARGO_TERM_COLOR: always
+          CACHE_ON_FAILURE: true
+          CARGO_INCREMENTAL: 0
+
+      - name: Upload code coverage for ref branch
+        uses: actions/upload-artifact@v4
+        with:
+          name: ref-lcov
+          path: be/lcov.info
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: base_branch_coverage
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download code coverage report from base branch
+        uses: actions/download-artifact@v4
+        with:
+          name: ref-lcov
+          path: be/ref-lcov
+
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Cache Cargo Registry and Build Artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
+          workspaces: be
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.11.2
+
+      - name: Install cargo-llvm-cov
+        run: cargo binstall cargo-llvm-cov --force
+
+      - name: Generate Coverage (PR Branch)
+        run: |
+          cargo llvm-cov --lcov --output-path lcov.info
+        env:
+          CARGO_TERM_COLOR: always
+          CACHE_ON_FAILURE: true
+          CARGO_INCREMENTAL: 0
+
+      - name: Generate Code Coverage report
+        id: code-coverage
+        uses: barecheck/code-coverage-action@v1
+        with:
+          barecheck-github-app-token: ${{ secrets.BARECHECK_GITHUB_APP_TOKEN }}
+          lcov-file: "be/lcov.info"
+          base-lcov-file: "be/ref-lcov/lcov.info"
+          # decrease this for good karma
+          # increase this for more dead puppies
+          minimum-ratio: 1
+          send-summary-comment: true
+          show-annotations: "warning"
