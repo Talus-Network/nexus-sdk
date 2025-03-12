@@ -26,7 +26,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
-          workspaces: be
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@v1.11.2
@@ -46,7 +45,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ref-lcov
-          path: be/lcov.info
+          path: lcov.info
 
   coverage:
     runs-on: ubuntu-latest
@@ -59,7 +58,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ref-lcov
-          path: be/ref-lcov
+          path: ref-lcov
 
       - name: Install Rust Toolchain
         uses: actions-rs/toolchain@v1
@@ -72,7 +71,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
-          workspaces: be
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@v1.11.2
@@ -93,8 +91,8 @@ jobs:
         uses: barecheck/code-coverage-action@v1
         with:
           barecheck-github-app-token: ${{ secrets.BARECHECK_GITHUB_APP_TOKEN }}
-          lcov-file: "be/lcov.info"
-          base-lcov-file: "be/ref-lcov/lcov.info"
+          lcov-file: "lcov.info"
+          base-lcov-file: "ref-lcov/lcov.info"
           # decrease this for good karma
           # increase this for more dead puppies
           minimum-ratio: 1
