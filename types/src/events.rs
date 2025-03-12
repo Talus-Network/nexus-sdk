@@ -1,7 +1,6 @@
 use {
-    crate::{idents::primitives, sui, ToolFqn},
+    crate::{idents::primitives, sui, types::*, ToolFqn},
     serde::{Deserialize, Serialize},
-    std::hash::Hash,
 };
 
 /// Struct holding the Sui event ID, the event generic arguments and the data
@@ -37,6 +36,12 @@ pub enum NexusEventKind {
     OnChainToolRegistered(OnChainToolRegisteredEvent),
     #[serde(rename = "ToolUnregisteredEvent")]
     ToolUnregistered(ToolUnregisteredEvent),
+    #[serde(rename = "WalkAdvancedEvent")]
+    WalkAdvanced(WalkAdvancedEvent),
+    #[serde(rename = "EndStateReachedEvent")]
+    EndStateReached(EndStateReachedEvent),
+    #[serde(rename = "ExecutionFinishedEvent")]
+    ExecutionFinished(ExecutionFinishedEvent),
     // These events are unused for now.
     #[serde(rename = "FoundingLeaderCapCreatedEvent")]
     FoundingLeaderCapCreated(serde_json::Value),
@@ -52,19 +57,6 @@ pub enum NexusEventKind {
     DAGEntryVertexAdded(serde_json::Value),
     #[serde(rename = "DAGDefaultValueAddedEvent")]
     DAGDefaultValueAdded(serde_json::Value),
-    #[serde(rename = "EndStateReachedEvent")]
-    EndStateReached(serde_json::Value),
-    #[serde(rename = "ExecutionFinishedEvent")]
-    ExecutionFinished(serde_json::Value),
-    #[serde(rename = "WalkAdvancedEvent")]
-    WalkAdvanced(serde_json::Value),
-}
-
-/// Useful struct as quite a few structs coming from on-chain events are just
-/// `{ name: String }`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct TypeName {
-    pub name: String,
 }
 
 // == Event definitions ==
@@ -76,8 +68,8 @@ pub struct RequestWalkExecutionEvent {
     pub dag: sui::ObjectID,
     pub execution: sui::ObjectID,
     #[serde(
-        deserialize_with = "parsers::deserialize_sui_u64",
-        serialize_with = "parsers::serialize_sui_u64"
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
     )]
     pub walk_index: u64,
     pub next_vertex: TypeName,
@@ -105,18 +97,18 @@ pub struct OffChainToolRegisteredEvent {
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
     #[serde(
-        deserialize_with = "parsers::deserialize_bytes_to_url",
-        serialize_with = "parsers::serialize_url_to_bytes"
+        deserialize_with = "deserialize_bytes_to_url",
+        serialize_with = "serialize_url_to_bytes"
     )]
     pub url: reqwest::Url,
     #[serde(
-        deserialize_with = "parsers::deserialize_bytes_to_json_value",
-        serialize_with = "parsers::serialize_json_value_to_bytes"
+        deserialize_with = "deserialize_bytes_to_json_value",
+        serialize_with = "serialize_json_value_to_bytes"
     )]
     pub input_schema: serde_json::Value,
     #[serde(
-        deserialize_with = "parsers::deserialize_bytes_to_json_value",
-        serialize_with = "parsers::serialize_json_value_to_bytes"
+        deserialize_with = "deserialize_bytes_to_json_value",
+        serialize_with = "serialize_json_value_to_bytes"
     )]
     pub output_schema: serde_json::Value,
 }
@@ -140,8 +132,65 @@ pub struct ToolUnregisteredEvent {
     pub fqn: ToolFqn,
 }
 
-// == Useful impls ==
+/// Fired by the Nexus Workflow when a walk has advanced. This event is used to
+/// inspect DAG execution process.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkAdvancedEvent {
+    pub dag: sui::ObjectID,
+    pub execution: sui::ObjectID,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub walk_index: u64,
+    /// Which vertex was just executed.
+    pub vertex: TypeName,
+    /// Which output variant was evaluated.
+    pub variant: TypeName,
+    /// What data is associated with the variant.
+    // TODO: the deser can be improved but it requires some bigger changes in
+    // the object crawler as well as porting the crawler to this crate.
+    pub variant_ports_to_data: serde_json::Value,
+}
 
+/// Fired by the Nexus Workflow when a walk has halted in an end state. This
+/// event is used to inspect DAG execution process.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EndStateReachedEvent {
+    pub dag: sui::ObjectID,
+    pub execution: sui::ObjectID,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub walk_index: u64,
+    /// Which vertex was just executed.
+    pub vertex: TypeName,
+    /// Which output variant was evaluated.
+    pub variant: TypeName,
+    /// What data is associated with the variant.
+    // TODO: the deser can be improved but it requires some bigger changes in
+    // the object crawler as well as porting the crawler to this crate.
+    pub variant_ports_to_data: serde_json::Value,
+}
+
+/// Fired by the Nexus Workflow when all walks have halted in their end states
+/// and there is no more work to be done. This event is used to inspect DAG
+/// execution process.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExecutionFinishedEvent {
+    pub dag: sui::ObjectID,
+    pub execution: sui::ObjectID,
+    pub has_any_walk_failed: bool,
+    pub has_any_walk_succeeded: bool,
+}
+
+// == Parsing ==
+
+/// Parse [`sui::Event`] into [`NexusEvent`]. We check that the module and name
+/// of the event wrapper are what we expect. Then we add the event name as a
+/// field in the json object with the [`NEXUS_EVENT_TYPE_TAG`] key. This way we
+/// can automatically deserialize into the correct [`NexusEventKind`].
 impl TryInto<NexusEvent> for sui::Event {
     type Error = anyhow::Error;
 
@@ -196,220 +245,82 @@ impl TryInto<NexusEvent> for sui::Event {
     }
 }
 
-mod parsers {
-    use {
-        super::*,
-        serde::{de::Deserializer, ser::Serializer},
-    };
+#[cfg(test)]
+mod tests {
+    use {super::*, assert_matches::assert_matches};
 
-    /// Deserialize a `Vec<u8>` into a [reqwest::Url].
-    pub(super) fn deserialize_bytes_to_url<'de, D>(
-        deserializer: D,
-    ) -> Result<reqwest::Url, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
-        let url = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
-
-        reqwest::Url::parse(&url).map_err(serde::de::Error::custom)
-    }
-
-    /// Inverse of [deserialize_bytes_to_url].
-    pub(super) fn serialize_url_to_bytes<S>(
-        value: &reqwest::Url,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let url = value.to_string();
-        let bytes = url.into_bytes();
-
-        bytes.serialize(serializer)
-    }
-
-    /// Deserialize a `Vec<u8>` into a [serde_json::Value].
-    pub(super) fn deserialize_bytes_to_json_value<'de, D>(
-        deserializer: D,
-    ) -> Result<serde_json::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
-        let value = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
-
-        serde_json::from_str(&value).map_err(serde::de::Error::custom)
-    }
-
-    /// Inverse of [deserialize_bytes_to_json_value].
-    pub(super) fn serialize_json_value_to_bytes<S>(
-        value: &serde_json::Value,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let value = serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
-        let bytes = value.into_bytes();
-
-        bytes.serialize(serializer)
-    }
-
-    /// Deserialize a `Vec<Vec<u8>>` into a `serde_json::Value`.
-    ///
-    /// If the outer `Vec` is len 1, it will be deserialized as a single JSON value.
-    /// Otherwise it will be deserialized as a JSON array.
-    #[allow(dead_code)]
-    pub(super) fn deserialize_array_of_bytes_to_json_value<'de, D>(
-        deserializer: D,
-    ) -> Result<serde_json::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let array_of_bytes: Vec<Vec<u8>> = Deserialize::deserialize(deserializer)?;
-        let mut result = Vec::with_capacity(array_of_bytes.len());
-
-        for bytes in array_of_bytes {
-            let value = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
-
-            // TODO: This is temporarily added here to automatically fallback to
-            // a JSON String if we can't parse the bytes as JSON. In the future,
-            // this should fail the execution.
-            //
-            // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
-            let value = match serde_json::from_str(&value) {
-                Ok(value) => value,
-                Err(_) => serde_json::Value::String(value),
-            };
-
-            result.push(value);
-        }
-
-        match result.len() {
-            1 => Ok(result.pop().expect("Len is 1")),
-            _ => Ok(serde_json::Value::Array(result)),
+    fn dummy_event(
+        name: sui::Identifier,
+        data: serde_json::Value,
+        generics: Vec<sui::MoveTypeTag>,
+    ) -> sui::Event {
+        sui::Event {
+            id: sui::EventID {
+                tx_digest: sui::TransactionDigest::random(),
+                event_seq: 42,
+            },
+            package_id: sui::ObjectID::random(),
+            transaction_module: sui::move_ident_str!("primitives").into(),
+            sender: sui::ObjectID::random().into(),
+            bcs: vec![],
+            timestamp_ms: None,
+            type_: sui::MoveStructTag {
+                address: *sui::ObjectID::random(),
+                name: primitives::Event::EVENT_WRAPPER.name.into(),
+                module: primitives::Event::EVENT_WRAPPER.module.into(),
+                type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+                    address: *sui::ObjectID::random(),
+                    name,
+                    module: sui::move_ident_str!("dag").into(),
+                    type_params: generics,
+                }))],
+            },
+            parsed_json: data,
         }
     }
 
-    /// Inverse of [deserialize_array_of_bytes_to_json_value].
-    #[allow(dead_code)]
-    pub(super) fn serialize_json_value_to_array_of_bytes<S>(
-        value: &serde_json::Value,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // The structure of the data here is TBD.
-        //
-        // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
-        let array = match value {
-            serde_json::Value::Array(array) => array,
-            value => &vec![value.clone()],
-        };
+    #[test]
+    fn test_sui_event_desers_into_nexus_event() {
+        let dag = sui::ObjectID::random();
+        let execution = sui::ObjectID::random();
+        let evaluations = sui::ObjectID::random();
 
-        let mut result = Vec::with_capacity(array.len());
+        let generic = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: *sui::ObjectID::random(),
+            name: sui::move_ident_str!("Foo").into(),
+            module: sui::move_ident_str!("bar").into(),
+            type_params: vec![],
+        }));
 
-        for value in array {
-            let value = serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
-            let bytes = value.into_bytes();
+        let event = dummy_event(
+            sui::move_ident_str!("RequestWalkExecutionEvent").into(),
+            serde_json::json!({
+                "event":{
+                    "dag": dag.to_string(),
+                    "execution": execution.to_string(),
+                    "walk_index": "42",
+                    "next_vertex": {
+                        "name": "foo",
+                    },
+                    "evaluations": evaluations.to_string(),
+                    "worksheet_from_type": {
+                        "name": "bar",
+                    },
+                }
+            }),
+            vec![generic.clone()],
+        );
 
-            result.push(bytes);
-        }
+        let event: NexusEvent = event.try_into().unwrap();
 
-        result.serialize(serializer)
-    }
-
-    /// Custom parser for deserializing to a [u64] from Sui Events. They wrap this
-    /// type as a string to avoid overflow.
-    ///
-    /// See [sui_sdk::rpc_types::SuiMoveValue] for more information.
-    pub(super) fn deserialize_sui_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value: String = Deserialize::deserialize(deserializer)?;
-        let value = value.parse::<u64>().map_err(serde::de::Error::custom)?;
-
-        Ok(value)
-    }
-
-    /// Inverse of [deserialize_sui_u64] for indexing reasons.
-    pub(super) fn serialize_sui_u64<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        value.to_string().serialize(serializer)
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use {super::*, serde::Deserialize, serde_json::json};
-
-        #[derive(Deserialize)]
-        struct TestStruct {
-            #[serde(deserialize_with = "deserialize_array_of_bytes_to_json_value")]
-            value: serde_json::Value,
-        }
-
-        #[test]
-        fn test_single_valid_json_number() {
-            // This test supplies a single element.
-            // The inner array [49, 50, 51] corresponds to the UTF-8 string "123".
-            // "123" is valid JSON and parses to the number 123.
-            let input = r#"
-        {
-            "value": [[49,50,51]]
-        }
-        "#;
-            let result: TestStruct = serde_json::from_str(input).unwrap();
-            assert_eq!(result.value, json!(123));
-        }
-
-        #[test]
-        fn test_multiple_valid_json() {
-            // Two elements:
-            // First element: [34,118,97,108,117,101,34] corresponds to "\"value\""
-            //   which is valid JSON and becomes the string "value".
-            // Second element: [49,50,51] corresponds to "123" and becomes the number 123.
-            // Since there is more than one element, the deserializer returns a JSON array.
-            let input = r#"
-        {
-            "value": [
-                [34,118,97,108,117,101,34],
-                [49,50,51]
-            ]
-        }
-        "#;
-            let result: TestStruct = serde_json::from_str(input).unwrap();
-            assert_eq!(result.value, json!(["value", 123]));
-        }
-
-        #[test]
-        fn test_single_invalid_json_fallback() {
-            // Single element with bytes for "hello": [104,101,108,108,111].
-            // "hello" is not valid JSON (missing quotes), so the fallback
-            // returns the string "hello" as a JSON string.
-            let input = r#"
-        {
-            "value": [[104,101,108,108,111]]
-        }
-        "#;
-            let result: TestStruct = serde_json::from_str(input).unwrap();
-            assert_eq!(result.value, json!("hello"));
-        }
-
-        #[test]
-        fn test_empty_array() {
-            // An empty outer array should result in an empty JSON array.
-            let input = r#"
-        {
-            "value": []
-        }
-        "#;
-            let result: TestStruct = serde_json::from_str(input).unwrap();
-            assert_eq!(result.value, json!([]));
-        }
+        assert_eq!(event.generics, vec![generic]);
+        assert_matches!(event.data, NexusEventKind::RequestWalkExecution(e)
+            if e.dag == dag &&
+                e.execution == execution &&
+                e.evaluations == evaluations &&
+                e.walk_index == 42 &&
+                e.next_vertex.name == "foo".to_string() &&
+                e.worksheet_from_type.name == "bar".to_string()
+        );
     }
 }

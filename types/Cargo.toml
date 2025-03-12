@@ -17,12 +17,15 @@ sui_types = ["sui_sdk", "move_core_types", "sui_keys", "shared_crypto"]
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
-# Events feature enables the use of the `events` module. Also adds reqwest as a
+# Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
-events = ["sui_idents", "reqwest"]
+types = ["sui_types", "reqwest"]
+
+# Events feature enables the use of the `events` module.
+events = ["sui_idents", "types"]
 
 # Enable all features.
-full = ["tool_fqn", "sui_types", "sui_idents", "events"]
+full = ["tool_fqn", "sui_types", "sui_idents", "types", "events"]
 
 [dependencies]
 anyhow.workspace = true

@@ -1,5 +1,11 @@
 use {
-    crate::{command_title, loading, prelude::*, sui::*},
+    crate::{
+        command_title,
+        dag::dag_inspect_execution::inspect_dag_execution,
+        loading,
+        prelude::*,
+        sui::*,
+    },
     nexus_types::idents::{primitives, sui_framework, workflow},
 };
 
@@ -10,6 +16,7 @@ pub(crate) async fn execute_dag(
     input_json: serde_json::Value,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
+    inspect: bool,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
@@ -111,6 +118,10 @@ pub(crate) async fn execute_dag(
         check = "✔".green().bold(),
         id = object_id.to_string().truecolor(100, 100, 100)
     );
+
+    if inspect {
+        inspect_dag_execution(object_id, response.digest).await?;
+    }
 
     Ok(())
 }

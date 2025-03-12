@@ -4,7 +4,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use crate::idents::workflow;
 //!
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");

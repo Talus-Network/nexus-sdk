@@ -10,17 +10,13 @@ import '../just/_helpers.just'
 _default:
     @just --list types
 
-# Build the Nexus Types library
-build: _check-cargo
-    cargo +stable build --package nexus-types --release
-
 # Check the Nexus Types library
 check: _check-cargo
-    cargo +stable check --package nexus-types
+    cargo +stable check --features full --package nexus-types
 
 # Run all tests in the Nexus Types library
 test: _check-cargo
-    cargo +stable test --package nexus-types
+    cargo +stable test --features full --package nexus-types
 
 # Run rustfmt on the Nexus Types library
 fmt-check: _check-cargo

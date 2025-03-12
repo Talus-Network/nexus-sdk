@@ -37,6 +37,7 @@ pub use {
         types::{
             base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
             crypto::SignatureScheme,
+            digests::TransactionDigest,
             dynamic_field::{DynamicFieldInfo, DynamicFieldName},
             event::EventID,
             gas_coin::MIST_PER_SUI,

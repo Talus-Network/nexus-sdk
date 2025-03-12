@@ -1,4 +1,5 @@
 mod dag_execute;
+mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
 mod parser;
@@ -7,6 +8,7 @@ mod validator;
 use {
     crate::prelude::*,
     dag_execute::*,
+    dag_inspect_execution::*,
     dag_publish::*,
     dag_validate::*,
     parser::DEFAULT_ENTRY_GROUP,
@@ -72,8 +74,37 @@ pub(crate) enum DagCommand {
             value_name = "DATA"
         )]
         input_json: serde_json::Value,
+        /// Whether to inspect the DAG execution process.
+        #[arg(
+            long = "inspect",
+            short = 'n',
+            help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
+        )]
+        inspect: bool,
         #[command(flatten)]
         gas: GasArgs,
+    },
+
+    #[command(
+        about = "Inspect a Nexus DAG execution process based on the provided object ID and execution digest."
+    )]
+    InspectExecution {
+        /// The object ID of the Nexus DAGExecution object.
+        #[arg(
+            long = "dag-execution-id",
+            short = 'e',
+            help = "The object ID of the Nexus DAGExecution object.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_execution_id: sui::ObjectID,
+        /// The entry group to invoke.
+        #[arg(
+            long = "execution-digest",
+            short = 'd',
+            help = "The transaction digest of the execution.",
+            value_name = "DIGEST"
+        )]
+        execution_digest: sui::TransactionDigest,
     },
 }
 
@@ -95,6 +126,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             entry_group,
             input_json,
             gas,
+            inspect,
         } => {
             execute_dag(
                 dag_id,
@@ -102,8 +134,15 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 input_json,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
+                inspect,
             )
             .await
         }
+
+        // == `$ nexus dag inspect-execution` ==
+        DagCommand::InspectExecution {
+            dag_execution_id,
+            execution_digest,
+        } => inspect_dag_execution(dag_execution_id, execution_digest).await,
     }
 }
