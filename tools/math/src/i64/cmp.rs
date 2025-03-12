@@ -21,8 +21,8 @@
 //! - `b: i64`: The second number.
 
 use {
+    nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    nexus_sdk::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::cmp::Ordering,

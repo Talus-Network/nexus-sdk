@@ -7,3 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct TypeName {
     pub name: String,
 }
+
+impl std::fmt::Display for TypeName {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}

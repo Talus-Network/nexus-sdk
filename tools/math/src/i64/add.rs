@@ -23,8 +23,8 @@
 //! - `reason: string`: The reason for the error. This is always overflow.
 
 use {
+    nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    nexus_sdk::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };

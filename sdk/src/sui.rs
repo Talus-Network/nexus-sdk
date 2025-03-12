@@ -15,6 +15,7 @@ pub use {
         language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
     },
     shared_crypto::intent::Intent,
+    sui_keys::{key_derive::generate_new_key, keystore::Keystore},
     sui_sdk::{
         error::Error,
         rpc_types::{
