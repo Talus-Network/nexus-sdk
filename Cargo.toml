@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["toolkit-rust", "cli", "types", "tools/math", "tools/llm-openai-chat-completion"]
+members = ["toolkit-rust", "cli", "types", "tools/*"]
 
 [workspace.dependencies]
 anyhow = "1.0.95"

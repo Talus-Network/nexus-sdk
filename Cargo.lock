@@ -4133,6 +4133,7 @@ dependencies = [
  "schemars 1.0.0-alpha.17",
  "serde",
  "serde_json",
+ "serial_test",
  "thiserror 2.0.11",
  "tokio",
  "toml 0.8.20",
