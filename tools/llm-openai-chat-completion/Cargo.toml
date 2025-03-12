@@ -1,7 +1,15 @@
 [package]
 name = "llm-openai-chat-completion"
-version = "0.1.0"
-edition = "2021"
+description = "Nexus Tools for OpenAI Chat Completion."
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 async-openai = "0.27"
@@ -16,4 +24,4 @@ tokio.workspace = true
 
 # === Nexus deps ===
 nexus-toolkit.workspace = true
-nexus-types.workspace = true
+nexus-sdk.workspace = true

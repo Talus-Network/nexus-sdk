@@ -6,7 +6,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_types::idents::{primitives, sui_framework, workflow},
+    nexus_sdk::idents::{primitives, sui_framework, workflow},
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.

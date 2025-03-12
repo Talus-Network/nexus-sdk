@@ -3423,8 +3423,8 @@ version = "0.1.0"
 dependencies = [
  "async-openai",
  "chrono",
+ "nexus-sdk",
  "nexus-toolkit",
- "nexus-types",
  "reqwest",
  "schemars 1.0.0-alpha.17",
  "serde",
@@ -3497,8 +3497,8 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 name = "math"
 version = "0.1.0"
 dependencies = [
+ "nexus-sdk",
  "nexus-toolkit",
- "nexus-types",
  "schemars 1.0.0-alpha.17",
  "serde",
  "tokio",
@@ -4126,8 +4126,8 @@ dependencies = [
  "convert_case 0.7.1",
  "home",
  "minijinja",
+ "nexus-sdk",
  "nexus-toolkit",
- "nexus-types",
  "petgraph 0.7.1",
  "reqwest",
  "schemars 1.0.0-alpha.17",
@@ -4140,22 +4140,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexus-toolkit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nexus-types",
- "reqwest",
- "schemars 1.0.0-alpha.17",
- "serde",
- "serde_json",
- "serial_test",
- "tokio",
- "warp",
-]
-
-[[package]]
-name = "nexus-types"
+name = "nexus-sdk"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -4169,6 +4154,21 @@ dependencies = [
  "shared-crypto",
  "sui-keys",
  "sui-sdk",
+]
+
+[[package]]
+name = "nexus-toolkit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nexus-sdk",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "warp",
 ]
 
 [[package]]

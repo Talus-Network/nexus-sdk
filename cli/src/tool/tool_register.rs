@@ -6,7 +6,7 @@ use {
         sui::*,
         tool::{tool_validate::*, ToolIdent, ToolMeta},
     },
-    nexus_types::idents::{move_std, workflow},
+    nexus_sdk::idents::{move_std, workflow},
 };
 
 /// Validate and then register a new Tool.

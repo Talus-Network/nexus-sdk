@@ -1,7 +1,15 @@
 [package]
-name = "nexus-types"
-version = "0.1.0"
-edition = "2021"
+name = "nexus-sdk"
+description = "Nexus SDK provides a set of tools to interact with the Nexus Workflow."
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [features]
 default = ["tool_fqn"]

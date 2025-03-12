@@ -1,6 +1,6 @@
 use {
     crate::{command_title, confirm, loading, prelude::*, sui::*},
-    nexus_types::idents::{move_std, workflow},
+    nexus_sdk::idents::{move_std, workflow},
 };
 
 /// Unregister a Tool based on the provided FQN.

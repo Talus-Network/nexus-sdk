@@ -37,7 +37,7 @@ impl ToolFqn {
 /// # Examples
 ///
 /// ```
-/// use nexus_types::{fqn, ToolFqn};
+/// use nexus_sdk::{fqn, ToolFqn};
 ///
 /// let fqn = fqn!("xyz.taluslabs.example@1");
 ///
@@ -47,7 +47,7 @@ impl ToolFqn {
 /// ```
 ///
 /// ```should_panic
-/// use nexus_types::{fqn, ToolFqn};
+/// use nexus_sdk::{fqn, ToolFqn};
 ///
 /// let _ = fqn!("xyz.taluslabs.example@");
 /// ```

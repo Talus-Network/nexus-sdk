@@ -1,7 +1,15 @@
 [package]
 name = "nexus-toolkit"
-version = "0.1.0"
-edition = "2021"
+description = "Nexus Toolkit provides a Rust framework to create new Nexus Tools."
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
@@ -12,7 +20,7 @@ serde_json.workspace = true
 warp.workspace = true
 
 # === Nexus deps ===
-nexus-types.workspace = true
+nexus-sdk.workspace = true
 
 [dev-dependencies]
 reqwest = { version = "0.12.12", features = ["json"] }

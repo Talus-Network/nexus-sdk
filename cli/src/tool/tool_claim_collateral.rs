@@ -1,6 +1,6 @@
 use {
     crate::{command_title, loading, prelude::*, sui::*},
-    nexus_types::idents::{move_std, workflow},
+    nexus_sdk::idents::{move_std, workflow},
 };
 
 /// Claim collateral for a Tool based on the provided FQN.

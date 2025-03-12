@@ -1,7 +1,7 @@
 use {
     anyhow::Result as AnyResult,
+    nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    nexus_types::{fqn, ToolFqn},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     warp::http::StatusCode,

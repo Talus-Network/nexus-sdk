@@ -22,7 +22,7 @@
 
 use {
     nexus_toolkit::*,
-    nexus_types::*,
+    nexus_sdk::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::cmp::Ordering,

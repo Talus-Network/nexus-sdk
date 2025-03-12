@@ -1,6 +1,6 @@
 use {
     crate::{command_title, prelude::*, sui::*},
-    nexus_types::{
+    nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
         idents::primitives,
         types::{NexusData, TypeName},

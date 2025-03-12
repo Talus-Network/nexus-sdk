@@ -17,7 +17,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_types::idents::{move_std, primitives, sui_framework, workflow},
+    nexus_sdk::idents::{move_std, primitives, sui_framework, workflow},
 };
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
