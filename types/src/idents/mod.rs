@@ -5,8 +5,12 @@
 //! # Example
 //!
 //! ```no_run
-//! use crate::idents::workflow;
+//! use nexus_types::sui::{ObjectID, ProgrammableTransactionBuilder};
+//! use nexus_types::idents::workflow;
 //!
+//!
+//! let mut tx = ProgrammableTransactionBuilder::new();
+//! let workflow_pkg_id = ObjectID::random();
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
 //! ```
 
