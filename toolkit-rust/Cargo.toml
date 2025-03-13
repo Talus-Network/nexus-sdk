@@ -23,6 +23,6 @@ warp.workspace = true
 nexus-sdk.workspace = true
 
 [dev-dependencies]
-reqwest = { version = "0.12.12", features = ["json"] }
+reqwest = { version = "0.12.14", features = ["json"] }
 serial_test = "3.2.0"
-tokio = { version = "1.43.0", features = ["macros"] }
+tokio = { version = "1.44.1", features = ["macros"] }

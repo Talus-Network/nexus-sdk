@@ -12,25 +12,25 @@ package.keywords = ["talus", "nexus", "rust", "sui", "sdk", "toolkit"]
 package.categories = ["command-line-interface", "api-bindings"]
 
 [workspace.dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.97"
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "4.5.29", features = ["derive"] }
+clap = { version = "4.5.32", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"
 home = "0.5.11"
 lazy-regex = "3.4.1"
-minijinja = "2.7.0"
+minijinja = "2.8.0"
 petgraph = "0.7.1"
 regex = "1.11.1"
-reqwest = "0.12.12"
+reqwest = "0.12.14"
 # Keep an eye for the full release here. We need v1 for draft2020-12 schema.
 schemars = "1.0.0-alpha.17"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.138"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 strum = "0.27"
 strum_macros = "0.27"
-thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["full"] }
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["full"] }
 toml = "0.8.20"
 warp = "0.3.7"
 
