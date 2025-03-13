@@ -8,7 +8,7 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
-/// Ubiqutously used resource identifiers for on-chain types and functions.
+/// Ubiquitously used resource identifiers for on-chain types and functions.
 /// This includes workflow, primitives and interface Nexus modules but also
 /// some Sui framework and Sui move std modules that we use.
 #[cfg(feature = "sui_idents")]
