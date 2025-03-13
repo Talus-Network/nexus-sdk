@@ -4,10 +4,15 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use crate::idents::workflow;
+//! ```
+//! use nexus_types::sui;
+//! use nexus_types::idents::workflow;
 //!
+//! let mut tx = sui::ProgrammableTransactionBuilder::new();
+//! let workflow_pkg_id = sui::ObjectID::random();
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
+//!
+//! assert!(matches!(vertex, Ok(sui::Argument::Result(_))));
 //! ```
 
 pub mod move_std;

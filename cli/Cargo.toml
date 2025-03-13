@@ -34,6 +34,7 @@ features = ["full"]
 [dev-dependencies]
 assert_matches = "1.5.0"
 schemars.workspace = true
+serial_test = "3.2.0"
 warp = "0.3.7"
 
 nexus-toolkit.workspace = true
