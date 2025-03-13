@@ -5,8 +5,8 @@
 //! # Example
 //!
 //! ```
-//! use nexus_types::sui;
-//! use nexus_types::idents::workflow;
+//! use nexus_sdk::sui;
+//! use nexus_sdk::idents::workflow;
 //!
 //! let mut tx = sui::ProgrammableTransactionBuilder::new();
 //! let workflow_pkg_id = sui::ObjectID::random();
