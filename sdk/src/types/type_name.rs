@@ -13,3 +13,15 @@ impl std::fmt::Display for TypeName {
         write!(f, "{}", self.name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_name_deser_display() {
+        let name: TypeName = serde_json::from_str(r#"{"name":"test"}"#).unwrap();
+
+        assert_eq!(name.to_string(), "test");
+    }
+}
