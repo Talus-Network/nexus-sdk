@@ -26,10 +26,15 @@ public struct Guy has key, store {
     timetable: ObjectTable<Name, Value>,
     friends: ObjectBag,
     bag: Bag,
+    heterogeneous: Bag,
 }
 
 public struct Name has copy, drop, store {
     name: AsciiString,
+}
+
+public struct AnotherName has copy, drop, store {
+    another_name: AsciiString,
 }
 
 public struct Value has key, store {
@@ -41,6 +46,11 @@ public struct Value has key, store {
 public struct PlainValue has key, store {
     id: UID,
     value: vector<u8>,
+}
+
+public struct AnotherPlainValue has key, store {
+    id: UID,
+    another_value: vector<u8>,
 }
 
 fun init(ctx: &mut TxContext) {
@@ -123,6 +133,16 @@ fun init(ctx: &mut TxContext) {
         value: b"Bag Data 2",
     });
 
+    let mut heterogeneous = bag::new(ctx);
+    heterogeneous.add(Name { name: b"Bag Item".to_ascii_string() }, PlainValue {
+        id: object::new(ctx),
+        value: b"Bag Data",
+    });
+    heterogeneous.add(AnotherName { another_name: b"Another Bag Item".to_ascii_string() }, AnotherPlainValue {
+        id: object::new(ctx),
+        another_value: b"Another Bag Data",
+    });
+
     let guy = Guy {
         id: guy_id,
         name,
@@ -133,6 +153,7 @@ fun init(ctx: &mut TxContext) {
         timetable,
         friends,
         bag,
+        heterogeneous,
     };
 
     public_share_object(guy);

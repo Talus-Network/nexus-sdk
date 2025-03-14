@@ -1,6 +1,7 @@
 #[cfg(feature = "object_crawler")]
 mod test_object_crawler {
     use {
+        assert_matches::assert_matches,
         nexus_sdk::{object_crawler::*, sui},
         serde::{Deserialize, Serialize},
     };
@@ -18,11 +19,17 @@ mod test_object_crawler {
         timetable: ObjectTable<Name, Structure<Value>>,
         friends: ObjectBag<Name, Structure<PlainValue>>,
         bag: Bag<Name, Structure<PlainValue>>,
+        heterogeneous: Bag<HeterogeneousKey, Structure<HeterogeneousValue>>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct Name {
         name: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    struct AnotherName {
+        another_name: String,
     }
 
     #[derive(Clone, Debug, Deserialize)]
@@ -42,11 +49,33 @@ mod test_object_crawler {
         value: Vec<u8>,
     }
 
+    #[derive(Clone, Debug, Deserialize)]
+    struct AnotherPlainValue {
+        // Test UID deser.
+        #[allow(dead_code)]
+        id: sui::UID,
+        another_value: Vec<u8>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(untagged)]
+    enum HeterogeneousKey {
+        Name(Name),
+        AnotherName(AnotherName),
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(untagged)]
+    enum HeterogeneousValue {
+        Value(PlainValue),
+        AnotherValue(AnotherPlainValue),
+    }
+
     #[tokio::test]
     async fn test_object_crawler() {
         // TODO: Containerize and autodeploy contract.
         let guy: sui::ObjectID =
-            "0xa561cebbfaa7685cb3d9bb318b80ce7d571af35b7e74be196b13853bbd9ae675"
+            "0x99ebaee63b9fa94b69f550437a2368d7d2c1fdd6a2b1ca4855237eb5d6d61e78"
                 .parse()
                 .unwrap();
 
@@ -56,8 +85,8 @@ mod test_object_crawler {
             .unwrap();
 
         // Name type tag.
-        let tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: "0x7234feda9cd367e34af24d83884f6e7751fab0c6e06ee63f3ba659f28ce13acd"
+        let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: "0x1ed9932be5bee81df64c3eaa4f87d0f4500023d47758f403a02378de6dc48813"
                 .parse()
                 .unwrap(),
             module: sui::move_ident_str!("main").into(),
@@ -187,7 +216,6 @@ mod test_object_crawler {
         assert_eq!(friends.len(), 2);
 
         // Fetch frist friend.
-
         let charlie = guy
             .friends
             .fetch_one(
@@ -195,7 +223,7 @@ mod test_object_crawler {
                 Name {
                     name: "Charlie".to_string(),
                 },
-                tag.clone(),
+                name_tag.clone(),
             )
             .await
             .unwrap()
@@ -210,7 +238,7 @@ mod test_object_crawler {
                 Name {
                     name: "David".to_string(),
                 },
-                tag.clone(),
+                name_tag.clone(),
             )
             .await
             .unwrap()
@@ -229,7 +257,7 @@ mod test_object_crawler {
                 Name {
                     name: "Bag Item".to_string(),
                 },
-                tag.clone(),
+                name_tag.clone(),
             )
             .await
             .unwrap()
@@ -244,11 +272,28 @@ mod test_object_crawler {
                 Name {
                     name: "Bag Item 2".to_string(),
                 },
-                tag.clone(),
+                name_tag.clone(),
             )
             .await
             .unwrap()
             .into_inner();
         assert_eq!(item2.value, b"Bag Data 2");
+
+        // Fetch heterogeneous Bag.
+        let heterogeneous = guy.heterogeneous.fetch_all(&sui).await.unwrap();
+        assert!(heterogeneous.len() == 2);
+
+        for (key, value) in heterogeneous {
+            match key {
+                HeterogeneousKey::Name(name) => {
+                    assert_eq!(name.name, "Bag Item");
+                    assert_matches!(value.into_inner(), HeterogeneousValue::Value(v) if v.value == b"Bag Data");
+                }
+                HeterogeneousKey::AnotherName(name) => {
+                    assert_eq!(name.another_name, "Another Bag Item");
+                    assert_matches!(value.into_inner(), HeterogeneousValue::AnotherValue(v) if v.another_value == b"Another Bag Data");
+                }
+            }
+        }
     }
 }
