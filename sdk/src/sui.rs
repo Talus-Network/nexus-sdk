@@ -25,6 +25,7 @@ pub use {
             ObjectChange,
             SuiEvent as Event,
             SuiExecutionStatus as ExecutionStatus,
+            SuiObjectData as ObjectData,
             SuiObjectDataFilter as ObjectDataFilter,
             SuiObjectDataOptions as ObjectDataOptions,
             SuiObjectRef as ObjectRef,

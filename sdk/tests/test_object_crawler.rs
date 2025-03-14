@@ -1,0 +1,254 @@
+#[cfg(feature = "object_crawler")]
+mod test_object_crawler {
+    use {
+        nexus_sdk::{object_crawler::*, sui},
+        serde::{Deserialize, Serialize},
+    };
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct Guy {
+        // Test UID deser.
+        #[allow(dead_code)]
+        id: sui::UID,
+        name: String,
+        age: u8,
+        hobbies: VecSet<String>,
+        groups: VecMap<Structure<Name>, Vec<Structure<Name>>>,
+        chair: Table<Name, Structure<Name>>,
+        timetable: ObjectTable<Name, Structure<Value>>,
+        friends: ObjectBag<Name, Structure<PlainValue>>,
+        bag: Bag<Name, Structure<PlainValue>>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    struct Name {
+        name: String,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct Value {
+        // Test UID deser.
+        #[allow(dead_code)]
+        id: sui::UID,
+        value: Structure<Name>,
+        pouch: ObjectBag<Name, Structure<PlainValue>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct PlainValue {
+        // Test UID deser.
+        #[allow(dead_code)]
+        id: sui::UID,
+        value: Vec<u8>,
+    }
+
+    #[tokio::test]
+    async fn test_object_crawler() {
+        // TODO: Containerize and autodeploy contract.
+        let guy: sui::ObjectID =
+            "0xa561cebbfaa7685cb3d9bb318b80ce7d571af35b7e74be196b13853bbd9ae675"
+                .parse()
+                .unwrap();
+
+        let sui = sui::ClientBuilder::default()
+            .build_localnet()
+            .await
+            .unwrap();
+
+        // Name type tag.
+        let tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: "0x7234feda9cd367e34af24d83884f6e7751fab0c6e06ee63f3ba659f28ce13acd"
+                .parse()
+                .unwrap(),
+            module: sui::move_ident_str!("main").into(),
+            name: sui::move_ident_str!("Name").into(),
+            type_params: vec![],
+        }));
+
+        // Fetch the base object.
+        let guy = fetch_one::<Structure<Guy>>(&sui, guy)
+            .await
+            .unwrap()
+            .data
+            .into_inner();
+
+        assert_eq!(guy.name, "John Doe");
+        assert_eq!(guy.age, 30);
+        assert_eq!(
+            guy.hobbies.into_inner(),
+            vec!["Reading".to_string(), "Swimming".to_string()]
+                .into_iter()
+                .collect()
+        );
+
+        // Check VecMap and nested vector fetched correctly.
+        let groups = guy.groups.into_inner();
+        assert_eq!(groups.len(), 2);
+
+        // Contains book club with the correct people.
+        let group = groups.clone().into_iter().find(|(group, people)| {
+            group.clone().into_inner().name == "Book Club"
+                && people.iter().find(|p| p.inner().name == "Alice").is_some()
+                && people.iter().find(|p| p.inner().name == "Bob").is_some()
+        });
+
+        assert!(group.is_some());
+
+        // Contains swimming club with the correct people.
+        let group = groups.clone().into_iter().find(|(group, people)| {
+            group.clone().into_inner().name == "Swimming Club"
+                && people
+                    .iter()
+                    .find(|p| p.inner().name == "Charlie")
+                    .is_some()
+                && people.iter().find(|p| p.inner().name == "David").is_some()
+        });
+
+        assert!(group.is_some());
+
+        // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
+        let timetable = guy.timetable.fetch_all(&sui).await.unwrap();
+        assert_eq!(timetable.len(), 2);
+
+        // Fetch monday.
+        let monday = guy
+            .timetable
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Monday".to_string(),
+                },
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(monday.value.into_inner().name, "Meeting");
+
+        let pouch = monday.pouch.fetch_all(&sui).await.unwrap();
+        assert_eq!(pouch.len(), 1);
+        let (key, value) = pouch.into_iter().next().unwrap();
+        assert_eq!(key.name, "Pouch Item");
+        assert_eq!(value.into_inner().value, b"Pouch Data");
+
+        // Fetch tuesday
+        let monday = guy
+            .timetable
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Tuesday".to_string(),
+                },
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(monday.value.into_inner().name, "Code Review");
+
+        let pouch = monday.pouch.fetch_all(&sui).await.unwrap();
+        assert_eq!(pouch.len(), 1);
+        let (key, value) = pouch.into_iter().next().unwrap();
+        assert_eq!(key.name, "Pouch Code");
+        assert_eq!(value.into_inner().value, b"MOREDATA15");
+
+        // Fetch chair which is a Table. Weirdly.
+        let chair = guy.chair.fetch_all(&sui).await.unwrap();
+        assert_eq!(chair.len(), 2);
+
+        // Fetch chairman.
+        let chairmain = guy
+            .chair
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Chairman".to_string(),
+                },
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(chairmain.name, "John Doe");
+
+        // Fetch vice chairman.
+        let vice_chairman = guy
+            .chair
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Vice Chairman".to_string(),
+                },
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(vice_chairman.name, "Alice");
+
+        // Fetch friends which is an ObjectBag.
+        let friends = guy.friends.fetch_all(&sui).await.unwrap();
+        assert_eq!(friends.len(), 2);
+
+        // Fetch frist friend.
+
+        let charlie = guy
+            .friends
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Charlie".to_string(),
+                },
+                tag.clone(),
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(charlie.value, b"Never Seen");
+
+        // Fetch second friend.
+        let david = guy
+            .friends
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "David".to_string(),
+                },
+                tag.clone(),
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(david.value, b"Definitely Imagination");
+
+        // Now fetch bag which is a Bag. Finally.
+        let bag = guy.bag.fetch_all(&sui).await.unwrap();
+        assert_eq!(bag.len(), 2);
+
+        // Fetch first item from bag.
+        let item1 = guy
+            .bag
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Bag Item".to_string(),
+                },
+                tag.clone(),
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(item1.value, b"Bag Data");
+
+        // Fetch second item from bag.
+        let item2 = guy
+            .bag
+            .fetch_one(
+                &sui,
+                Name {
+                    name: "Bag Item 2".to_string(),
+                },
+                tag.clone(),
+            )
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(item2.value, b"Bag Data 2");
+    }
+}

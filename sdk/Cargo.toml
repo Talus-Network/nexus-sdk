@@ -32,8 +32,11 @@ types = ["sui_types", "reqwest"]
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
 
+# Object crawler feature enables the use of the `object_crawler` module.
+object_crawler = ["sui_types", "serde_json"]
+
 # Enable all features.
-full = ["tool_fqn", "sui_types", "sui_idents", "types", "events"]
+full = ["tool_fqn", "sui_types", "sui_idents", "types", "events", "object_crawler"]
 
 [dependencies]
 anyhow.workspace = true
@@ -83,3 +86,4 @@ optional = true
 
 [dev-dependencies]
 assert_matches = "1.5.0"
+tokio = { version = "1.44.1", features = ["macros", "rt"] }

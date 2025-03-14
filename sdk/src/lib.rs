@@ -28,3 +28,8 @@ pub mod types;
 /// also contains the logic for serializing and deserializing these events.
 #[cfg(feature = "events")]
 pub mod events;
+
+/// Object crawler attempts to improve the Sui SDK obejct fetching by allowing
+/// direct parsing into structs.
+#[cfg(feature = "object_crawler")]
+pub mod object_crawler;

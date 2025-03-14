@@ -4154,6 +4154,7 @@ dependencies = [
  "shared-crypto",
  "sui-keys",
  "sui-sdk",
+ "tokio",
 ]
 
 [[package]]

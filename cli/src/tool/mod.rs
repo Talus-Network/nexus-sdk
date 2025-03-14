@@ -1,4 +1,5 @@
 mod tool_claim_collateral;
+mod tool_list;
 mod tool_new;
 mod tool_register;
 mod tool_unregister;
@@ -7,6 +8,7 @@ mod tool_validate;
 use {
     crate::prelude::*,
     tool_claim_collateral::*,
+    tool_list::*,
     tool_new::*,
     tool_register::*,
     tool_unregister::*,
@@ -94,6 +96,11 @@ pub(crate) enum ToolCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+
+    #[command(about = "List all registered tools.")]
+    List {
+        //
+    },
 }
 
 /// Struct holding an either on-chain or off-chain Tool identifier. Off-chain
@@ -175,5 +182,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         ToolCommand::ClaimCollateral { tool_fqn, gas } => {
             claim_collateral(tool_fqn, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
+
+        // == `$ nexus tool list` ==
+        ToolCommand::List { .. } => list_tools().await,
     }
 }
