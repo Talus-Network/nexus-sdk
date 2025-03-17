@@ -82,11 +82,25 @@ async fn test_object_crawler() {
         .await
         .expect("Failed to build Sui client");
 
+    // Create a wallet and request some gas tokens.
+    let (keystore, addr) =
+        test_utils::wallet::create_test_wallet().expect("Failed to create a wallet.");
+
+    test_utils::faucet::request_tokens(addr, &format!("http://127.0.0.1:{faucet_port}/gas"))
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    let gas_coin = test_utils::gas::fetch_gas_coin(&sui, addr)
+        .await
+        .expect("Failed to fetch gas coin.");
+
     // Publish test contract and fetch some IDs.
     let response = test_utils::contracts::publish_move_package(
         &sui,
-        faucet_port,
+        addr,
+        &keystore,
         "tests/move/object_crawler_test",
+        gas_coin,
     )
     .await;
 

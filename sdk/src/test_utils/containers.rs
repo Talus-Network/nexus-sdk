@@ -13,10 +13,11 @@ use testcontainers_modules::{
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
 pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16, u16) {
+    // TODO:
     let tag = if cfg!(target_arch = "aarch64") {
-        "ci-arm64"
+        "testnet-v1.38.2-arm64"
     } else {
-        "ci"
+        "testnet-v1.38.2"
     };
 
     let sui_request = Sui::default()
