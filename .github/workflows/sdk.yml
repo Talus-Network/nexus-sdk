@@ -4,14 +4,14 @@ name: Nexus SDK
 on:
   pull_request:
     paths:
-      - "types/**"
-      - ".github/workflows/types.yml"
+      - "sdk/**"
+      - ".github/workflows/sdk.yml"
   push:
     branches:
       - main
     paths:
-      - "types/**"
-      - ".github/workflows/types.yml"
+      - "sdk/**"
+      - ".github/workflows/sdk.yml"
 
 jobs:
   # 1. Install Rust
