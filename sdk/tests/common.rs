@@ -1,7 +1,10 @@
 #![cfg(feature = "full")]
 
 use {
-    nexus_sdk::{sui, sui::traits::*, types::SuiNet},
+    nexus_sdk::{
+        sui::{self, traits::*},
+        types::SuiNet,
+    },
     std::path::PathBuf,
     testcontainers_modules::{
         sui::Sui,
@@ -10,25 +13,35 @@ use {
 };
 
 /// Spins up a Sui container and returns its handle and mapped host port.
-pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16) {
+pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16, u16) {
     let sui_request = setup_sui();
     let container = sui_request
         .start()
         .await
         .expect("Failed to start Sui container");
-    let host_port = container
+    let rpc_port = container
         .get_host_port_ipv4(9000)
         .await
         .expect("Failed to get mapped host port for Sui");
-    (container, host_port)
+    let faucet_port = container
+        .get_host_port_ipv4(9123)
+        .await
+        .expect("Failed to get mapped host port for Sui faucet");
+    (container, rpc_port, faucet_port)
 }
 
 /// Sets up a Sui container request with the desired settings.
 fn setup_sui() -> ContainerRequest<Sui> {
+    let tag = if cfg!(target_arch = "aarch64") {
+        "ci-arm64"
+    } else {
+        "ci"
+    };
+
     Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
-        .with_tag("testnet-v1.38.1")
+        .with_tag(tag)
         .into()
 }
 
@@ -37,6 +50,7 @@ fn setup_sui() -> ContainerRequest<Sui> {
 /// [`path`] is the path relative to `nexus-sdk` `Cargo.toml` directory.
 pub async fn publish_move_package(
     sui: &sui::Client,
+    faucet_port: u16,
     path_str: &str,
 ) -> sui::TransactionBlockResponse {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PathBuf::from(path_str));
@@ -57,9 +71,9 @@ pub async fn publish_move_package(
     let keystore = get_be_wallet(secret_mnemonic.as_str());
 
     // Request some gas tokens. Assume localnet.
-    nexus_sdk::faucet::request_tokens(SuiNet::Localnet, addr)
+    nexus_sdk::faucet::request_tokens(faucet_port, SuiNet::Localnet, addr)
         .await
-        .ok();
+        .expect("Failed to request tokens from faucet.");
 
     // Fetch the gas coin to pay with.
     let gas_coin = get_gas_coin(&sui, addr).await;

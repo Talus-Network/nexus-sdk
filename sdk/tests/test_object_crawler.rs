@@ -76,16 +76,18 @@ enum HeterogeneousValue {
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
-    common::setup_sui_instance().await;
+    let (container, rpc_port, faucet_port) = common::setup_sui_instance().await;
 
     // Build Sui client.
     let sui = sui::ClientBuilder::default()
-        .build_localnet()
+        .build(format!("http://127.0.0.1:{}", rpc_port))
         .await
-        .unwrap();
+        .expect("Failed to build Sui client");
 
     // Publish test contract and fetch some IDs.
-    let response = common::publish_move_package(&sui, "tests/move/object_crawler_test").await;
+    let response =
+        common::publish_move_package(&sui, faucet_port, "tests/move/object_crawler_test").await;
+
     let changes = response
         .object_changes
         .expect("TX response must have object changes");
@@ -321,4 +323,6 @@ async fn test_object_crawler() {
             }
         }
     }
+
+    drop(container);
 }

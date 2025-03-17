@@ -9,10 +9,14 @@ use {
 ///
 /// Inspired by:
 /// <https://github.com/MystenLabs/sui/blob/aa99382c9191cd592cd65d0e197c33c49e4d9c4f/crates/sui/src/client_commands.rs#L2541>
-pub async fn request_tokens(sui_net: SuiNet, addr: sui::Address) -> anyhow::Result<()> {
+pub async fn request_tokens(
+    faucet_port: u16,
+    sui_net: SuiNet,
+    addr: sui::Address,
+) -> anyhow::Result<()> {
     let url = match sui_net {
         SuiNet::Testnet => "https://faucet.testnet.sui.io/v1/gas",
-        SuiNet::Localnet => "http://127.0.0.1:9123/gas",
+        SuiNet::Localnet => &format!("http://127.0.0.1:{faucet_port}/gas"),
         _ => bail!("Unsupported network"),
     };
 
