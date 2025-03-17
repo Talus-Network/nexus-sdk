@@ -7,8 +7,8 @@ use {
     tokio_retry::{strategy::ExponentialBackoff, Retry},
 };
 
-/// Request tokens from the Faucet for the given address.
-pub async fn request_tokens(addr: sui::Address, url: &str) -> anyhow::Result<()> {
+/// Request tokens from the Sui faucet for the given address.
+pub async fn request_tokens(url: &str, addr: sui::Address) -> anyhow::Result<()> {
     #[derive(Debug, Deserialize)]
     struct FaucetResponse {
         error: Option<String>,

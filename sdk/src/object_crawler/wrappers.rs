@@ -40,7 +40,7 @@ where
             value: serde_json::to_value(key).map_err(anyhow::Error::new)?,
         };
 
-        dynamic_fetch_one::<K, V>(sui, *self.id.object_id(), field_name).await
+        dynamic_fetch_one::<V>(sui, *self.id.object_id(), field_name).await
     }
 
     /// Fetch all objects from the table.
@@ -117,14 +117,16 @@ where
             value: serde_json::to_value(key).map_err(anyhow::Error::new)?,
         };
 
-        Ok(dynamic_fetch_one::<K, ObjectFields<ObjectValue<V>>>(
-            sui,
-            *self.id.object_id(),
-            field_name,
+        Ok(
+            dynamic_fetch_one::<ObjectFields<ObjectValue<V>>>(
+                sui,
+                *self.id.object_id(),
+                field_name,
+            )
+            .await?
+            .fields
+            .value,
         )
-        .await?
-        .fields
-        .value)
     }
 
     /// Fetch all objects from the table.
@@ -210,17 +212,14 @@ where
             value: serde_json::to_value(key).map_err(anyhow::Error::new)?,
         };
 
-        dynamic_fetch_one::<K, V>(sui, *self.id.object_id(), field_name).await
+        dynamic_fetch_one::<V>(sui, *self.id.object_id(), field_name).await
     }
 
     /// Fetch all objects from the bag.
     pub async fn fetch_all(&self, sui: &sui::Client) -> anyhow::Result<HashMap<K, V>> {
         let response = dynamic_fetch_many::<K, V>(sui, *self.id.object_id()).await?;
 
-        Ok(response
-            .into_iter()
-            .map(|(key, value)| (key, value))
-            .collect())
+        Ok(response.into_iter().collect())
     }
 }
 
@@ -282,14 +281,16 @@ where
             value: serde_json::to_value(key).map_err(anyhow::Error::new)?,
         };
 
-        Ok(dynamic_fetch_one::<K, ObjectFields<ObjectValue<V>>>(
-            sui,
-            *self.id.object_id(),
-            field_name,
+        Ok(
+            dynamic_fetch_one::<ObjectFields<ObjectValue<V>>>(
+                sui,
+                *self.id.object_id(),
+                field_name,
+            )
+            .await?
+            .fields
+            .value,
         )
-        .await?
-        .fields
-        .value)
     }
 
     /// Fetch all objects from the bag.

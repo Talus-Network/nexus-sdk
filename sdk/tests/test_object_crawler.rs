@@ -86,7 +86,7 @@ async fn test_object_crawler() {
     let (keystore, addr) =
         test_utils::wallet::create_test_wallet().expect("Failed to create a wallet.");
 
-    test_utils::faucet::request_tokens(addr, &format!("http://127.0.0.1:{faucet_port}/gas"))
+    test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
         .await
         .expect("Failed to request tokens from faucet.");
 
@@ -129,8 +129,6 @@ async fn test_object_crawler() {
         })
         .expect("Guy object must be created")
         .clone();
-
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Name type tag.
     let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {

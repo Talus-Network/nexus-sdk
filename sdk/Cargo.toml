@@ -100,7 +100,8 @@ package = "sui-move-build"
 optional = true
 
 [dependencies.testcontainers-modules]
-git = "https://github.com/Talus-Network/testcontainers-rs-modules-community "
+git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
+# TODO: change this once merged.
 branch = "feat/add-sui-support"
 features = ["sui", "redis"]
 optional = true

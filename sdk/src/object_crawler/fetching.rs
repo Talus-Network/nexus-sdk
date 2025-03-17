@@ -28,13 +28,12 @@ where
 }
 
 /// Fetch a dynamic field object from Sui based on the provided key.
-pub(crate) async fn dynamic_fetch_one<K, V>(
+pub(crate) async fn dynamic_fetch_one<V>(
     sui: &sui::Client,
     object_id: sui::ObjectID,
     field_name: sui::DynamicFieldName,
 ) -> anyhow::Result<V>
 where
-    K: Eq + Hash + Serialize + DeserializeOwned,
     V: DeserializeOwned,
 {
     let response = match sui
@@ -109,7 +108,7 @@ where
         .filter_map(|f| serde_json::from_value::<K>(f.name.value.clone()).ok())
         .collect::<Vec<_>>();
 
-    let values = fetch_many::<V>(&sui, objects.iter().map(|f| f.object_id).collect())
+    let values = fetch_many::<V>(sui, objects.iter().map(|f| f.object_id).collect())
         .await?
         .into_iter()
         .map(|r| r.data)
