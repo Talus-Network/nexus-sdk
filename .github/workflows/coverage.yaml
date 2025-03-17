@@ -38,7 +38,7 @@ jobs:
 
       - name: Generate Coverage (Base Branch)
         run: |
-          cargo llvm-cov --lcov --output-path lcov.info
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
         env:
           CARGO_TERM_COLOR: always
           CACHE_ON_FAILURE: true
@@ -86,7 +86,7 @@ jobs:
 
       - name: Generate Coverage (PR Branch)
         run: |
-          cargo llvm-cov --lcov --output-path lcov.info
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
         env:
           CARGO_TERM_COLOR: always
           CACHE_ON_FAILURE: true
