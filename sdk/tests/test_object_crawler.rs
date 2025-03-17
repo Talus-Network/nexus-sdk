@@ -1,10 +1,8 @@
-#![cfg(feature = "object_crawler")]
-
-mod common;
+#![cfg(feature = "test_utils")]
 
 use {
     assert_matches::assert_matches,
-    nexus_sdk::{object_crawler::*, sui},
+    nexus_sdk::{object_crawler::*, sui, test_utils},
     serde::{Deserialize, Serialize},
 };
 
@@ -76,7 +74,7 @@ enum HeterogeneousValue {
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
-    let (container, rpc_port, faucet_port) = common::setup_sui_instance().await;
+    let (container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
 
     // Build Sui client.
     let sui = sui::ClientBuilder::default()
@@ -85,8 +83,12 @@ async fn test_object_crawler() {
         .expect("Failed to build Sui client");
 
     // Publish test contract and fetch some IDs.
-    let response =
-        common::publish_move_package(&sui, faucet_port, "tests/move/object_crawler_test").await;
+    let response = test_utils::contracts::publish_move_package(
+        &sui,
+        faucet_port,
+        "tests/move/object_crawler_test",
+    )
+    .await;
 
     let changes = response
         .object_changes
@@ -113,6 +115,8 @@ async fn test_object_crawler() {
         })
         .expect("Guy object must be created")
         .clone();
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Name type tag.
     let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {

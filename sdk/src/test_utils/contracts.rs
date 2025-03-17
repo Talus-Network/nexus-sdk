@@ -1,49 +1,7 @@
-#![cfg(feature = "full")]
-
 use {
-    nexus_sdk::{
-        sui::{self, traits::*},
-        types::SuiNet,
-    },
+    crate::{sui, sui::traits::*},
     std::path::PathBuf,
-    testcontainers_modules::{
-        sui::Sui,
-        testcontainers::{runners::AsyncRunner, ContainerAsync, ContainerRequest, ImageExt},
-    },
 };
-
-/// Spins up a Sui container and returns its handle and mapped host port.
-pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16, u16) {
-    let sui_request = setup_sui();
-    let container = sui_request
-        .start()
-        .await
-        .expect("Failed to start Sui container");
-    let rpc_port = container
-        .get_host_port_ipv4(9000)
-        .await
-        .expect("Failed to get mapped host port for Sui");
-    let faucet_port = container
-        .get_host_port_ipv4(9123)
-        .await
-        .expect("Failed to get mapped host port for Sui faucet");
-    (container, rpc_port, faucet_port)
-}
-
-/// Sets up a Sui container request with the desired settings.
-fn setup_sui() -> ContainerRequest<Sui> {
-    let tag = if cfg!(target_arch = "aarch64") {
-        "ci-arm64"
-    } else {
-        "ci"
-    };
-
-    Sui::default()
-        .with_force_regenesis(true)
-        .with_faucet(true)
-        .with_tag(tag)
-        .into()
-}
 
 /// Publishes a Move package to Sui.
 ///
@@ -60,18 +18,11 @@ pub async fn publish_move_package(
         .build(&path)
         .expect("Failed to build package.");
 
-    // Generate a mnemonic.
-    let derivation_path = None;
-    let word_length = None;
-
-    let (addr, _, _, secret_mnemonic) =
-        sui::generate_new_key(sui::SignatureScheme::ED25519, derivation_path, word_length).unwrap();
-
     // Use the provided mnemonic to sign the transaction.
-    let keystore = get_be_wallet(secret_mnemonic.as_str());
+    let (keystore, addr) = create_wallet();
 
     // Request some gas tokens. Assume localnet.
-    nexus_sdk::faucet::request_tokens(faucet_port, SuiNet::Localnet, addr)
+    super::faucet::request_tokens(addr, &format!("http://127.0.0.1:{faucet_port}/gas"))
         .await
         .expect("Failed to request tokens from faucet.");
 
@@ -115,26 +66,33 @@ pub async fn publish_move_package(
     response
 }
 
-fn get_be_wallet(secret_mnemonic: &str) -> sui::Keystore {
+fn create_wallet() -> (sui::Keystore, sui::Address) {
+    // Generate a mnemonic.
+    let derivation_path = None;
+    let word_length = None;
+
+    let (_, _, _, secret_mnemonic) =
+        sui::generate_new_key(sui::SignatureScheme::ED25519, derivation_path, word_length).unwrap();
+
     let mut keystore = sui::Keystore::InMem(Default::default());
 
     let derivation_path = None;
     let alias = None;
 
-    keystore
+    let addr = keystore
         .import_from_mnemonic(
-            secret_mnemonic,
+            secret_mnemonic.as_str(),
             sui::SignatureScheme::ED25519,
             derivation_path,
             alias,
         )
         .expect("Importing from mnemonic must succeed.");
 
-    keystore
+    (keystore, addr)
 }
 
 async fn get_gas_coin(sui: &sui::Client, addr: sui::Address) -> sui::Coin {
-    let limit = Some(1);
+    let limit = None;
     let cursor = None;
     let default_to_sui_coin_type = None;
 
