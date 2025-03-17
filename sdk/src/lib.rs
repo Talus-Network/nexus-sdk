@@ -23,6 +23,10 @@ pub mod sui;
 #[cfg(feature = "types")]
 pub mod types;
 
+/// Useful faucet function that's reused in CLI and the Leader.
+#[cfg(feature = "faucet")]
+pub mod faucet;
+
 /// Nexus events that are fired by the Nexus workflow package and are used to
 /// communicate between the on-chain and off-chain parts of Nexus. This module
 /// also contains the logic for serializing and deserializing these events.

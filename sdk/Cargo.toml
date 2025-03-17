@@ -25,9 +25,13 @@ sui_types = ["sui_sdk", "move_core_types", "sui_keys", "shared_crypto"]
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
+
 # Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
 types = ["sui_types", "reqwest"]
+
+# Faucet feature enables the use of the `faucet` module.
+faucet = ["types"]
 
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
@@ -36,7 +40,7 @@ events = ["sui_idents", "types"]
 object_crawler = ["sui_types", "serde_json"]
 
 # Enable all features.
-full = ["tool_fqn", "sui_types", "sui_idents", "types", "events", "object_crawler"]
+full = ["tool_fqn", "sui_types", "sui_idents", "types", "faucet", "events", "object_crawler"]
 
 [dependencies]
 anyhow.workspace = true
@@ -54,6 +58,7 @@ optional = true
 [dependencies.reqwest]
 workspace = true
 optional = true
+features = ["json"]
 
 [dependencies.serde_json]
 workspace = true
@@ -84,6 +89,17 @@ tag = "testnet-v1.38.1"
 package = "shared-crypto"
 optional = true
 
+# === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
 tokio = { version = "1.44.1", features = ["macros", "rt"] }
+
+[dev-dependencies.testcontainers-modules]
+git = "https://github.com/Talus-Network/testcontainers-rs-modules-community "
+branch = "feat/add-sui-support"
+features = ["sui"]
+
+[dev-dependencies.sui_move_build]
+git = "https://github.com/MystenLabs/sui"
+tag = "testnet-v1.38.1"
+package = "sui-move-build"
