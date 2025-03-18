@@ -15,6 +15,13 @@ impl DefaultSap {
         module: DEFAULT_SAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
+    /// The DefaultSap struct type.
+    ///
+    /// `nexus_workflow::default_sap::DefaultSAP`
+    pub const DEFAULT_SAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_SAP_MODULE,
+        name: sui::move_ident_str!("DefaultSAP"),
+    };
 }
 
 // == `nexus_workflow::dag` ==
