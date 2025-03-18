@@ -184,8 +184,13 @@ mod tests {
         let meta = meta.unwrap();
 
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+    }
 
-        // No trailing slash in command.
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_oks_valid_off_chain_tool_no_slash() {
+        tokio::spawn(async move { bootstrap!(DummyTool) });
+
         let meta = validate_tool(ToolIdent {
             off_chain: Some(reqwest::Url::parse("http://localhost:8080").unwrap()),
             on_chain: None,
@@ -193,6 +198,10 @@ mod tests {
         .await;
 
         assert!(meta.is_ok());
+
+        let meta = meta.unwrap();
+
+        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
     }
 
     #[tokio::test]
@@ -211,8 +220,13 @@ mod tests {
         let meta = meta.unwrap();
 
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+    }
 
-        // No trailing slash in command.
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_oks_valid_off_chain_tool_with_path_no_slash() {
+        tokio::spawn(async move { bootstrap!(DummyToolWithPath) });
+
         let meta = validate_tool(ToolIdent {
             off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool").unwrap()),
             on_chain: None,
@@ -220,5 +234,9 @@ mod tests {
         .await;
 
         assert!(meta.is_ok());
+
+        let meta = meta.unwrap();
+
+        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
     }
 }
