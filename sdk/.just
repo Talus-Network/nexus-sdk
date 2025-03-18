@@ -12,11 +12,11 @@ _default:
 
 # Check the Nexus Types library
 check: _check-cargo
-    cargo +stable check --features full,test_utils --package nexus-sdk
+    cargo +stable check --all-features --package nexus-sdk
 
 # Run all tests in the Nexus Types library
 test: _check-cargo
-    cargo +stable test --features full,test_utils --package nexus-sdk
+    cargo +stable test --all-features --package nexus-sdk
 
 # Run rustfmt on the Nexus Types library
 fmt-check: _check-cargo

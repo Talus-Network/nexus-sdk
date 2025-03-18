@@ -71,9 +71,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_endpoints_generated_correctly() {
-        tokio::spawn(async move {
-            bootstrap!(([127, 0, 0, 1], 8043), DummyTool);
-        });
+        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8043), DummyTool) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let meta = Client::new()
             .get("http://localhost:8043/meta")
@@ -126,9 +127,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_422_when_input_malformed() {
-        tokio::spawn(async move {
-            bootstrap!(([127, 0, 0, 1], 8044), DummyTool);
-        });
+        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8044), DummyTool) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let invoke = Client::new()
             .post("http://localhost:8044/invoke")
@@ -147,6 +149,9 @@ mod tests {
     #[tokio::test]
     async fn test_500_when_execution_fails() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8045), [Dummy500Tool]) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let invoke = Client::new()
             .post("http://localhost:8045/path/invoke")
@@ -175,6 +180,9 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_tools() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8046), [DummyTool, Dummy500Tool]) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Invoke /path tool.
         let invoke = Client::new()

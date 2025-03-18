@@ -168,12 +168,16 @@ mod tests {
             async move { bootstrap!(([127, 0, 0, 1], 8042), [DummyTool, DummyToolWithPath]) },
         );
 
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
         // No path with slash
         let meta = validate_tool(ToolIdent {
             off_chain: Some(reqwest::Url::parse("http://localhost:8042/").unwrap()),
             on_chain: None,
         })
         .await;
+        println!("{:?}", meta);
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
