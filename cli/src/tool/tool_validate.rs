@@ -102,13 +102,7 @@ async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliE
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serial_test::serial,
-        warp::http::StatusCode,
-    };
+    use {super::*, nexus_toolkit::*, schemars::JsonSchema, warp::http::StatusCode};
 
     // == Dummy tools setup ==
 
@@ -169,74 +163,49 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
-    async fn test_validate_oks_valid_off_chain_tool() {
-        tokio::spawn(async move { bootstrap!(DummyTool) });
+    async fn test_validate_oks_valid_off_chain_tools() {
+        tokio::spawn(
+            async move { bootstrap!(([127, 0, 0, 1], 8042), [DummyTool, DummyToolWithPath]) },
+        );
 
+        // No path with slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8080/").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8042/").unwrap()),
             on_chain: None,
         })
         .await;
-
         assert!(meta.is_ok());
-
         let meta = meta.unwrap();
-
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-    }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_oks_valid_off_chain_tool_no_slash() {
-        tokio::spawn(async move { bootstrap!(DummyTool) });
-
+        // No path no slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8080").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8042").unwrap()),
             on_chain: None,
         })
         .await;
-
         assert!(meta.is_ok());
-
         let meta = meta.unwrap();
-
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-    }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_oks_valid_off_chain_tool_with_path() {
-        tokio::spawn(async move { bootstrap!(DummyToolWithPath) });
-
+        // Path with slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool/").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool/").unwrap()),
             on_chain: None,
         })
         .await;
-
         assert!(meta.is_ok());
-
         let meta = meta.unwrap();
-
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-    }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_oks_valid_off_chain_tool_with_path_no_slash() {
-        tokio::spawn(async move { bootstrap!(DummyToolWithPath) });
-
+        // Path no slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8080/dummy/tool").unwrap()),
+            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool").unwrap()),
             on_chain: None,
         })
         .await;
-
         assert!(meta.is_ok());
-
         let meta = meta.unwrap();
-
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
     }
 }
