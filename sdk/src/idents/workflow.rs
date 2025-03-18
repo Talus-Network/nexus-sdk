@@ -316,6 +316,13 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool"),
     };
+    /// The ToolRegistry struct type.
+    ///
+    /// `nexus_workflow::tool_registry::ToolRegistry`
+    pub const TOOL_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("ToolRegistry"),
+    };
     /// Unregister an tool.
     ///
     /// `nexus_workflow::tool_registry::unregister_tool`
