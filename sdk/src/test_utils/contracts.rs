@@ -13,11 +13,9 @@ pub async fn publish_move_package(
     path_str: &str,
     gas_coin: sui::Coin,
 ) -> sui::TransactionBlockResponse {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PathBuf::from(path_str));
-
     // Compile the package.
     let package = sui_move_build::BuildConfig::new_for_testing()
-        .build(&path)
+        .build(&PathBuf::from(path_str))
         .expect("Failed to build package.");
 
     let reference_gas_price = sui
@@ -26,13 +24,13 @@ pub async fn publish_move_package(
         .await
         .expect("Failed to fetch reference gas price.");
 
-    let with_unpublished_deps = false;
+    let with_unpublished_deps = true;
     let sui_tx_data = sui::TransactionData::new_module(
         addr,
         gas_coin.object_ref(),
         package.get_package_bytes(with_unpublished_deps),
         package.get_dependency_storage_package_ids(),
-        sui::MIST_PER_SUI / 10,
+        sui::MIST_PER_SUI,
         reference_gas_price,
     );
 
@@ -58,8 +56,8 @@ pub async fn publish_move_package(
         .expect("Failed to execute transaction.");
 
     if let Some(effects) = response.effects.clone() {
-        if effects.into_status().is_err() {
-            panic!("Transaction has erroneous effects");
+        if effects.clone().into_status().is_err() {
+            panic!("Transaction has erroneous effects: {path_str} {effects}");
         }
     }
 

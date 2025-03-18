@@ -74,7 +74,7 @@ enum HeterogeneousValue {
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
-    let (container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
+    let (_container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
 
     // Build Sui client.
     let sui = sui::ClientBuilder::default()
@@ -339,6 +339,4 @@ async fn test_object_crawler() {
             }
         }
     }
-
-    drop(container);
 }
