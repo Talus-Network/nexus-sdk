@@ -10,9 +10,12 @@ use testcontainers_modules::{
     testcontainers::{runners::AsyncRunner, ContainerAsync, ImageExt},
 };
 
+pub type SuiContainer = ContainerAsync<Sui>;
+pub type RedisContainer = ContainerAsync<Redis>;
+
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
-pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16, u16) {
+pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
     let tag = if cfg!(target_arch = "aarch64") {
         "testnet-v1.38.2-arm64"
     } else {
@@ -43,7 +46,7 @@ pub async fn setup_sui_instance() -> (ContainerAsync<Sui>, u16, u16) {
 }
 
 /// Spins up a Redis container and returns its handle and mapped Redis port.
-pub async fn setup_redis_instance() -> (ContainerAsync<Redis>, u16) {
+pub async fn setup_redis_instance() -> (RedisContainer, u16) {
     let redis_request = Redis::default()
         .with_tag("6.2-alpine")
         .with_env_var("REDIS_PASSWORD", "my_secret_password");

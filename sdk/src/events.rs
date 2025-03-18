@@ -42,9 +42,9 @@ pub enum NexusEventKind {
     EndStateReached(EndStateReachedEvent),
     #[serde(rename = "ExecutionFinishedEvent")]
     ExecutionFinished(ExecutionFinishedEvent),
-    // These events are unused for now.
     #[serde(rename = "FoundingLeaderCapCreatedEvent")]
-    FoundingLeaderCapCreated(serde_json::Value),
+    FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent),
+    // These events are unused for now.
     #[serde(rename = "ToolRegistryCreatedEvent")]
     ToolRegistryCreated(serde_json::Value),
     #[serde(rename = "DAGCreatedEvent")]
@@ -183,6 +183,13 @@ pub struct ExecutionFinishedEvent {
     pub execution: sui::ObjectID,
     pub has_any_walk_failed: bool,
     pub has_any_walk_succeeded: bool,
+}
+
+/// Fired by the Nexus Workflow when a new founding LeaderCap is created.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FoundingLeaderCapCreatedEvent {
+    pub leader_cap: sui::ObjectID,
+    pub network: sui::ObjectID,
 }
 
 // == Parsing ==
