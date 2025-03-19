@@ -20,7 +20,7 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
-        .with_tag("testnet-v1.38.1-debug");
+        .with_tag("testnet-v1.38.1");
 
     let container = sui_request
         .start()
