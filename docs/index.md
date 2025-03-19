@@ -43,7 +43,7 @@ The codebase resides in [this repository][repo-nexus-sdk].
 
 Docs:
 
-- TODO: (add GH issue)
+- TODO: <https://github.com/Talus-Network/nexus-sdk/issues/41>
 
 Epics:
 
