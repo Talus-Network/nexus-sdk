@@ -48,7 +48,7 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
 /// Spins up a Redis container and returns its handle and mapped Redis port.
 pub async fn setup_redis_instance() -> (RedisContainer, u16) {
     let redis_request = Redis::default()
-        .with_tag("6.2-alpine")
+        .with_tag("7.4-alpine")
         .with_env_var("REDIS_PASSWORD", "my_secret_password");
 
     let container = redis_request
