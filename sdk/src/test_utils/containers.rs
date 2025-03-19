@@ -16,16 +16,11 @@ pub type RedisContainer = ContainerAsync<Redis>;
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
 pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
-    let tag = if cfg!(target_arch = "aarch64") {
-        "testnet-v1.38.2-arm64"
-    } else {
-        "testnet-v1.38.2"
-    };
-
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
-        .with_tag(tag);
+        .with_name("taluslabs/sui-tools")
+        .with_tag("testnet-v1.38.1-debug");
 
     let container = sui_request
         .start()
