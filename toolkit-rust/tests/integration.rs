@@ -17,6 +17,7 @@ struct Input {
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 enum Output {
     Ok { message: String },
+    Err { reason: String },
 }
 
 struct DummyTool;
@@ -25,26 +26,34 @@ impl NexusTool for DummyTool {
     type Input = Input;
     type Output = Output;
 
+    async fn new() -> Self {
+        Self
+    }
+
     fn fqn() -> ToolFqn {
         fqn!("xyz.dummy.tool@1")
     }
 
-    async fn health() -> AnyResult<StatusCode> {
+    async fn health(&self) -> AnyResult<StatusCode> {
         Ok(StatusCode::OK)
     }
 
-    async fn invoke(Self::Input { prompt }: Self::Input) -> AnyResult<Self::Output> {
-        Ok(Self::Output::Ok {
+    async fn invoke(&self, Self::Input { prompt }: Self::Input) -> Self::Output {
+        Output::Ok {
             message: format!("You said: {}", prompt),
-        })
+        }
     }
 }
 
-struct Dummy500Tool;
+struct DummyErrTool;
 
-impl NexusTool for Dummy500Tool {
+impl NexusTool for DummyErrTool {
     type Input = Input;
     type Output = Output;
+
+    async fn new() -> Self {
+        Self
+    }
 
     fn fqn() -> ToolFqn {
         fqn!("xyz.dummy.tool@1")
@@ -54,12 +63,14 @@ impl NexusTool for Dummy500Tool {
         "path"
     }
 
-    async fn health() -> AnyResult<StatusCode> {
+    async fn health(&self) -> AnyResult<StatusCode> {
         Ok(StatusCode::OK)
     }
 
-    async fn invoke(_: Self::Input) -> AnyResult<Self::Output> {
-        anyhow::bail!("Something went wrong")
+    async fn invoke(&self, _: Self::Input) -> Self::Output {
+        Output::Err {
+            reason: "Something went wrong".to_string(),
+        }
     }
 }
 
@@ -148,8 +159,8 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_500_when_execution_fails() {
-        tokio::spawn(async move { bootstrap!([Dummy500Tool]) });
+    async fn test_err_when_execution_fails() {
+        tokio::spawn(async move { bootstrap!([DummyErrTool]) });
 
         let invoke = Client::new()
             .post("http://localhost:8080/path/invoke")
@@ -158,12 +169,16 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(invoke.status(), 500);
+        assert_eq!(invoke.status(), 200);
 
-        let invoke_json = invoke.json::<serde_json::Value>().await.unwrap();
+        let invoke_json = invoke.json::<Output>().await.unwrap();
 
-        assert_eq!(invoke_json["error"], "tool_invocation_error");
-        assert_eq!(invoke_json["details"], "Something went wrong");
+        assert_eq!(
+            invoke_json,
+            Output::Err {
+                reason: "Something went wrong".to_string(),
+            }
+        );
 
         // Default health ep exists.
         let health = Client::new()
@@ -178,7 +193,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_multiple_tools() {
-        tokio::spawn(async move { bootstrap!([DummyTool, Dummy500Tool]) });
+        tokio::spawn(async move { bootstrap!([DummyTool, DummyErrTool]) });
 
         // Invoke /path tool.
         let invoke = Client::new()
@@ -188,12 +203,16 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(invoke.status(), 500);
+        assert_eq!(invoke.status(), 200);
 
-        let invoke_json = invoke.json::<serde_json::Value>().await.unwrap();
+        let invoke_json = invoke.json::<Output>().await.unwrap();
 
-        assert_eq!(invoke_json["error"], "tool_invocation_error");
-        assert_eq!(invoke_json["details"], "Something went wrong");
+        assert_eq!(
+            invoke_json,
+            Output::Err {
+                reason: "Something went wrong".to_string(),
+            }
+        );
 
         // Invoke / tool.
         let invoke = Client::new()

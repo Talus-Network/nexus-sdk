@@ -128,18 +128,22 @@ mod tests {
         type Input = Input;
         type Output = Output;
 
+        async fn new() -> Self {
+            Self
+        }
+
         fn fqn() -> ToolFqn {
             fqn!("xyz.dummy.tool@1")
         }
 
-        async fn health() -> AnyResult<StatusCode> {
+        async fn health(&self) -> AnyResult<StatusCode> {
             Ok(StatusCode::OK)
         }
 
-        async fn invoke(Self::Input { prompt }: Self::Input) -> AnyResult<Self::Output> {
-            Ok(Self::Output::Ok {
+        async fn invoke(&self, Self::Input { prompt }: Self::Input) -> Self::Output {
+            Self::Output::Ok {
                 message: format!("You said: {}", prompt),
-            })
+            }
         }
     }
 
@@ -149,6 +153,10 @@ mod tests {
         type Input = Input;
         type Output = Output;
 
+        async fn new() -> Self {
+            Self
+        }
+
         fn fqn() -> ToolFqn {
             fqn!("xyz.dummy.tool@1")
         }
@@ -157,14 +165,14 @@ mod tests {
             "/dummy/tool/"
         }
 
-        async fn health() -> AnyResult<StatusCode> {
+        async fn health(&self) -> AnyResult<StatusCode> {
             Ok(StatusCode::OK)
         }
 
-        async fn invoke(Self::Input { prompt }: Self::Input) -> AnyResult<Self::Output> {
-            Ok(Self::Output::Ok {
+        async fn invoke(&self, Self::Input { prompt }: Self::Input) -> Self::Output {
+            Self::Output::Ok {
                 message: format!("You said: {}", prompt),
-            })
+            }
         }
     }
 

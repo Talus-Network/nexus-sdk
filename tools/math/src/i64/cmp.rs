@@ -1,24 +1,24 @@
 //! # `xyz.taluslabs.math.i64.cmp@1`
 //!
-//! Standard Nexus Tool that compares two [i64] numbers and returns the result.
+//! Standard Nexus Tool that compares two [`i64`] numbers and returns the result.
 //!
 //! ## Input
 //!
-//! - `a: i64`: The first number to compare.
-//! - `b: i64`: The second number to compare.
+//! - `a`: [`i64`] - The first number to compare.
+//! - `b`: [`i64`] - The second number to compare.
 //!
 //! ## Output Variants
 //!
-//! - `gt`: The first number is greater than the second.
-//! - `eq`: The first number is equal to the second.
-//! - `lt`: The first number is less than the second.
+//! - `gt` - The first number is greater than the second.
+//! - `eq` - The first number is equal to the second.
+//! - `lt` - The first number is less than the second.
 //!
 //! ## Output Ports
 //!
 //! Each Output Variant has the following output ports:
 //!
-//! - `a: i64`: The first number.
-//! - `b: i64`: The second number.
+//! - `a`: [`i64`] - The first number.
+//! - `b`: [`i64`] - The second number.
 
 use {
     nexus_sdk::{fqn, ToolFqn},
@@ -29,6 +29,7 @@ use {
 };
 
 #[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Input {
     a: i64,
     b: i64,
@@ -48,6 +49,10 @@ impl NexusTool for I64Cmp {
     type Input = Input;
     type Output = Output;
 
+    async fn new() -> Self {
+        Self
+    }
+
     fn fqn() -> ToolFqn {
         fqn!("xyz.taluslabs.math.i64.cmp@1")
     }
@@ -56,17 +61,17 @@ impl NexusTool for I64Cmp {
         "/i64/cmp"
     }
 
-    async fn health() -> AnyResult<StatusCode> {
+    async fn health(&self) -> AnyResult<StatusCode> {
         // This tool has no external dependencies and as such, it is always
         // healthy if the endpoint is reachable.
         Ok(StatusCode::OK)
     }
 
-    async fn invoke(Self::Input { a, b }: Self::Input) -> AnyResult<Self::Output> {
+    async fn invoke(&self, Self::Input { a, b }: Self::Input) -> Self::Output {
         match a.cmp(&b) {
-            Ordering::Greater => Ok(Output::Gt { a, b }),
-            Ordering::Equal => Ok(Output::Eq { a, b }),
-            Ordering::Less => Ok(Output::Lt { a, b }),
+            Ordering::Greater => Output::Gt { a, b },
+            Ordering::Equal => Output::Eq { a, b },
+            Ordering::Less => Output::Lt { a, b },
         }
     }
 }
@@ -77,18 +82,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_i64_cmp() {
+        let tool: I64Cmp = I64Cmp::new().await;
+
         let input = Input { a: 1, b: 2 };
-        let output = I64Cmp::invoke(input).await.unwrap();
+        let output = tool.invoke(input).await;
 
         assert!(matches!(output, Output::Lt { a: 1, b: 2 }));
 
         let input = Input { a: 2, b: 1 };
-        let output = I64Cmp::invoke(input).await.unwrap();
+        let output = tool.invoke(input).await;
 
         assert!(matches!(output, Output::Gt { a: 2, b: 1 }));
 
         let input = Input { a: 1, b: 1 };
-        let output = I64Cmp::invoke(input).await.unwrap();
+        let output = tool.invoke(input).await;
 
         assert!(matches!(output, Output::Eq { a: 1, b: 1 }));
     }
