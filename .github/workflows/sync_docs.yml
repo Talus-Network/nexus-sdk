@@ -1,0 +1,60 @@
+name: Sync Documentation
+
+on:
+  push:
+    branches:
+      - main  # or your default branch
+    paths:
+      - 'docs/**'  # Only trigger when docs are changed
+  workflow_dispatch:
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    name: Sync docs to gitbook-docs repo
+    
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+      
+      - name: Get repository name
+        id: repo-name
+        run: echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d '/' -f 2)" >> $GITHUB_ENV
+      
+      - name: Checkout gitbook-docs repository
+        uses: actions/checkout@v4
+        with:
+          repository: Talus-Network/gitbook-docs
+          path: gitbook-docs
+          token: ${{ secrets.GH_ACCESS_TOKEN }}  # Access Token with repo access
+      
+      - name: Sync documentation
+        run: |
+          if [ -d docs ] && [ "$(ls -A docs)" ]; then
+            mkdir -p gitbook-docs/${{ env.REPO_NAME }}
+            cp -r docs/* gitbook-docs/${{ env.REPO_NAME }}/
+          else
+            echo "No documentation changes found. Skipping."
+            exit 0
+          fi
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+            token: ${{ secrets.GH_ACCESS_TOKEN }}  # Access Token with repo access
+            path: gitbook-docs
+            commit-message: "Update docs from ${{ env.REPO_NAME }} (commit: ${{ github.sha }})"
+            committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+            author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+            branch: docs-update-${{ env.REPO_NAME }}-${{ github.sha }}
+            delete-branch: true
+            title: "Docs update from ${{ env.REPO_NAME }}"
+            body: "This PR syncs updates to documentation from the [${{ env.REPO_NAME }}](https://github.com/Talus-Network/${{ env.REPO_NAME }}) repository (source commit: ${{ github.sha }})"
+            base: main
+            labels: |
+              documentation
+              automated pr
+              ${{ env.REPO_NAME }}
+            team-reviewers: |
+              engineering
+              
