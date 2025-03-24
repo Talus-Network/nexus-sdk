@@ -1,3 +1,5 @@
+//! See <https://github.com/Talus-Network/gitbook-docs/nexus-sdk/toolkit-rust.md>
+
 use {
     crate::NexusTool,
     reqwest::Url,

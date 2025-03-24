@@ -1,64 +1,4 @@
-//! # `xyz.taluslabs.llm.openai.chat-completion@1`
-//!
-//! Standard Nexus Tool that interacts with the OpenAI chat completion API. It
-//! allows for plain text completions as well as JSON. For JSON, expected output
-//! schema has to be provided.
-//!
-//! It defines the input and output structures, as well as the logic for
-//! invoking the OpenAI API to generate chat completions.
-//!
-//! It uses the [`async_openai`] crate to interact with the OpenAI API.
-//!
-//! ## Input
-//!
-//! - `api_key`: _encrypted_ [`String`] - The API key to invoke the OpenAI API
-//!   with. Encrypted with the Tool's key pair.
-//!   TODO: <https://github.com/Talus-Network/nexus-sdk/issues/29>.
-//! - `prompt`: [`MessageBag`] - The message(s) to send to the chat completion
-//!   API. The minimum length of the vector is 1 if using [`MessageBag::Many`].
-//! - `context`: _optional_ [`MessageBag`] - The context to provide to the chat
-//!   completion API. This is useful for providing additional context as a DAG
-//!   default value. Defaults to [`Vec::default`]. Note that context messages
-//!   are  **prepended** to the `messages` input port.
-//! - `model`: _optional_ [`String`] - The model to use for chat completion.
-//!   Defaults to [`DEFAULT_MODEL`].
-//! - `max_completion_tokens`: _optional_ [`u32`] - The maximum number of tokens
-//!   to generate. Defaults to [`DEFAULT_MAX_COMPLETION_TOKENS`].
-//! - `temperature`: _optional_ [`f32`] - The temperature to use. This must be
-//!   a floating point number between 0 and 2. Defaults to 1. Defaults to
-//!   [`DEFAULT_TEMPERATURE`].
-//! - `json_schema`: _optional_ [`OpenAIJsonSchema`] - The JSON schema for the
-//!   expected output. Providing this will force the [`Output::Json`] variant.
-//!   The LLM response will be parsed into this schema. Defaults to [`None`].
-//!   Note that this is only supported for newer OpenAI models. See
-//!   <https://platform.openai.com/docs/guides/structured-outputs>.
-//!
-//! ## Output Variants
-//!
-//! - `text` - The chat completion was successful and evaluated to plain text.
-//! - `json` - The chat completion was successful and evaluated to JSON.
-//! - `err` - An error occurred during the chat completion.
-//!
-//! ## Output Ports
-//!
-//! ### `text`
-//!
-//! - `id`: [`String`] - Unique identifier for the completion.
-//! - `role`: [`MessageKind`] - The role of the author of the message.
-//! - `completion`: [`String`] - The chat completion result as plain text.
-//!
-//! ### `json`
-//!
-//! - `id`: [`String`] - Unique identifier for the completion.
-//! - `role`: [`MessageKind`] - The role of the author of the message.
-//! - `completion`: [`serde_json::Value`] - The chat completion result as JSON.
-//!   Note that this is opaque for the Tool but the structure is defined by
-//!   [`Input::json_schema`]. One could say the Tool output is _generic over
-//!   this schema_.
-//!
-//! ### `err`
-//!
-//! - `reason`: [`String`] - The reason for the error.
+#![doc = include_str!("../README.md")]
 
 use {
     anyhow::anyhow,
@@ -255,7 +195,7 @@ impl From<MessageBag> for Vec<Message> {
 struct Input {
     /// The OpenAI API key.
     // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/29>.
-    api_key: String,
+    api_key: Secret<String>,
     /// The prompt to send to the chat completion API.
     prompt: MessageBag,
     /// The context to provide to the chat completion API.
@@ -336,7 +276,7 @@ impl NexusTool for OpenaiChatCompletion {
     /// Invokes the tool logic to generate a chat completion.
     async fn invoke(&self, request: Self::Input) -> Self::Output {
         let cfg = OpenAIConfig::new()
-            .with_api_key(request.api_key)
+            .with_api_key(&*request.api_key)
             .with_api_base(&self.api_base);
 
         let client = Client::with_config(cfg);
@@ -584,7 +524,7 @@ mod tests {
     #[test]
     fn test_input_deserialization() {
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "prompt": {"role": "system", "name": "robot", "value": "You are a helpful assistant."}
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
@@ -598,7 +538,7 @@ mod tests {
         );
 
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "prompt": "hello"
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
@@ -608,7 +548,7 @@ mod tests {
         );
 
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "prompt": [
                 {"role": "system", "name": "robot", "value": "You are a helpful assistant."},
                 "Hello",
@@ -616,7 +556,7 @@ mod tests {
             ]
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
-        assert_eq!(input.api_key, "your_api_key");
+        assert_eq!(&*input.api_key, "your_api_key");
         assert_eq!(input.model, DEFAULT_MODEL);
         assert_eq!(
             input.prompt,
@@ -639,11 +579,11 @@ mod tests {
     #[test]
     fn test_input_empty_message() {
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "prompt": []
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
-        assert_eq!(input.api_key, "your_api_key");
+        assert_eq!(&*input.api_key, "your_api_key");
         assert_eq!(input.model, DEFAULT_MODEL);
         assert!(matches!(input.prompt, MessageBag::Many(messages) if messages.is_empty()));
     }
@@ -651,7 +591,7 @@ mod tests {
     #[test]
     fn test_input_missing_message() {
         let json = r#"{
-            "api_key": "your_api_key"
+            "api_key": "best-encryption-ever-\"your_api_key\""
         }"#;
 
         let input: Result<Input, _> = serde_json::from_str(json);
@@ -693,7 +633,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "prompt": "Hello"
         }"#;
 
@@ -736,7 +676,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let json = r#"{
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "max_completion_tokens": 256,
             "temperature": 0.5,
             "model": "gpt-4o",
@@ -812,7 +752,7 @@ mod tests {
         let schema = schema_for!(Completion);
 
         let json = json!({
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "json_schema": {
                 "name": "completion",
                 "description": "A completion JSON schema",
@@ -882,7 +822,7 @@ mod tests {
         let schema = schema_for!(Completion);
 
         let json = json!({
-            "api_key": "your_api_key",
+            "api_key": "best-encryption-ever-\"your_api_key\"",
             "json_schema": {
                 "name": "completion",
                 "description": "A completion JSON schema",

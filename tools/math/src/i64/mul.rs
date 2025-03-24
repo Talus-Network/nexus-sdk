@@ -1,26 +1,6 @@
 //! # `xyz.taluslabs.math.i64.mul@1`
 //!
 //! Standard Nexus Tool that multiplies two [`i64`] numbers and returns the result.
-//!
-//! ## Input
-//!
-//! - `a`: [`i64`] - The first number to multiply.
-//! - `b`: [`i64`] - The second number to multiply.
-//!
-//! ## Output Variants
-//!
-//! - `ok` - The multiplication was successful.
-//! - `err` - The multiplication failed due to overflow.
-//!
-//! ## Output Ports
-//!
-//! ### `ok`
-//!
-//! - `result`: [`i64`] - The result of the multiplication.
-//!
-//! ### `err`
-//!
-//! - `reason`: [`String`] - The reason for the error. This is always overflow.
 
 use {
     nexus_sdk::{fqn, ToolFqn},
