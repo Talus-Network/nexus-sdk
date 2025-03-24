@@ -1,7 +1,4 @@
-//! # `xyz.taluslabs.math.*`
-//!
-//! This module contains tools for mathematical operations. They are divided
-//! into modules based on the datatype of the input.
+#![doc = include_str!("../README.md")]
 
 use nexus_toolkit::bootstrap;
 

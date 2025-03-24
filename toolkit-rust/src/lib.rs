@@ -4,14 +4,16 @@
 //! Tool. A Nexus Tool is a service that can be invoked over HTTP. The Toolkit
 //! automatically generates the necessary endpoints for the Tool.
 //!
-//! See more documentation at <https://github.com/Talus-Network/nexus-next/wiki>
+//! See more documentation at <https://github.com/Talus-Network/gitbook-docs/nexus-sdk/toolkit-rust.md>
 
 mod nexus_tool;
 mod runtime;
+mod secret;
 
 pub use {
-    crate::nexus_tool::NexusTool,
     anyhow::Result as AnyResult,
+    nexus_tool::NexusTool,
     runtime::routes_for_,
+    secret::{BestEncryptionEver, EncryptionStrategy, Secret},
     warp::{self, http::StatusCode},
 };

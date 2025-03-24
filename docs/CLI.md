@@ -1,0 +1,130 @@
+# Nexus CLI
+
+> concerns [`nexus-cli` repo][nexus-cli-repo]
+
+The Nexus CLI is a set of tools that is used by almost all Actors in the Nexus ecosystem.
+
+- Agent developers use it to create Smart Agent Packages
+- Tool developers use it to scaffold, validate and register tools
+- Nexus developers use it for debugging, testing and both use cases mentioned above
+
+## Open questions
+
+- before public release, Tool<>Leader authorization needs to be implemented
+- publishing and installtion of the CLI, SDK and Tookit needs to be solved
+
+## Interface design
+
+### `nexus tool`
+
+Set of commands for managing Tools.
+
+---
+
+**`nexus tool new <name> --template <template>`**
+
+Create a new Tool scaffolding in a folder called `<name>`. Which files are generated is determined by the `--template` flag. I propose having `templates/tools/<template>.template` files that contain the Tool skeleton files. For example for `rust` it'd be a `Cargo.toml` with the `nexus-toolkit` dependency, and a `src/main.rs` file that shows a basic use case of the crate.
+
+---
+
+**`nexus tool validate --off-chain <url>`**
+
+Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
+
+1. `GET /meta` contains Tool metadata that is later stored in our Tool Registry, this contains the `fqn`, the `url` which should match the one in the command and the Tool input and output schemas. Output schema is also validated to contain a top-level `oneOf` to adhere to Nexus output variant concept.
+2. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
+3. `POST /invoke` the CLI can check that the endpoint exists.
+
+> As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
+
+This command should also check that the URL is accessible by the Leader node. It should, however, be usable with `localhost` Tools for development purposes, printing a warning.
+
+---
+
+**`nexus tool validate --on-chain <ident>`**
+
+[Issue #96](https://github.com/Talus-Network/nexus-next/issues/96)
+
+---
+
+**`nexus tool register --off-chain <url>`**
+
+Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral.
+
+> This command requires that a wallet is connected to the CLI.
+
+---
+
+**`nexus tool register --on-chain <ident>`**
+
+[Issue #96](https://github.com/Talus-Network/nexus-next/issues/96)
+
+---
+
+**`nexus tool unregister --tool-fqn <fqn>`**
+
+Command that sends a TX to our Tool Registry and unregisters a Tool with the provided `<fqn>`. This command requires confirmation as unregistering a Tool will render all DAGs using it unusable.
+
+> We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
+
+> This command requires that a wallet is connected to the CLI.
+
+---
+
+**`nexus tool claim-collateral --tool-fqn <fqn>`**
+
+After the period of time configured in our Tool Registry, let the Tool developer claim the collateral, transferring the amount back to their wallet.
+
+> We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
+
+> This command requires that a wallet is connected to the CLI.
+
+### `nexus dag`
+
+Set of commands for managing JSON DAGs.
+
+---
+
+**`nexus dag validate --path <path>`**
+
+Performs static analysis on a JSON DAG at the provided path. It enforces rules described in [[Package: Workflow]]. The algorithm enforcing rule #5 is noteworthy. It works as follows:
+
+1. For each entry group...
+2. Find all input ports
+3. For each input port...
+4. Find all paths from relevant entry vertices to this input port
+5. Ensure that net concurrency on that input port node is 0
+   - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
+   - `N` output ports on an output variant increase the graph concurrency by `N - 1` beacause `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
+   - If net concurrency is `< 0`, the input port can never be reached
+   - If net concurrency is `> 0`, there is a race condition on the input port
+
+---
+
+**`nexus dag publish --path <path>`**
+
+Publishes a JSON DAG at the provided path to the Workflow. Static analysis is automatically performed prior to publishing. This command then returns the on-chain DAG object ID that can be used to execute it.
+
+> This command requires that a wallet is connected to the CLI.
+
+**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] [--inspect]`**
+
+Execute a DAG with the provided `<id>`. This command also accepts an entry `<group>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry `<group>` defaults to a starndardized `_default_group` string.
+
+The input `<data>` is a JSON string with the following structure:
+
+- The top-level object keys refer to the _entry vertex names_
+- Each top-level value is an object and its keys refer to the _input port names_ of each vertex
+- Values of the second-level object are the data that should be passed to each input port
+
+The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
+
+> This command requires that a wallet is connected to the CLI..
+
+**`nexus dag inspect-execution --dag-execution-id <id> --execution-digest <digest>`**
+
+Inspects a DAG execution process based on the provided `DAGExecution` object ID and the transaction digest from submitting the execution transaction.
+
+<!-- List of References -->
+
+[nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli

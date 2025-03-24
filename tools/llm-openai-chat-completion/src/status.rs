@@ -61,7 +61,7 @@ struct StatusInfo {
 /// *   `Ok(StatusCode::OK)` if the API is healthy.
 /// *   `Ok(StatusCode::SERVICE_UNAVAILABLE)` if the API is not healthy.
 /// *   `Err(e)` if there is an error sending the request or parsing the response.
-pub async fn check_api_health() -> AnyResult<StatusCode> {
+pub(crate) async fn check_api_health() -> AnyResult<StatusCode> {
     let client = Client::new();
 
     // Send GET request and parse JSON response

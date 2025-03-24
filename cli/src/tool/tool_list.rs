@@ -6,7 +6,7 @@ use {
     },
 };
 
-/// Create a new tool based on the provided name and template.
+/// List tools available in the tool registry.
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Neuxs tools");
 
