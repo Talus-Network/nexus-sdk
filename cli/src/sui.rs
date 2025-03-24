@@ -234,7 +234,8 @@ pub(crate) async fn sign_transaction(
     let resp_options = sui::TransactionBlockResponseOptions::new()
         .with_balance_changes()
         .with_effects()
-        .with_object_changes();
+        .with_object_changes()
+        .with_events();
 
     // We want to confirm that the tx was executed (the name of this variant is
     // misleading).

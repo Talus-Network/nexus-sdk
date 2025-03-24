@@ -18,6 +18,7 @@ pub use {
     sui_keys::{key_derive::generate_new_key, keystore::Keystore},
     sui_sdk::{
         error::Error,
+        json::SuiJsonValue,
         rpc_types::{
             Coin,
             EventFilter,
