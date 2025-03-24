@@ -10,8 +10,8 @@ The Nexus CLI is a set of tools that is used by almost all Actors in the Nexus e
 
 ## Open questions
 
-- separate repository or part of `nexus-next` as `be/cli`?
 - before public release, Tool<>Leader authorization needs to be implemented
+- publishing and installtion of the CLI, SDK and Tookit needs to be solved
 
 ## Interface design
 

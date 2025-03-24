@@ -12,8 +12,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 async-openai = "0.27"
 chrono.workspace = true
+jsonschema.workspace = true
 reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
@@ -25,3 +27,6 @@ tokio.workspace = true
 # === Nexus deps ===
 nexus-toolkit.workspace = true
 nexus-sdk.workspace = true
+
+[dev-dependencies]
+mockito = "1.7.0"

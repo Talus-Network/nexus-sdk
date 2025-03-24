@@ -18,6 +18,7 @@ clap = { version = "4.5.32", features = ["derive"] }
 colored = "3.0.0"
 convert_case = "0.7.1"
 home = "0.5.11"
+jsonschema = "0.28.3"
 lazy-regex = "3.4.1"
 minijinja = "2.8.0"
 petgraph = "0.7.1"
