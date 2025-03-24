@@ -47,8 +47,7 @@ pub(crate) async fn create_network(
     // Craft a TX to create a new network.
     let tx_handle = loading!("Crafting transaction...");
 
-    let addresses = match serde_json::to_value(addresses).map(|addrs| sui::SuiJsonValue::new(addrs))
-    {
+    let addresses = match serde_json::to_value(addresses).map(sui::SuiJsonValue::new) {
         Ok(Ok(addrs)) => addrs,
         _ => {
             tx_handle.error();
