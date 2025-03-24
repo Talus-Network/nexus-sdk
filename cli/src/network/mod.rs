@@ -1,6 +1,6 @@
 mod network_create;
 
-use {crate::prelude::*, network_create::*, std::default};
+use {crate::prelude::*, network_create::*};
 
 #[derive(Subcommand)]
 pub(crate) enum NetworkCommand {

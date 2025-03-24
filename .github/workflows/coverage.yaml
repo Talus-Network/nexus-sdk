@@ -99,8 +99,6 @@ jobs:
           barecheck-github-app-token: ${{ secrets.BARECHECK_GITHUB_APP_TOKEN }}
           lcov-file: "lcov.info"
           base-lcov-file: "ref-lcov/lcov.info"
-          # decrease this for good karma
-          # increase this for more dead puppies
-          minimum-ratio: 1
+          minimum-ratio: 2
           send-summary-comment: true
           show-annotations: "warning"
