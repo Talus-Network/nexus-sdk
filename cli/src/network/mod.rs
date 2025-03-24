@@ -14,6 +14,7 @@ pub(crate) enum NetworkCommand {
             short = 'a',
             help = "Space separated list of addresses to assign leader caps to",
             num_args = 0..,
+            value_name = "ADDRESSES"
         )]
         addresses: Vec<sui::ObjectID>,
         /// How many leader caps to assign to each address
@@ -21,7 +22,8 @@ pub(crate) enum NetworkCommand {
             long = "count-leader-caps",
             short = 'c',
             help = "How many leader caps to assign to each address",
-            default_value = "5"
+            default_value = "5",
+            value_name = "COUNT"
         )]
         count_leader_caps: u32,
         #[command(flatten)]

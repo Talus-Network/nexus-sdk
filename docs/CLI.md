@@ -107,6 +107,8 @@ Publishes a JSON DAG at the provided path to the Workflow. Static analysis is au
 
 > This command requires that a wallet is connected to the CLI.
 
+---
+
 **`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] [--inspect]`**
 
 Execute a DAG with the provided `<id>`. This command also accepts an entry `<group>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry `<group>` defaults to a starndardized `_default_group` string.
@@ -121,9 +123,25 @@ The `--inspect` argument automatically triggers `nexus dag inspect-execution` up
 
 > This command requires that a wallet is connected to the CLI..
 
+---
+
 **`nexus dag inspect-execution --dag-execution-id <id> --execution-digest <digest>`**
 
 Inspects a DAG execution process based on the provided `DAGExecution` object ID and the transaction digest from submitting the execution transaction.
+
+---
+
+### `nexus network`
+
+Set of commands for managing Nexus networks.
+
+---
+
+**`nexus network create --addresses [addresses] --count-leader-caps [count-leader-caps]`**
+
+Create a new Nexus network and assign `count-leader-caps` (default: 5) leader caps to the TX sender and the addresses listed in `addresses` (default: []).
+
+The network object ID is returned.
 
 <!-- List of References -->
 
