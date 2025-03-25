@@ -110,6 +110,6 @@ jobs:
           barecheck-github-app-token: ${{ secrets.BARECHECK_GITHUB_APP_TOKEN }}
           lcov-file: "lcov.info"
           base-lcov-file: "ref-lcov/lcov.info"
-          minimum-ratio: 0
+          minimum-ratio: 1
           send-summary-comment: true
           show-annotations: "warning"
