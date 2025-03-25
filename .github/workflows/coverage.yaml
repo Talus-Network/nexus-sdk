@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.base_ref }}
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-tags: false
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
