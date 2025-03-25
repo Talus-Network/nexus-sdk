@@ -18,8 +18,9 @@ jobs:
 
       - name: Increase swapfile
         run: |
+          sudo swapon --show
           sudo swapoff -a
-          sudo fallocate -l 15G /swapfile
+          sudo fallocate -l 6G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
