@@ -11,9 +11,6 @@ on:
 
 jobs:
   sync-docs:
-    permissions:
-      contents: write
-      pull-requests: write
     runs-on: ubuntu-latest
     name: Sync docs to gitbook-docs repo
 
