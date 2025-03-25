@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, loading, prelude::*, sui::*},
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
         idents::workflow,
@@ -113,11 +113,12 @@ pub(crate) async fn create_network(
         return Err(NexusCliError::Any(anyhow!("No network ID in the events")));
     };
 
-    println!(
-        "[{check}] New Nexus network created with ID: {id}",
-        check = "✔".green().bold(),
+    notify_success!(
+        "New Nexus network created with ID: {id}",
         id = network_id.to_string().truecolor(100, 100, 100)
     );
+
+    json_output(&json!({ "digest": response.digest, "network_id": network_id }))?;
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, loading, prelude::*},
+    crate::{command_title, display::json_output, loading, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
     tokio::{
@@ -120,6 +120,8 @@ pub(crate) async fn create_new_tool(
     }
 
     writing_file.success();
+
+    json_output(&json!({}))?;
 
     Ok(())
 }

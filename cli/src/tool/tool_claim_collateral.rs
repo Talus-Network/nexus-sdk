@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, loading, prelude::*, sui::*},
+    crate::{command_title, display::json_output, loading, prelude::*, sui::*},
     nexus_sdk::idents::{move_std, workflow},
 };
 
@@ -64,7 +64,11 @@ pub(crate) async fn claim_collateral(
     );
 
     // Sign and submit the TX.
-    sign_transaction(&sui, &wallet, tx_data).await.map(|_| ())
+    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+
+    json_output(&json!({ "digest": response.digest }))?;
+
+    Ok(())
 }
 
 /// Build a programmable transaction to claim the collateral for a tool.

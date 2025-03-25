@@ -2,7 +2,9 @@ use {
     crate::{
         command_title,
         dag::dag_inspect_execution::inspect_dag_execution,
+        display::json_output,
         loading,
+        notify_success,
         prelude::*,
         sui::*,
     },
@@ -113,14 +115,15 @@ pub(crate) async fn execute_dag(
         )));
     };
 
-    println!(
-        "[{check}] DAGExecution object ID: {id}",
-        check = "✔".green().bold(),
+    notify_success!(
+        "DAGExecution object ID: {id}",
         id = object_id.to_string().truecolor(100, 100, 100)
     );
 
     if inspect {
         inspect_dag_execution(object_id, response.digest).await?;
+    } else {
+        json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
     }
 
     Ok(())

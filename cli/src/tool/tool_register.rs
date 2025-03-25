@@ -1,6 +1,7 @@
 use {
     crate::{
         command_title,
+        display::json_output,
         loading,
         prelude::*,
         sui::*,
@@ -93,7 +94,11 @@ pub(crate) async fn register_tool(
     );
 
     // Sign and submit the TX.
-    sign_transaction(&sui, &wallet, tx_data).await.map(|_| ())
+    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+
+    json_output(&json!({ "digest": response.digest }))?;
+
+    Ok(())
 }
 
 /// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet

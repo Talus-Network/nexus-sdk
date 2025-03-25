@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, confirm, loading, prelude::*, sui::*},
+    crate::{command_title, confirm, display::json_output, loading, prelude::*, sui::*},
     nexus_sdk::idents::{move_std, workflow},
 };
 
@@ -71,7 +71,11 @@ pub(crate) async fn unregister_tool(
     );
 
     // Sign and submit the TX.
-    sign_transaction(&sui, &wallet, tx_data).await.map(|_| ())
+    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+
+    json_output(&json!({ "digest": response.digest }))?;
+
+    Ok(())
 }
 
 /// Build a programmable transaction to unregister a Tool.

@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, loading, prelude::*, sui::*},
+    crate::{command_title, display::json_output, loading, prelude::*, sui::*},
     nexus_sdk::{
         object_crawler::{fetch_one, ObjectBag, Structure},
         types::deserialize_bytes_to_url,
@@ -45,7 +45,15 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     tools_handle.success();
 
+    let mut tools_json = Vec::new();
+
     for (fqn, tool) in tools {
+        if JSON_MODE.load(Ordering::Relaxed) {
+            tools_json.push(json!({ "fqn": fqn, "url": tool.into_inner().url }));
+
+            continue;
+        }
+
         println!(
             "    {arrow} Tool '{fqn}' at '{url}'",
             arrow = "▶".truecolor(100, 100, 100),
@@ -53,6 +61,8 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             url = tool.into_inner().url.as_str().truecolor(100, 100, 100),
         );
     }
+
+    json_output(&tools_json)?;
 
     Ok(())
 }

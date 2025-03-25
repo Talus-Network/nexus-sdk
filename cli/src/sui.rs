@@ -1,5 +1,5 @@
 use {
-    crate::{loading, prelude::*},
+    crate::{loading, notify_success, prelude::*},
     reqwest::{header, Client, StatusCode},
 };
 
@@ -274,9 +274,8 @@ pub(crate) async fn sign_transaction(
 
     signing_handle.success();
 
-    println!(
-        "[{check}] Transaction digest: {digest}",
-        check = "✔".green().bold(),
+    notify_success!(
+        "Transaction digest: {digest}",
         digest = response.digest.to_string().truecolor(100, 100, 100)
     );
 
