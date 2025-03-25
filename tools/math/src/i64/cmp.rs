@@ -80,5 +80,7 @@ mod tests {
         let output = tool.invoke(input).await;
 
         assert!(matches!(output, Output::Eq { a: 1, b: 1 }));
+
+        assert!(matches!(tool.health().await, Ok(StatusCode::OK)));
     }
 }
