@@ -377,3 +377,29 @@ pub fn into_type_tag(
         type_params: vec![],
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_into_type_tag() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let ident = ModuleAndNameIdent {
+            module: sui::move_ident_str!("foo"),
+            name: sui::move_ident_str!("bar"),
+        };
+
+        let tag = into_type_tag(workflow_pkg_id, ident);
+
+        assert_eq!(
+            tag,
+            sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+                address: *workflow_pkg_id,
+                module: sui::move_ident_str!("foo").into(),
+                name: sui::move_ident_str!("bar").into(),
+                type_params: vec![],
+            }))
+        )
+    }
+}
