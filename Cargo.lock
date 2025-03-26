@@ -4564,6 +4564,7 @@ dependencies = [
  "assert_matches",
  "lazy-regex",
  "move-core-types",
+ "move-symbol-pool",
  "regex",
  "reqwest",
  "serde",

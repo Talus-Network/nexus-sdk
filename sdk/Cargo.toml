@@ -36,8 +36,9 @@ events = ["sui_idents", "types"]
 object_crawler = ["sui_types", "serde_json"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
-# backoff, sui_move_build and testcontainers-modules as a dependency.
-test_utils = ["types", "tokio-retry", "sui_move_build", "testcontainers-modules"]
+# backoff, sui_move_build, move_symbol_pool and testcontainers-modules as
+# a dependency.
+test_utils = ["types", "tokio-retry", "sui_move_build", "move_symbol_pool", "testcontainers-modules"]
 
 # Enable all features apart from `test_utils`.
 full = ["tool_fqn", "sui_types", "sui_idents", "types", "events", "object_crawler"]
@@ -97,6 +98,12 @@ optional = true
 git = "https://github.com/MystenLabs/sui"
 tag = "testnet-v1.38.1"
 package = "sui-move-build"
+optional = true
+
+[dependencies.move_symbol_pool]
+git = "https://github.com/MystenLabs/sui"
+tag = "testnet-v1.38.1"
+package = "move-symbol-pool"
 optional = true
 
 [dependencies.testcontainers-modules]

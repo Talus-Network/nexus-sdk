@@ -101,6 +101,7 @@ async fn test_object_crawler() {
         &keystore,
         "tests/move/object_crawler_test",
         gas_coin,
+        None,
     )
     .await;
 

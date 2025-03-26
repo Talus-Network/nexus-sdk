@@ -14,6 +14,7 @@ pub use {
         identifier::IdentStr as MoveIdentStr,
         language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
     },
+    move_symbol_pool::Symbol as MoveSymbol,
     shared_crypto::intent::Intent,
     sui_keys::{key_derive::generate_new_key, keystore::Keystore},
     sui_sdk::{
@@ -25,6 +26,8 @@ pub use {
             ObjectChange,
             SuiEvent as Event,
             SuiExecutionStatus as ExecutionStatus,
+            SuiMoveStruct as MoveStruct,
+            SuiMoveValue as MoveValue,
             SuiObjectData as ObjectData,
             SuiObjectDataFilter as ObjectDataFilter,
             SuiObjectDataOptions as ObjectDataOptions,
