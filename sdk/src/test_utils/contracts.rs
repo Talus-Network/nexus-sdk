@@ -15,7 +15,15 @@ pub async fn publish_move_package(
     dep_ids: &HashMap<&str, sui::ObjectID>,
 ) -> sui::TransactionBlockResponse {
     // Compile the package.
-    let package = sui_move_build::BuildConfig::new_for_testing_replace_addresses(dep_ids.clone())
+    let build_config =
+        sui_move_build::BuildConfig::new_for_testing_replace_addresses(dep_ids.clone());
+
+    println!(
+        "Additional: {:#?}",
+        build_config.config.additional_named_addresses
+    );
+
+    let package = build_config
         .build(&PathBuf::from(path_str))
         .expect("Failed to build package.");
 
