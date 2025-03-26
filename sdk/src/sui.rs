@@ -38,6 +38,7 @@ pub use {
             SuiTransactionBlockResponse as TransactionBlockResponse,
             SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
         },
+        sui_client_config::{SuiClientConfig, SuiEnv},
         types::{
             base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
             crypto::SignatureScheme,

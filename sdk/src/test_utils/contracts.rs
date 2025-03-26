@@ -1,30 +1,39 @@
 use {
     crate::sui::{self, traits::*},
-    std::{collections::HashMap, path::PathBuf},
+    std::path::PathBuf,
 };
 
 /// Publishes a Move package to Sui.
 ///
 /// `path_str` is the path relative to the project `Cargo.toml` directory.
 pub async fn publish_move_package(
-    sui: &sui::Client,
-    addr: sui::Address,
-    keystore: &sui::Keystore,
+    wallet: &mut sui::WalletContext,
     path_str: &str,
     gas_coin: sui::Coin,
-    dep_ids: &HashMap<&str, sui::ObjectID>,
 ) -> sui::TransactionBlockResponse {
+    let install_dir = PathBuf::from(path_str);
+    let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
+
+    let sui = wallet
+        .get_client()
+        .await
+        .expect("Failed to get Sui client.");
+
+    let addr = wallet
+        .active_address()
+        .expect("Failed to get active address.");
+
+    let chain_id = sui
+        .read_api()
+        .get_chain_identifier()
+        .await
+        .expect("Failed to get chain identifier.");
+
     // Compile the package.
-    let build_config =
-        sui_move_build::BuildConfig::new_for_testing_replace_addresses(dep_ids.clone());
-
-    println!(
-        "Additional: {:#?}",
-        build_config.config.additional_named_addresses
-    );
-
+    let mut build_config = sui_move_build::BuildConfig::new_for_testing();
+    build_config.chain_id = Some(chain_id);
     let package = build_config
-        .build(&PathBuf::from(path_str))
+        .build(&install_dir)
         .expect("Failed to build package.");
 
     let reference_gas_price = sui
@@ -34,23 +43,33 @@ pub async fn publish_move_package(
         .expect("Failed to fetch reference gas price.");
 
     let with_unpublished_deps = false;
-    let sui_tx_data = sui::TransactionData::new_module(
-        addr,
-        gas_coin.object_ref(),
-        package.get_package_bytes(with_unpublished_deps),
-        package.get_dependency_storage_package_ids(),
-        sui::MIST_PER_SUI,
-        reference_gas_price,
-    );
 
-    // Sign the transaction.
-    let signature = keystore
-        .sign_secure(&addr, &sui_tx_data, sui::Intent::sui_transaction())
-        .expect("Signing TX must succeed.");
+    let tx = sui
+        .transaction_builder()
+        .publish_tx_kind(
+            addr,
+            package.get_package_bytes(with_unpublished_deps),
+            package.get_dependency_storage_package_ids(),
+        )
+        .await
+        .expect("Failed to build transaction.");
+
+    let tx_data = sui
+        .transaction_builder()
+        .tx_data(
+            addr,
+            tx,
+            sui::MIST_PER_SUI,
+            reference_gas_price,
+            vec![gas_coin.coin_object_id],
+            None,
+        )
+        .await
+        .expect("Failed to build transaction data.");
 
     // Prepare some options for the transaction. Object changes and events are
     // used to parse useful IDs from.
-    let envelope = sui::Transaction::from_data(sui_tx_data, vec![signature]);
+    let envelope = wallet.sign_transaction(&tx_data);
     let resp_options = sui::TransactionBlockResponseOptions::new()
         .with_events()
         .with_effects()
@@ -69,6 +88,16 @@ pub async fn publish_move_package(
             panic!("Transaction has erroneous effects: {path_str} {effects}");
         }
     }
+
+    sui_package_management::update_lock_file(
+        wallet,
+        sui_package_management::LockCommand::Publish,
+        Some(install_dir),
+        Some(lock_file),
+        &response,
+    )
+    .await
+    .expect("Failed to update lock file.");
 
     response
 }

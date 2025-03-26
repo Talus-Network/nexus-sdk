@@ -4,7 +4,6 @@ use {
     assert_matches::assert_matches,
     nexus_sdk::{object_crawler::*, sui, test_utils},
     serde::{Deserialize, Serialize},
-    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -77,15 +76,14 @@ async fn test_object_crawler() {
     // Spin up the Sui instance.
     let (_container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
 
-    // Build Sui client.
-    let sui = sui::ClientBuilder::default()
-        .build(format!("http://127.0.0.1:{}", rpc_port))
-        .await
-        .expect("Failed to build Sui client");
-
     // Create a wallet and request some gas tokens.
-    let (keystore, addr) =
-        test_utils::wallet::create_test_wallet().expect("Failed to create a wallet.");
+    let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
+        .expect("Failed to create a wallet.");
+    let sui = wallet.get_client().await.expect("Could not get Sui client");
+
+    let addr = wallet
+        .active_address()
+        .expect("Failed to get active address.");
 
     test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
         .await
@@ -97,12 +95,9 @@ async fn test_object_crawler() {
 
     // Publish test contract and fetch some IDs.
     let response = test_utils::contracts::publish_move_package(
-        &sui,
-        addr,
-        &keystore,
+        &mut wallet,
         "tests/move/object_crawler_test",
         gas_coin,
-        &HashMap::new(),
     )
     .await;
 
