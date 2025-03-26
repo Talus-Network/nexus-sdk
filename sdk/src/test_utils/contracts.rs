@@ -12,10 +12,10 @@ pub async fn publish_move_package(
     keystore: &sui::Keystore,
     path_str: &str,
     gas_coin: sui::Coin,
-    dep_ids: Option<&HashMap<sui::MoveSymbol, sui::ObjectID>>,
+    dep_ids: &HashMap<&str, sui::ObjectID>,
 ) -> sui::TransactionBlockResponse {
     // Compile the package.
-    let mut package = sui_move_build::BuildConfig::new_for_testing()
+    let package = sui_move_build::BuildConfig::new_for_testing_replace_addresses(dep_ids.clone())
         .build(&PathBuf::from(path_str))
         .expect("Failed to build package.");
 
@@ -25,27 +25,7 @@ pub async fn publish_move_package(
         .await
         .expect("Failed to fetch reference gas price.");
 
-    println!("DEP_IDS: {:#?}", dep_ids);
-    println!("UNPUBLISHED: {:#?}", package.dependency_ids.unpublished);
-    println!("PUBLISHED: {:#?}", package.dependency_ids.published);
-
-    // Manually edit the package to include freshly published dependencies.
-    if let Some(dep_ids) = dep_ids {
-        for (dep_name, dep_object_id) in dep_ids.clone() {
-            // Remove from unpublished and insert into published.
-            package.dependency_ids.unpublished.remove(&dep_name);
-
-            package
-                .dependency_ids
-                .published
-                .insert(dep_name, dep_object_id);
-        }
-    }
-
-    println!("UNPUBLISHED: {:#?}", package.dependency_ids.unpublished);
-    println!("PUBLISHED: {:#?}", package.dependency_ids.published);
-
-    let with_unpublished_deps = true;
+    let with_unpublished_deps = false;
     let sui_tx_data = sui::TransactionData::new_module(
         addr,
         gas_coin.object_ref(),

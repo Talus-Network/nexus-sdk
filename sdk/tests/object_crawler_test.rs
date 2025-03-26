@@ -4,6 +4,7 @@ use {
     assert_matches::assert_matches,
     nexus_sdk::{object_crawler::*, sui, test_utils},
     serde::{Deserialize, Serialize},
+    std::collections::HashMap,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -101,7 +102,7 @@ async fn test_object_crawler() {
         &keystore,
         "tests/move/object_crawler_test",
         gas_coin,
-        None,
+        &HashMap::new(),
     )
     .await;
 
