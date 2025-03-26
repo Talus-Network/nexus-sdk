@@ -36,9 +36,9 @@ events = ["sui_idents", "types"]
 object_crawler = ["sui_types", "serde_json"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
-# serde_yml, tempfile, tokio-retry, sui_move_build, sui_package_management and
+# tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
-test_utils = ["types", "serde_yml", "tempfile", "tokio-retry", "sui_move_build", "sui_package_management", "testcontainers-modules"]
+test_utils = ["types", "tempfile", "tokio-retry", "sui_move_build", "sui_package_management", "testcontainers-modules"]
 
 # Enable all features apart from `test_utils`.
 full = ["tool_fqn", "sui_types", "sui_idents", "types", "events", "object_crawler"]
@@ -62,10 +62,6 @@ optional = true
 features = ["json"]
 
 [dependencies.serde_json]
-workspace = true
-optional = true
-
-[dependencies.serde_yml]
 workspace = true
 optional = true
 
