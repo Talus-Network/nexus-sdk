@@ -89,9 +89,12 @@ async fn test_object_crawler() {
         .await
         .expect("Failed to request tokens from faucet.");
 
-    let gas_coin = test_utils::gas::fetch_gas_coin(&sui, addr)
+    let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
         .await
-        .expect("Failed to fetch gas coin.");
+        .expect("Failed to fetch gas coin.")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Publish test contract and fetch some IDs.
     let response = test_utils::contracts::publish_move_package(
