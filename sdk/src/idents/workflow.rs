@@ -347,6 +347,13 @@ pub struct LeaderCap;
 const LEADER_CAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("leader_cap");
 
 impl LeaderCap {
+    /// Create N leader caps for self and the provided addresses.
+    ///
+    /// `nexus_workflow::leader_cap::create_for_self_and_addresses`
+    pub const CREATE_FOR_SELF_AND_ADDRESSES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_CAP_MODULE,
+        name: sui::move_ident_str!("create_for_self_and_addresses"),
+    };
     /// This is used as a generic argument for
     /// [crate::idents::primitives::OwnerCap::CLONEABLE_OWNER_CAP].
     ///

@@ -144,3 +144,32 @@ fn default_sui_wallet_path() -> PathBuf {
         .expect("Home dir must exist.")
         .join(".sui/sui_config/client.yaml")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_tilde() {
+        let path = "~/test";
+        let expanded = expand_tilde(path).unwrap();
+
+        assert_eq!(expanded, home::home_dir().unwrap().join("test"));
+    }
+
+    #[test]
+    fn test_parse_json_string() {
+        let json = r#"{"key": "value"}"#;
+        let parsed = parse_json_string(json).unwrap();
+
+        assert_eq!(parsed, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_sui_net_display() {
+        assert_eq!(SuiNet::Localnet.to_string(), "localnet");
+        assert_eq!(SuiNet::Devnet.to_string(), "devnet");
+        assert_eq!(SuiNet::Testnet.to_string(), "testnet");
+        assert_eq!(SuiNet::Mainnet.to_string(), "mainnet");
+    }
+}

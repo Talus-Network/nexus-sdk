@@ -2,6 +2,7 @@ mod conf;
 mod dag;
 mod display;
 mod error;
+mod network;
 mod prelude;
 mod sui;
 mod tool;
@@ -23,6 +24,8 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
+    #[command(subcommand, about = "Mange Nexus networks and leader caps")]
+    Network(network::NetworkCommand),
 }
 
 #[tokio::main]
@@ -57,6 +60,7 @@ async fn main() {
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
+        Command::Network(network) => network::handle(network).await,
     };
 
     // Handle any errors that occurred during command execution.
