@@ -1,7 +1,7 @@
 use crate::{
     idents::{move_std, primitives, sui_framework, workflow},
     sui,
-    types::{Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind},
+    types::{Dag, Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
 };
 
 /// PTB template for creating a new empty DAG.
@@ -33,6 +33,58 @@ pub fn publish(
         vec![dag_type],
         vec![dag],
     )
+}
+
+/// PTB template to publish a full [`crate::types::Dag`].
+pub fn create(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    workflow_pkg_id: sui::ObjectID,
+    primitives_pkg_id: sui::ObjectID,
+    mut dag_arg: sui::Argument,
+    dag: Dag,
+) -> anyhow::Result<sui::Argument> {
+    // Create all entry vertices.
+    for entry_vertex in dag.entry_vertices {
+        // Find which entry groups this vertex belongs to.
+        let entry_groups = dag
+            .entry_groups
+            .as_ref()
+            .map(|groups| {
+                groups
+                    .iter()
+                    .filter(|group| group.vertices.contains(&entry_vertex.name))
+                    .map(|group| group.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| vec![DEFAULT_ENTRY_GROUP.to_string()]);
+
+        dag_arg = create_entry_vertex(tx, workflow_pkg_id, dag_arg, entry_vertex, entry_groups)?;
+    }
+
+    // Create all vertices.
+    for vertex in dag.vertices {
+        dag_arg = create_vertex(tx, workflow_pkg_id, dag_arg, &vertex)?;
+    }
+
+    // Create all default values if present.
+    if let Some(default_values) = dag.default_values {
+        for default_value in default_values {
+            dag_arg = create_default_value(
+                tx,
+                workflow_pkg_id,
+                primitives_pkg_id,
+                dag_arg,
+                &default_value,
+            )?;
+        }
+    }
+
+    // Create all edges.
+    for edge in dag.edges {
+        dag_arg = create_edge(tx, workflow_pkg_id, dag_arg, &edge)?;
+    }
+
+    Ok(dag_arg)
 }
 
 /// PTB template for creating a new DAG entry vertex.
@@ -342,4 +394,58 @@ pub fn execute(
         vec![],
         vec![default_sap, dag, network, entry_group, with_vertex_inputs],
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let workflow_pkg_id = sui::ObjectID::random();
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        empty(&mut tx, workflow_pkg_id);
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create an empty DAG");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.module, workflow::Dag::NEW.module.to_string(),);
+        assert_eq!(call.function, workflow::Dag::NEW.name.to_string());
+        assert_eq!(call.type_arguments.len(), 0);
+        assert_eq!(call.arguments.len(), 0);
+    }
+
+    #[test]
+    fn test_publish() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let dag = sui::Argument::Result(0);
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        publish(&mut tx, workflow_pkg_id, dag);
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to publish a DAG");
+        };
+
+        assert_eq!(call.package, sui::FRAMEWORK_PACKAGE_ID);
+        assert_eq!(
+            call.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT
+                .name
+                .to_string()
+        );
+        assert_eq!(call.type_arguments.len(), 1);
+        assert_eq!(call.arguments.len(), 1);
+    }
 }
