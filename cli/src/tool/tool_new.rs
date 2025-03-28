@@ -80,7 +80,7 @@ pub(crate) async fn create_new_tool(
     // Create the tool's root directory.
     let root_directory = target.join(&name);
 
-    if let Err(e) = create_dir_all(root_directory).await {
+    if let Err(e) = create_dir_all(&root_directory).await {
         writing_file.error();
 
         return Err(NexusCliError::Io(e));
@@ -121,7 +121,9 @@ pub(crate) async fn create_new_tool(
 
     writing_file.success();
 
-    json_output(&json!({}))?;
+    json_output(&json!({
+        "path": root_directory,
+    }))?;
 
     Ok(())
 }
