@@ -5,9 +5,12 @@ pub(crate) use {
     colored::Colorize,
     nexus_sdk::{sui::traits::*, *},
     serde::{Deserialize, Serialize},
-    std::path::{Path, PathBuf},
+    serde_json::json,
+    std::{
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicBool, Ordering},
+    },
 };
-
 // Where to find config file.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 
@@ -117,6 +120,9 @@ pub(crate) struct GasArgs {
     )]
     pub(crate) sui_gas_budget: u64,
 }
+
+/// Whether to change the output format to JSON.
+pub(crate) static JSON_MODE: AtomicBool = AtomicBool::new(false);
 
 // == Used by clap ==
 

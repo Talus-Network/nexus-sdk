@@ -1,5 +1,13 @@
 use {
-    crate::{command_title, prelude::*, sui::*},
+    crate::{
+        command_title,
+        display::json_output,
+        item,
+        notify_error,
+        notify_success,
+        prelude::*,
+        sui::*,
+    },
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
         idents::primitives,
@@ -35,6 +43,8 @@ pub(crate) async fn inspect_dag_execution(
         tx_digest: execution_digest,
         event_seq: 0,
     });
+
+    let mut json_trace = Vec::new();
 
     // Loop until we find an `ExecutionFinished` event.
     'query: loop {
@@ -73,9 +83,8 @@ pub(crate) async fn inspect_dag_execution(
         for event in events {
             match event.data {
                 NexusEventKind::WalkAdvanced(e) if e.execution == dag_execution_id => {
-                    println!(
-                        "[{check}] Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        check = "✔".green().bold(),
+                    notify_success!(
+                        "Vertex '{vertex}' evaluated with output variant '{variant}'.",
                         vertex = e.vertex.name.truecolor(100, 100, 100),
                         variant = e.variant.name.truecolor(100, 100, 100),
                     );
@@ -83,9 +92,8 @@ pub(crate) async fn inspect_dag_execution(
                     let Ok(variant_ports_to_data) =
                         serde_json::from_value::<PortsToData>(e.variant_ports_to_data.clone())
                     else {
-                        println!(
-                            "    {arrow} With data: {data}",
-                            arrow = "▶".truecolor(100, 100, 100),
+                        item!(
+                            "With data: {data}",
                             data =
                                 format!("{:?}", e.variant_ports_to_data).truecolor(100, 100, 100),
                         );
@@ -93,22 +101,40 @@ pub(crate) async fn inspect_dag_execution(
                         continue;
                     };
 
+                    let mut json_data = Vec::new();
+
                     for (port, data) in variant_ports_to_data.values {
-                        println!(
-                            "    {arrow} Port '{port}' produced data: {data}",
-                            arrow = "▶".truecolor(100, 100, 100),
+                        item!(
+                            "Port '{port}' produced data: {data}",
                             port = port.name.truecolor(100, 100, 100),
                             data = format!("{data:?}").truecolor(100, 100, 100),
                         );
+
+                        match data {
+                            NexusData::Inline { data } => {
+                                json_data.push(json!({
+                                    "port": port.name,
+                                    "data": data,
+                                }));
+                            }
+                            _ => json_data.push(json!({
+                                "port": port.name,
+                                "data": data,
+                            })),
+                        }
                     }
 
-                    println!()
+                    json_trace.push(json!({
+                        "end_state": false,
+                        "vertex": e.vertex.name,
+                        "variant": e.variant.name,
+                        "data": json_data,
+                    }));
                 }
 
                 NexusEventKind::EndStateReached(e) if e.execution == dag_execution_id => {
-                    println!(
-                        "[{check}] {end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        check = "✔".green().bold(),
+                    notify_success!(
+                        "{end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
                         vertex = e.vertex.name.truecolor(100, 100, 100),
                         variant = e.variant.name.truecolor(100, 100, 100),
                         end_state = "END STATE".truecolor(100, 100, 100)
@@ -117,9 +143,8 @@ pub(crate) async fn inspect_dag_execution(
                     let Ok(variant_ports_to_data) =
                         serde_json::from_value::<PortsToData>(e.variant_ports_to_data.clone())
                     else {
-                        println!(
-                            "    {arrow} With data: {data}",
-                            arrow = "▶".truecolor(100, 100, 100),
+                        item!(
+                            "With data: {data}",
                             data =
                                 format!("{:?}", e.variant_ports_to_data).truecolor(100, 100, 100),
                         );
@@ -127,32 +152,45 @@ pub(crate) async fn inspect_dag_execution(
                         continue;
                     };
 
+                    let mut json_data = Vec::new();
+
                     for (port, data) in variant_ports_to_data.values {
-                        println!(
-                            "    {arrow} Port '{port}' produced data: {data}",
-                            arrow = "▶".truecolor(100, 100, 100),
+                        item!(
+                            "Port '{port}' produced data: {data}",
                             port = port.name.truecolor(100, 100, 100),
                             data = format!("{data:?}").truecolor(100, 100, 100),
                         );
+
+                        match data {
+                            NexusData::Inline { data } => {
+                                json_data.push(json!({
+                                    "port": port.name,
+                                    "data": data,
+                                }));
+                            }
+                            _ => json_data.push(json!({
+                                "port": port.name,
+                                "data": data,
+                            })),
+                        }
                     }
 
-                    println!()
+                    json_trace.push(json!({
+                        "end_state": true,
+                        "vertex": e.vertex.name,
+                        "variant": e.variant.name,
+                        "data": json_data,
+                    }));
                 }
 
                 NexusEventKind::ExecutionFinished(e) if e.execution == dag_execution_id => {
                     if e.has_any_walk_failed {
-                        println!(
-                            "[{ballot}] DAG execution finished unsuccessfully",
-                            ballot = "✘".red().bold()
-                        );
+                        notify_error!("DAG execution finished unsuccessfully");
 
                         break 'query;
                     }
 
-                    println!(
-                        "[{check}] DAG execution finished successfully",
-                        check = "✔".green().bold()
-                    );
+                    notify_success!("DAG execution finished successfully");
 
                     break 'query;
                 }
@@ -161,6 +199,8 @@ pub(crate) async fn inspect_dag_execution(
             }
         }
     }
+
+    json_output(&json_trace)?;
 
     Ok(())
 }

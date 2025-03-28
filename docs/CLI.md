@@ -79,6 +79,14 @@ After the period of time configured in our Tool Registry, let the Tool developer
 
 > This command requires that a wallet is connected to the CLI.
 
+**`nexus tool list`**
+
+List all Nexus Tools available in the Tool Registry. This reads the dynamic object directly from Sui.
+
+> This command requires that a wallet is connected to the CLI.
+
+---
+
 ### `nexus dag`
 
 Set of commands for managing JSON DAGs.

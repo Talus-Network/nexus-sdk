@@ -4,3 +4,6 @@ sdk/tests/move/object_crawler_test/build
 
 # Environment
 .env
+
+# IDEs
+.idea

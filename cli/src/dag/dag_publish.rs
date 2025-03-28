@@ -13,7 +13,9 @@ use {
                 DEFAULT_ENTRY_GROUP,
             },
         },
+        display::json_output,
         loading,
+        notify_success,
         prelude::*,
         sui::*,
     },
@@ -196,11 +198,12 @@ pub(crate) async fn publish_dag(
         )));
     };
 
-    println!(
-        "[{check}] Published DAG with object ID: {id}",
-        check = "✔".green().bold(),
+    notify_success!(
+        "Published DAG with object ID: {id}",
         id = object_id.to_string().truecolor(100, 100, 100)
     );
+
+    json_output(&json!({ "digest": response.digest, "dag_id": object_id }))?;
 
     Ok(())
 }

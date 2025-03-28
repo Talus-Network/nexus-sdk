@@ -185,6 +185,8 @@ underlying HTTP server that adheres to the [Nexus Tool interface][nexus-next-too
 
 It has a flexible interface that accepts an `Into<SocketAddr>` value and a struct that `impl NexusTool`.
 
+If using the `bootstrap!` macro without the `Into<SocketAddr>` argument, a `BIND_ADDR` environment variable can be provided. This variable needs to be a string that can `.parse::<SocketAddr>`.
+
 ```rs
 use nexus_toolkit::*;
 

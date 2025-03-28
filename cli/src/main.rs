@@ -12,6 +12,13 @@ use crate::prelude::*;
 #[derive(Parser)]
 #[command(version, about = "Nexus CLI")]
 struct Cli {
+    /// Whether to output JSON.
+    #[arg(
+        global = true,
+        long = "json",
+        help = "Change the output format to JSON"
+    )]
+    json: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -54,6 +61,8 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    JSON_MODE.store(cli.json, Ordering::Relaxed);
 
     // Send each sub-command to the respective handler.
     let result = match cli.command {
