@@ -2,14 +2,6 @@
 //! First line of validation. If try_from fails, there is an error in the
 //! configuration and vice versa, if it succeeds, we should be certain that the
 //! configuration structure is correct.
-//!
-//! # Example
-//!
-//! ```no_run
-//! let dag: Dag = include_str!("./_dags/trip_planner.json").try_into()?;
-//!
-//! assert!(dag.is_ok());
-//! ```
 
 use {crate::ToolFqn, serde::Deserialize};
 

@@ -226,6 +226,8 @@ pub fn create_edge(
 }
 
 /// PTB template to execute a DAG.
+// TODO: This could be alleviated by the function accepting a NexusObjects struct.
+#[allow(clippy::too_many_arguments)]
 pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     default_sap: sui::ObjectRef,
