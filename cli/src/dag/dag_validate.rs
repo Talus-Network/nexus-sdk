@@ -1,8 +1,6 @@
-use crate::{
-    command_title,
-    dag::{parser::Dag, validator::validate},
-    loading,
-    prelude::*,
+use {
+    crate::{command_title, dag::validator::validate, loading, prelude::*},
+    nexus_sdk::types::Dag,
 };
 
 /// Validate if a JSON file at the provided location is a valid Nexus DAG. If so,
@@ -23,12 +21,12 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
     };
 
     // Parse into [crate::dag::parser::Dag].
-    let dag: Dag = match file.as_str().try_into() {
+    let dag: Dag = match serde_json::from_str(file.as_str()) {
         Ok(dag) => dag,
         Err(e) => {
             parsing_handle.error();
 
-            return Err(NexusCliError::Any(e));
+            return Err(NexusCliError::Any(anyhow!(e)));
         }
     };
 
@@ -55,33 +53,30 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
 
 #[cfg(test)]
 mod tests {
-    use {super::*, assert_matches::assert_matches};
+    use {super::*, assert_matches::assert_matches, nexus_sdk::types::Dag};
 
     // == Various graph shapes ==
 
     #[test]
     fn test_ig_story_planner_valid() {
-        let dag: Dag = include_str!("_dags/ig_story_planner_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/ig_story_planner_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_valid() {
-        let dag: Dag = include_str!("_dags/immediately_converges_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/immediately_converges_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_invalid() {
-        let dag: Dag = include_str!("_dags/immediately_converges_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/immediately_converges_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -90,18 +85,15 @@ mod tests {
 
     #[test]
     fn test_intertwined_valid() {
-        let dag: Dag = include_str!("_dags/intertwined_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!("_dags/intertwined_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_intertwined_invalid() {
-        let dag: Dag = include_str!("_dags/intertwined_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/intertwined_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -110,9 +102,8 @@ mod tests {
 
     #[test]
     fn test_multiple_output_ports_invalid() {
-        let dag: Dag = include_str!("_dags/multiple_output_ports_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_output_ports_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -121,45 +112,43 @@ mod tests {
 
     #[test]
     fn test_multiple_output_ports_valid() {
-        let dag: Dag = include_str!("_dags/multiple_output_ports_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_output_ports_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_goals_valid() {
-        let dag: Dag = include_str!("_dags/multiple_goals_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_goals_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_dead_ends_valid() {
-        let dag: Dag = include_str!("_dags/dead_ends_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!("_dags/dead_ends_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_valid() {
-        let dag: Dag = include_str!("_dags/multiple_entry_multiple_goal_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/multiple_entry_multiple_goal_valid.json"
+        ))
+        .unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_invalid() {
-        let dag: Dag = include_str!("_dags/multiple_entry_multiple_goal_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/multiple_entry_multiple_goal_invalid.json"
+        ))
+        .unwrap();
 
         let res = validate(dag);
 
@@ -168,9 +157,8 @@ mod tests {
 
     #[test]
     fn test_branched_net_zero_invalid() {
-        let dag: Dag = include_str!("_dags/branched_net_zero_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/branched_net_zero_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -179,27 +167,23 @@ mod tests {
 
     #[test]
     fn test_entry_groups_valid() {
-        let dag: Dag = include_str!("_dags/entry_groups_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!("_dags/entry_groups_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_twice_valid() {
-        let dag: Dag = include_str!("_dags/entry_groups_twice_valid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_twice_valid.json")).unwrap();
 
         assert!(validate(dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_ne_invalid() {
-        let dag: Dag = include_str!("_dags/entry_groups_ne_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_ne_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -208,9 +192,8 @@ mod tests {
 
     #[test]
     fn test_entry_groups_tm_invalid() {
-        let dag: Dag = include_str!("_dags/entry_groups_tm_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_tm_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -221,9 +204,8 @@ mod tests {
 
     #[test]
     fn test_cyclic_invalid() {
-        let dag: Dag = include_str!("_dags/undefined_connections_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -234,9 +216,8 @@ mod tests {
 
     #[test]
     fn test_undefined_connections_invalid() {
-        let dag: Dag = include_str!("_dags/undefined_connections_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -245,9 +226,8 @@ mod tests {
 
     #[test]
     fn test_def_val_on_input_port_invalid() {
-        let dag: Dag = include_str!("_dags/has_def_on_input_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/has_def_on_input_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -256,9 +236,10 @@ mod tests {
 
     #[test]
     fn test_multiple_same_entry_ports_invalid() {
-        let dag: Dag = include_str!("_dags/has_multiple_same_entry_inputs_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/has_multiple_same_entry_inputs_invalid.json"
+        ))
+        .unwrap();
 
         let res = validate(dag);
 
@@ -267,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_empty_invalid() {
-        let dag: Dag = include_str!("_dags/empty_invalid.json").try_into().unwrap();
+        let dag: Dag = serde_json::from_str(include_str!("_dags/empty_invalid.json")).unwrap();
 
         let res = validate(dag);
 
@@ -276,9 +257,9 @@ mod tests {
 
     #[test]
     fn test_normal_vertex_in_group_invalid() {
-        let dag: Dag = include_str!("_dags/normal_vertex_in_group_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/normal_vertex_in_group_invalid.json"))
+                .unwrap();
 
         let res = validate(dag);
 
@@ -287,9 +268,10 @@ mod tests {
 
     #[test]
     fn test_both_vertex_and_entry_vertex_invalid() {
-        let dag: Dag = include_str!("_dags/both_vertex_and_entry_vertex_invalid.json")
-            .try_into()
-            .unwrap();
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/both_vertex_and_entry_vertex_invalid.json"
+        ))
+        .unwrap();
 
         let res = validate(dag);
 
