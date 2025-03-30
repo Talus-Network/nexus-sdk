@@ -194,11 +194,11 @@ mod tests {
         let nexus_network_id = Some(sui::ObjectID::random());
 
         let nexus_objects_instance = NexusObjects {
-            workflow_pkg_id: nexus_workflow_pkg_id.clone().unwrap(),
-            primitives_pkg_id: nexus_primitives_pkg_id.clone().unwrap(),
-            tool_registry_object_id: nexus_tool_registry_object_id.clone().unwrap(),
-            default_sap_object_id: nexus_default_sap_object_id.clone().unwrap(),
-            network_id: nexus_network_id.clone().unwrap(),
+            workflow_pkg_id: nexus_workflow_pkg_id.unwrap(),
+            primitives_pkg_id: nexus_primitives_pkg_id.unwrap(),
+            tool_registry_object_id: nexus_tool_registry_object_id.unwrap(),
+            default_sap_object_id: nexus_default_sap_object_id.unwrap(),
+            network_id: nexus_network_id.unwrap(),
         };
 
         // Serialize the NexusObjects instance to a TOML string.

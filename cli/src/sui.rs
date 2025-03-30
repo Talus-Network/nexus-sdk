@@ -3,6 +3,7 @@ use {
     nexus_sdk::sui,
     reqwest::{header, Client, StatusCode},
 };
+
 /// Build Sui client for the provided Sui net.
 pub(crate) async fn build_sui_client(conf: &SuiConf) -> AnyResult<sui::Client, NexusCliError> {
     let building_handle = loading!("Building Sui client...");
@@ -540,7 +541,7 @@ mod tests {
     ) {
         let sui_default_config = "/tmp/sui/config";
         // Set the default sui config folder to /tmp
-        std::env::set_var("SUI_CONFIG_DIR", &sui_default_config);
+        std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
 
         // Set or remove the mnemonic environment variable as needed.
         if let Some(mnemonic) = mnemonic_env {
@@ -563,7 +564,7 @@ mod tests {
 
         // Clean up the env variable.
         std::env::remove_var("SUI_SECRET_MNEMONIC");
-        let _ = std::fs::remove_dir_all(&sui_default_config);
+        let _ = std::fs::remove_dir_all(sui_default_config);
     }
 
     #[rstest(
@@ -584,7 +585,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let sui_default_config = temp_dir.path().to_str().unwrap();
         // Set the default sui config folder to /tmp
-        std::env::set_var("SUI_CONFIG_DIR", &sui_default_config);
+        std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
         let config_dir = sui::config_dir().expect("Failed to get config dir");
         let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
         let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
