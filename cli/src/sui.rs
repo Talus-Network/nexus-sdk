@@ -4,16 +4,20 @@ use {
     reqwest::{header, Client, StatusCode},
 };
 /// Build Sui client for the provided Sui net.
-pub(crate) async fn build_sui_client(net: SuiNet) -> AnyResult<sui::Client, NexusCliError> {
+pub(crate) async fn build_sui_client(conf: &SuiConf) -> AnyResult<sui::Client, NexusCliError> {
     let building_handle = loading!("Building Sui client...");
     let client;
 
-    let builder = sui::ClientBuilder::default();
+    let mut builder = sui::ClientBuilder::default();
+
+    if let (Some(user), Some(password)) = (conf.auth_user.as_ref(), conf.auth_password.as_ref()) {
+        builder = builder.basic_auth(user, password);
+    }
 
     if let Ok(sui_rpc_url) = std::env::var("SUI_RPC_URL") {
         client = builder.build(sui_rpc_url).await
     } else {
-        client = match net {
+        client = match conf.net {
             SuiNet::Localnet => builder.build_localnet().await,
             SuiNet::Devnet => builder.build_devnet().await,
             SuiNet::Testnet => builder.build_testnet().await,
