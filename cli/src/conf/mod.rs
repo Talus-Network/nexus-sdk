@@ -8,6 +8,7 @@ pub(crate) struct ConfCommand {
         value_name = "NET"
     )]
     sui_net: Option<SuiNet>,
+
     #[arg(
         long = "sui.wallet-path",
         help = "Set the Sui wallet path",
@@ -15,36 +16,58 @@ pub(crate) struct ConfCommand {
         value_parser = ValueParser::from(expand_tilde)
     )]
     sui_wallet_path: Option<PathBuf>,
+
+    #[arg(
+        long = "sui.basic-auth-user",
+        help = "Set an user for basic authentication to the Sui node",
+        value_name = "USER",
+        requires = "sui.basic-auth-password"
+    )]
+    sui_auth_user: Option<String>,
+
+    #[arg(
+        long = "sui.basic-auth-password",
+        help = "Set a password for basic authentication to the Sui node",
+        value_name = "PASSWORD",
+        requires = "sui.basic-auth-user"
+    )]
+    sui_auth_password: Option<String>,
+
     #[arg(
         long = "nexus.workflow-pkg-id",
         help = "Set the Nexus Workflow package ID",
         value_name = "PKG_ID"
     )]
     nexus_workflow_pkg_id: Option<sui::ObjectID>,
+
     #[arg(
         long = "nexus.primitives-pkg-id",
         help = "Set the Nexus Primitives package ID",
         value_name = "PKG_ID"
     )]
     nexus_primitives_pkg_id: Option<sui::ObjectID>,
+
     #[arg(
         long = "nexus.tool-registry-object-id",
         help = "Set the Nexus Tool Registry object ID",
         value_name = "OBJECT_ID"
     )]
     nexus_tool_registry_object_id: Option<sui::ObjectID>,
+
     #[arg(
         long = "nexus.default-sap-object-id",
         help = "Set the Nexus Default SAP object ID",
         value_name = "OBJECT_ID"
     )]
     nexus_default_sap_object_id: Option<sui::ObjectID>,
+
     #[arg(
         long = "nexus.network_id",
         help = "Set the Nexus Network ID",
         value_name = "OBJECT_ID"
     )]
     nexus_network_id: Option<sui::ObjectID>,
+
     #[arg(
         long = "nexus.objects",
         help = "Path to a TOML file containing Nexus objects",
@@ -52,6 +75,7 @@ pub(crate) struct ConfCommand {
         value_parser = ValueParser::from(expand_tilde)
     )]
     nexus_objects_path: Option<PathBuf>,
+
     /// Hidden argument used for testing to set the path of the configuration
     /// file.
     #[arg(
@@ -69,6 +93,8 @@ pub(crate) async fn handle(
     ConfCommand {
         sui_net,
         sui_wallet_path,
+        sui_auth_user,
+        sui_auth_password,
         nexus_objects_path,
         nexus_workflow_pkg_id,
         nexus_primitives_pkg_id,
@@ -128,6 +154,8 @@ pub(crate) async fn handle(
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
+    conf.sui.auth_user = sui_auth_user;
+    conf.sui.auth_password = sui_auth_password;
     conf.nexus.workflow_pkg_id = nexus_workflow_pkg_id.or(conf.nexus.workflow_pkg_id);
     conf.nexus.primitives_pkg_id = nexus_primitives_pkg_id.or(conf.nexus.primitives_pkg_id);
     conf.nexus.tool_registry_object_id =
@@ -183,6 +211,8 @@ mod tests {
         let command = ConfCommand {
             sui_net: Some(SuiNet::Mainnet),
             sui_wallet_path: Some(PathBuf::from("/tmp/.nexus/wallet")),
+            sui_auth_user: Some("user".to_string()),
+            sui_auth_password: Some("pass".to_string()),
             nexus_objects_path: Some(PathBuf::from("/tmp/.nexus/objects.toml")),
             nexus_workflow_pkg_id,
             nexus_primitives_pkg_id,
@@ -203,6 +233,8 @@ mod tests {
 
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
         assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
+        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
+        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
         assert_eq!(conf.nexus.workflow_pkg_id, nexus_workflow_pkg_id);
         assert_eq!(conf.nexus.primitives_pkg_id, nexus_primitives_pkg_id);
         assert_eq!(
@@ -219,6 +251,8 @@ mod tests {
         let command = ConfCommand {
             sui_net: Some(SuiNet::Testnet),
             sui_wallet_path: None,
+            sui_auth_user: None,
+            sui_auth_password: None,
             nexus_objects_path: None,
             nexus_workflow_pkg_id: None,
             nexus_primitives_pkg_id: None,
@@ -237,6 +271,8 @@ mod tests {
 
         assert_eq!(conf.sui.net, SuiNet::Testnet);
         assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
+        assert_eq!(conf.sui.auth_user, None);
+        assert_eq!(conf.sui.auth_password, None);
         assert_eq!(conf.nexus.workflow_pkg_id, nexus_workflow_pkg_id);
         assert_eq!(conf.nexus.primitives_pkg_id, nexus_primitives_pkg_id);
         assert_eq!(

@@ -509,11 +509,7 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
 #[cfg(test)]
 mod tests {
     use {
-        super::*,
-        nexus_sdk::sui::Address,
-        rstest::rstest,
-        serial_test::serial,
-        tempfile::tempdir,
+        super::*, nexus_sdk::sui::Address, rstest::rstest, serial_test::serial, tempfile::tempdir,
     };
 
     #[rstest(
@@ -553,6 +549,8 @@ mod tests {
         let conf = SuiConf {
             net: SuiNet::Localnet,
             wallet_path: PathBuf::from(format!("{}/client.toml", &sui_default_config)),
+            auth_user: None,
+            auth_password: None,
         };
 
         // Call the function under test.
