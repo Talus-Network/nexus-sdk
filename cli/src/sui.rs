@@ -514,7 +514,11 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
 #[cfg(test)]
 mod tests {
     use {
-        super::*, nexus_sdk::sui::Address, rstest::rstest, serial_test::serial, tempfile::tempdir,
+        super::*,
+        nexus_sdk::sui::Address,
+        rstest::rstest,
+        serial_test::serial,
+        tempfile::tempdir,
     };
 
     #[rstest(
