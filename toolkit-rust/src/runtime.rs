@@ -135,6 +135,8 @@ pub fn routes_for_<T: NexusTool>() -> impl Filter<Extract = impl Reply, Error = 
     let meta_route = warp::get()
         .and(base_path.clone())
         .and(warp::path("meta"))
+        .and(warp::header::optional::<Authority>("X-Forwarded-Host"))
+        .and(warp::header::optional::<String>("X-Forwarded-Proto"))
         .and(warp::filters::host::optional())
         .and(warp::path::full())
         .and_then(meta_handler::<T>);
@@ -161,9 +163,14 @@ async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
 }
 
 async fn meta_handler<T: NexusTool>(
+    x_forwarded_host: Option<Authority>,
+    x_forwarded_proto: Option<String>,
     host: Option<Authority>,
     path: FullPath,
 ) -> Result<impl Reply, Rejection> {
+    // We always need the most "external" host, as this is what will be called by users.
+    let host = x_forwarded_host.or(host);
+
     // If the host is malformed or not present, return a 400.
     let host = match host {
         Some(host) => host,
@@ -198,9 +205,14 @@ async fn meta_handler<T: NexusTool>(
         }
     };
 
-    // NOTE: HTTPS should be used as a scheme only if the tool
-    // is running with TLS (unsupported at the moment).
-    let scheme = std::env::var("TOOL_URL_SCHEME").unwrap_or("http".to_string());
+    // As in the case of the host, we need to use the most "external" scheme,
+    // which is basically the scheme used by the client to access the tool.
+    // If the scheme is not present, we check the environment variable, which
+    // might have been set for operational purposes.
+    // As a last resort, we use http as the default scheme.
+    //
+    // Ref: https://github.com/Talus-Network/nexus-sdk/issues/77
+    let scheme = x_forwarded_proto.unwrap_or_else(|| "http".to_string());
     let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
         Ok(url) => url,
         Err(e) => {
