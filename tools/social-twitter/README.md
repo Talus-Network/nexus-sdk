@@ -568,6 +568,69 @@ The user was not retrieved due to an error.
 
 ---
 
+# `xyz.taluslabs.social.twitter.get-tweets@1`
+
+Standard Nexus Tool that retrieves multiple tweets by their IDs from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/lookup/api-reference/get-tweets)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`ids`: [`Vec<String>`]**
+
+A list of Tweet IDs to retrieve. Up to 100 are allowed in a single request.
+
+_opt_ **`tweet_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Tweet fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`media_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Media fields to display.
+
+_opt_ **`poll_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Poll fields to display.
+
+_opt_ **`user_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`place_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Place fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweets were retrieved successfully.
+
+- **`ok.data`: [`Vec<Tweet>`]** - The collection of retrieved tweets.
+- **`ok.includes`: [`Option<Includes>`]** - Additional data included in the response (users, media, polls, etc.)
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response.
+
+**`err`**
+
+The tweets could not be retrieved due to an error.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error (e.g., "Twitter API returned errors: Not Found Error: Could not find tweet with id: [1346889436626259969].")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No tweet data or errors found in the response" when the API response is empty
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+---
+
 # `xyz.taluslabs.social.twitter.create-list@1`
 
 Standard Nexus Tool that creates a new list on Twitter.
@@ -895,92 +958,4 @@ The ID of the user to add to the list.
 
 The user was successfully added to the list.
 
-- **`ok.is_member`** - Confirmation that the user is a member of the list (true).
-
-**`err`**
-
-The user could not be added to the list.
-
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
-
----
-
-# `xyz.taluslabs.social.twitter.remove-member@1`
-
-Standard Nexus Tool that removes a user from a Twitter list.
-Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/list-members/api-reference/delete-lists-id-members-user_id)
-
-## Input
-
-**Authentication Parameters**
-
-The following authentication parameters are provided as part of the TwitterAuth structure:
-
-- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
-- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
-- **`access_token`: [`String`]** - Access Token for user's Twitter account
-- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
-
-**Additional Parameters**
-
-**`list_id`: [`String`]**
-
-The ID of the list from which a member will be removed.
-
-**`user_id`: [`String`]**
-
-The ID of the user to remove from the list.
-
-## Output Variants & Ports
-
-**`ok`**
-
-The user was successfully removed from the list.
-
-- **`ok.is_member`** - Confirmation that the user is not a member of the list (false).
-
-**`err`**
-
-The user could not be removed from the list.
-
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
-
----
-
-# Error Handling
-
-The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
-
-## Error Types
-
-- **Network Errors**: Errors that occur during network communication with the Twitter API.
-- **Parse Errors**: Errors that occur when parsing the Twitter API response JSON.
-- **API Errors**: Errors returned by the Twitter API with specific titles, types, and details.
-- **Status Errors**: HTTP status errors from the Twitter API.
-- **Other Errors**: Any other errors that don't fit into the above categories.
-
-## Error Structure
-
-Each error includes a descriptive message that follows a consistent format:
-
-- Network errors: `"Network error: [error details]"`
-- Parse errors: `"Response parsing error: [error details]"`
-- API errors: `"Twitter API error: [title] (type: [error_type]) - [detail]"`
-- Status errors: `"Twitter API status error: [status code]"`
-- Other errors: `"Unknown error: [message]"`
-
-## Error Handling in Modules
-
-All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
-
-The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+- \*\*`ok.is_member`
