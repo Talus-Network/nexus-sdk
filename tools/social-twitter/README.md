@@ -984,3 +984,53 @@ Each error includes a descriptive message that follows a consistent format:
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+
+---
+
+# `xyz.taluslabs.social.twitter.undo-retweet-tweet@1`
+
+Standard Nexus Tool that undoes a retweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/undo-retweet)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will undo the retweet.
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to undo retweet.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The retweet was successfully undone.
+
+- **`ok.retweeted`: [`bool`]** - Confirmation that the retweet was undone (false)
+
+**`err`**
+
+The undo retweet operation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send undo retweet request to Twitter API
+  - Unexpected response format from Twitter API
+  - Twitter API indicated the tweet was already retweeted
