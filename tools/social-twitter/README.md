@@ -680,6 +680,63 @@ The list retrieval failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.get-user-lists@1`
+
+Standard Nexus Tool that retrieves lists owned by a user from Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/list-lookup/api-reference/get-users-id-owned_lists)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`user_id`: [`String`]**
+
+The ID of the user to retrieve lists for.
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
+
+The maximum number of results to retrieve (range: 5-100).
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+Used to get the next 'page' of results.
+
+_opt_ **`list_fields`: [`Option<Vec<ListField>>`]** _default_: [`None`]
+
+A list of List fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<Expansion>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The lists were retrieved successfully.
+
+- **`ok.data`: [`Option<Vec<ListData>>`]** - The collection of lists owned by the user.
+- **`ok.includes`: [`Option<Includes>`]** - Additional data included in the response.
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response.
+
+**`err`**
+
+The lists retrieval failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - No lists found when the API response doesn't contain list data
+  - Other error types handled by the centralized error handling mechanism
+
 # `xyz.taluslabs.social.twitter.get-list-tweets@1`
 
 Standard Nexus Tool that retrieves tweets from a Twitter list.
