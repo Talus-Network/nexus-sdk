@@ -984,3 +984,80 @@ Each error includes a descriptive message that follows a consistent format:
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+
+# `xyz.taluslabs.social.twitter.get-users@1`
+
+Standard Nexus Tool that retrieves multiple users by their IDs. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/users/lookup/api-reference/get-users)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`ids`: [`Vec<String>`]**
+
+A list of User IDs to lookup (up to 100). Example: ["2244994945", "6253282", "12"]
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display. Available values include: affiliation, confirmed_email, connection_status, created_at, description, entities, id, is_identity_verified, location, most_recent_tweet_id, name, parody, pinned_tweet_id, profile_banner_url, profile_image_url, protected, public_metrics, receives_your_dm, subscription, subscription_type, url, username, verified, verified_followers_count, verified_type, withheld
+
+_opt_ **`expansions`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A list of fields to expand. Available values include: affiliation.user_id, most_recent_tweet_id, pinned_tweet_id
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A list of Tweet fields to display when using expansions to include referenced tweets.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The users were retrieved successfully.
+
+- **`ok.users`: [`Vec<UserData>`]** - The collection of user data from the API:
+  - `id`: The user's unique identifier
+  - `name`: The user's display name
+  - `username`: The user's @username
+  - `protected`: Whether the user's account is protected
+  - `affiliation`: The user's affiliation information
+  - `connection_status`: The user's connection status
+  - `created_at`: When the user's account was created
+  - `description`: The user's profile description/bio
+  - `entities`: Entities found in the user's description
+  - `location`: The user's location
+  - `most_recent_tweet_id`: ID of the user's most recent tweet
+  - `pinned_tweet_id`: ID of the user's pinned tweet
+  - `profile_banner_url`: URL of the user's profile banner image
+  - `profile_image_url`: URL of the user's profile image
+  - `public_metrics`: Public metrics about the user
+  - `receives_your_dm`: Whether the user accepts direct messages
+  - `subscription_type`: The user's subscription type
+  - `url`: The user's website URL
+  - `verified`: Whether the user is verified
+  - `verified_type`: The user's verification type
+  - `withheld`: Withholding information for the user
+- **`ok.includes`: [`Option<Includes>`]** - Additional entities related to the users:
+  - `users`: Other users referenced
+  - `tweets`: Tweets referenced (e.g., pinned tweets)
+  - `media`: Media items referenced
+  - `places`: Geographic places referenced
+  - `polls`: Polls referenced
+
+**`err`**
+
+The users were not retrieved due to an error.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error with title and error type
+  - Twitter API error with optional detail and message
+  - Network error
+  - Response parsing error
+  - Status code error (e.g., rate limit exceeded)
+  - User not found error
+  - Invalid token error
+  - No user data found in the response
+
+---
