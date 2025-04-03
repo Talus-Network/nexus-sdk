@@ -957,6 +957,54 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.unfollow-user@1`
+
+Standard Nexus Tool that allows a user to unfollow another user on Twitter.
+Twitter api [reference](https://docs.x.com/x-api/users/unfollow)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will unfollow another user.
+
+**`target_user_id`: [`String`]**
+
+The ID of the user to unfollow.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The user was successfully unfollowed.
+
+- **`ok.following`: [`bool`]** - Confirmation that the user is no longer being followed (false)
+
+**`err`**
+
+The unfollow operation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send unfollow request to Twitter API
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
