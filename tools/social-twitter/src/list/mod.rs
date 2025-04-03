@@ -1,5 +1,6 @@
 pub(crate) mod add_member;
 pub(crate) mod create_list;
+pub(crate) mod delete_list;
 pub(crate) mod get_list;
 pub(crate) mod get_list_members;
 pub(crate) mod get_list_tweets;

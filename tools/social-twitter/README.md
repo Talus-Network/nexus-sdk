@@ -622,6 +622,50 @@ The list creation failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.delete-list@1`
+
+Standard Nexus Tool that deletes a list on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/manage-lists/api-reference/delete-lists-id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`list_id`: [`String`]**
+
+The ID of the list to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The list was deleted successfully.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the list was deleted (true)
+
+**`err`**
+
+The list deletion failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send delete request to Twitter API
+
+---
+
 # `xyz.taluslabs.social.twitter.get-list@1`
 
 Standard Nexus Tool that retrieves a list from Twitter by ID.
