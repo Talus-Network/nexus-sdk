@@ -275,6 +275,52 @@ The tweet posting failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.delete-tweet@1`
+
+Standard Nexus Tool that deletes a tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/delete-post)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully deleted.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the tweet was deleted (true)
+
+**`err`**
+
+The tweet deletion failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send delete request to Twitter API
+  - Unexpected response format from Twitter API
+  - Twitter API indicated the tweet was not deleted
+
+---
+
 # `xyz.taluslabs.social.twitter.like-tweet@1`
 
 Standard Nexus Tool that allows a user to like a specific tweet.
