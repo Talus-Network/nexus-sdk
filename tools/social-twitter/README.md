@@ -957,6 +957,56 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.retweet-tweet@1`
+
+Standard Nexus Tool that retweets a specific tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-retweet-the-specified-post)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will retweet the tweet.
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to retweet.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully retweeted.
+
+- **`ok.tweet_id`: [`String`]** - The ID of the tweet that was retweeted
+- **`ok.retweeted`: [`bool`]** - Confirmation that the tweet was retweeted (true)
+
+**`err`**
+
+The retweet operation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - "You have already retweeted this Tweet" error
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send retweet request to Twitter API
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
