@@ -184,3 +184,225 @@ impl NexusTool for UndoRetweetTweet {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        ::{mockito::Server, serde_json::json},
+    };
+
+    impl UndoRetweetTweet {
+        fn with_api_base(api_base: &str) -> Self {
+            Self {
+                api_base: api_base.to_string(),
+            }
+        }
+    }
+
+    async fn create_server_and_tool() -> (mockito::ServerGuard, UndoRetweetTweet) {
+        let server = Server::new_async().await;
+        let tool = UndoRetweetTweet::with_api_base(&(server.url() + "/users"));
+        (server, tool)
+    }
+
+    fn create_test_input() -> Input {
+        Input {
+            auth: TwitterAuth::new(
+                "test_consumer_key",
+                "test_consumer_secret",
+                "test_access_token",
+                "test_access_token_secret",
+            ),
+            user_id: "12345".to_string(),
+            tweet_id: "67890".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_successful_undo_retweet() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock response for successful undo retweet
+        let mock = server
+            .mock("DELETE", "/users/12345/retweets/67890")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "retweeted": false
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Test the undo retweet request
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the response
+        match result {
+            Output::Ok { retweeted } => {
+                assert_eq!(retweeted, false);
+            }
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_unauthorized_error() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock for 401 Unauthorized response
+        let mock = server
+            .mock("DELETE", "/users/12345/retweets/67890")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "detail": "Unauthorized",
+                    "status": 401,
+                    "title": "Unauthorized",
+                    "type": "about:blank"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Test the undo retweet request
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the error response
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("Unauthorized") && reason.contains("Status: 401"),
+                    "Error should indicate unauthorized access. Got: {}",
+                    reason
+                );
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_invalid_json_response() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock for invalid JSON response
+        let mock = server
+            .mock("DELETE", "/users/12345/retweets/67890")
+            .with_status(200)
+            .with_body("invalid json")
+            .create_async()
+            .await;
+
+        // Test the undo retweet request
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the error response
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("Invalid JSON"),
+                    "Error should indicate invalid JSON. Got: {}",
+                    reason
+                );
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_unexpected_format() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock for unexpected response format
+        let mock = server
+            .mock("DELETE", "/users/12345/retweets/67890")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "data": {
+                        "some_other_field": true
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Test the undo retweet request
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the error response
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("Unexpected response format"),
+                    "Error should indicate unexpected format. Got: {}",
+                    reason
+                );
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_tweet_already_retweeted() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock for tweet already retweeted response
+        let mock = server
+            .mock("DELETE", "/users/12345/retweets/67890")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "data": {
+                        "retweeted": true
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Test the undo retweet request
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the error response
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("already retweeted"),
+                    "Error should indicate tweet was already retweeted. Got: {}",
+                    reason
+                );
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+}
