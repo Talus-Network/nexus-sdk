@@ -957,6 +957,86 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.upload-media@1`
+
+Standard Nexus Tool that uploads media to Twitter.
+Twitter api [reference](https://docs.x.com/x-api/media/media-upload)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`media_data`: [`String`]**
+
+The Base64 encoded media content to upload.
+
+**`media_type`: [`String`]**
+
+The MIME type of the media being uploaded. For example, `image/jpeg`, `image/png`, `video/mp4`, etc.
+
+**`media_category`: [`MediaCategory`]**
+
+A string enum value which identifies a media use-case. Options include:
+
+- `AmplifyVideo` - For amplify video
+- `TweetGif` - For GIFs in tweets
+- `TweetImage` - For images in tweets
+- `TweetVideo` - For videos in tweets
+- `DmVideo` - For videos in direct messages
+- `Subtitles` - For subtitles
+
+_opt_ **`additional_owners`: [`Vec<String>`]** _default_: [`Empty Vec`]
+
+A comma-separated list of user IDs to set as additional owners allowed to use the returned media_id in tweets. Up to a maximum of 100 additional owners can be specified.
+
+_opt_ **`chunk_size`: [`usize`]** _default_: [`0`] (Auto-calculated)
+
+Chunk size in bytes for uploading media. When set to 0 (default), the chunk size is automatically calculated based on media type and size:
+
+- For files smaller than 5MB: Uses a single chunk (the full file)
+- For images: Calculated as 1/4 of the file size, up to 2MB maximum
+- For GIFs: Uses 3MB chunks
+- For videos: Uses 4MB chunks for smaller videos, 5MB (maximum) for large videos
+- For other media types: Dynamically calculated based on file size
+
+Setting a specific value will override the automatic calculation. Maximum allowed chunk size is 5MB as per Twitter API limits.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The media was uploaded successfully.
+
+- **`ok.media_id`: [`String`]** - The unique identifier for the uploaded media. Use this when attaching media to tweets.
+- **`ok.media_key`: [`String`]** - The media key identifier for this media attachment.
+- **`ok.processing_info`: [`Option<ProcessingInfo>`]** - Information about the processing state of the media (if applicable):
+  - `state`: Current state of processing
+  - `progress_percent`: Percentage of processing completed
+  - `check_after_secs`: Number of seconds to wait before checking status again
+
+**`err`**
+
+The media upload failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - "Failed to decode media data" - If the base64 data is invalid
+  - Twitter API error with error details - If the upload process failed at any stage
+  - Network or connection errors
+  - Twitter API rate limit exceeded
+  - Invalid media type or format
+  - Media file too large
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
