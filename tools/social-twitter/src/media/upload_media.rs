@@ -44,13 +44,14 @@ pub(crate) struct Input {
     #[serde(default)]
     additional_owners: Vec<String>,
 
-    /// Chunk size in bytes for uploading media (default: 1MB)
+    /// Chunk size in bytes for uploading media (default: calculated based on media size and type)
+    /// Set to 0 to use automatic calculation
     #[serde(default = "default_chunk_size")]
     chunk_size: usize,
 }
 
 fn default_chunk_size() -> usize {
-    1024 * 1024 // 1MB default chunk size
+    0 // 0 means auto-calculate based on media size and type
 }
 
 /// Output for media upload
@@ -156,6 +157,13 @@ async fn upload_media(
 ) -> TwitterResult<MediaUploadResponse> {
     let client = Client::new();
 
+    // Calculate optimal chunk size if not specified
+    let optimal_chunk_size = if chunk_size > 0 {
+        chunk_size
+    } else {
+        calculate_optimal_chunk_size(media_data.len(), media_type, media_category)
+    };
+
     // 1. INIT phase - Initialize upload
     let init_response = init_upload(
         &client,
@@ -176,7 +184,7 @@ async fn upload_media(
         .clone();
 
     // 2. APPEND phase - Upload chunks
-    let chunks = media_data.chunks(chunk_size).enumerate();
+    let chunks = media_data.chunks(optimal_chunk_size).enumerate();
 
     for (i, chunk) in chunks {
         append_chunk(&client, api_url, auth, &media_id, chunk, i as i32).await?;
@@ -184,6 +192,81 @@ async fn upload_media(
 
     // 3. FINALIZE phase - Complete the upload
     finalize_upload(&client, api_url, auth, &media_id).await
+}
+
+/// Calculate optimal chunk size based on media size and type
+fn calculate_optimal_chunk_size(
+    media_size: usize,
+    media_type: &str,
+    media_category: &MediaCategory,
+) -> usize {
+    // Twitter API's maximum chunk size is 5MB as per documentation
+    // https://developer.x.com/en/docs/x-api/v1/media/upload-media/api-reference/post-media-upload-append
+    const MAX_CHUNK_SIZE: usize = 5 * 1024 * 1024; // 5MB
+
+    // Minimum chunk size to avoid too many requests
+    const MIN_CHUNK_SIZE: usize = 128 * 1024; // 128KB
+
+    // For very small files, use a single chunk if possible
+    if media_size <= MAX_CHUNK_SIZE {
+        // Use the full file size if it's under the maximum allowed chunk size
+        // This reduces overhead with multiple requests
+        return media_size;
+    }
+
+    // Twitter doc mentions optimizing for cellular clients, so we set reasonable limits
+    // For images (typically smaller and faster to upload)
+    if media_type.starts_with("image/") && !media_type.contains("gif") {
+        // For larger images, still keep chunks reasonably sized
+        return std::cmp::min(media_size / 4, 2 * 1024 * 1024); // Max 2MB chunks for images
+    }
+
+    // For GIFs, which can be larger but still image-based
+    if media_type == "image/gif" || matches!(media_category, MediaCategory::TweetGif) {
+        // Balance between speed and reliability
+        return 3 * 1024 * 1024; // 3MB for GIFs
+    }
+
+    // For videos, which are usually much larger files
+    if media_type.starts_with("video/")
+        || matches!(
+            media_category,
+            MediaCategory::TweetVideo | MediaCategory::DmVideo | MediaCategory::AmplifyVideo
+        )
+    {
+        // For large videos, use max chunk size for better upload efficiency
+        // The docs mention that larger chunks are better for stable connections
+        if media_size > 20 * 1024 * 1024 {
+            return MAX_CHUNK_SIZE; // 5MB for large videos
+        } else {
+            return 4 * 1024 * 1024; // 4MB for smaller videos
+        }
+    }
+
+    // Calculate optimal number of chunks based on file size
+    // Aim for a reasonable number of chunks to balance reliability and performance
+    let ideal_chunk_count = if media_size < 10 * 1024 * 1024 {
+        // For files < 10MB, aim for ~8 chunks
+        8
+    } else if media_size < 50 * 1024 * 1024 {
+        // For files between 10MB and 50MB, aim for ~15 chunks
+        15
+    } else {
+        // For larger files, aim for ~25 chunks
+        25
+    };
+
+    // Calculate chunk size based on ideal chunk count
+    let calculated_size = media_size / ideal_chunk_count;
+
+    // Ensure the calculated size is within bounds and round to nearest 128KB
+    let chunk_size = std::cmp::min(
+        MAX_CHUNK_SIZE,
+        std::cmp::max(MIN_CHUNK_SIZE, calculated_size),
+    );
+
+    // Round to nearest 128KB for efficiency
+    (chunk_size / (128 * 1024)) * (128 * 1024)
 }
 
 /// Initialize a media upload (INIT command)
@@ -322,4 +405,265 @@ async fn _check_media_status(
         .await?;
 
     parse_twitter_response::<MediaUploadResponse>(response).await
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, mockito::Server, serde_json::json};
+
+    impl UploadMedia {
+        fn with_api_base(api_base: &str) -> Self {
+            Self {
+                api_base: api_base.to_string(),
+            }
+        }
+    }
+
+    async fn create_server_and_tool() -> (mockito::ServerGuard, UploadMedia) {
+        let server = Server::new_async().await;
+        let tool = UploadMedia::with_api_base(&server.url());
+        (server, tool)
+    }
+
+    fn create_test_input() -> Input {
+        Input {
+            auth: TwitterAuth::new(
+                "test_consumer_key",
+                "test_consumer_secret",
+                "test_access_token",
+                "test_access_token_secret",
+            ),
+            media_data: "SGVsbG8gV29ybGQ=".to_string(), // "Hello World" as base64
+            media_type: "image/jpeg".to_string(),
+            media_category: MediaCategory::TweetImage,
+            additional_owners: vec![],
+            chunk_size: 1024,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_base64() {
+        // Create server and tool
+        let (_, tool) = create_server_and_tool().await;
+
+        // Create input with invalid base64
+        let mut input = create_test_input();
+        input.media_data = "Invalid Base64 Data!!!".to_string();
+
+        // Test the media upload
+        let result = tool.invoke(input).await;
+
+        // Verify the response is an error
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("Failed to decode media data"),
+                    "Error message should indicate base64 decode failure, got: {}",
+                    reason
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_init_failure() {
+        // Create server and tool
+        let (mut server, tool) = create_server_and_tool().await;
+
+        // Set up mock for INIT failure
+        let mock = server
+            .mock("POST", "/")
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "errors": [{
+                        "title": "Invalid Request",
+                        "type": "invalid_request",
+                        "detail": "Media category is required",
+                        "status": 400
+                    }]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Test the media upload
+        let result = tool.invoke(create_test_input()).await;
+
+        // Verify the response is an error
+        match result {
+            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Err { reason } => {
+                assert!(
+                    reason.contains("Failed to upload media"),
+                    "Error message should indicate upload failure, got: {}",
+                    reason
+                );
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+    }
+
+    // Using a simpler testing approach - test each function individually rather than the full flow
+
+    #[tokio::test]
+    async fn test_init_upload() {
+        // Create a client and server
+        let (mut server, _) = create_server_and_tool().await;
+        let client = Client::new();
+        let auth = TwitterAuth::new(
+            "test_consumer_key",
+            "test_consumer_secret",
+            "test_access_token",
+            "test_access_token_secret",
+        );
+
+        // Set up mock for INIT
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "id": "12345678901234567890",
+                        "media_key": "12_12345678901234567890",
+                        "expires_after_secs": 3600
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Call init_upload directly
+        let result = init_upload(
+            &client,
+            &server.url(),
+            &auth,
+            1024,
+            "image/jpeg",
+            &MediaCategory::TweetImage,
+            None,
+        )
+        .await;
+
+        // Verify success
+        assert!(
+            result.is_ok(),
+            "Expected init_upload to succeed: {:?}",
+            result
+        );
+        if let Ok(response) = result {
+            assert!(response.data.is_some(), "Expected data in response");
+            let data = response.data.unwrap();
+            assert_eq!(data.id, "12345678901234567890");
+            assert_eq!(data.media_key, "12_12345678901234567890");
+        }
+
+        // Verify the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_append_chunk() {
+        // Create a client and server
+        let (mut server, _) = create_server_and_tool().await;
+        let client = Client::new();
+        let auth = TwitterAuth::new(
+            "test_consumer_key",
+            "test_consumer_secret",
+            "test_access_token",
+            "test_access_token_secret",
+        );
+
+        // Set up mock for APPEND
+        let mock = server
+            .mock("POST", "/")
+            .with_status(204) // APPEND returns 204 No Content
+            .create_async()
+            .await;
+
+        // Call append_chunk directly
+        let result = append_chunk(
+            &client,
+            &server.url(),
+            &auth,
+            "12345678901234567890",
+            "Hello World".as_bytes(),
+            0,
+        )
+        .await;
+
+        // Verify success
+        assert!(
+            result.is_ok(),
+            "Expected append_chunk to succeed: {:?}",
+            result
+        );
+
+        // Verify the mock was called
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_finalize_upload() {
+        // Create a client and server
+        let (mut server, _) = create_server_and_tool().await;
+        let client = Client::new();
+        let auth = TwitterAuth::new(
+            "test_consumer_key",
+            "test_consumer_secret",
+            "test_access_token",
+            "test_access_token_secret",
+        );
+
+        // Set up mock for FINALIZE
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "id": "12345678901234567890",
+                        "media_key": "12_12345678901234567890",
+                        "processing_info": {
+                            "state": "succeeded",
+                            "progress_percent": 100
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Call finalize_upload directly
+        let result = finalize_upload(&client, &server.url(), &auth, "12345678901234567890").await;
+
+        // Verify success
+        assert!(
+            result.is_ok(),
+            "Expected finalize_upload to succeed: {:?}",
+            result
+        );
+        if let Ok(response) = result {
+            assert!(response.data.is_some(), "Expected data in response");
+            let data = response.data.unwrap();
+            assert_eq!(data.id, "12345678901234567890");
+            assert_eq!(data.media_key, "12_12345678901234567890");
+            assert!(data.processing_info.is_some());
+            let processing_info = data.processing_info.unwrap();
+            assert_eq!(processing_info.state, "succeeded");
+        }
+
+        // Verify the mock was called
+        mock.assert_async().await;
+    }
 }
