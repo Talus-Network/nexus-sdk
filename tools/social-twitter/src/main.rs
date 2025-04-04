@@ -7,6 +7,7 @@ use nexus_toolkit::bootstrap;
 mod auth;
 mod error;
 mod list;
+mod media;
 mod tweet;
 mod user;
 
@@ -26,6 +27,7 @@ async fn main() {
         list::update_list::UpdateList,
         list::add_member::AddMember,
         list::remove_member::RemoveMember,
+        media::upload_media::UploadMedia,
         user::get_user_by_id::GetUserById,
         user::get_user_by_username::GetUserByUsername,
     ]);
