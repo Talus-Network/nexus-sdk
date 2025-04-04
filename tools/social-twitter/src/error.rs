@@ -1,6 +1,7 @@
 use {
+    crate::list::models::{Includes, Meta},
     reqwest::{Response, StatusCode},
-    serde::{Deserialize, Serialize},
+    serde::{de::Error, Deserialize, Serialize},
     serde_json::Value,
     std::fmt,
 };
@@ -15,6 +16,14 @@ pub struct TwitterApiError {
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_id: Option<String>,
 }
 
 /// Error type for Twitter operations
@@ -186,6 +195,88 @@ where
                         Ok(parsed)
                     }
                     Err(e) => Err(TwitterError::ParseError(e)),
+                }
+            }
+            Err(e) => Err(TwitterError::Network(e)),
+        }
+    }
+}
+
+/// Helper function to parse Twitter API response
+pub async fn parse_twitter_response_v2<T>(
+    response: Response,
+) -> TwitterResult<(T, Option<Includes>, Option<Meta>)>
+where
+    T: for<'de> Deserialize<'de> + std::fmt::Debug,
+{
+    // If response is successful, parse the response as JSON
+    if response.status().is_success() {
+        match response.text().await {
+            Ok(text) => {
+                let value: serde_json::Value = serde_json::from_str(&text)?;
+                if let Some(errors) = value.get("errors") {
+                    if let Some(error) = errors.as_array().and_then(|e| e.first()) {
+                        let title = error
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Unknown Error");
+                        let error_type = error
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("unknown");
+
+                        return Err(TwitterError::ApiError(
+                            title.to_string(),
+                            error_type.to_string(),
+                            "".to_string(),
+                        ));
+                    }
+                }
+
+                let data = if let Some(data) = value.get("data") {
+                    serde_json::from_value(data.clone())?
+                } else {
+                    serde_json::from_value(value.clone())?
+                };
+
+                let includes = if let Some(includes) = value.get("includes") {
+                    Some(serde_json::from_value(includes.clone())?)
+                } else {
+                    None
+                };
+
+                let meta = if let Some(meta) = value.get("meta") {
+                    Some(serde_json::from_value(meta.clone())?)
+                } else {
+                    None
+                };
+
+                Ok((data, includes, meta))
+            }
+            Err(e) => Err(TwitterError::ParseError(serde_json::Error::custom(
+                e.to_string(),
+            ))),
+        }
+    } else {
+        match response.text().await {
+            Ok(text) => {
+                if let Ok(twitter_api_error) = serde_json::from_str::<TwitterApiError>(&text) {
+                    return Err(TwitterError::from_api_error(&twitter_api_error));
+                } else if let Ok(error_response) =
+                    serde_json::from_str::<TwitterDefaultError>(&text)
+                {
+                    return Err(TwitterError::ApiError(
+                        "Twitter API Error".to_string(),
+                        "default".to_string(),
+                        format!(
+                            " - {} (Code: {})",
+                            error_response.message, error_response.code
+                        ),
+                    ));
+                } else {
+                    return Err(TwitterError::ParseError(serde_json::Error::custom(
+                        "Unknown error".to_string(),
+                    )));
                 }
             }
             Err(e) => Err(TwitterError::Network(e)),
