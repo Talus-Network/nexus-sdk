@@ -285,3 +285,22 @@ pub enum TweetField {
     Text,
     Withheld,
 }
+
+#[derive(Deserialize, JsonSchema, PartialEq)]
+pub enum ConversationType {
+    Group,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct Attachment {
+    /// The media id of the attachment.
+    pub media_id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct Message {
+    /// The text of the message.
+    pub text: Option<String>,
+    /// The attachments for the message.
+    pub attachments: Option<Vec<Attachment>>,
+}
