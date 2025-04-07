@@ -4643,6 +4643,7 @@ dependencies = [
  "testcontainers-modules",
  "tokio",
  "tokio-retry",
+ "toml 0.8.20",
 ]
 
 [[package]]
