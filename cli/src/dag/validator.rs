@@ -205,7 +205,7 @@ enum GraphNode {
         /// `groups` is:
         /// - `Some(vec) if !vec.is_empty()` when it's an entry vertex
         /// - `Some(vec) if vec.is_empty()` is unreachable as default group is
-        ///    provided in case one is missing
+        ///   provided in case one is missing
         /// - `None` when it's a normal vertex
         groups: Option<Vec<String>>,
     },
