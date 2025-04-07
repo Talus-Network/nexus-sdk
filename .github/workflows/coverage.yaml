@@ -17,14 +17,9 @@ jobs:
           fetch-tags: false
 
       - name: Increase swapfile
-        run: |
-          sudo swapon --show
-          sudo swapoff -a
-          sudo fallocate -l 6G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          sudo swapon --show
+        uses: ./.github/actions/increase-swapfile
+        with:
+          swap_size: "6G"
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4

@@ -34,7 +34,7 @@ pub(crate) async fn publish_dag(
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
-    let sui = build_sui_client(conf.sui.net).await?;
+    let sui = build_sui_client(&conf.sui).await?;
 
     let address = match wallet.active_address() {
         Ok(address) => address,

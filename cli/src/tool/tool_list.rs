@@ -20,7 +20,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     } = get_nexus_objects(&conf)?;
 
     // Build the Sui client.
-    let sui = build_sui_client(conf.sui.net).await?;
+    let sui = build_sui_client(&conf.sui).await?;
 
     let tools_handle = loading!("Fetching tools from the tool registry...");
 

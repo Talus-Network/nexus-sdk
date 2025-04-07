@@ -33,7 +33,7 @@ pub(crate) async fn inspect_dag_execution(
     } = get_nexus_objects(&conf)?;
 
     // Build Sui client.
-    let sui = build_sui_client(conf.sui.net).await?;
+    let sui = build_sui_client(&conf.sui).await?;
 
     let limit = None;
     let descending_order = false;
