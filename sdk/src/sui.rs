@@ -16,7 +16,10 @@ pub use {
     },
     shared_crypto::intent::Intent,
     sui_config::{
-        sui_config_dir as config_dir, Config, PersistedConfig, SUI_CLIENT_CONFIG as CLIENT_CONFIG,
+        sui_config_dir as config_dir,
+        Config,
+        PersistedConfig,
+        SUI_CLIENT_CONFIG as CLIENT_CONFIG,
         SUI_KEYSTORE_FILENAME as KEYSTORE_FILENAME,
     },
     sui_keys::{
@@ -27,12 +30,22 @@ pub use {
         error::Error,
         json::SuiJsonValue,
         rpc_types::{
-            BcsEvent, Coin, EventFilter, EventPage, ObjectChange, SuiEvent as Event,
-            SuiExecutionStatus as ExecutionStatus, SuiMoveStruct as MoveStruct,
-            SuiMoveValue as MoveValue, SuiObjectData as ObjectData,
-            SuiObjectDataFilter as ObjectDataFilter, SuiObjectDataOptions as ObjectDataOptions,
-            SuiObjectRef as ObjectRef, SuiObjectResponse as ObjectResponse,
-            SuiObjectResponseQuery as ObjectResponseQuery, SuiParsedData as ParsedData,
+            BcsEvent,
+            Coin,
+            EventFilter,
+            EventPage,
+            ObjectChange,
+            SuiEvent as Event,
+            SuiExecutionStatus as ExecutionStatus,
+            SuiMoveStruct as MoveStruct,
+            SuiMoveValue as MoveValue,
+            SuiObjectData as ObjectData,
+            SuiObjectDataFilter as ObjectDataFilter,
+            SuiObjectDataOptions as ObjectDataOptions,
+            SuiObjectRef as ObjectRef,
+            SuiObjectResponse as ObjectResponse,
+            SuiObjectResponseQuery as ObjectResponseQuery,
+            SuiParsedData as ParsedData,
             SuiTransactionBlockEffects as TransactionBlockEffects,
             SuiTransactionBlockResponse as TransactionBlockResponse,
             SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,
@@ -50,19 +63,23 @@ pub use {
             programmable_transaction_builder::ProgrammableTransactionBuilder,
             quorum_driver_types::ExecuteTransactionRequestType,
             transaction::{Argument, ObjectArg, Transaction, TransactionData},
-            Identifier, MOVE_STDLIB_PACKAGE_ID, SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
+            Identifier,
+            MOVE_STDLIB_PACKAGE_ID,
+            SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
             SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
             SUI_FRAMEWORK_PACKAGE_ID as FRAMEWORK_PACKAGE_ID,
         },
         wallet_context::WalletContext,
-        SuiClient as Client, SuiClientBuilder as ClientBuilder,
+        SuiClient as Client,
+        SuiClientBuilder as ClientBuilder,
     },
 };
 
 /// Sui traits re-exported so that we can `use sui::traits::*` in our code.
 pub mod traits {
     pub use {
-        sui_config::Config, sui_keys::keystore::AccountKeystore,
+        sui_config::Config,
+        sui_keys::keystore::AccountKeystore,
         sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
     };
 }
