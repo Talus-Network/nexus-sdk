@@ -130,6 +130,7 @@ pub(crate) struct ToolIdent {
 pub(crate) struct ToolMeta {
     pub(crate) fqn: ToolFqn,
     pub(crate) url: reqwest::Url,
+    pub(crate) description: String,
     pub(crate) input_schema: serde_json::Value,
     pub(crate) output_schema: serde_json::Value,
 }

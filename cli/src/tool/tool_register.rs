@@ -181,6 +181,9 @@ fn prepare_transaction(
 
     // `url: vector<u8>`
     let url = tx.pure(meta.url.to_string().as_bytes())?;
+    
+    // `description: vector<u8>`
+    let description = tx.pure(meta.description.as_bytes())?;
 
     // `input_schema: vector<u8>`
     let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;
@@ -205,6 +208,7 @@ fn prepare_transaction(
             tool_registry,
             fqn,
             url,
+            description,
             input_schema,
             output_schema,
             pay_with,
