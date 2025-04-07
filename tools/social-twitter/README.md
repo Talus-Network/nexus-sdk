@@ -984,3 +984,61 @@ Each error includes a descriptive message that follows a consistent format:
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+
+# `xyz.taluslabs.social.twitter.send-direct-message@1`
+
+Standard Nexus Tool that sends a direct message to a user on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/manage/api-reference/post-dm_conversations-with-participant_id-messages)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`participant_id`: [`String`]**
+
+The ID of the user who will receive the direct message.
+
+_opt_ **`text`: [`Option<String>`]** _default_: [`None`]
+
+The text content of the direct message. Either text or attachments must be provided.
+
+_opt_ **`attachments`: [`Option<Vec<Attachment>>`]** _default_: [`None`]
+
+Media attachments to include in the direct message. Either text or attachments must be provided.
+
+Each attachment contains:
+
+- **`media_id`: [`String`]** - The unique identifier of the media to attach
+
+## Output Variants & Ports
+
+**`ok`**
+
+The direct message was sent successfully.
+
+- **`ok.dm_conversation_id`: [`String`]** - The unique identifier of the DM conversation
+- **`ok.dm_event_id`: [`String`]** - The unique identifier of the DM event
+
+**`err`**
+
+The direct message sending failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Rate limit exceeded (Status: 429)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send request to Twitter API
+  - "Either text or attachments must be provided" error
+  - Other error types handled by the centralized error handling mechanism
