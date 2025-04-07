@@ -2,6 +2,7 @@ use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
         object_crawler::{fetch_one, ObjectBag, Structure},
+        types::deserialize_bytes_to_lossy_utf8,
         types::deserialize_bytes_to_url,
     },
 };
@@ -50,12 +51,13 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.into_inner();
 
-        tools_json.push(json!({ "fqn": fqn, "url": tool.url }));
+        tools_json.push(json!({ "fqn": fqn, "url": tool.url, "description": tool.description }));
 
         item!(
-            "Tool '{fqn}' at '{url}'",
+            "Tool '{fqn}' at '{url}' - {description}",
             fqn = fqn.to_string().truecolor(100, 100, 100),
             url = tool.url.as_str().truecolor(100, 100, 100),
+            description = tool.description.truecolor(100, 100, 100),
         );
     }
 
@@ -73,4 +75,6 @@ struct ToolRegistry {
 struct Tool {
     #[serde(deserialize_with = "deserialize_bytes_to_url")]
     url: reqwest::Url,
+    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    description: String,
 }

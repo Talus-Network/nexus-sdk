@@ -136,6 +136,17 @@ where
     value.to_string().serialize(serializer)
 }
 
+/// Deserialize a `Vec<u8>` into a `String` using lossy UTF-8 conversion.
+pub fn deserialize_bytes_to_lossy_utf8<'de, D>(
+    deserializer: D,
+) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, serde::Deserialize, serde_json::json};
@@ -165,6 +176,33 @@ mod tests {
             serialize_with = "serialize_sui_u64"
         )]
         value: u64,
+    }
+
+    #[derive(Deserialize, Serialize, Debug)]
+    struct TestDescriptionStruct {
+        #[serde(
+            deserialize_with = "deserialize_bytes_to_lossy_utf8",
+            // serialize_with = "serialize_string_to_bytes"
+        )]
+        value: String,
+    }
+
+    #[test]
+    fn test_lossy_utf8_deserialization_exact() {
+        // The inner array [49, 50, 51] corresponds to a valid UTF-8 byte sequence,
+        // which is the string "123".
+        let input = r#"{"value":[49,50,51]}"#;
+        let result: TestDescriptionStruct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, "123");
+    }
+
+    #[test]
+    fn test_lossy_utf8_deserialization_lossy() {
+        // The inner array [49, 50, 255, 48] does not correspond to a valid UTF-8 byte sequence.
+        // "12\u{FFFD}0" is its lossy UTF-8 representation.
+        let input = r#"{"value":[49,50,255,48]}"#;
+        let result = serde_json::from_str::<TestDescriptionStruct>(input).unwrap();
+        assert_eq!(result.value, "12\u{FFFD}0");
     }
 
     #[test]
