@@ -957,6 +957,60 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.send-message-to-group-conversation@1`
+
+Standard Nexus Tool that sends a message to a group conversation on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/manage/api-reference/post-dm_conversations-dm_conversation_id-messages)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`dm_conversation_id`: [`String`]**
+
+The DM Conversation ID to send the message to.
+
+**`message`: [`Message`]**
+
+The message to send, containing:
+
+- `text`: Optional text content of the message
+- `attachments`: Optional list of media attachments, each containing:
+  - `media_id`: The ID of the media to attach
+
+## Output Variants & Ports
+
+**`ok`**
+
+The message was sent successfully.
+
+- **`ok.dm_conversation_id`: [`String`]** - The ID of the conversation the message was sent to
+- **`ok.dm_event_id`: [`String`]** - The ID of the sent message event
+
+**`err`**
+
+The message sending failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error with code/message format
+  - Twitter API error with detail/status/title format
+  - Twitter API errors array
+  - Failed to send direct message
+  - Failed to read Twitter API response
+  - Invalid JSON response
+  - Unexpected response format from Twitter API
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
