@@ -5,6 +5,7 @@
 
 use nexus_toolkit::bootstrap;
 mod auth;
+mod direct_message;
 mod error;
 mod list;
 mod tweet;
@@ -28,5 +29,6 @@ async fn main() {
         list::remove_member::RemoveMember,
         user::get_user_by_id::GetUserById,
         user::get_user_by_username::GetUserByUsername,
+        direct_message::send_message_to_group_conversation::SendMessageToGroupConversation,
     ]);
 }
