@@ -90,6 +90,8 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         )));
     }
 
+    // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/107>
+
     meta_handle.success();
 
     Ok(meta)
