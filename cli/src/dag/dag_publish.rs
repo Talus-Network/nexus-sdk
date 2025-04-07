@@ -57,80 +57,15 @@ pub(crate) async fn publish_dag(
     // Create an empty DAG.
     let mut dag_arg = dag::empty(&mut tx, workflow_pkg_id);
 
-    // Create all entry vertices.
-    for entry_vertex in dag.entry_vertices {
-        // Find which entry groups this vertex belongs to.
-        let entry_groups = dag
-            .entry_groups
-            .as_ref()
-            .map(|groups| {
-                groups
-                    .iter()
-                    .filter(|group| group.vertices.contains(&entry_vertex.name))
-                    .map(|group| group.name.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec![DEFAULT_ENTRY_GROUP.to_string()]);
+    // Create DAG PTB from Dag struct.
+    dag_arg = match dag::create(&mut tx, workflow_pkg_id, primitives_pkg_id, dag_arg, dag) {
+        Ok(dag_arg) => dag_arg,
+        Err(e) => {
+            tx_handle.error();
 
-        dag_arg = match dag::create_entry_vertex(
-            &mut tx,
-            workflow_pkg_id,
-            dag_arg,
-            entry_vertex,
-            entry_groups,
-        ) {
-            Ok(dag_arg) => dag_arg,
-            Err(e) => {
-                tx_handle.error();
-
-                return Err(NexusCliError::Any(e));
-            }
+            return Err(NexusCliError::Any(e));
         }
-    }
-
-    // Create all vertices.
-    for vertex in dag.vertices {
-        dag_arg = match dag::create_vertex(&mut tx, workflow_pkg_id, dag_arg, &vertex) {
-            Ok(dag_arg) => dag_arg,
-            Err(e) => {
-                tx_handle.error();
-
-                return Err(NexusCliError::Any(e));
-            }
-        }
-    }
-
-    // Create all default values if present.
-    if let Some(default_values) = dag.default_values {
-        for default_value in default_values {
-            dag_arg = match dag::create_default_value(
-                &mut tx,
-                workflow_pkg_id,
-                primitives_pkg_id,
-                dag_arg,
-                &default_value,
-            ) {
-                Ok(dag_arg) => dag_arg,
-                Err(e) => {
-                    tx_handle.error();
-
-                    return Err(NexusCliError::Any(e));
-                }
-            }
-        }
-    }
-
-    // Create all edges.
-    for edge in dag.edges {
-        dag_arg = match dag::create_edge(&mut tx, workflow_pkg_id, dag_arg, &edge) {
-            Ok(dag_arg) => dag_arg,
-            Err(e) => {
-                tx_handle.error();
-
-                return Err(NexusCliError::Any(e));
-            }
-        }
-    }
+    };
 
     // Public share the DAG, locking it.
     dag::publish(&mut tx, workflow_pkg_id, dag_arg);
