@@ -3,5 +3,10 @@ name = "object_crawler_test"
 version = "0.0.0"
 edition = "2024.beta"
 
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "mainnet-v1.45.3"
+
 [addresses]
 object_crawler_test = "0x0"
