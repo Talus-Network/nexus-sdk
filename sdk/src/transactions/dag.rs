@@ -398,7 +398,14 @@ pub fn execute(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        crate::{
+            fqn,
+            test_utils::sui_mocks::mock_sui_object_ref,
+            types::{FromPort, ToPort},
+        },
+    };
 
     #[test]
     fn test_empty() {
@@ -447,5 +454,174 @@ mod tests {
         );
         assert_eq!(call.type_arguments.len(), 1);
         assert_eq!(call.arguments.len(), 1);
+    }
+
+    #[test]
+    fn test_create_entry_vertex() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let dag = sui::Argument::Result(0);
+        let vertex = EntryVertex {
+            name: "vertex1".to_string(),
+            kind: VertexKind::OffChain {
+                tool_fqn: fqn!("xyz.tool.test@1"),
+            },
+            input_ports: vec!["port1".to_string()],
+        };
+        let groups = vec!["group1".to_string()];
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_entry_vertex(&mut tx, workflow_pkg_id, dag, vertex, groups).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create an entry vertex");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.to_string()
+        );
+    }
+
+    #[test]
+    fn test_create_vertex() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let dag = sui::Argument::Result(0);
+        let vertex = Vertex {
+            name: "vertex1".to_string(),
+            kind: VertexKind::OffChain {
+                tool_fqn: fqn!("xyz.tool.test@1"),
+            },
+        };
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_vertex(&mut tx, workflow_pkg_id, dag, &vertex).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create a vertex");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.module, workflow::Dag::WITH_VERTEX.module.to_string(),);
+        assert_eq!(call.function, workflow::Dag::WITH_VERTEX.name.to_string());
+    }
+
+    #[test]
+    fn test_create_default_value() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let primitives_pkg_id = sui::ObjectID::random();
+        let dag = sui::Argument::Result(0);
+        let default_value = DefaultValue {
+            vertex: "vertex1".to_string(),
+            input_port: "port1".to_string(),
+            value: Data::Inline {
+                data: serde_json::json!({"key": "value"}),
+            },
+        };
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_default_value(
+            &mut tx,
+            workflow_pkg_id,
+            primitives_pkg_id,
+            dag,
+            &default_value,
+        )
+        .unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create a default value");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::WITH_DEFAULT_VALUE.module.to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::WITH_DEFAULT_VALUE.name.to_string()
+        );
+    }
+
+    #[test]
+    fn test_create_edge() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let dag = sui::Argument::Result(0);
+        let edge = Edge {
+            from: FromPort {
+                vertex: "vertex1".to_string(),
+                output_variant: "variant1".to_string(),
+                output_port: "port1".to_string(),
+            },
+            to: ToPort {
+                vertex: "vertex2".to_string(),
+                input_port: "port2".to_string(),
+            },
+        };
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_edge(&mut tx, workflow_pkg_id, dag, &edge).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create an edge");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.module, workflow::Dag::WITH_EDGE.module.to_string(),);
+        assert_eq!(call.function, workflow::Dag::WITH_EDGE.name.to_string());
+    }
+
+    #[test]
+    fn test_execute() {
+        let workflow_pkg_id = sui::ObjectID::random();
+        let primitives_pkg_id = sui::ObjectID::random();
+        let network_id = sui::ObjectID::random();
+        let default_sap = mock_sui_object_ref();
+        let dag = mock_sui_object_ref();
+        let entry_group = "group1".to_string();
+        let input_json = serde_json::json!({
+            "vertex1": {
+                "port1": {"key": "value"}
+            }
+        });
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        execute(
+            &mut tx,
+            default_sap,
+            dag,
+            entry_group,
+            input_json,
+            workflow_pkg_id,
+            primitives_pkg_id,
+            network_id,
+        )
+        .unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to execute a DAG");
+        };
+
+        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.to_string()
+        );
     }
 }
