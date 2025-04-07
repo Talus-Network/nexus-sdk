@@ -8,7 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{idents::workflow, transactions::dag, types::DEFAULT_ENTRY_GROUP},
+    nexus_sdk::{idents::workflow, transactions::dag},
 };
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
