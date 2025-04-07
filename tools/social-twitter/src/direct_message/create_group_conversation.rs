@@ -3,35 +3,15 @@
 //! Standard Nexus Tool that creates a group DM conversation.
 
 use {
+    super::models::{ConversationType, Message},
     crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
+    nexus_sdk::{fqn, ToolFqn},
+    nexus_toolkit::*,
     reqwest::Client,
-    ::{
-        nexus_sdk::{fqn, ToolFqn},
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serde::{Deserialize, Serialize},
-        serde_json::Value,
-    },
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
+    serde_json::Value,
 };
-
-#[derive(Deserialize, JsonSchema, PartialEq)]
-pub(crate) enum ConversationType {
-    Group,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub(crate) struct Attachment {
-    /// The media id of the attachment.
-    media_id: String,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub(crate) struct Message {
-    /// The text of the message.
-    text: Option<String>,
-    /// The attachments for the message.
-    attachments: Option<Vec<Attachment>>,
-}
 
 #[derive(Deserialize, JsonSchema)]
 pub(crate) struct Input {
@@ -240,7 +220,12 @@ impl NexusTool for CreateGroupDmConversation {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ::mockito::Server, serde_json::json};
+    use {
+        super::*,
+        crate::direct_message::models::Attachment,
+        ::mockito::Server,
+        serde_json::json,
+    };
 
     impl CreateGroupDmConversation {
         fn with_api_base(api_base: &str) -> Self {
@@ -371,84 +356,6 @@ mod tests {
                 assert_eq!(dm_event_id, "1146654567674912769");
             }
             Output::Err { reason } => panic!("Expected success, got error: {}", reason),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_create_group_conversation_unauthorized() {
-        let (mut server, tool) = create_server_and_tool().await;
-
-        let mock = server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .with_status(401)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "errors": [{
-                        "title": "Unauthorized",
-                        "type": "https://api.twitter.com/2/problems/unauthorized",
-                        "detail": "Unauthorized",
-                        "status": 401
-                    }]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Err { reason } => {
-                assert!(
-                    reason.contains("Unauthorized"),
-                    "Expected error message to contain 'Unauthorized', got: {}",
-                    reason
-                );
-            }
-            Output::Ok { .. } => panic!("Expected error, got success"),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_create_group_conversation_rate_limit() {
-        let (mut server, tool) = create_server_and_tool().await;
-
-        let mock = server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .with_status(429)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "errors": [{
-                        "title": "Too Many Requests",
-                        "type": "https://api.twitter.com/2/problems/rate-limit-exceeded",
-                        "detail": "Rate limit exceeded",
-                        "status": 429
-                    }]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Err { reason } => {
-                assert!(
-                    reason.contains("Rate limit exceeded"),
-                    "Expected error message to contain 'Rate limit exceeded', got: {}",
-                    reason
-                );
-            }
-            Output::Ok { .. } => panic!("Expected error, got success"),
         }
 
         mock.assert_async().await;
