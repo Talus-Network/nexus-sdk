@@ -984,3 +984,60 @@ Each error includes a descriptive message that follows a consistent format:
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+
+# `xyz.taluslabs.social.twitter.create-group-conversation@1`
+
+Standard Nexus Tool that creates a group DM conversation on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/manage/api-reference/post-dm_conversations)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`conversation_type`: [`ConversationType`]**
+
+The type of conversation to create. Currently only supports `Group`.
+
+**`message`: [`Message`]**
+
+The initial message to send in the conversation, containing:
+
+- **`text`: [`Option<String>`]** - The text content of the message
+- **`attachments`: [`Option<Vec<Attachment>>`]** - Media attachments for the message
+  - **`media_id`: [`String`]** - The unique identifier of the media to attach
+
+**`participant_ids`: [`Vec<String>`]**
+
+List of user IDs who will participate in the group conversation.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The group conversation was created successfully.
+
+- **`ok.dm_conversation_id`: [`String`]** - The unique identifier of the DM conversation
+- **`ok.dm_event_id`: [`String`]** - The unique identifier of the DM event
+
+**`err`**
+
+The group conversation creation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Rate limit exceeded (Status: 429)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send request to Twitter API
+  - Other error types handled by the centralized error handling mechanism
