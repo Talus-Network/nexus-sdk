@@ -142,10 +142,10 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Type of error (network, server, auth, etc.)
-        kind: TwitterErrorKind,
         /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
         /// HTTP status code if available
         #[serde(skip_serializing_if = "Option::is_none")]
         status_code: Option<u16>,
