@@ -69,10 +69,10 @@ pub enum TwitterError {
 /// Standard error response structure for Twitter tools
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TwitterErrorResponse {
-    /// Type of error (network, server, auth, etc.)
-    pub kind: TwitterErrorKind,
     /// Detailed error message
     pub reason: String,
+    /// Type of error (network, server, auth, etc.)
+    pub kind: TwitterErrorKind,
     /// HTTP status code if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_code: Option<u16>,
@@ -102,14 +102,14 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: None,
                 }
             }
             TwitterError::ParseError(_) => TwitterErrorResponse {
-                kind: TwitterErrorKind::Parse,
                 reason: self.to_string(),
+                kind: TwitterErrorKind::Parse,
                 status_code: None,
             },
             TwitterError::ApiError(title, error_type, _) => {
@@ -129,8 +129,8 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: code,
                 }
             }
@@ -151,14 +151,14 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: Some(code),
                 }
             }
             TwitterError::Other(_) => TwitterErrorResponse {
-                kind: TwitterErrorKind::Unknown,
                 reason: self.to_string(),
+                kind: TwitterErrorKind::Unknown,
                 status_code: None,
             },
         }

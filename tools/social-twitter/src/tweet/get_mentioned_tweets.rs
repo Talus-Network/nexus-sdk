@@ -159,8 +159,8 @@ impl NexusTool for GetMentionedTweets {
                     }
                 } else {
                     Output::Err {
-                        kind: TwitterErrorKind::NotFound,
                         reason: "No tweets found".to_string(),
+                        kind: TwitterErrorKind::NotFound,
                         status_code: None,
                     }
                 }
@@ -170,8 +170,8 @@ impl NexusTool for GetMentionedTweets {
                 let error_response = e.to_error_response();
 
                 Output::Err {
-                    kind: error_response.kind,
                     reason: error_response.reason,
+                    kind: error_response.kind,
                     status_code: error_response.status_code,
                 }
             }
