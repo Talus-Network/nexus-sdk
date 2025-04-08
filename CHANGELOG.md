@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `nexus tool list` support the new `description` and `registered_at_ms` attributes.
+- `nexus tool list` supports the new `description` and `registered_at_ms` attributes.
 
 ## [`nexus-sdk` 0.3.0] - 2025-04-08
 
