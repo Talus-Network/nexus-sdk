@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_lossy_utf8_deserialization_lossy() {
-        // The inner array [49, 50, 255, 48] does not correspond to a valid UTF-8 byte sequence.
+        // The array [49, 50, 255, 48] does not correspond to a valid UTF-8 byte sequence.
         // "12\u{FFFD}0" is its lossy UTF-8 representation.
         let input = r#"{"value":[49,50,255,48]}"#;
         let result = serde_json::from_str::<TestDescriptionStruct>(input).unwrap();
