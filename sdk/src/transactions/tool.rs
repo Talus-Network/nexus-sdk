@@ -185,7 +185,7 @@ mod tests {
                 .to_string()
         );
 
-        assert_eq!(call.arguments.len(), 6);
+        assert_eq!(call.arguments.len(), 8);
     }
 
     #[test]
