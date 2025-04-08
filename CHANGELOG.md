@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - upgraded Sui from `testnet-1.38.1` to `mainnet-v1.45.3`
 
+### Fixed
+
+- added implicit dependencies to `test_utils`
+
 ## [`nexus-cli` 0.0.1] - 2025-03-28
 
 ### Added
