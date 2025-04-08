@@ -28,6 +28,6 @@ async fn main() {
         list::remove_member::RemoveMember,
         user::get_user_by_id::GetUserById,
         user::get_user_by_username::GetUserByUsername,
-        user::get_users::GetUsers,
+        user::get_users_by_id::GetUsersById,
     ]);
 }

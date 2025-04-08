@@ -985,7 +985,7 @@ All modules use the `TwitterResult<T>` type for handling errors, which is a type
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
 
-# `xyz.taluslabs.social.twitter.get-users@1`
+# `xyz.taluslabs.social.twitter.get-users-by-id@1`
 
 Standard Nexus Tool that retrieves multiple users by their IDs. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/users/lookup/api-reference/get-users)
 

@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.social.twitter.get-users@1`
+//! # `xyz.taluslabs.social.twitter.get-users-by-id@1`
 //!
 //! Standard Nexus Tool that retrieves multiple users by their IDs.
 
@@ -60,11 +60,11 @@ pub(crate) enum Output {
     },
 }
 
-pub(crate) struct GetUsers {
+pub(crate) struct GetUsersById {
     api_base: String,
 }
 
-impl NexusTool for GetUsers {
+impl NexusTool for GetUsersById {
     type Input = Input;
     type Output = Output;
 
@@ -75,11 +75,11 @@ impl NexusTool for GetUsers {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.social.twitter.get-users@1")
+        fqn!("xyz.taluslabs.social.twitter.get-users-by-id@1")
     }
 
     fn path() -> &'static str {
-        "/get-users"
+        "/get-users-by-id"
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
@@ -107,7 +107,7 @@ impl NexusTool for GetUsers {
     }
 }
 
-impl GetUsers {
+impl GetUsersById {
     /// Fetch users from Twitter API
     async fn fetch_users(&self, request: &Input) -> TwitterResult<UsersResponse> {
         let client = Client::new();
@@ -171,7 +171,7 @@ impl GetUsers {
 mod tests {
     use {super::*, ::mockito::Server, serde_json::json};
 
-    impl GetUsers {
+    impl GetUsersById {
         fn with_api_base(api_base: &str) -> Self {
             Self {
                 api_base: api_base.to_string(),
@@ -179,9 +179,9 @@ mod tests {
         }
     }
 
-    async fn create_server_and_tool() -> (mockito::ServerGuard, GetUsers) {
+    async fn create_server_and_tool() -> (mockito::ServerGuard, GetUsersById) {
         let server = Server::new_async().await;
-        let tool = GetUsers::with_api_base(&server.url());
+        let tool = GetUsersById::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_users_successful() {
+    async fn test_get_users_by_id_successful() {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
