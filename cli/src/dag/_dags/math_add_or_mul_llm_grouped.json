@@ -1,0 +1,93 @@
+{
+  "entry_vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_step",
+      "input_ports": ["a"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
+      "name": "mul_step",
+      "input_ports": ["a"]
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
+      },
+      "name": "guess_step"
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "add_step",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "guess_step",
+        "input_port": "prompt"
+      }
+    },
+    {
+      "from": {
+        "vertex": "mul_step",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "guess_step",
+        "input_port": "prompt"
+      }
+    }
+  ],
+  "default_values": [
+    {
+      "vertex": "add_step",
+      "input_port": "b",
+      "value": { "storage": "inline", "data": 420 }
+    },
+    {
+      "vertex": "mul_step",
+      "input_port": "b",
+      "value": { "storage": "inline", "data": 69 }
+    },
+    {
+      "vertex": "guess_step",
+      "input_port": "api_key",
+      "value": { "storage": "inline", "data": "YOUR_API_KEY_HERE" }
+    },
+    {
+      "vertex": "guess_step",
+      "input_port": "context",
+      "value": {
+        "storage": "inline",
+        "data": [
+          {
+            "role": "system",
+            "content": "You'll get a number provided to you. This number is the result of either (1) adding an unknown number to 420, OR (2) multiplying an unknown number by 69. Based on the number you receive, infer which operation was performed and guess the original unknown number. Make a joke about using a technological construct like the Nexus framework to deliver a rather simple result."
+          }
+        ]
+      }
+    }
+  ],
+  "entry_groups": [
+    {
+      "name": "add_path",
+      "vertices": ["add_step"]
+    },
+    {
+      "name": "mul_path",
+      "vertices": ["mul_step"]
+    }
+  ]
+} 
