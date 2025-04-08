@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [`nexus-cli` 0.3.0] - 2025-04-08
+
+### Added
+
+- `nexus tool list` support the new `description` and `registered_at_ms` attributes.
+
+## [`nexus-sdk` 0.3.0] - 2025-04-08
+
+### Added
+
+- Introduce `pub const CLOCK_OBJ_ARG` and use it where the Sui `Clock` is passed as an
+  argument.
+- Introduce a `description` field each Tool needs to report via its `/meta` endpoint.
+- Use the Tool-provided `description` when registering it on-chain.
+- Introduce a lossy UTF-8 deserializer for the description, since the on-chain representation is a
+  `vector<u8>`. Perhaps we can be stricter in the future.
+
 ## [`nexus-cli` 0.2.0] - 2025-04-07
 
 ### Changed
@@ -51,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - added Nexus Sui identifiers module
 - added `object_crawler` that parses Sui objects to structs
-- added `test_utils` that handle spinning up Redis or Sui containers for testing, along with some helper functions
+- added `test_utils` that handle spinning up Redis or Sui containers for testing, along with some
+  helper functions
 - added `types` module and `tool_fqn` that holds some reusable types
 - added `events` module that holds definitions of Nexus events fired from Sui
 - added `sui` module that holds and categorizes all `sui_sdk` types
