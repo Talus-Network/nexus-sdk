@@ -16,7 +16,10 @@ pub use {
     },
     shared_crypto::intent::Intent,
     sui_config::{
-        sui_config_dir as config_dir, Config, PersistedConfig, SUI_CLIENT_CONFIG as CLIENT_CONFIG,
+        sui_config_dir as config_dir,
+        Config,
+        PersistedConfig,
+        SUI_CLIENT_CONFIG as CLIENT_CONFIG,
         SUI_KEYSTORE_FILENAME as KEYSTORE_FILENAME,
     },
     sui_keys::{

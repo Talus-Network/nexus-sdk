@@ -2,9 +2,11 @@ use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
         object_crawler::{fetch_one, ObjectBag, Structure},
-        types::deserialize_bytes_to_lossy_utf8,
-        types::deserialize_bytes_to_url,
-        types::deserialize_string_to_datetime,
+        types::{
+            deserialize_bytes_to_lossy_utf8,
+            deserialize_bytes_to_url,
+            deserialize_string_to_datetime,
+        },
     },
 };
 

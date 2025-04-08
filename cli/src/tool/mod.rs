@@ -6,8 +6,13 @@ mod tool_unregister;
 mod tool_validate;
 
 use {
-    crate::prelude::*, tool_claim_collateral::*, tool_list::*, tool_new::*, tool_register::*,
-    tool_unregister::*, tool_validate::*,
+    crate::prelude::*,
+    tool_claim_collateral::*,
+    tool_list::*,
+    tool_new::*,
+    tool_register::*,
+    tool_unregister::*,
+    tool_validate::*,
 };
 
 #[derive(Subcommand)]
