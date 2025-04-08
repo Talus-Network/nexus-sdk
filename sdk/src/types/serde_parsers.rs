@@ -193,7 +193,6 @@ mod tests {
     struct TestDescriptionStruct {
         #[serde(
             deserialize_with = "deserialize_bytes_to_lossy_utf8",
-            // serialize_with = "serialize_string_to_bytes"
         )]
         value: String,
     }
