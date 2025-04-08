@@ -62,13 +62,27 @@ The tweet was retrieved successfully.
 
 The tweet was not retrieved due to an error.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error with title and error type (e.g., "Twitter API error: Invalid Request (error type: https://api.twitter.com/2/problems/invalid-request)")
-  - Twitter API error with optional detail and message (e.g., "Twitter API error: Invalid Request (error type: https://api.twitter.com/2/problems/invalid-request) - One or more parameters to your request was invalid.
-  - Failed to parse Twitter API response
-  - Failed to read Twitter API response
-  - Failed to send request to Twitter API
-  - No tweet data found in the response
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
@@ -959,3 +973,126 @@ The ID of the user to add to the list.
 The user was successfully added to the list.
 
 - \*\*`ok.is_member`
+- **`ok.is_member`** - Confirmation that the user is a member of the list (true).
+
+**`err`**
+
+The user could not be added to the list.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error
+  - Network error
+  - Response parsing error
+  - Status code error
+  - Other error types handled by the centralized error handling mechanism
+
+---
+
+# `xyz.taluslabs.social.twitter.remove-member@1`
+
+Standard Nexus Tool that removes a user from a Twitter list.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/list-members/api-reference/delete-lists-id-members-user_id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`list_id`: [`String`]**
+
+The ID of the list from which a member will be removed.
+
+**`user_id`: [`String`]**
+
+The ID of the user to remove from the list.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The user was successfully removed from the list.
+
+- **`ok.is_member`** - Confirmation that the user is not a member of the list (false).
+
+**`err`**
+
+The user could not be removed from the list.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error
+  - Network error
+  - Response parsing error
+  - Status code error
+  - Other error types handled by the centralized error handling mechanism
+
+---
+
+# Error Handling
+
+The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
+
+## Error Types (TwitterErrorKind)
+
+The `err.kind` field provides a categorized error type for easier programmatic handling:
+
+- **`network`**: A network-related error occurred when connecting to Twitter
+- **`connection`**: Could not establish a connection to Twitter
+- **`timeout`**: The request to Twitter timed out
+- **`parse`**: Failed to parse Twitter's response
+- **`auth`**: Authentication or authorization error
+- **`not_found`**: The requested tweet or resource was not found
+- **`rate_limit`**: Twitter's rate limit was exceeded
+- **`server`**: An error occurred on Twitter's servers
+- **`forbidden`**: The request was forbidden
+- **`api`**: An API-specific error occurred
+- **`unknown`**: An unexpected error occurred
+
+## Error Structure
+
+Each error includes three primary components:
+
+1. **`kind` (TwitterErrorKind)**: The categorized error type (as described above)
+2. **`reason` (String)**: A descriptive message that provides details about the error
+3. **`status_code` (Option<u16>)**: The HTTP status code returned by Twitter API, if available
+
+### Common Status Codes
+
+- `401`: Unauthorized (authentication error)
+- `403`: Forbidden
+- `404`: Not Found
+- `429`: Too Many Requests (rate limit exceeded)
+- `5xx`: Server errors
+
+### Error Message Format
+
+The `reason` field follows a consistent format:
+
+- Network errors: `"Network error: [error details]"`
+- Parse errors: `"Response parsing error: [error details]"`
+- API errors: `"Twitter API error: [title] (type: [error_type]) - [detail]"`
+- Status errors: `"Twitter API status error: [status code]"`
+- Other errors: `"Unknown error: [message]"`
+
+## Retryable Errors
+
+Some error types are considered "retryable" and can be attempted again after appropriate backoff:
+
+- `rate_limit`: Consider retrying after the duration specified in the error message
+- `network`: Network errors may be temporary and can be retried
+- `server`: Server errors (5xx) may be temporary and can be retried
+
+Other error types typically require fixing the request (e.g., `auth`, `not_found`, `forbidden`) and should not be retried without modification.
+
+## Error Handling in Modules
+
+All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
+
+The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users. The structured error information allows for programmatic handling of specific error conditions.
