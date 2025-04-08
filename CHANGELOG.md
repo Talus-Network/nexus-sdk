@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   argument when submitting transactions.
 - Introduce a `description` field each Tool needs to report via its `/meta` endpoint.
 - Use the Tool-provided `description` when registering it on-chain.
-- Introduce a lossy UTF-8 deserializer for the description, since the on-chain representation is a
+- Introduce a lossy UTF-8 deserializer for the `description`, since the on-chain representation is a
   `vector<u8>`. Perhaps we can be stricter in the future.
 
 ## [`nexus-cli` 0.2.0] - 2025-04-07
