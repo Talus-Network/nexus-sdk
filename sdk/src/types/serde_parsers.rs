@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_lossy_utf8_deserialization_exact() {
-        // The inner array [49, 50, 51] corresponds to a valid UTF-8 byte sequence,
+        // The array [49, 50, 51] corresponds to a valid UTF-8 byte sequence,
         // which is the string "123".
         let input = r#"{"value":[49,50,51]}"#;
         let result: TestDescriptionStruct = serde_json::from_str(input).unwrap();
