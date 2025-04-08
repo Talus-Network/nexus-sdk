@@ -1,7 +1,7 @@
 use crate::{
     idents::{move_std, primitives, sui_framework, workflow},
     sui,
-    types::{Dag, Data, DefaultValue, Edge, EntryVertex, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
+    types::{Dag, Data, DefaultValue, Edge, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
 };
 
 /// PTB template for creating a new empty DAG.
@@ -44,22 +44,22 @@ pub fn create(
     dag: Dag,
 ) -> anyhow::Result<sui::Argument> {
     // Create all entry vertices.
-    for entry_vertex in dag.entry_vertices {
-        // Find which entry groups this vertex belongs to.
-        let entry_groups = dag
-            .entry_groups
-            .as_ref()
-            .map(|groups| {
-                groups
-                    .iter()
-                    .filter(|group| group.vertices.contains(&entry_vertex.name))
-                    .map(|group| group.name.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec![DEFAULT_ENTRY_GROUP.to_string()]);
+    // for entry_vertex in dag.entry_vertices {
+    //     // Find which entry groups this vertex belongs to.
+    //     let entry_groups = dag
+    //         .entry_groups
+    //         .as_ref()
+    //         .map(|groups| {
+    //             groups
+    //                 .iter()
+    //                 .filter(|group| group.vertices.contains(&entry_vertex.name))
+    //                 .map(|group| group.name.clone())
+    //                 .collect::<Vec<_>>()
+    //         })
+    //         .unwrap_or_else(|| vec![DEFAULT_ENTRY_GROUP.to_string()]);
 
-        dag_arg = create_entry_vertex(tx, workflow_pkg_id, dag_arg, entry_vertex, entry_groups)?;
-    }
+    //     dag_arg = create_entry_vertex(tx, workflow_pkg_id, dag_arg, entry_vertex, entry_groups)?;
+    // }
 
     // Create all vertices.
     for vertex in dag.vertices {
@@ -88,86 +88,86 @@ pub fn create(
 }
 
 /// PTB template for creating a new DAG entry vertex.
-pub fn create_entry_vertex(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
-    dag: sui::Argument,
-    vertex: EntryVertex,
-    groups: Vec<String>,
-) -> anyhow::Result<sui::Argument> {
-    // `entry_groups: vector<EntryGroup>`
-    let entry_group_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::ENTRY_GROUP);
+// pub fn create_entry_vertex(
+//     tx: &mut sui::ProgrammableTransactionBuilder,
+//     workflow_pkg_id: sui::ObjectID,
+//     dag: sui::Argument,
+//     vertex: EntryVertex,
+//     groups: Vec<String>,
+// ) -> anyhow::Result<sui::Argument> {
+//     // `entry_groups: vector<EntryGroup>`
+//     let entry_group_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::ENTRY_GROUP);
 
-    let entry_groups = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        move_std::Vector::EMPTY.module.into(),
-        move_std::Vector::EMPTY.name.into(),
-        vec![entry_group_type.clone()],
-        vec![],
-    );
+//     let entry_groups = tx.programmable_move_call(
+//         sui::MOVE_STDLIB_PACKAGE_ID,
+//         move_std::Vector::EMPTY.module.into(),
+//         move_std::Vector::EMPTY.name.into(),
+//         vec![entry_group_type.clone()],
+//         vec![],
+//     );
 
-    for entry_group in groups {
-        // `entry_group: EntryGroup`
-        let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
+//     for entry_group in groups {
+//         // `entry_group: EntryGroup`
+//         let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
 
-        // `entry_groups.push_back(entry_group)`
-        tx.programmable_move_call(
-            sui::MOVE_STDLIB_PACKAGE_ID,
-            move_std::Vector::PUSH_BACK.module.into(),
-            move_std::Vector::PUSH_BACK.name.into(),
-            vec![entry_group_type.clone()],
-            vec![entry_groups, entry_group],
-        );
-    }
+//         // `entry_groups.push_back(entry_group)`
+//         tx.programmable_move_call(
+//             sui::MOVE_STDLIB_PACKAGE_ID,
+//             move_std::Vector::PUSH_BACK.module.into(),
+//             move_std::Vector::PUSH_BACK.name.into(),
+//             vec![entry_group_type.clone()],
+//             vec![entry_groups, entry_group],
+//         );
+//     }
 
-    // `name: Vertex`
-    let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex.name)?;
+//     // `name: Vertex`
+//     let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex.name)?;
 
-    // `kind: VertexKind`
-    let kind = match &vertex.kind {
-        VertexKind::OffChain { tool_fqn } => {
-            // `tool_fqn: AsciiString`
-            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
-        }
-        VertexKind::OnChain { .. } => {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
-        }
-    };
+//     // `kind: VertexKind`
+//     let kind = match &vertex.kind {
+//         VertexKind::OffChain { tool_fqn } => {
+//             // `tool_fqn: AsciiString`
+//             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
+//         }
+//         VertexKind::OnChain { .. } => {
+//             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+//         }
+//     };
 
-    // `input_ports: VecSet<InputPort>`
-    let input_port_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT);
+//     // `input_ports: VecSet<InputPort>`
+//     let input_port_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT);
 
-    let input_ports = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        sui_framework::VecSet::EMPTY.module.into(),
-        sui_framework::VecSet::EMPTY.name.into(),
-        vec![input_port_type.clone()],
-        vec![],
-    );
+//     let input_ports = tx.programmable_move_call(
+//         sui::FRAMEWORK_PACKAGE_ID,
+//         sui_framework::VecSet::EMPTY.module.into(),
+//         sui_framework::VecSet::EMPTY.name.into(),
+//         vec![input_port_type.clone()],
+//         vec![],
+//     );
 
-    for input_port in vertex.input_ports {
-        // `input_port: InputPort`
-        let input_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, input_port)?;
+//     for input_port in vertex.input_ports {
+//         // `input_port: InputPort`
+//         let input_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, input_port)?;
 
-        // `input_ports.insert(input_port)`
-        tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecSet::INSERT.module.into(),
-            sui_framework::VecSet::INSERT.name.into(),
-            vec![input_port_type.clone()],
-            vec![input_ports, input_port],
-        );
-    }
+//         // `input_ports.insert(input_port)`
+//         tx.programmable_move_call(
+//             sui::FRAMEWORK_PACKAGE_ID,
+//             sui_framework::VecSet::INSERT.module.into(),
+//             sui_framework::VecSet::INSERT.name.into(),
+//             vec![input_port_type.clone()],
+//             vec![input_ports, input_port],
+//         );
+//     }
 
-    // `dag.with_entry_vertex(name, kind, input_ports)`
-    Ok(tx.programmable_move_call(
-        workflow_pkg_id,
-        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.module.into(),
-        workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.into(),
-        vec![],
-        vec![dag, entry_groups, name, kind, input_ports],
-    ))
-}
+//     // `dag.with_entry_vertex(name, kind, input_ports)`
+//     Ok(tx.programmable_move_call(
+//         workflow_pkg_id,
+//         workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.module.into(),
+//         workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.into(),
+//         vec![],
+//         vec![dag, entry_groups, name, kind, input_ports],
+//     ))
+// }
 
 /// PTB template for creating a new DAG vertex.
 pub fn create_vertex(
@@ -456,39 +456,39 @@ mod tests {
         assert_eq!(call.arguments.len(), 1);
     }
 
-    #[test]
-    fn test_create_entry_vertex() {
-        let workflow_pkg_id = sui::ObjectID::random();
-        let dag = sui::Argument::Result(0);
-        let vertex = EntryVertex {
-            name: "vertex1".to_string(),
-            kind: VertexKind::OffChain {
-                tool_fqn: fqn!("xyz.tool.test@1"),
-            },
-            input_ports: vec!["port1".to_string()],
-        };
-        let groups = vec!["group1".to_string()];
+    // #[test]
+    // fn test_create_entry_vertex() {
+    //     let workflow_pkg_id = sui::ObjectID::random();
+    //     let dag = sui::Argument::Result(0);
+    //     let vertex = EntryVertex {
+    //         name: "vertex1".to_string(),
+    //         kind: VertexKind::OffChain {
+    //             tool_fqn: fqn!("xyz.tool.test@1"),
+    //         },
+    //         input_ports: vec!["port1".to_string()],
+    //     };
+    //     let groups = vec!["group1".to_string()];
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
-        create_entry_vertex(&mut tx, workflow_pkg_id, dag, vertex, groups).unwrap();
-        let tx = tx.finish();
+    //     let mut tx = sui::ProgrammableTransactionBuilder::new();
+    //     create_entry_vertex(&mut tx, workflow_pkg_id, dag, vertex, groups).unwrap();
+    //     let tx = tx.finish();
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
-            panic!("Expected last command to be a MoveCall to create an entry vertex");
-        };
+    //     let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+    //         panic!("Expected last command to be a MoveCall to create an entry vertex");
+    //     };
 
-        assert_eq!(call.package, workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS
-                .module
-                .to_string(),
-        );
-        assert_eq!(
-            call.function,
-            workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.to_string()
-        );
-    }
+    //     assert_eq!(call.package, workflow_pkg_id);
+    //     assert_eq!(
+    //         call.module,
+    //         workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS
+    //             .module
+    //             .to_string(),
+    //     );
+    //     assert_eq!(
+    //         call.function,
+    //         workflow::Dag::WITH_ENTRY_VERTEX_IN_GROUPS.name.to_string()
+    //     );
+    // }
 
     #[test]
     fn test_create_vertex() {
@@ -499,6 +499,7 @@ mod tests {
             kind: VertexKind::OffChain {
                 tool_fqn: fqn!("xyz.tool.test@1"),
             },
+            input_ports: None,
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
