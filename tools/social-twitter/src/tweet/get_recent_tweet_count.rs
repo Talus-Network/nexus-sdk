@@ -5,14 +5,13 @@
 use {
     crate::{
         error::{parse_twitter_response, TwitterError, TwitterResult},
-        tweet::{models::Meta, TWITTER_API_BASE},
+        tweet::TWITTER_API_BASE,
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 
 /// A single count result from the Twitter API
@@ -647,4 +646,3 @@ mod tests {
         mock.assert_async().await;
     }
 }
-
