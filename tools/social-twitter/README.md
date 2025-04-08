@@ -728,13 +728,25 @@ The list was retrieved successfully.
 
 The list retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - No list data found in the response
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
@@ -799,12 +811,20 @@ The list tweets were retrieved successfully.
 
 The list tweets retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available
 
 ---
 
@@ -857,12 +877,20 @@ The list members were retrieved successfully.
 
 The list members retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available
 
 ---
 
