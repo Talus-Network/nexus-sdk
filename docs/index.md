@@ -28,6 +28,7 @@ The codebase resides in [this repository][repo-nexus-sdk].
 Docs:
 
 - [Nexus CLI][cli-docs]
+- [DAG Construction Guide][dag-construction-docs]
 
 Epics:
 
@@ -58,6 +59,7 @@ Epics:
 [cli-docs]: ./CLI.md
 [toolkit-rust-docs]: ./toolkit-rust.md
 [tool-development-docs]: ./tool-development.md
+[dag-construction-docs]: ./dag-construction.md
 
 <!-- Note: these links will only work in the composite gitbook docs repo, not in the source repo. -->
 
