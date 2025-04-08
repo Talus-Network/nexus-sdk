@@ -1,10 +1,6 @@
 use {
-    crate::{
-        command_title,
-        loading,
-        prelude::*,
-        tool::{ToolIdent, ToolMeta},
-    },
+    crate::{command_title, loading, prelude::*, tool::ToolIdent},
+    nexus_sdk::types::ToolMeta,
     reqwest::StatusCode,
 };
 

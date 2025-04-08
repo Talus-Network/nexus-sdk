@@ -148,8 +148,6 @@ pub struct WalkAdvancedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    // TODO: the deser can be improved but it requires some bigger changes in
-    // the object crawler as well as porting the crawler to this crate.
     pub variant_ports_to_data: serde_json::Value,
 }
 
@@ -169,8 +167,6 @@ pub struct EndStateReachedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    // TODO: the deser can be improved but it requires some bigger changes in
-    // the object crawler as well as porting the crawler to this crate.
     pub variant_ports_to_data: serde_json::Value,
 }
 
@@ -269,7 +265,7 @@ mod tests {
             package_id: sui::ObjectID::random(),
             transaction_module: sui::move_ident_str!("primitives").into(),
             sender: sui::ObjectID::random().into(),
-            bcs: vec![],
+            bcs: sui::BcsEvent::new(vec![]),
             timestamp_ms: None,
             type_: sui::MoveStructTag {
                 address: *sui::ObjectID::random(),

@@ -5,9 +5,9 @@ use {
         loading,
         prelude::*,
         sui::*,
-        tool::{tool_validate::*, ToolIdent, ToolMeta},
+        tool::{tool_validate::*, ToolIdent},
     },
-    nexus_sdk::idents::{move_std, workflow},
+    nexus_sdk::transactions::tool,
 };
 
 /// Validate and then register a new Tool.
@@ -69,12 +69,20 @@ pub(crate) async fn register_tool(
 
     // Explicilty check that we're registering an off-chain tool. This is mainly
     // for when we implement logic for on-chain so that we don't forget to
-    // adjust `prepare_transaction`.
+    // adjust the transaction.
     if ident_check.on_chain.is_some() {
         todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
     }
 
-    let tx = match prepare_transaction(meta, collateral_coin, tool_registry, workflow_pkg_id) {
+    let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+    match tool::register_off_chain(
+        &mut tx,
+        &meta,
+        collateral_coin,
+        tool_registry,
+        workflow_pkg_id,
+    ) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -158,66 +166,4 @@ async fn fetch_gas_and_collateral_coins(
     };
 
     Ok((gas_coin, collateral_coin))
-}
-
-/// Build a programmable transaction to register a new off-chain Tool.
-fn prepare_transaction(
-    meta: ToolMeta,
-    collateral_coin: sui::Coin,
-    tool_registry: sui::ObjectRef,
-    workflow_pkg_id: sui::ObjectID,
-) -> AnyResult<sui::ProgrammableTransactionBuilder> {
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    // `self: &mut ToolRegistry`
-    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
-        id: tool_registry.object_id,
-        initial_shared_version: tool_registry.version,
-        mutable: true,
-    })?;
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(&mut tx, meta.fqn.to_string())?;
-
-    // `url: vector<u8>`
-    let url = tx.pure(meta.url.to_string().as_bytes())?;
-
-    // `description: vector<u8>`
-    let description = tx.pure(meta.description.as_bytes())?;
-
-    // `input_schema: vector<u8>`
-    let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;
-
-    // `output_schema: vector<u8>`
-    let output_schema = tx.pure(meta.output_schema.to_string().as_bytes())?;
-
-    // `pay_with: Coin<SUI>`
-    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
-        collateral_coin.object_ref(),
-    ))?;
-
-    // `clock: &Clock`
-    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
-
-    // `nexus_workflow::tool_registry::register_off_chain_tool()`
-    tx.programmable_move_call(
-        workflow_pkg_id,
-        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
-            .module
-            .into(),
-        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name.into(),
-        vec![],
-        vec![
-            tool_registry,
-            fqn,
-            url,
-            description,
-            input_schema,
-            output_schema,
-            pay_with,
-            clock,
-        ],
-    );
-
-    Ok(tx)
 }
