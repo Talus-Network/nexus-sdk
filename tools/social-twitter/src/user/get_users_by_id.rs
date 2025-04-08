@@ -4,7 +4,7 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
         list::models::Includes,
         tweet::{
             models::{ExpansionField, TweetField, UserField},
@@ -55,8 +55,13 @@ pub(crate) enum Output {
         includes: Option<Includes>,
     },
     Err {
-        /// Error message if the request failed
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// Detailed error message
         reason: String,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -96,13 +101,21 @@ impl NexusTool for GetUsersById {
                     }
                 } else {
                     Output::Err {
+                        kind: TwitterErrorKind::NotFound,
                         reason: "No user data found in the response".to_string(),
+                        status_code: None,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -278,7 +291,15 @@ mod tests {
                 assert_eq!(users[1].name, "X API");
                 assert_eq!(users[1].username, "TwitterAPI");
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
 
         mock.assert_async().await;
@@ -334,7 +355,15 @@ mod tests {
                     assert_eq!(metrics.tweet_count, 3961);
                 }
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
 
         mock.assert_async().await;
@@ -395,7 +424,15 @@ mod tests {
                     }
                 }
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
 
         mock.assert_async().await;
@@ -429,7 +466,15 @@ mod tests {
             Output::Ok { users, .. } => {
                 assert_eq!(users.len(), 0);
             }
-            Output::Err { reason } => panic!("Expected empty success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected empty success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
 
         mock.assert_async().await;
@@ -472,9 +517,16 @@ mod tests {
                 assert_eq!(users[0].name, "X Dev");
                 assert_eq!(users[0].username, "TwitterDev");
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
-
         mock.assert_async().await;
     }
 
@@ -506,7 +558,11 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
                 assert!(
                     reason.contains("Rate limit exceeded"),
                     "Expected rate limit error"
@@ -546,7 +602,11 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
                 assert!(
                     reason.contains("Users not found"),
                     "Expected users not found error"
@@ -586,7 +646,11 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
                 assert!(
                     reason.contains("Invalid token"),
                     "Expected invalid token error"
@@ -645,9 +709,16 @@ mod tests {
                 assert_eq!(users[0].id, "2244994945");
                 assert!(includes.is_some(), "Expected includes to be present");
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind: _,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} ({})",
+                reason,
+                status_code.unwrap_or(0)
+            ),
         }
-
         mock.assert_async().await;
     }
 }
