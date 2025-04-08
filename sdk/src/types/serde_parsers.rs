@@ -137,14 +137,25 @@ where
 }
 
 /// Deserialize a `Vec<u8>` into a `String` using lossy UTF-8 conversion.
-pub fn deserialize_bytes_to_lossy_utf8<'de, D>(
-    deserializer: D,
-) -> Result<String, D::Error>
+pub fn deserialize_bytes_to_lossy_utf8<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
     let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+pub fn deserialize_string_to_datetime<'de, D>(
+    deserializer: D,
+) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: String = Deserialize::deserialize(deserializer)?;
+    let timestamp = value.parse::<i64>().map_err(serde::de::Error::custom)?;
+    let datetime = chrono::DateTime::from_timestamp_millis(timestamp);
+
+    datetime.ok_or(serde::de::Error::custom("datetime out of range"))
 }
 
 #[cfg(test)]

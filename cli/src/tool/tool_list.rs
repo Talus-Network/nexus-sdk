@@ -4,6 +4,7 @@ use {
         object_crawler::{fetch_one, ObjectBag, Structure},
         types::deserialize_bytes_to_lossy_utf8,
         types::deserialize_bytes_to_url,
+        types::deserialize_string_to_datetime,
     },
 };
 
@@ -51,12 +52,19 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.into_inner();
 
-        tools_json.push(json!({ "fqn": fqn, "url": tool.url, "description": tool.description }));
+        tools_json.push(json!(
+        {
+            "fqn": fqn,
+            "url": tool.url,
+            "registered_at_ms": tool.registered_at_ms,
+            "description": tool.description
+        }));
 
         item!(
-            "Tool '{fqn}' at '{url}' - {description}",
+            "Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
             fqn = fqn.to_string().truecolor(100, 100, 100),
             url = tool.url.as_str().truecolor(100, 100, 100),
+            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
             description = tool.description.truecolor(100, 100, 100),
         );
     }
@@ -77,4 +85,6 @@ struct Tool {
     url: reqwest::Url,
     #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
     description: String,
+    #[serde(deserialize_with = "deserialize_string_to_datetime")]
+    registered_at_ms: chrono::DateTime<chrono::Utc>,
 }

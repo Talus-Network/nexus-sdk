@@ -4594,7 +4594,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "bip32",
+ "chrono",
  "clap",
  "colored 3.0.0",
  "convert_case 0.7.1",
@@ -4622,6 +4622,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "chrono",
  "lazy-regex",
  "move-core-types",
  "regex",

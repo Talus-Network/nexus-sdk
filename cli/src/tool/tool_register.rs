@@ -181,7 +181,7 @@ fn prepare_transaction(
 
     // `url: vector<u8>`
     let url = tx.pure(meta.url.to_string().as_bytes())?;
-    
+
     // `description: vector<u8>`
     let description = tx.pure(meta.description.as_bytes())?;
 
@@ -195,6 +195,9 @@ fn prepare_transaction(
     let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
         collateral_coin.object_ref(),
     ))?;
+
+    // `clock: &Clock`
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus_workflow::tool_registry::register_off_chain_tool()`
     tx.programmable_move_call(
@@ -212,6 +215,7 @@ fn prepare_transaction(
             input_schema,
             output_schema,
             pay_with,
+            clock,
         ],
     );
 
