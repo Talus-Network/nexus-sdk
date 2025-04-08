@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Introduce `pub const CLOCK_OBJ_ARG` and use it where the Sui `Clock` is passed as an
-  argument.
+  argument when submitting transactions.
 - Introduce a `description` field each Tool needs to report via its `/meta` endpoint.
 - Use the Tool-provided `description` when registering it on-chain.
 - Introduce a lossy UTF-8 deserializer for the description, since the on-chain representation is a
