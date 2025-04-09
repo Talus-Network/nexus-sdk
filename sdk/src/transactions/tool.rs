@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// PTB template for registering a new Nexus Tool.
-pub fn register_off_chain(
+pub fn register_off_chain_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     meta: &ToolMeta,
     collateral_coin: sui::Coin,
@@ -46,10 +46,12 @@ pub fn register_off_chain(
     // `nexus_workflow::tool_registry::register_off_chain_tool()`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
+        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
             .module
             .into(),
-        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name.into(),
+        workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
+            .name
+            .into(),
         vec![],
         vec![
             tool_registry,
@@ -68,6 +70,7 @@ pub fn register_off_chain(
 pub fn unregister(
     tx: &mut sui::ProgrammableTransactionBuilder,
     tool_fqn: &ToolFqn,
+    owner_cap: sui::ObjectRef,
     tool_registry: sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
@@ -81,6 +84,9 @@ pub fn unregister(
     // `fqn: AsciiString`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
+    // `owner_cap: &CloneableOwnerCap<OverTool>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
+
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
@@ -90,14 +96,16 @@ pub fn unregister(
         workflow::ToolRegistry::UNREGISTER_TOOL.module.into(),
         workflow::ToolRegistry::UNREGISTER_TOOL.name.into(),
         vec![],
-        vec![tool_registry, fqn, clock],
+        vec![tool_registry, owner_cap, fqn, clock],
     ))
 }
 
-/// PTB template for claiming collateral for a Nexus Tool.
-pub fn claim_collateral(
+/// PTB template for claiming collateral for a Nexus Tool. The funds are
+/// transferred to the tx sender.
+pub fn claim_collateral_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     tool_fqn: &ToolFqn,
+    owner_cap: sui::ObjectRef,
     tool_registry: sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
@@ -107,6 +115,9 @@ pub fn claim_collateral(
         initial_shared_version: tool_registry.version,
         mutable: true,
     })?;
+
+    // `owner_cap: &CloneableOwnerCap<OverTool>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
 
     // `fqn: AsciiString`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
@@ -121,14 +132,14 @@ pub fn claim_collateral(
     // `nexus::tool_registry::claim_collateral_for_tool()`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
             .module
             .into(),
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
             .name
             .into(),
         vec![],
-        vec![tool_registry, fqn, clock],
+        vec![tool_registry, owner_cap, fqn, clock],
     ))
 }
 
@@ -141,7 +152,7 @@ mod tests {
     };
 
     #[test]
-    fn test_register_off_chain_tool() {
+    fn test_register_off_chain_for_self() {
         let meta = ToolMeta {
             fqn: fqn!("xyz.dummy.tool@1"),
             url: "https://example.com".parse().unwrap(),
@@ -155,7 +166,7 @@ mod tests {
         let workflow_pkg_id = sui::ObjectID::random();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        register_off_chain(
+        register_off_chain_for_self(
             &mut tx,
             &meta,
             collateral_coin.clone(),
@@ -173,14 +184,14 @@ mod tests {
 
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
+            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
                 .module
                 .to_string(),
         );
 
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
+            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
                 .name
                 .to_string()
         );
@@ -191,12 +202,19 @@ mod tests {
     #[test]
     fn test_unregister_tool() {
         let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let owner_cap = sui_mocks::mock_sui_object_ref();
         let tool_registry = sui_mocks::mock_sui_object_ref();
         let workflow_pkg_id = sui::ObjectID::random();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        unregister(&mut tx, &tool_fqn, tool_registry.clone(), workflow_pkg_id)
-            .expect("Failed to build PTB for unregistering a tool.");
+        unregister(
+            &mut tx,
+            &tool_fqn,
+            owner_cap,
+            tool_registry.clone(),
+            workflow_pkg_id,
+        )
+        .expect("Failed to build PTB for unregistering a tool.");
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -215,18 +233,25 @@ mod tests {
             workflow::ToolRegistry::UNREGISTER_TOOL.name.to_string()
         );
 
-        assert_eq!(call.arguments.len(), 3);
+        assert_eq!(call.arguments.len(), 4);
     }
 
     #[test]
-    fn test_claim_collatera_for_tool() {
+    fn test_claim_collateral_for_self() {
         let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let owner_cap = sui_mocks::mock_sui_object_ref();
         let tool_registry = sui_mocks::mock_sui_object_ref();
         let workflow_pkg_id = sui::ObjectID::random();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        claim_collateral(&mut tx, &tool_fqn, tool_registry.clone(), workflow_pkg_id)
-            .expect("Failed to build PTB for claiming collateral for a tool.");
+        claim_collateral_for_self(
+            &mut tx,
+            &tool_fqn,
+            owner_cap,
+            tool_registry.clone(),
+            workflow_pkg_id,
+        )
+        .expect("Failed to build PTB for claiming collateral for a tool.");
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -237,18 +262,18 @@ mod tests {
 
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
                 .module
                 .to_string(),
         );
 
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
                 .name
                 .to_string()
         );
 
-        assert_eq!(call.arguments.len(), 3);
+        assert_eq!(call.arguments.len(), 4);
     }
 }
