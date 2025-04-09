@@ -294,9 +294,11 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndPortEntryGroups> {
         // If there are no entry groups, all input ports are part of the
         // default entry group.
         for vertex in &dag.vertices {
-            let input_ports = vertex.input_ports.clone().unwrap_or_default();
+            let Some(input_ports) = vertex.input_ports.as_ref() else {
+                continue;
+            };
 
-            for input_port in &input_ports {
+            for input_port in input_ports {
                 let port = GraphNode::InputPort {
                     vertex: vertex.name.clone(),
                     name: input_port.clone(),

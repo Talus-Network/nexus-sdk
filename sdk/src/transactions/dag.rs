@@ -77,9 +77,9 @@ pub fn create(
                             tx,
                             workflow_pkg_id,
                             dag_arg,
-                            member.vertex.clone(),
-                            input_port.clone(),
-                            entry_group.name.clone(),
+                            &member.vertex,
+                            &input_port,
+                            &entry_group.name,
                         )?;
                     }
                     None => {
@@ -87,8 +87,8 @@ pub fn create(
                             tx,
                             workflow_pkg_id,
                             dag_arg,
-                            member.vertex.clone(),
-                            entry_group.name.clone(),
+                            &member.vertex,
+                            &entry_group.name,
                         )?;
                     }
                 }
@@ -96,16 +96,18 @@ pub fn create(
         }
     } else {
         for vertex in &dag.vertices {
-            let input_ports = vertex.input_ports.clone().unwrap_or_default();
+            let Some(input_ports) = vertex.input_ports.as_ref() else {
+                continue;
+            };
 
             for input_port in input_ports {
                 dag_arg = mark_entry_input_port(
                     tx,
                     workflow_pkg_id,
                     dag_arg,
-                    vertex.name.clone(),
-                    input_port,
-                    DEFAULT_ENTRY_GROUP.to_string(),
+                    &vertex.name,
+                    &input_port,
+                    DEFAULT_ENTRY_GROUP,
                 )?;
             }
         }
@@ -227,8 +229,8 @@ pub fn mark_entry_vertex(
     tx: &mut sui::ProgrammableTransactionBuilder,
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
-    vertex: String,
-    entry_group: String,
+    vertex: &str,
+    entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
@@ -251,9 +253,9 @@ pub fn mark_entry_input_port(
     tx: &mut sui::ProgrammableTransactionBuilder,
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
-    vertex: String,
-    input_port: String,
-    entry_group: String,
+    vertex: &str,
+    input_port: &str,
+    entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
@@ -281,7 +283,7 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     default_sap: sui::ObjectRef,
     dag: sui::ObjectRef,
-    entry_group: String,
+    entry_group: &str,
     input_json: serde_json::Value,
     workflow_pkg_id: sui::ObjectID,
     primitives_pkg_id: sui::ObjectID,
@@ -564,18 +566,11 @@ mod tests {
     fn test_mark_entry_vertex() {
         let workflow_pkg_id = sui::ObjectID::random();
         let dag = sui::Argument::Result(0);
-        let vertex = "vertex1".to_string();
-        let entry_group = "group1".to_string();
+        let vertex = "vertex1";
+        let entry_group = "group1";
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        mark_entry_vertex(
-            &mut tx,
-            workflow_pkg_id,
-            dag,
-            vertex.clone(),
-            entry_group.clone(),
-        )
-        .unwrap();
+        mark_entry_vertex(&mut tx, workflow_pkg_id, dag, vertex, entry_group).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -597,18 +592,18 @@ mod tests {
     fn test_mark_entry_input_port() {
         let workflow_pkg_id = sui::ObjectID::random();
         let dag = sui::Argument::Result(0);
-        let vertex = "vertex1".to_string();
-        let input_port = "port1".to_string();
-        let entry_group = "group1".to_string();
+        let vertex = "vertex1";
+        let input_port = "port1";
+        let entry_group = "group1";
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         mark_entry_input_port(
             &mut tx,
             workflow_pkg_id,
             dag,
-            vertex.clone(),
-            input_port.clone(),
-            entry_group.clone(),
+            vertex,
+            input_port,
+            entry_group,
         )
         .unwrap();
         let tx = tx.finish();
@@ -635,7 +630,7 @@ mod tests {
         let network_id = sui::ObjectID::random();
         let default_sap = mock_sui_object_ref();
         let dag = mock_sui_object_ref();
-        let entry_group = "group1".to_string();
+        let entry_group = "group1";
         let input_json = serde_json::json!({
             "vertex1": {
                 "port1": {"key": "value"}

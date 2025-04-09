@@ -66,7 +66,7 @@ pub(crate) async fn execute_dag(
         &mut tx,
         default_sap,
         dag,
-        entry_group,
+        &entry_group,
         input_json,
         workflow_pkg_id,
         primitives_pkg_id,
