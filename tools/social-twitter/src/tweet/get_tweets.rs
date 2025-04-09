@@ -4,7 +4,13 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterError, TwitterResult},
+        error::{
+            parse_twitter_response,
+            TwitterError,
+            TwitterErrorKind,
+            TwitterErrorResponse,
+            TwitterResult,
+        },
         tweet::{
             models::{Includes, Meta, Tweet, TweetsResponse},
             TWITTER_API_BASE,
@@ -58,25 +64,14 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Error message if the request failed
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// Detailed error message
         reason: String,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub(crate) struct ApiError {
-    /// Error details
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    /// HTTP status code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<u16>,
-    /// Error title
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// Error type URI
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>,
 }
 
 pub(crate) struct GetTweets {
@@ -117,27 +112,31 @@ impl NexusTool for GetTweets {
                         includes: response.includes,
                         meta: response.meta,
                     }
-                } else if let Some(errors) = response.errors {
-                    // Format error message from Twitter API errors
-                    let error_msg = errors
-                        .iter()
-                        .map(|e| format!("{}: {}", e.title, e.detail.as_deref().unwrap_or("")))
-                        .collect::<Vec<String>>()
-                        .join("; ");
-                    
-                    Output::Err {
-                        reason: format!("Twitter API returned errors: {}", error_msg),
-                    }
                 } else {
+                    let error_response = TwitterErrorResponse {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No tweet data or errors found in the response".to_string(),
+                        status_code: None,
+                    };
+
                     // Return an error if there's no tweet data and no errors
                     Output::Err {
-                        reason: "No tweet data or errors found in the response".to_string(),
+                        kind: error_response.kind,
+                        reason: error_response.reason,
+                        status_code: error_response.status_code,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                // Use the centralized error conversion
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -286,7 +285,7 @@ mod tests {
                 assert_eq!(data[1].author_id, Some("2244994946".to_string()));
                 assert_eq!(data[1].username, Some("XDevExample".to_string()));
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
 
         // Verify that the mock was called
@@ -329,7 +328,18 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected error kind NotFound, got: {:?}",
+                    kind
+                );
+
                 assert!(
                     reason.contains("Not Found Error"),
                     "Expected error message to contain 'Not Found Error', got: {}",
@@ -339,6 +349,13 @@ mod tests {
                     reason.contains("Could not find tweet"),
                     "Expected error message to contain details about missing tweet, got: {}",
                     reason
+                );
+
+                assert_eq!(
+                    status_code,
+                    Some(404),
+                    "Expected status code 404, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error with missing tweets, got success"),
@@ -404,7 +421,7 @@ mod tests {
                 let includes = includes.unwrap();
                 assert!(includes.users.is_some());
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
 
         mock.assert_async().await;
@@ -434,11 +451,84 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
+                );
+            }
+            Output::Ok { .. } => panic!("Expected error, got success"),
+        }
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_tweets_rate_limit() {
+        let (mut server, tool) = create_server_and_tool().await;
+
+        let mock = server
+            .mock("GET", "/tweets")
+            .match_query(mockito::Matcher::Any)
+            .with_status(429)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "errors": [{
+                        "message": "Rate limit exceeded",
+                        "code": 88
+                    }]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let output = tool.invoke(create_test_input()).await;
+
+        match output {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected error kind RateLimit, got: {:?}",
+                    kind
+                );
+
+                assert!(
+                    reason.contains("Rate limit exceeded"),
+                    "Expected error message to contain 'Rate limit exceeded', got: {}",
+                    reason
+                );
+
+                assert_eq!(
+                    status_code,
+                    Some(429),
+                    "Expected status code 429, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),

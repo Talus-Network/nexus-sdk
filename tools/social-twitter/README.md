@@ -634,7 +634,22 @@ The tweets were retrieved successfully.
 
 The tweets could not be retrieved due to an error.
 
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
 - **`err.reason`: [`String`]** - The reason for the error. This could be:
+
   - Twitter API error (e.g., "Twitter API returned errors: Not Found Error: Could not find tweet with id: [1346889436626259969].")
   - Network error (e.g., "Network error: network error: Connection refused")
   - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
@@ -642,6 +657,13 @@ The tweets could not be retrieved due to an error.
   - "No tweet data or errors found in the response" when the API response is empty
   - Unauthorized error (e.g., "Unauthorized")
   - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
