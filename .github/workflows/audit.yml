@@ -17,8 +17,8 @@ on:
 
 jobs:
   audit:
+    name: Audit Dependencies
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
       issues: write
