@@ -50,8 +50,7 @@ pub(crate) async fn claim_collateral(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    // TODO: for_self
-    match tool::claim_collateral(
+    match tool::claim_collateral_for_self(
         &mut tx,
         &tool_fqn,
         owner_cap,

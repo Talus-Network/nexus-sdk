@@ -315,7 +315,14 @@ pub struct ToolRegistry;
 const TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
 
 impl ToolRegistry {
-    /// Claim collateral for a tool.
+    /// Claim collateral for a tool and transfer the balance to the tx sender.
+    ///
+    /// `nexus_workflow::tool_registry::claim_collateral_for_self`
+    pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("claim_collateral_for_self"),
+    };
+    /// Claim collateral for a tool. The function call returns Balance<SUI>.
     ///
     /// `nexus_workflow::tool_registry::claim_collateral_for_tool`
     pub const CLAIM_COLLATERAL_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {

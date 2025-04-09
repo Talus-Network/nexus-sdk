@@ -96,8 +96,9 @@ pub fn unregister(
     ))
 }
 
-/// PTB template for claiming collateral for a Nexus Tool.
-pub fn claim_collateral(
+/// PTB template for claiming collateral for a Nexus Tool. The funds are
+/// transferred to the tx sender.
+pub fn claim_collateral_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     tool_fqn: &ToolFqn,
     owner_cap: sui::ObjectRef,
@@ -127,10 +128,10 @@ pub fn claim_collateral(
     // `nexus::tool_registry::claim_collateral_for_tool()`
     Ok(tx.programmable_move_call(
         workflow_pkg_id,
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
             .module
             .into(),
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
             .name
             .into(),
         vec![],
@@ -238,7 +239,7 @@ mod tests {
         let workflow_pkg_id = sui::ObjectID::random();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        claim_collateral(
+        claim_collateral_for_self(
             &mut tx,
             &tool_fqn,
             owner_cap,
