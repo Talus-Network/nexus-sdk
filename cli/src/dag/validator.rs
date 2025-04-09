@@ -86,9 +86,14 @@ fn follows_concurrency_rules(
     // For each group...
     for group in groups {
         // ... find the entry input ports in that group.
-        let entry_vertices = graph
+        let entry_input_ports = graph
             .node_indices()
-            .filter(|&node| port_entry_groups.contains_key(&graph[node]))
+            .filter(|&node| {
+                port_entry_groups
+                    .get(&graph[node])
+                    .unwrap_or(&vec![])
+                    .contains(group)
+            })
             .collect::<Vec<_>>();
 
         let input_ports = graph
@@ -100,7 +105,7 @@ fn follows_concurrency_rules(
         for input_port in input_ports {
             // ... find all nodes that are included in the paths leading to
             // the input port.
-            let all_nodes_in_paths = entry_vertices
+            let all_nodes_in_paths = entry_input_ports
                 .iter()
                 .flat_map(|&entry_vertex| {
                     let min_intermediate_nodes = 0;
@@ -126,7 +131,15 @@ fn follows_concurrency_rules(
                 );
             }
 
-            let concurrency = get_net_concurrency_in_subgraph(graph, &all_nodes_in_paths);
+            // Initial concurrency is the number of entry input ports in paths
+            // leading to the input port.
+            let initial_concurrency = entry_input_ports
+                .iter()
+                .filter(|&entry_vertex| all_nodes_in_paths.contains(entry_vertex))
+                .count() as isize;
+
+            let concurrency =
+                get_net_concurrency_in_subgraph(graph, &all_nodes_in_paths, initial_concurrency);
 
             if concurrency < 0 {
                 bail!(
@@ -152,8 +165,9 @@ fn follows_concurrency_rules(
 fn get_net_concurrency_in_subgraph(
     graph: &DiGraph<GraphNode, ()>,
     nodes: &HashSet<NodeIndex>,
+    initial_concurrency: isize,
 ) -> isize {
-    let net_concurrency = nodes.iter().fold(1, |acc, &node| {
+    let net_concurrency = nodes.iter().fold(initial_concurrency, |acc, &node| {
         match graph[node] {
             GraphNode::Vertex { .. } => {
                 // Calculate the maximum number of concurrent tasks that can be spawned by this tool.
@@ -176,7 +190,7 @@ fn get_net_concurrency_in_subgraph(
                 // Add 1 as we only want to consume concurrency if there's more than 1 input port.
                 acc + max_tool_concurrency + 1
             }
-            // Input ports with no default values reduce concurrency.
+            // Input ports reduce concurrency.
             GraphNode::InputPort { .. } => acc - 1,
             _ => acc,
         }

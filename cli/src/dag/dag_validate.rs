@@ -235,15 +235,15 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_same_entry_ports_invalid() {
+    fn test_references_vertex_with_ports_invalid() {
         let dag: Dag = serde_json::from_str(include_str!(
-            "_dags/has_multiple_same_entry_inputs_invalid.json"
+            "_dags/references_vertex_with_ports_invalid.json"
         ))
         .unwrap();
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Input port: location_decider.messages' is defined multiple times."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_a' references a vertex 'location_decider' that has input ports."));
     }
 
     #[test]
@@ -252,18 +252,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices."));
-    }
-
-    #[test]
-    fn test_normal_vertex_in_group_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/normal_vertex_in_group_invalid.json"))
-                .unwrap();
-
-        let res = validate(dag);
-
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_b' references a non-entry 'Vertex: e'."));
+        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices or ports."));
     }
 
     #[test]
@@ -275,6 +264,6 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is both a vertex and an entry vertex."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is defined multiple times."));
     }
 }
