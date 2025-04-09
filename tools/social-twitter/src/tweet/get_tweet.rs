@@ -4,7 +4,7 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
         tweet::{
             models::{
                 Attachments,
@@ -142,8 +142,13 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Error message if the tweet failed
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// Detailed error message
         reason: String,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -215,14 +220,29 @@ impl NexusTool for GetTweet {
                     }
                 } else {
                     // Return an error if there's no tweet data
-                    Output::Err {
+                    let error_response = TwitterErrorResponse {
+                        kind: TwitterErrorKind::NotFound,
                         reason: "No tweet data found in the response".to_string(),
+                        status_code: None,
+                    };
+
+                    Output::Err {
+                        kind: error_response.kind,
+                        reason: error_response.reason,
+                        status_code: error_response.status_code,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                // Use the centralized error conversion
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -314,7 +334,14 @@ mod tests {
                 assert!(created_at.is_some());
                 assert_eq!(username, Some("XDevelopers".to_string()));
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
@@ -348,7 +375,20 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected error kind NotFound, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
                     reason.contains("Not Found Error"),
                     "Expected error message to contain 'Not Found Error', got: {}",
@@ -358,6 +398,14 @@ mod tests {
                     reason.contains("Could not find tweet with id"),
                     "Expected error message to contain tweet ID details, got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(404),
+                    "Expected status code 404, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -389,11 +437,32 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -427,11 +496,34 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                println!("Kind: {:?}", kind);
+                println!("reason: {:?}", reason);
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected error kind RateLimit, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
                     reason.contains("Rate limit exceeded"),
                     "Expected error message to contain 'Rate limit exceeded', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(429),
+                    "Expected status code 429, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
