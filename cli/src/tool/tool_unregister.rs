@@ -1,6 +1,6 @@
 use {
     crate::{command_title, confirm, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::idents::{move_std, workflow},
+    nexus_sdk::transactions::tool,
 };
 
 /// Unregister a Tool based on the provided FQN.
@@ -51,7 +51,9 @@ pub(crate) async fn unregister_tool(
     // Craft a TX to unregister the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    let tx = match prepare_transaction(&tool_fqn, tool_registry, workflow_pkg_id) {
+    let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+    match tool::unregister(&mut tx, &tool_fqn, tool_registry, workflow_pkg_id) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -76,41 +78,4 @@ pub(crate) async fn unregister_tool(
     json_output(&json!({ "digest": response.digest }))?;
 
     Ok(())
-}
-
-/// Build a programmable transaction to unregister a Tool.
-fn prepare_transaction(
-    tool_fqn: &ToolFqn,
-    tool_registry: sui::ObjectRef,
-    workflow_pkg_id: sui::ObjectID,
-) -> AnyResult<sui::ProgrammableTransactionBuilder> {
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    // `self: &mut ToolRegistry`
-    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
-        id: tool_registry.object_id,
-        initial_shared_version: tool_registry.version,
-        mutable: true,
-    })?;
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(&mut tx, tool_fqn.to_string())?;
-
-    // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
-
-    // `nexus::tool_registry::unregister_tool()`
-    tx.programmable_move_call(
-        workflow_pkg_id,
-        workflow::ToolRegistry::UNREGISTER_TOOL.module.into(),
-        workflow::ToolRegistry::UNREGISTER_TOOL.name.into(),
-        vec![],
-        vec![tool_registry, fqn, clock],
-    );
-
-    Ok(tx)
 }

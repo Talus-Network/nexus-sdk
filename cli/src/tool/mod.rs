@@ -125,15 +125,6 @@ pub(crate) struct ToolIdent {
     pub(crate) on_chain: Option<String>,
 }
 
-/// Useful struct holding Tool metadata.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct ToolMeta {
-    pub(crate) fqn: ToolFqn,
-    pub(crate) url: reqwest::Url,
-    pub(crate) input_schema: serde_json::Value,
-    pub(crate) output_schema: serde_json::Value,
-}
-
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError> {

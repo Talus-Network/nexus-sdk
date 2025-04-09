@@ -25,5 +25,5 @@ $ just
 [nexus-sdk-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/sdk
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/tools
-[nexus-wiki-link]: https://github.com/Talus-Network/gitbook-docs
+[nexus-wiki-link]: https://talus-labs.gitbook.io/talus-documentation
 [just-repo]: https://github.com/casey/just
