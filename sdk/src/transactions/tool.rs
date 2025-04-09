@@ -123,11 +123,7 @@ pub fn claim_collateral_for_self(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus::tool_registry::claim_collateral_for_tool()`
     Ok(tx.programmable_move_call(
