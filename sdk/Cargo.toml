@@ -41,6 +41,10 @@ events = ["sui_idents", "types"]
 # Object crawler feature enables the use of the `object_crawler` module.
 object_crawler = ["sui_types", "serde_json"]
 
+# Transactions feature enables the use of the `transactions` module. These are
+# used in the CLI and tests and hide away PTBs for various Nexus operations.
+transactions = ["sui_idents"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -61,6 +65,7 @@ full = [
     "types",
     "events",
     "object_crawler",
+    "transactions",
 ]
 
 [dependencies]
@@ -96,43 +101,43 @@ optional = true
 # === Sui deps ===
 [dependencies.sui_sdk]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "sui-sdk"
 optional = true
 
 [dependencies.move_core_types]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "move-core-types"
 optional = true
 
 [dependencies.sui_keys]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "sui-keys"
 optional = true
 
 [dependencies.sui_config]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "sui-config"
 optional = true
 
 [dependencies.shared_crypto]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "shared-crypto"
 optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.38.1"
+tag = "mainnet-v1.45.3"
 package = "sui-package-management"
 optional = true
 
@@ -147,3 +152,7 @@ optional = true
 [dev-dependencies]
 assert_matches = "1.5.0"
 tokio = { version = "1.44.1", features = ["full"] }
+
+# === Build deps ===
+[build-dependencies]
+toml = "0.8.20"
