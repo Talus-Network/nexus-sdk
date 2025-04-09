@@ -4,7 +4,13 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterError, TwitterResult},
+        error::{
+            parse_twitter_response,
+            TwitterError,
+            TwitterErrorKind,
+            TwitterErrorResponse,
+            TwitterResult,
+        },
         tweet::TWITTER_API_BASE,
     },
     nexus_sdk::{fqn, ToolFqn},
@@ -192,8 +198,13 @@ pub(crate) enum Output {
         meta: Option<TweetCountMeta>,
     },
     Err {
-        /// Error message if the request failed
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// Detailed error message
         reason: String,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -231,27 +242,30 @@ impl NexusTool for GetRecentTweetCount {
                         data: tweet_counts,
                         meta: response.meta,
                     }
-                } else if let Some(errors) = response.errors {
-                    // Return an error with details from API
-                    let error_msg = errors
-                        .iter()
-                        .map(|e| format!("{}: {}", e.title, e.detail.as_deref().unwrap_or("")))
-                        .collect::<Vec<String>>()
-                        .join("; ");
+                } else {
+                    let error_response = TwitterErrorResponse {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No tweet count data found".to_string(),
+                        status_code: None,
+                    };
 
                     Output::Err {
-                        reason: format!("Twitter API returned errors: {}", error_msg),
-                    }
-                } else {
-                    // Return an error if there's no count data and no errors
-                    Output::Err {
-                        reason: "No tweet count data found".to_string(),
+                        kind: error_response.kind,
+                        reason: error_response.reason,
+                        status_code: error_response.status_code,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                // Use the centralized error conversion
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -403,7 +417,7 @@ mod tests {
                     assert_eq!(meta_data.total_tweet_count, Some(17));
                 }
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
 
         mock.assert_async().await;
@@ -435,8 +449,14 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(kind, TwitterErrorKind::NotFound);
                 assert_eq!(reason, "No tweet count data found");
+                assert_eq!(status_code, None);
             }
             Output::Ok { .. } => panic!("Expected error due to no results, got success"),
         }
@@ -484,7 +504,7 @@ mod tests {
                 assert_eq!(data.len(), 1);
                 assert_eq!(data[0].tweet_count, 45);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
 
         mock.assert_async().await;
@@ -514,12 +534,18 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(kind, TwitterErrorKind::Auth);
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
                 );
+                assert_eq!(status_code, Some(401));
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -563,7 +589,8 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err { reason, kind, .. } => {
+                assert_eq!(kind, TwitterErrorKind::Api);
                 assert!(
                     reason.contains("Invalid query"),
                     "Expected error message to contain 'Invalid query', got: {}",
@@ -587,7 +614,8 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err { reason, kind, .. } => {
+                assert_eq!(kind, TwitterErrorKind::Unknown);
                 assert!(
                     reason.contains("Validation error"),
                     "Expected validation error message, got: {}",
@@ -640,7 +668,7 @@ mod tests {
             Output::Ok { data, .. } => {
                 assert_eq!(data.len(), 1);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
 
         mock.assert_async().await;
