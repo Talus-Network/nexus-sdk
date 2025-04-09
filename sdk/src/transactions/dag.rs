@@ -106,7 +106,7 @@ pub fn create(
                     workflow_pkg_id,
                     dag_arg,
                     &vertex.name,
-                    &input_port,
+                    input_port,
                     DEFAULT_ENTRY_GROUP,
                 )?;
             }
