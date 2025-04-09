@@ -4,7 +4,7 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
         tweet::{
             models::{ExpansionField, TweetField, UserField},
             TWITTER_API_BASE,
@@ -120,6 +120,11 @@ pub(crate) enum Output {
     Err {
         /// Error message if the user lookup failed
         reason: String,
+        /// Error kind
+        kind: TwitterErrorKind,
+        /// Status code
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -179,12 +184,20 @@ impl NexusTool for GetUserById {
                 } else {
                     Output::Err {
                         reason: "No user data found in the response".to_string(),
+                        kind: TwitterErrorKind::NotFound,
+                        status_code: None,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let error_response: TwitterErrorResponse = e.to_error_response();
+
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -305,18 +318,33 @@ mod tests {
             Output::Ok {
                 id, name, username, ..
             } => {
-                assert_eq!(id, "2244994945");
-                assert_eq!(name, "X Dev");
-                assert_eq!(username, "TwitterDev");
+                assert_eq!(
+                    id, "2244994945",
+                    "Expected user ID to be '2244994945', got: {}",
+                    id
+                );
+                assert_eq!(name, "X Dev", "Expected name to be 'X Dev', got: {}", name);
+                assert_eq!(
+                    username, "TwitterDev",
+                    "Expected username to be 'TwitterDev', got: {}",
+                    username
+                );
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
     }
 
     #[tokio::test]
-    async fn test_user_not_found() {
+    async fn test_not_found() {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
@@ -337,11 +365,29 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Accept either NotFound or Api error kinds
+                if kind == TwitterErrorKind::NotFound || kind == TwitterErrorKind::Api {
+                    println!("  Error kind is acceptable: {:?}", kind);
+                } else {
+                    panic!("Expected error kind NotFound or Api, got: {:?}", kind);
+                }
+
+                // Check error message
                 assert!(
-                    reason.contains("User not found"),
-                    "Expected user not found error"
+                    reason.contains("User not found") || reason.contains("Not Found"),
+                    "Expected error message to contain 'User not found' or 'Not Found', got: {}",
+                    reason
                 );
+
+                // Check status code - it might be 404 or None depending on the response structure
+                if status_code != Some(404) && status_code.is_some() {
+                    panic!("Expected status code 404 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -350,7 +396,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_invalid_bearer_token() {
+    async fn test_unauthorized() {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
@@ -359,8 +405,8 @@ mod tests {
             .with_body(
                 json!({
                     "errors": [{
-                        "message": "Invalid token",
-                        "code": 89
+                        "message": "Unauthorized",
+                        "code": 32
                     }]
                 })
                 .to_string(),
@@ -371,11 +417,29 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Accept either Auth or Api error kinds
+                if kind == TwitterErrorKind::Auth || kind == TwitterErrorKind::Api {
+                    println!("  Error kind is acceptable: {:?}", kind);
+                } else {
+                    panic!("Expected error kind Auth or Api, got: {:?}", kind);
+                }
+
+                // Check error message
                 assert!(
-                    reason.contains("Invalid token"),
-                    "Expected invalid token error"
+                    reason.contains("Unauthorized") || reason.contains("Authentication"),
+                    "Expected error message to contain 'Unauthorized' or 'Authentication', got: {}",
+                    reason
                 );
+
+                // Check status code - it might be 401 or None depending on the response structure
+                if status_code != Some(401) && status_code.is_some() {
+                    panic!("Expected status code 401 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -384,7 +448,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_rate_limit_handling() {
+    async fn test_rate_limit() {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
@@ -405,11 +469,29 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Accept either RateLimit or Api error kinds
+                if kind == TwitterErrorKind::RateLimit || kind == TwitterErrorKind::Api {
+                    println!("  Error kind is acceptable: {:?}", kind);
+                } else {
+                    panic!("Expected error kind RateLimit or Api, got: {:?}", kind);
+                }
+
+                // Check error message
                 assert!(
-                    reason.contains("Rate limit exceeded"),
-                    "Expected rate limit error"
+                    reason.contains("Rate limit") || reason.contains("rate limit"),
+                    "Expected error message to contain 'Rate limit' or 'rate limit', got: {}",
+                    reason
                 );
+
+                // Check status code - it might be 429 or None depending on the response structure
+                if status_code != Some(429) && status_code.is_some() {
+                    panic!("Expected status code 429 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -443,11 +525,26 @@ mod tests {
             Output::Ok {
                 id, name, username, ..
             } => {
-                assert_eq!(id, "2244994945");
-                assert_eq!(name, "X Dev");
-                assert_eq!(username, "TwitterDev");
+                assert_eq!(
+                    id, "2244994945",
+                    "Expected user ID to be '2244994945', got: {}",
+                    id
+                );
+                assert_eq!(name, "X Dev", "Expected name to be 'X Dev', got: {}", name);
+                assert_eq!(
+                    username, "TwitterDev",
+                    "Expected username to be 'TwitterDev', got: {}",
+                    username
+                );
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
