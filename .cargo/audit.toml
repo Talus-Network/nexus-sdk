@@ -1,0 +1,9 @@
+# All of the options which can be passed via CLI arguments can also be
+# permanently specified in this file.
+
+[advisories]
+# advisory IDs to ignore e.g. ["RUSTSEC-2019-0001", ...]
+ignore = ["RUSTSEC-2020-0036"]
+
+[output]
+quiet = false

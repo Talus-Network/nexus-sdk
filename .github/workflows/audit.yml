@@ -28,6 +28,3 @@ jobs:
 
       - name: Audit Rust Dependencies
         uses: actions-rust-lang/audit@v1
-        with:
-          # Comma separated list of issues to ignore
-          ignore: RUSTSEC-2020-0036
