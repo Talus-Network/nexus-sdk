@@ -191,9 +191,7 @@ mod tests {
 
     #[derive(Deserialize, Serialize, Debug)]
     struct TestDescriptionStruct {
-        #[serde(
-            deserialize_with = "deserialize_bytes_to_lossy_utf8",
-        )]
+        #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
         value: String,
     }
 
