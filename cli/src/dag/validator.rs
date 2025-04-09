@@ -5,6 +5,8 @@ use {
     std::collections::{HashMap, HashSet},
 };
 
+type GraphAndPortEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>);
+
 /// Validate function takes a DAG and validates it based on nexus execution
 /// rules.
 ///
@@ -241,9 +243,7 @@ impl std::fmt::Display for GraphNode {
 
 /// [Dag] to [petgraph::graph::DiGraph]. Also performs structure checks on the
 /// graph.
-fn try_into_graph(
-    dag: Dag,
-) -> AnyResult<(DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>)> {
+fn try_into_graph(dag: Dag) -> AnyResult<GraphAndPortEntryGroups> {
     let mut graph = DiGraph::<GraphNode, ()>::new();
 
     // Build a hash map of graph nodes that are part of entry groups. If there
@@ -285,7 +285,7 @@ fn try_into_graph(
                     }
                 }
 
-                let mut groups = port_entry_groups.remove(&port).unwrap_or(vec![]);
+                let mut groups = port_entry_groups.remove(&port).unwrap_or_default();
                 groups.push(entry_group.name.clone());
                 port_entry_groups.insert(port, groups);
             }
@@ -294,7 +294,7 @@ fn try_into_graph(
         // If there are no entry groups, all input ports are part of the
         // default entry group.
         for vertex in &dag.vertices {
-            let input_ports = vertex.input_ports.clone().unwrap_or(vec![]);
+            let input_ports = vertex.input_ports.clone().unwrap_or_default();
 
             for input_port in &input_ports {
                 let port = GraphNode::InputPort {

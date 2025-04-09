@@ -96,7 +96,7 @@ pub fn create(
         }
     } else {
         for vertex in &dag.vertices {
-            let input_ports = vertex.input_ports.clone().unwrap_or(vec![]);
+            let input_ports = vertex.input_ports.clone().unwrap_or_default();
 
             for input_port in input_ports {
                 dag_arg = mark_entry_input_port(
