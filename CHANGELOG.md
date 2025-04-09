@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - upgraded Sui from `testnet-1.38.1` to `mainnet-v1.45.3`
+- changing the notion of entry vertices to entry input ports and adjusting parsing, validation and PTB templates in accordance
+
+### Fixed
+
+- fixing tool registration, unregistration and collateral claiming based on changes in tool registry
 
 ## [`nexus-toolkit-rust` 0.2.0] - 2025-04-07
 
