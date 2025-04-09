@@ -5,8 +5,7 @@
 use {
     super::models::ListData,
     crate::{
-        auth::TwitterAuth,
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
         list::models::{Expansion, Includes, ListField, ListsResponse, Meta, UserField},
         tweet::TWITTER_API_BASE,
     },
@@ -63,8 +62,13 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Error message if the list retrieval failed
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -106,12 +110,20 @@ impl NexusTool for GetUserLists {
                 } else {
                     Output::Err {
                         reason: "No lists found".to_string(),
+                        kind: TwitterErrorKind::NotFound,
+                        status_code: Some(404),
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -260,7 +272,14 @@ mod tests {
                 let meta = meta.unwrap();
                 assert_eq!(meta.result_count.unwrap(), 2);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
@@ -274,14 +293,16 @@ mod tests {
             .mock("GET", "/users/12345/owned_lists")
             .match_header("Authorization", "Bearer test_bearer_token")
             .match_query(mockito::Matcher::Any)
-            .with_status(404)
+            .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
                     "errors": [
                         {
-                            "message": "User not found",
-                            "code": 50
+                            "value": "owned_lists",
+                            "detail": "Could not find lists for user with id: [12345].",
+                            "title": "Not Found Error",
+                            "type": "https://api.twitter.com/2/problems/resource-not-found"
                         }
                     ]
                 })
@@ -293,11 +314,37 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected error kind NotFound, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("User not found"),
-                    "Expected error message to contain 'User not found', got: {}",
+                    reason.contains("Not Found Error"),
+                    "Expected error message to contain 'Not Found Error', got: {}",
                     reason
+                );
+                assert!(
+                    reason.contains("Could not find lists for user with id"),
+                    "Expected error message to contain user ID details, got: {}",
+                    reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(404),
+                    "Expected status code 404, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -331,11 +378,32 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error message
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -369,12 +437,33 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error message
                 assert!(
                     reason.contains("Rate limit exceeded"),
                     "Expected error message to contain 'Rate limit exceeded', got: {}",
                     reason
                 );
+
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected error kind RateLimit, got: {:?}",
+                    kind
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(429),
+                    "Expected status code 429, got: {:?}",
+                    status_code
+                )
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -413,7 +502,14 @@ mod tests {
                 assert!(meta.is_some());
                 assert_eq!(meta.unwrap().result_count.unwrap(), 0);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
