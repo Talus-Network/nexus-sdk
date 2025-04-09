@@ -148,7 +148,7 @@ mod tests {
     };
 
     #[test]
-    fn test_register_off_chain_tool() {
+    fn test_register_off_chain_for_self() {
         let meta = ToolMeta {
             fqn: fqn!("xyz.dummy.tool@1"),
             url: "https://example.com".parse().unwrap(),
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn test_claim_collatera_for_tool() {
+    fn test_claim_collateral_for_self() {
         let tool_fqn = fqn!("xyz.dummy.tool@1");
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let tool_registry = sui_mocks::mock_sui_object_ref();
@@ -257,14 +257,14 @@ mod tests {
 
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
                 .module
                 .to_string(),
         );
 
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
+            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
                 .name
                 .to_string()
         );
