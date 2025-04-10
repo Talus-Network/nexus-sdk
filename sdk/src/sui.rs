@@ -30,6 +30,7 @@ pub use {
         error::Error,
         json::SuiJsonValue,
         rpc_types::{
+            BcsEvent,
             Coin,
             EventFilter,
             EventPage,
