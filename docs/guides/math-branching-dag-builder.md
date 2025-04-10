@@ -341,44 +341,13 @@ Combining these sections gives us the complete `math_branching.json`:
 
 ## Validation and Execution with the CLI
 
-Before running, validate the DAG structure using the Nexus CLI:
+Now that we've constructed our branching math DAG, you can test it out with the Nexus CLI. For detailed steps on how to validate, publish, and execute this DAG with different inputs, see the [Math Branching DAG: 5-Minute Quickstart](math-branching-quickstart.md) guide.
 
-```bash
-nexus dag validate --path cli/src/dag/_dags/math_branching.json
-```
-
-If valid, you can publish it (requires a configured wallet):
-
-```bash
-# Publish the DAG (note the returned DAG ID)
-nexus dag publish --path cli/src/dag/_dags/math_branching.json
-# Example output: Published DAG with ID: <dag_id_hash>
-```
-
-To execute the published DAG, use its ID and provide the required input for the entry vertex (`add_input_and_default`) and its entry port (`a`) via `--input-json`:
-
-**Input JSON Structure:**
-The JSON string maps entry vertex names to objects, which map input port names to their values.
-
-```json
-// Example Input: provide value 10 to port 'a' of 'add_input_and_default'
-'{"add_input_and_default": {"a": 10}}'
-```
-
-**Execution Command:**
-
-```bash
-# Execute the DAG (replace <dag_id_hash> with the actual ID)
-# Example: Input a=10. Flow: (10 + -3) = 7. 7 > 0 (gt). 7 * 7 = 49.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": 10}}' --inspect
-
-# Example: Input a=-5. Flow: (-5 + -3) = -8. -8 < 0 (lt). -8 * -3 = 24.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": -5}}' --inspect
-
-# Example: Input a=3. Flow: (3 + -3) = 0. 0 == 0 (eq). 0 + 1 = 1.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": 3}}' --inspect
-```
-The `--inspect` flag shows the execution details and the final result.
+The quickstart provides step-by-step instructions for:
+- Validating the DAG structure
+- Publishing the DAG to make it executable
+- Executing the DAG with different input values to test all three branches
+- Understanding the results of each execution path
 
 ## Summary
 
@@ -387,6 +356,5 @@ This guide demonstrated how to construct a Nexus DAG (`math_branching.json`) inv
 *   Used edges with specific `output_variant`s (`lt`, `gt`, `eq`) from the comparison tool (`cmp@1`) to create branching paths.
 *   Utilized `default_values` to provide constant operands for the math operations.
 *   Relied on the default entry mechanism to define the DAG's starting point and required input.
-*   Briefly covered validation and execution using the Nexus CLI.
 
 This example showcases how to combine simple tools and DAG structure definitions to create workflows with non-linear, conditional execution paths. Refer to the [DAG Construction Guide](dag-construction.md) for more advanced features and rules. 
