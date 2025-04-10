@@ -95,6 +95,21 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo binstall cargo-llvm-cov --force
 
+      # built sui image can be too big for a github runner
+      # we can run out of space, possibly due to the free space
+      # we used as swap
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Generate Coverage (PR Branch)
         run: |
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
