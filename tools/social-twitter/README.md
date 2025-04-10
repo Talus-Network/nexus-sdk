@@ -1032,3 +1032,102 @@ Other error types typically require fixing the request (e.g., `auth`, `not_found
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users. The structured error information allows for programmatic handling of specific error conditions.
+
+---
+
+# `xyz.taluslabs.social.twitter.get-conversation-messages@1`
+
+Standard Nexus Tool that retrieves direct messages from a conversation. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/lookup/api-reference/get-dm_conversations-with-participant_id-dm_events)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`participant_id`: [`String`]**
+
+The ID of the participant user for the One to One DM conversation.
+Example: "2244994945"
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`100`]
+
+The maximum number of results to return (1-100).
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+This parameter is used to get a specified 'page' of results.
+Minimum length: 16 characters
+
+_opt_ **`event_types`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+The set of event_types to include in the results.
+Available options: MessageCreate, ParticipantsJoin, ParticipantsLeave
+
+_opt_ **`dm_event_fields`: [`Option<Vec<DmEventField>>`]** _default_: [`None`]
+
+A comma separated list of DM Event fields to display.
+Available options: attachments, created_at, dm_conversation_id, entities, event_type, id, participant_ids, referenced_tweets, sender_id, text
+
+_opt_ **`expansions`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A comma separated list of fields to expand.
+Available options: attachments.media_keys, participant_ids, referenced_tweets.id, sender_id
+
+_opt_ **`media_fields`: [`Option<Vec<MediaField>>`]** _default_: [`None`]
+
+A comma separated list of Media fields to display.
+Available options: alt_text, duration_ms, height, media_key, non_public_metrics, organic_metrics, preview_image_url, promoted_metrics, public_metrics, type, url, variants, width
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A comma separated list of User fields to display.
+Available options: affiliation, confirmed_email, connection_status, created_at, description, entities, id, is_identity_verified, location, most_recent_tweet_id, name, parody, pinned_tweet_id, profile_banner_url, profile_image_url, protected, public_metrics, receives_your_dm, subscription, subscription_type, url, username, verified, verified_followers_count, verified_type, withheld
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A comma separated list of Tweet fields to display.
+Available options: article, attachments, author_id, card_uri, community_id, context_annotations, conversation_id, created_at, display_text_range, edit_controls, edit_history_tweet_ids, entities, geo, id, in_reply_to_user_id, lang, media_metadata, non_public_metrics, note_tweet, organic_metrics, possibly_sensitive, promoted_metrics, public_metrics, referenced_tweets, reply_settings, scopes, source, text, withheld
+
+## Output Variants & Ports
+
+**`ok`**
+
+The direct messages were retrieved successfully.
+
+- **`ok.data`: [`Option<Vec<DmEvent>>`]** - The list of DM events in the conversation
+- **`ok.includes`: [`Option<Includes>`]** - Additional information related to the events
+- **`ok.meta`: [`Option<Meta>`]** - Pagination metadata with fields such as:
+  - `result_count`: Number of results returned
+  - `next_token`: Pagination token for next results
+
+**`err`**
+
+The direct messages were not retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested conversation or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
