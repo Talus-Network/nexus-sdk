@@ -1032,3 +1032,95 @@ Other error types typically require fixing the request (e.g., `auth`, `not_found
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users. The structured error information allows for programmatic handling of specific error conditions.
+
+---
+
+# `xyz.taluslabs.social.twitter.get-conversation-messages-by-id@1`
+
+Standard Nexus Tool that retrieves direct messages from a conversation by ID.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/lookup/api-reference/get-dm_conversations-dm_conversation_id-dm_events)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`conversation_id`: [`String`]**
+
+The ID of the DM Conversation (e.g. "123123123-456456456").
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
+
+The maximum number of results to return (1-100, default: 100).
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+This parameter is used to get a specified 'page' of results.
+
+_opt_ **`event_types`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+The set of event_types to include in the results.
+
+_opt_ **`dm_event_fields`: [`Option<Vec<DmEventField>>`]** _default_: [`None`]
+
+A comma separated list of DM Event fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A comma separated list of fields to expand.
+
+_opt_ **`media_fields`: [`Option<Vec<MediaField>>`]** _default_: [`None`]
+
+A comma separated list of Media fields to display.
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A comma separated list of User fields to display.
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A comma separated list of Tweet fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The conversation messages were retrieved successfully.
+
+- **`ok.data`: [`Option<Vec<DmEvent>>`]** - The list of DM events in the conversation
+- **`ok.includes`: [`Option<Includes>`]** - Additional information related to the events
+- **`ok.meta`: [`Option<Meta>`]** - Pagination metadata
+
+**`err`**
+
+The conversation messages were not retrieved due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested conversation or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found (conversation not found)
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors

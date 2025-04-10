@@ -15,7 +15,7 @@ use {
             TweetField,
             UserField,
         },
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
         tweet::TWITTER_API_BASE,
     },
     reqwest::Client,
@@ -86,8 +86,13 @@ pub(crate) enum Output {
         meta: Option<crate::tweet::models::Meta>,
     },
     Err {
-        /// Error message if the request failed
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// Detailed error message
         reason: String,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -121,8 +126,16 @@ impl NexusTool for GetConversationMessagesById {
         // Validate range for max_results if provided
         if let Some(max_results) = request.max_results {
             if max_results < 1 || max_results > 100 {
-                return Output::Err {
+                let error_response = TwitterErrorResponse {
+                    kind: TwitterErrorKind::Api,
                     reason: "max_results must be between 1 and 100".to_string(),
+                    status_code: None,
+                };
+
+                return Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
                 };
             }
         }
@@ -130,21 +143,54 @@ impl NexusTool for GetConversationMessagesById {
         // Validate pagination_token length if provided
         if let Some(ref token) = request.pagination_token {
             if token.len() < 16 {
-                return Output::Err {
+                let error_response = TwitterErrorResponse {
+                    kind: TwitterErrorKind::Api,
                     reason: "pagination_token must be at least 16 characters".to_string(),
+                    status_code: None,
+                };
+
+                return Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
                 };
             }
         }
 
         match self.fetch_conversation_messages(&request).await {
-            Ok(response) => Output::Ok {
-                data: response.data,
-                includes: response.includes,
-                meta: response.meta,
-            },
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Ok(response) => {
+                if response.data.is_none() && response.meta.is_none() && response.includes.is_none()
+                {
+                    // No data found in the response
+                    let error_response = TwitterErrorResponse {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No conversation data found in the response".to_string(),
+                        status_code: None,
+                    };
+
+                    Output::Err {
+                        kind: error_response.kind,
+                        reason: error_response.reason,
+                        status_code: error_response.status_code,
+                    }
+                } else {
+                    Output::Ok {
+                        data: response.data,
+                        includes: response.includes,
+                        meta: response.meta,
+                    }
+                }
+            }
+            Err(e) => {
+                // Use the centralized error conversion
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    kind: error_response.kind,
+                    reason: error_response.reason,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -241,7 +287,7 @@ impl GetConversationMessagesById {
         }
 
         // Generate the OAuth1 authorization header using only the base URL (no query params)
-        let auth_header = request.auth.generate_auth_header(&base_url);
+        let auth_header = request.auth.generate_auth_header_for_get(&base_url);
 
         // Now construct the full URL with query parameters
         let full_url = if !query_params.is_empty() {
@@ -383,7 +429,14 @@ mod tests {
                 assert_eq!(meta.result_count.unwrap(), 2);
                 assert_eq!(meta.next_token.unwrap(), "next_page_token_123");
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
@@ -402,7 +455,10 @@ mod tests {
                 json!({
                     "errors": [{
                         "message": "Conversation not found",
-                        "code": 50
+                        "code": 34,
+                        "title": "Not Found Error",
+                        "type": "https://api.twitter.com/2/problems/resource-not-found",
+                        "detail": "Could not find the specified conversation."
                     }]
                 })
                 .to_string(),
@@ -413,11 +469,21 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
-                assert!(
-                    reason.contains("Conversation not found"),
-                    "Expected conversation not found error"
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected NotFound error kind"
                 );
+                assert!(
+                    reason.contains("Not Found Error"),
+                    "Expected not found error"
+                );
+                assert_eq!(status_code, Some(404), "Expected 404 status code");
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -438,7 +504,9 @@ mod tests {
                 json!({
                     "errors": [{
                         "message": "Invalid or expired token",
-                        "code": 89
+                        "code": 32,
+                        "title": "Unauthorized",
+                        "type": "https://api.twitter.com/2/problems/invalid-token"
                     }]
                 })
                 .to_string(),
@@ -449,11 +517,17 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(kind, TwitterErrorKind::Auth, "Expected Auth error kind");
                 assert!(
-                    reason.contains("Invalid or expired token"),
-                    "Expected invalid token error"
+                    reason.contains("Unauthorized"),
+                    "Expected unauthorized error"
                 );
+                assert_eq!(status_code, Some(401), "Expected 401 status code");
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -474,7 +548,9 @@ mod tests {
                 json!({
                     "errors": [{
                         "message": "Rate limit exceeded",
-                        "code": 88
+                        "code": 88,
+                        "title": "Rate Limit Exceeded",
+                        "type": "https://api.twitter.com/2/problems/rate-limit-exceeded"
                     }]
                 })
                 .to_string(),
@@ -485,11 +561,21 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected RateLimit error kind"
+                );
                 assert!(
-                    reason.contains("Rate limit exceeded"),
+                    reason.contains("Rate Limit Exceeded"),
                     "Expected rate limit error"
                 );
+                assert_eq!(status_code, Some(429), "Expected 429 status code");
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -531,7 +617,14 @@ mod tests {
                 assert_eq!(meta.result_count.unwrap(), 0);
                 assert!(includes.is_none());
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
@@ -547,11 +640,17 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(kind, TwitterErrorKind::Api, "Expected Api error kind");
                 assert!(
                     reason.contains("max_results must be between 1 and 100"),
                     "Expected max_results validation error"
                 );
+                assert!(status_code.is_none(), "Expected no status code");
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
