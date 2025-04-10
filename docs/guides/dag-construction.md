@@ -64,24 +64,38 @@ Default values provide static inputs to vertices:
 ```
 **Important Constraints:**
 - An `InputPort` can receive data either from an incoming `Edge` or a `Default Value`, but **never both**. ([workflow rules][nexus-next-workflow] Rule 4)
-- Input ports on vertices that are designated as entry points *by an activated Entry Group* (see Section 5) and are expected to receive external data **cannot** have default values. ([workflow rules][nexus-next-workflow] Rule 11)
+- Input ports designated as *entry input ports* within an activated `EntryGroup` (see Section 5) **cannot** have default values. Default values are only permitted for input ports that are *not* part of the selected entry mechanism for that execution. ([workflow rules][nexus-next-workflow] Rule 11)
 
 ## 5. Entry Groups (Optional)
-Entry groups define named starting configurations for the DAG, specifying which vertices act as entry points for a given execution.
+Entry groups define named starting configurations for the DAG, specifying which vertices act as entry points and which of their input ports require external data (*entry input ports*) for a given execution.
 ```json
 {
   "name": "group_name",
-  "vertices": ["vertex_name_1", "vertex_name_2"] // Names must exist in the `vertices` list
+  "members": [
+    {
+      "vertex": "vertex_name_1", // Name must exist in the `vertices` list
+      "input_port": "entry_port_for_v1"
+    },
+    {
+      "vertex": "vertex_name_2", // Name must exist in the `vertices` list
+      "input_port": "entry_port_for_v2"
+    }
+    // ... potentially more members
+  ]
 }
 ```
 - An `EntryGroup` allows selecting a specific starting workflow via `nexus dag execute --entry-group group_name ...`.
-- The `vertices` list within an entry group **must** contain names of vertices defined in the top-level `vertices` list.
-- **Input Requirement:** When executing with an entry group, input data **must** be provided via `--input-json` for the specific input ports of the listed vertices that are intended to receive external data for that workflow start.
-- **Default Value Restriction:** As stated in Section 4, input ports intended to receive external data via an entry group cannot have default values.
-- A default entry group can be named `_default_group`.
+- The `vertex` names specified within the `members` list **must** refer to vertices defined in the top-level `vertices` list.
+- **Input Requirement:** When executing with a specific entry group, input data **must** be provided via `--input-json` for *every* designated *entry input port* specified in the `members` list of that group.
+- **Default Value Restriction:** As stated in Section 4, *entry input ports* designated by the chosen `EntryGroup` cannot have default values.
+- A default entry group can be named `_default_group`. This group is used when no `EntryGroup` flag is provided during execution.
+
+{% hint style="info" %}
+There is an edge case when a vertex has no entry input ports, no default values nor any incoming edges. This vertex can be executed immediately when starting the execution if it is included in the active entry group. In the `members` list of the `entry_groups` field, you simply add the vertex name without any input port key/value pair.
+{% endhint %}
 
 ## 6. Validation Rules
-The Nexus CLI (`nexus dag validate`) performs static analysis to enforce the critical rules defined in [workflow rules][nexus-next-workflow].
+The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to enforce the critical rules defined in [workflow rules][nexus-next-workflow].
 
 ## 7. Best Practices
 
@@ -89,7 +103,7 @@ The Nexus CLI (`nexus dag validate`) performs static analysis to enforce the cri
    - Use descriptive names for vertices.
 
 2. **Organization**:
-   - Keep the DAG as simple as possible. (But no simpler!)
+   - Keep the DAG as simple as possible. (But no simpler! For example, branching and entry groups can make powerful composite DAG structures. )
    - Use entry groups to provide different ways of starting DAG execution.
 
 3. **Error Handling**:
@@ -149,3 +163,4 @@ For examples of invalid DAGs and common mistakes to avoid (especially regarding 
 <!-- List of references -->
 [nexus-next-workflow]: ../../nexus-next/packages/Workflow.md
 [example-dags]: ../../cli/src/dag/_dags/
+[nexus-cli]: ../CLI.md
