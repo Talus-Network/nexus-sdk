@@ -6,6 +6,7 @@ use {
 /// Claim collateral for a Tool based on the provided FQN.
 pub(crate) async fn claim_collateral(
     tool_fqn: ToolFqn,
+    owner_cap: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -41,12 +42,21 @@ pub(crate) async fn claim_collateral(
     // Fetch the tool registry object.
     let tool_registry = fetch_object_by_id(&sui, tool_registry_object_id).await?;
 
+    // Fetch the OwnerCap object.
+    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
+
     // Craft a TX to claim the collaters for a Tool.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match tool::claim_collateral(&mut tx, &tool_fqn, tool_registry, workflow_pkg_id) {
+    match tool::claim_collateral_for_self(
+        &mut tx,
+        &tool_fqn,
+        owner_cap,
+        tool_registry,
+        workflow_pkg_id,
+    ) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();

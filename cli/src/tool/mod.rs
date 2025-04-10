@@ -77,6 +77,13 @@ pub(crate) enum ToolCommand {
             value_name = "FQN"
         )]
         tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: sui::ObjectID,
         /// Whether to skip the confirmation prompt.
         #[arg(long = "yes", short = 'y', help = "Skip the confirmation prompt")]
         skip_confirmation: bool,
@@ -93,6 +100,13 @@ pub(crate) enum ToolCommand {
             value_name = "FQN"
         )]
         tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: sui::ObjectID,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -157,11 +171,13 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool unregister` ==
         ToolCommand::Unregister {
             tool_fqn,
+            owner_cap,
             gas,
             skip_confirmation,
         } => {
             unregister_tool(
                 tool_fqn,
+                owner_cap,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
                 skip_confirmation,
@@ -170,9 +186,11 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         }
 
         // == `$ nexus tool claim-collateral` ==
-        ToolCommand::ClaimCollateral { tool_fqn, gas } => {
-            claim_collateral(tool_fqn, gas.sui_gas_coin, gas.sui_gas_budget).await
-        }
+        ToolCommand::ClaimCollateral {
+            tool_fqn,
+            owner_cap,
+            gas,
+        } => claim_collateral(tool_fqn, owner_cap, gas.sui_gas_coin, gas.sui_gas_budget).await,
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,

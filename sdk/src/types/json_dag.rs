@@ -13,11 +13,9 @@ pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
 pub struct Dag {
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
-    pub entry_vertices: Vec<EntryVertex>,
     pub default_values: Option<Vec<DefaultValue>>,
-    /// If there are no entry groups specified, all entry vertices are considered
-    /// to be in the [DEFAULT_ENTRY_GROUP] that is automatically created on-chain
-    /// when a new DAG object is created.
+    /// If there are no entry groups specified, all specified input ports are
+    /// considered to be part of the [`DEFAULT_ENTRY_GROUP`].
     pub entry_groups: Option<Vec<EntryGroup>>,
 }
 
@@ -36,19 +34,22 @@ pub enum VertexKind {
 pub struct Vertex {
     pub kind: VertexKind,
     pub name: String,
+    pub input_ports: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct EntryGroup {
     pub name: String,
-    pub vertices: Vec<String>,
+    pub members: Vec<EntryMember>,
 }
 
+/// Entry members are either pairs of vertex + input port or just vertex names.
+/// If only a vertex name is provided, the vertex in question must have no input
+/// ports.
 #[derive(Clone, Debug, Deserialize)]
-pub struct EntryVertex {
-    pub kind: VertexKind,
-    pub name: String,
-    pub input_ports: Vec<String>,
+pub struct EntryMember {
+    pub vertex: String,
+    pub input_port: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
