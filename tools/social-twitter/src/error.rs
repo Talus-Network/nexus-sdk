@@ -201,7 +201,7 @@ where
 }
 
 /// Parse a failed Twitter API response
-fn parse_failed_twitter_response(text: String, status: StatusCode) -> TwitterResult<()> {
+fn parse_failed_twitter_response<T>(text: String, status: StatusCode) -> TwitterResult<T> {
     // Try to parse as default Twitter error format
     if let Ok(default_error) = serde_json::from_str::<TwitterDefaultError>(&text) {
         let (error_type, title) = match default_error.code {
@@ -280,7 +280,6 @@ where
     if status.is_success() {
         parse_successful_twitter_response(text)
     } else {
-        parse_failed_twitter_response(text, status)?;
-        Err(TwitterError::StatusError(status)) // This line should never be reached
+        parse_failed_twitter_response(text, status)
     }
 }
