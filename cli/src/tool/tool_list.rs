@@ -2,7 +2,11 @@ use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
         object_crawler::{fetch_one, ObjectBag, Structure},
-        types::deserialize_bytes_to_url,
+        types::{
+            deserialize_bytes_to_lossy_utf8,
+            deserialize_bytes_to_url,
+            deserialize_string_to_datetime,
+        },
     },
 };
 
@@ -50,12 +54,20 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.into_inner();
 
-        tools_json.push(json!({ "fqn": fqn, "url": tool.url }));
+        tools_json.push(json!(
+        {
+            "fqn": fqn,
+            "url": tool.url,
+            "registered_at_ms": tool.registered_at_ms,
+            "description": tool.description
+        }));
 
         item!(
-            "Tool '{fqn}' at '{url}'",
+            "Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
             fqn = fqn.to_string().truecolor(100, 100, 100),
             url = tool.url.as_str().truecolor(100, 100, 100),
+            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
+            description = tool.description.truecolor(100, 100, 100),
         );
     }
 
@@ -73,4 +85,8 @@ struct ToolRegistry {
 struct Tool {
     #[serde(deserialize_with = "deserialize_bytes_to_url")]
     url: reqwest::Url,
+    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    description: String,
+    #[serde(deserialize_with = "deserialize_string_to_datetime")]
+    registered_at_ms: chrono::DateTime<chrono::Utc>,
 }

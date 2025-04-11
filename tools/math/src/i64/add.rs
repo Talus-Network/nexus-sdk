@@ -41,6 +41,10 @@ impl NexusTool for I64Add {
         "/i64/add"
     }
 
+    fn description() -> &'static str {
+        "Adds two i64 numbers and returns the result."
+    }
+
     async fn health(&self) -> AnyResult<StatusCode> {
         // This tool has no external dependencies and as such, it is always
         // healthy if the endpoint is reachable.

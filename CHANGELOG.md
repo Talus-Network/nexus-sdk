@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to validate, publish, execute and inspect DAGs
 - commands to load and save configuration
 - commands to create a new Nexus network
+- `nexus tool list` supports the new `description` and `registered_at_ms` attributes.
 
 #### Changed
 
@@ -43,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - added `types` module and `tool_fqn` that holds some reusable types
 - added `events` module that holds definitions of Nexus events fired from Sui
 - added `sui` module that holds and categorizes all `sui_sdk` types
+- Introduce `pub const CLOCK_OBJ_ARG` and use it where the Sui `Clock` is passed as an
+  argument when submitting transactions.
+- Introduce a `description` field each Tool needs to report via its `/meta` endpoint.
+- Use the Tool-provided `description` when registering it on-chain.
+- Introduce a lossy UTF-8 deserializer for the `description`, since the on-chain representation is a
+  `vector<u8>`. Perhaps we can be stricter in the future.
 
 #### Fixed
 

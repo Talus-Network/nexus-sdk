@@ -65,6 +65,10 @@ pub trait NexusTool: Send + Sync + 'static {
     fn path() -> &'static str {
         ""
     }
+    /// Returns the description of the tool. This defaults to an empty string.
+    fn description() -> &'static str {
+        ""
+    }
     /// Construct a new instance of the tool. This is mainly here so that
     /// dependencies can be injected for testing purposes.
     fn new() -> impl Future<Output = Self> + Send;
@@ -73,13 +77,17 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// It is used to generate the `/meta` endpoint.
     fn meta(url: Url) -> Value {
+        let fqn = Self::fqn();
+        let url = url.to_string();
+        let description = Self::description();
         let input_schema = schemars::schema_for!(Self::Input);
         let output_schema = schemars::schema_for!(Self::Output);
 
         json!(
             {
-                "fqn": Self::fqn(),
-                "url": url.to_string(),
+                "fqn": fqn,
+                "url": url,
+                "description": description,
                 "input_schema": input_schema,
                 "output_schema": output_schema,
             }

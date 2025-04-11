@@ -386,11 +386,7 @@ pub fn execute(
     }
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `workflow::default_sap::begin_dag_execution()`
     Ok(tx.programmable_move_call(

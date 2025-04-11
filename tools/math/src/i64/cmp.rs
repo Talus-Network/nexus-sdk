@@ -43,6 +43,10 @@ impl NexusTool for I64Cmp {
         "/i64/cmp"
     }
 
+    fn description() -> &'static str {
+        "Compare two i64 numbers and return both numbers back."
+    }
+
     async fn health(&self) -> AnyResult<StatusCode> {
         // This tool has no external dependencies and as such, it is always
         // healthy if the endpoint is reachable.
