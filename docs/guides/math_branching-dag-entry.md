@@ -1,6 +1,6 @@
 # Extending Your DAG with Entry Groups
 
-This guide builds on the [Branching Math DAG construction guide](math-branching-dag-builder.md) by extending our example to support multiple entry points using entry groups. We'll take the original `math_branching.json` DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
+This guide builds on the [Branching Math DAG construction guide][math-branching-dag-builder-guide] by extending our example to support multiple entry points using entry groups. We'll take the original `math_branching.json` DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
 
 ## What You'll Learn
 
@@ -82,7 +82,7 @@ Both paths connect to the same comparison vertex, which then branches based on w
 
 ## Step-by-Step Construction
 
-Let's build the `math_branching_entry_group.json` file step by step.
+Let's build the [`math_branching_entry_group.json`][math-branching-entry-group-dag] file step by step.
 
 ### 1. Define Vertices (`vertices` list)
 
@@ -303,181 +303,7 @@ Without entry groups, the DAG would have an issue: both `add_input_and_default` 
 
 ## Putting It All Together
 
-Combining these sections gives us the complete `math_branching_entry_group.json`:
-
-```json
-{
-  "vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
-      },
-      "name": "add_input_and_default",
-      "input_ports": ["a"]
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
-      },
-      "name": "mul_inputs",
-      "input_ports": ["a", "b"]
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.cmp@1"
-      },
-      "name": "is_negative"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
-      },
-      "name": "mul_by_neg_3"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
-      },
-      "name": "mul_by_7"
-    },
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
-      },
-      "name": "add_1"
-    }
-  ],
-  "edges": [
-    {
-      "from": {
-        "vertex": "add_input_and_default",
-        "output_variant": "ok",
-        "output_port": "result"
-      },
-      "to": {
-        "vertex": "is_negative",
-        "input_port": "a"
-      }
-    },
-    {
-      "from": {
-        "vertex": "mul_inputs",
-        "output_variant": "ok",
-        "output_port": "result"
-      },
-      "to": {
-        "vertex": "is_negative",
-        "input_port": "a"
-      }
-    },
-    {
-      "from": {
-        "vertex": "is_negative",
-        "output_variant": "lt",
-        "output_port": "a"
-      },
-      "to": {
-        "vertex": "mul_by_neg_3",
-        "input_port": "a"
-      }
-    },
-    {
-      "from": {
-        "vertex": "is_negative",
-        "output_variant": "gt",
-        "output_port": "a"
-      },
-      "to": {
-        "vertex": "mul_by_7",
-        "input_port": "a"
-      }
-    },
-    {
-      "from": {
-        "vertex": "is_negative",
-        "output_variant": "eq",
-        "output_port": "a"
-      },
-      "to": {
-        "vertex": "add_1",
-        "input_port": "a"
-      }
-    }
-  ],
-  "default_values": [
-    {
-      "vertex": "add_input_and_default",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": -3
-      }
-    },
-    {
-      "vertex": "is_negative",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": 0
-      }
-    },
-    {
-      "vertex": "mul_by_neg_3",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": -3
-      }
-    },
-    {
-      "vertex": "mul_by_7",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": 7
-      }
-    },
-    {
-      "vertex": "add_1",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": 1
-      }
-    }
-  ],
-  "entry_groups": [
-    {
-      "name": "add_entry",
-      "members": [
-        {
-          "vertex": "add_input_and_default", 
-          "input_port": "a"
-        }
-      ]
-    },
-    {
-      "name": "mul_entry",
-      "members": [
-        {
-          "vertex": "mul_inputs", 
-          "input_port": "a"
-        },
-        {
-          "vertex": "mul_inputs", 
-          "input_port": "b"
-        }
-      ]
-    }
-  ]
-}
-```
+Combining these sections gives us the complete `math_branching_entry_group.json`. You can check with the reference implementation [here][math-branching-entry-group-dag].
 
 ## Validation and Execution
 
@@ -545,4 +371,9 @@ In this guide, we extended our original branching math DAG to support multiple e
 
 Entry groups are a powerful feature of Nexus DAGs that enable more flexible and modular workflows while maintaining the safety guarantees of the DAG execution model. They allow a single DAG to support multiple different starting states and input combinations while preventing potential race conditions.
 
-For more advanced usage of entry groups and other DAG features, refer to the [DAG Construction Guide](dag-construction.md). 
+For more advanced usage of entry groups and other DAG features, refer to the [DAG Construction Guide][dag-construction]. 
+
+<!-- List of references -->
+[dag-construction]: ./dag-construction.md
+[math-branching-entry-group-dag]: ../../cli/src/dag/_dags/math_branching_entry_group.json
+[math-branching-dag-builder-guide]: ./math-branching-dag-builder.md
