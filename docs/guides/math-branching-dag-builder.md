@@ -358,3 +358,7 @@ This guide demonstrated how to construct a Nexus DAG (`math_branching.json`) inv
 *   Relied on the default entry mechanism to define the DAG's starting point and required input.
 
 This example showcases how to combine simple tools and DAG structure definitions to create workflows with non-linear, conditional execution paths. Refer to the [DAG Construction Guide](dag-construction.md) for more advanced features and rules. 
+
+## Up Next
+
+Want to extend this example? Follow the next part of the guide to see how we can add another entry point to the DAG and manage this through entry groups.

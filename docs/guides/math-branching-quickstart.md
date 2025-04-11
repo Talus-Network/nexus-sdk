@@ -4,7 +4,11 @@ This quickstart guide helps developers test the Nexus CLI with a simple end-to-e
 
 ## What You'll Build
 
-The `math_branching.json` DAG takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
+{% hint style="success" %}
+In the quickstart example we'll use a simple conceptual workflow consisting of standard Nexus math tools. This is example is not really useful in the real world, but will allow to showcase the Nexus concepts and Nexus CLI usage that you'll be using for all of your real world use cases.
+{% endhint %}
+
+The [`math_branching.json` DAG][math-branching-dag] takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
 - If negative: Multiply by `-3`
 - If positive: Multiply by `7`
 - If zero: Add `1`
@@ -47,7 +51,13 @@ graph TD
 ## Prerequisites
 
 - [Nexus CLI](../../CLI.md) installed
+<!-- TODO: Add a link to CLI installation docs -->
 - A configured Sui wallet for the publish step (can skip this step if just validating)
+<!-- TODO: add a link to Sui docs here. -->
+
+{% hint style="info"%}
+In this example we will publish a DAG consisting of Nexus Tools that are running somewhere and registered (the URL can be found as metadata in the tool registry). If you were running your own tools and needed to register them, check out [Nexus CLI tool commands][nexus-cli-tool] to find out how to do this.
+{% endhint %}
 
 ## 1. Validate the DAG
 
@@ -108,8 +118,16 @@ By trying different inputs, you can see how the DAG's branching logic directs ex
 
 This demonstrates how Nexus DAGs can implement conditional logic and branching based on data values.
 
+## Find the Results
+
+<!-- TODO: add content on how to find the result when having executed. -->
+
 ## Next Steps
 
 - Read the full [Agent Builder Guide](agent-builder-guide.md) to understand how this DAG is constructed
 - Study the [DAG Construction Guide](dag-construction.md) for more advanced DAG features
 - Try building your own DAG with different tools and logic flows 
+
+<!-- List of references -->
+[nexus-cli-tool]: ../CLI.md#nexus-tool
+[math-branching-dag]: ../../cli/src/dag/_dags/math_branching.json
