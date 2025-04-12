@@ -303,7 +303,186 @@ Without entry groups, the DAG would have an issue: both `add_input_and_default` 
 
 ## Putting It All Together
 
-Combining these sections gives us the complete `math_branching_entry_group.json`. You can check with the reference implementation [here][math-branching-entry-group-dag].
+Combining these sections gives us the complete `math_branching_entry_group.json`:
+
+<details>
+<summary>Complete DAG Definition</summary>
+
+```json
+// math_branching_entry_group.json
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_input_and_default",
+      "input_ports": ["a"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
+      "name": "mul_inputs",
+      "input_ports": ["a", "b"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.cmp@1"
+      },
+      "name": "is_negative"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
+      "name": "mul_by_neg_3"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
+      "name": "mul_by_7"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_1"
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "add_input_and_default",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "is_negative",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "mul_inputs",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "is_negative",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "mul_by_neg_3",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "gt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "mul_by_7",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "eq",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "add_1",
+        "input_port": "a"
+      }
+    }
+  ],
+  "default_values": [
+    {
+      "vertex": "add_input_and_default",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": -3
+      }
+    },
+    {
+      "vertex": "is_negative",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 0
+      }
+    },
+    {
+      "vertex": "mul_by_neg_3",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": -3
+      }
+    },
+    {
+      "vertex": "mul_by_7",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 7
+      }
+    },
+    {
+      "vertex": "add_1",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 1
+      }
+    }
+  ],
+  "entry_groups": [
+    {
+      "name": "add_entry",
+      "members": [
+        {
+          "vertex": "add_input_and_default", 
+          "input_port": "a"
+        }
+      ]
+    },
+    {
+      "name": "mul_entry",
+      "members": [
+        {
+          "vertex": "mul_inputs", 
+          "input_port": "a"
+        },
+        {
+          "vertex": "mul_inputs", 
+          "input_port": "b"
+        }
+      ]
+    }
+  ]
+}
+```
+</details>
 
 ## Validation and Execution
 

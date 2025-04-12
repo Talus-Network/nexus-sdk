@@ -264,8 +264,11 @@ In our case:
 
 Combining these sections gives us the complete `math_branching.json`:
 
+<details>
+<summary>Complete DAG Definition</summary>
+
 ```json
-// cli/src/dag/_dags/math_branching.json
+// math_branching.json
 {
   "default_values": [
     {
@@ -338,6 +341,7 @@ Combining these sections gives us the complete `math_branching.json`:
   // No "entry_groups" section needed, default mechanism applies.
 }
 ```
+</details>
 
 ## Validation and Execution with the CLI
 
