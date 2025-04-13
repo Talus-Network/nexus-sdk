@@ -86,7 +86,7 @@ jobs:
         uses: taiki-e/install-action@just
 
       - name: Build binary
-        run: cargo build --package nexus-cli --release --locked --target=${{ matrix.target }}
+        run: cargo build --package nexus-cli --release --locked
 
       - name: Install cargo-deb
         uses: taiki-e/install-action@v2
