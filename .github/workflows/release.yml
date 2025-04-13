@@ -46,7 +46,7 @@ jobs:
             os: macos-latest
 
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target }}
       cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
     steps:
