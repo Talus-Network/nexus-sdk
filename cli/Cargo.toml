@@ -12,6 +12,10 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "nexus"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
