@@ -25,13 +25,13 @@ graph TD
         A -- "result" --> B{"is_negative<br>(math.i64.cmp@1)"};
         Def2([b = 0]) --> B;
         
-        B -- "Lt (a < 0)" --> C["mul_by_neg_3<br>(math.i64.mul@1)"];
+        B -- "lt (a < 0)" --> C["mul_by_neg_3<br>(math.i64.mul@1)"];
         Def3([b = -3]) --> C;
         
-        B -- "Gt (a > 0)" --> D["mul_by_7<br>(math.i64.mul@1)"];
+        B -- "gt (a > 0)" --> D["mul_by_7<br>(math.i64.mul@1)"];
         Def4([b = 7]) --> D;
         
-        B -- "Eq (a == 0)" --> E["add_1<br>(math.i64.add@1)"];
+        B -- "eq (a == 0)" --> E["add_1<br>(math.i64.add@1)"];
         Def5([b = 1]) --> E;
         
         C -- "result" --> Result1((Final Result));
@@ -72,7 +72,7 @@ This DAG uses tools from the `xyz.taluslabs.math.i64` namespace. Based on the st
     *   Output: If successful (`ok` variant), outputs an `i64` named `result`.
 *   `xyz.taluslabs.math.i64.cmp@1`:
     *   Input: Takes two `i64` numbers, typically named `a` and `b`.
-    *   Output: Based on comparing `a` to `b`, it outputs the value of `a` and `b` under one of three variants: `Lt` (less than), `Gt` (greater than), or `Eq` (equal to).
+    *   Output: Based on comparing `a` to `b`, it outputs the value of `a` and `b` under one of three variants: `lt` (less than), `gt` (greater than), or `eq` (equal to).
 
 ## Step-by-Step Construction
 
