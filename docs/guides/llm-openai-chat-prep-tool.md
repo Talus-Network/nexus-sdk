@@ -76,134 +76,59 @@ impl NexusTool for LlmOpenaiChatPrep {
     type Input = Input;
     type Output = Output;
 
+    async fn new() -> Self {
+        // The constructor for the tool. This is where you can initialize any state.
+        LlmOpenaiChatPrep
+    }
+
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.llm.openai.chat-prep.number-to-message@1")
+        // The fully qualified name of the tool.
+
+        fqn!("xyz.taluslabs.llm-openai-chat-prep@1")
     }
 
-    fn url() -> Url {
-        Url::parse("http://localhost:8080").unwrap()
-    }
-
-    async fn health() -> AnyResult<StatusCode> {
+    async fn health(&self) -> AnyResult<StatusCode> {
+        // The health endpoint should perform health checks on its dependencies.
         Ok(StatusCode::OK)
     }
 
-    async fn invoke(input: Self::Input) -> AnyResult<Self::Output> {
+    async fn invoke(&self, input: Self::Input) -> Self::Output {
         // Validate the role if provided
         if let Some(ref role) = input.role {
             if !["user", "system", "assistant"].contains(&role.as_str()) {
-                return Ok(Output::Err {
-                    reason: format!("Invalid role: {}. Must be one of: user, system, assistant", role),
-                });
+                return Output::Err {
+                    reason: format!(
+                        "Invalid role: {}. Must be one of: user, system, assistant",
+                        role
+                    ),
+                };
             }
         }
 
+        //The role is unwrapped or defaulted to "user"
         let role = input.role.unwrap_or_else(|| "user".to_string());
-        
-        // Convert the number to a string message, handling potential conversion errors
-        let value = match input.number.to_string() {
-            Ok(s) => s,
+
+        // Convert the number to a string message with validation
+        let value = match input.number.to_string().parse::<i64>() {
+            Ok(_) => input.number.to_string(),
             Err(e) => {
-                return Ok(Output::Err {
-                    reason: format!("Failed to convert number to string: {}", e),
-                });
+                return Output::Err {
+                    reason: format!("Failed to validate number conversion: {}", e),
+                }
             }
         };
 
-        let message = Message {
-            role,
-            value,
-        };
+        let message = Message { role, value };
 
-        Ok(Output::Ok { message })
+        Output::Ok { message }
     }
 }
 ```
 
 ### 3. Add Tests
 
-Let's add some tests to verify our implementation:
+Make sure to add some test cases to your tool, although this is not covered in this guide.
 
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_number_to_message() {
-        let input = Input {
-            number: 42,
-            role: None,
-        };
-
-        let output = futures::executor::block_on(LlmOpenaiChatPrep::invoke(input)).unwrap();
-
-        match output {
-            Output::Ok { message } => {
-                assert_eq!(message.role, "user");
-                assert_eq!(message.value, "42");
-            }
-            Output::Err { .. } => panic!("Expected Ok variant"),
-        }
-    }
-
-    #[test]
-    fn test_number_to_message_with_role() {
-        let input = Input {
-            number: 42,
-            role: Some("system".to_string()),
-        };
-
-        let output = futures::executor::block_on(LlmOpenaiChatPrep::invoke(input)).unwrap();
-
-        match output {
-            Output::Ok { message } => {
-                assert_eq!(message.role, "system");
-                assert_eq!(message.value, "42");
-            }
-            Output::Err { .. } => panic!("Expected Ok variant"),
-        }
-    }
-
-    #[test]
-    fn test_number_to_message_with_invalid_role() {
-        let input = Input {
-            number: 42,
-            role: Some("invalid".to_string()),
-        };
-
-        let output = futures::executor::block_on(LlmOpenaiChatPrep::invoke(input)).unwrap();
-
-        match output {
-            Output::Ok { .. } => panic!("Expected Err variant"),
-            Output::Err { reason } => {
-                assert!(reason.contains("Invalid role"));
-                assert!(reason.contains("user, system, assistant"));
-            }
-        }
-    }
-
-    #[test]
-    fn test_number_to_message_with_invalid_number() {
-        // Note: This test is more theoretical since i64::to_string() doesn't actually fail
-        // We keep it to document the error handling path
-        let input = Input {
-            number: i64::MAX,
-            role: None,
-        };
-
-        let output = futures::executor::block_on(LlmOpenaiChatPrep::invoke(input)).unwrap();
-
-        match output {
-            Output::Ok { message } => {
-                assert_eq!(message.role, "user");
-                assert_eq!(message.value, i64::MAX.to_string());
-            }
-            Output::Err { .. } => panic!("Expected Ok variant"),
-        }
-    }
-}
-```
 
 ### 4. Bootstrap the Tool
 
@@ -212,7 +137,7 @@ Finally, we bootstrap the tool using the `bootstrap!` macro:
 ```rust
 #[tokio::main]
 async fn main() {
-    bootstrap::<LlmOpenaiChatPrep>(([127, 0, 0, 1], 8080)).await;
+    bootstrap!(([127, 0, 0, 1], 8080), LlmOpenaiChatPrep);
 }
 ```
 
@@ -253,7 +178,7 @@ Every Nexus tool must include a README.md file that documents the tool's functio
 2. All input parameters with their types and descriptions
 3. All output variants and ports with their types and descriptions
 4. Error handling details
-5. Example usage in a DAG
+5. (Optional) Example usage in a DAG
 
 <details>
 <summary>Example README.md</summary>
@@ -392,9 +317,11 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
   ]
 }
 ```
+
+Note that you'll have to add the chat completion api key still. It is recommended to use entry input ports for this.
 </details>
 
-## Next Steps
+## Build, Run, Register your Tool
 
 1. Build the tool:
    ```bash
@@ -416,4 +343,17 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
    nexus tool register --off-chain http://localhost:8080
    ```
 
+## Did you catch it?
+
+The example provided here, while functional does not provide the optimal design according to the guidelines in [the Tool development guide][tool-development]. If you did not already think of this while going through the above setup, go through the best practices and see what you could improve about the Tool's design.
+
+{% hint style="success" %}
+Consider for what use cases you could use this tool to prepare it to add as an LLM chat completion prompt... is it widely useful or only in specific cases? How could you improve this?
+{% endhint %}
+
+## Next Steps
+
 This tool provides a simple but essential bridge between mathematical operations and chat completion, enabling the creation of more sophisticated DAGs that combine numerical computation with natural language processing. Follow along with the developer guides to expand the [Math Branching Example DAG with chat completion](./math_branching_with_chat.md).
+
+<!-- List of references -->
+[tool-development]: ../tool-development.md
