@@ -31,6 +31,7 @@ We'll extend our original branching math DAG by:
 Here's a visual representation of the extended workflow:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#FFFFFF' }}}%%
 graph TD
     %% Entry points and their inputs
     InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
@@ -63,16 +64,16 @@ graph TD
     E -- "result" --> Result3((Final Result));
 
     %% Styling
-    classDef default fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef compare fill:#ccf,stroke:#333,stroke-width:2px;
-    classDef output fill:#9cf,stroke:#333,stroke-width:2px;
-    classDef constant fill:#dfd,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5;
-    classDef entrygroup fill:#ffe,stroke:#aa9,stroke-width:1px;
+    classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef input fill:#23D3F8,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef output fill:#76EFB6,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef default fill:#FFFFCB,stroke:#000000,stroke-width:1px,color:#000000;
+    classDef entrygroup fill:#BEBAB4,stroke:#000000,stroke-width:1px,color:#000000;
     
-    class A,C,D,E,M default;
-    class B compare;
+    class A,C,D,E,M,B tool;
     class Result1,Result2,Result3 output;
-    class Def1,Def2,Def3,Def4,Def5 constant;
+    class InputA1,InputM1,InputM2 input;
+    class Def1,Def2,Def3,Def4,Def5 default;
     class EG1,EG2 entrygroup;
 ```
 

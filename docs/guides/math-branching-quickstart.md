@@ -16,6 +16,7 @@ The [`math_branching.json` DAG][math-branching-dag] takes a number input, adds `
 Here's a visual representation of the workflow:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#FFFFFF' }}}%%
 graph TD
     subgraph "Math Branching DAG"
         Input[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
@@ -37,15 +38,15 @@ graph TD
         E -- "result" --> Result3((Final Result));
     end
 
-    classDef default fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef compare fill:#ccf,stroke:#333,stroke-width:2px;
-    classDef output fill:#9cf,stroke:#333,stroke-width:2px;
-    classDef constant fill:#dfd,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5;
+    classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef input fill:#23D3F8,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef output fill:#76EFB6,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef default fill:#FFFFCB,stroke:#000000,stroke-width:1px,color:#000000;
     
-    class A,C,D,E default;
-    class B compare;
+    class A,C,D,E,B tool;
     class Result1,Result2,Result3 output;
-    class Def1,Def2,Def3,Def4,Def5 constant;
+    class Input input;
+    class Def1,Def2,Def3,Def4,Def5 default;
 ```
 
 ## Prerequisites
