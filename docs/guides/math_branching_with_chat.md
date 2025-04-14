@@ -11,7 +11,7 @@ This guide builds on the [Math Branching DAG with Entry Groups][math-branching-e
 
 Before we can connect our math operations to the chat completion tool, we need to understand a key challenge: type safety. The chat completion tool expects a `Message` struct as input, but our math operations output numbers. We can't directly connect these without proper type conversion.
 
-This is where we need a custom tool to bridge this gap. We'll use the `xyz.taluslabs.llm.openai.chat-prep.number-to-message@1` tool that we developed in the [Number to Message Tool Guide][number-to-message-guide]. This tool converts numbers into the proper message format that the chat completion tool expects.
+This is where we need a custom tool to bridge this gap. We'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that we developed in the [LLM Chat Completion Prep Guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
 
 ## Step 1: Adding the Required Tools
 
@@ -32,7 +32,7 @@ First, let's add both the number-to-message tool and the chat completion tool to
     {
       "kind": {
         "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep.number-to-message@1"
+        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep@1"
       },
       "name": "format_number",
       "input_ports": ["number", "role"]
@@ -268,34 +268,7 @@ graph TD
     class EG1,EG2 entrygroup;
     class F,C llm;
 ```
-
-## Executing the Extended DAG
-
-To execute the DAG, you'll need to provide both the math input and the OpenAI API key:
-
-```bash
-# Using the addition entry group
-nexus dag execute --dag-id <dag_id_hash> --entry-group add_entry --input-json '{
-  "add_input_and_default": {"a": 10},
-  "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
-
-# Using the multiplication entry group
-nexus dag execute --dag-id <dag_id_hash> --entry-group mul_entry --input-json '{
-  "mul_inputs": {"a": 5, "b": 2},
-  "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
-```
-
-## Key Points to Remember
-
-1. **Type Safety**: Always ensure proper type conversion between tools. In this case, we needed a custom tool to convert numbers to messages.
-
-2. **Entry Groups**: When adding new required inputs (like the API key), remember to update all entry groups.
-
-3. **Default Values**: Set appropriate default values for the chat completion tool to ensure consistent behavior.
-
-4. **Error Handling**: The DAG will handle errors gracefully at each step, whether from math operations, number formatting, or chat completion.
+</details>
 
 ## Putting it all together
 
@@ -591,6 +564,92 @@ Here's the complete DAG definition that combines all the components we've discus
 ```
 </details>
 
+## Publishing and Executing the DAG
+
+### Publishing the DAG
+
+Before you can execute the DAG, you need to publish it to the Nexus network. This can be done using the Nexus CLI:
+
+```bash
+# Publish the DAG definition
+nexus dag publish --path cli/src/dag/_dags/math_branching_with_chat.json
+# Example output: DAG published successfully with Object ID: abc123...
+```
+
+After publishing, you'll receive a DAG ID hash that you'll need to use for all subsequent operations with this DAG. Make sure to store this ID securely as it's required for execution.
+
+### 1.Testing
+
+For testing, you can use the Nexus CLI to execute the DAG:
+
+```bash
+# Using the addition entry group
+nexus dag execute --dag-id <dag_id_hash> --entry-group add_entry --input-json '{
+  "add_input_and_default": {"a": 10},
+  "chat_completion": {"api_key": "your-api-key"}
+}' --inspect
+
+# Using the multiplication entry group
+nexus dag execute --dag-id <dag_id_hash> --entry-group mul_entry --input-json '{
+  "mul_inputs": {"a": 5, "b": 2},
+  "chat_completion": {"api_key": "your-api-key"}
+}' --inspect
+```
+
+The `--inspect` flag will show you detailed information about the execution, including:
+- The path taken through the DAG
+- Inputs and outputs at each step
+- Any errors that occurred
+- The final chat completion response
+
+### 2. Integration with Applications
+
+To integrate this DAG into your application:
+
+1. **Store the DAG**: First, store the DAG definition in your application's configuration or database.
+
+2. **Handle API Keys**: Securely manage the OpenAI API key. Consider using environment variables or a secrets management service.
+
+3. **Create Entry Points**: Implement the two entry points in your application:
+   - Addition path: Takes a single number and adds -3
+   - Multiplication path: Takes two numbers and multiplies them
+
+4. **Process Results**: Handle the chat completion response appropriately for your use case.
+
+### 3. Error Handling
+
+The DAG includes built-in error handling:
+
+- **Math Operations**: If any math operation fails (e.g., overflow), the DAG will stop and return an error.
+- **Chat Completion**: If the chat completion fails (e.g., invalid API key), the DAG will return an error.
+- **Type Conversion**: The number-to-message conversion is handled safely by the `format_number` tool.
+
+### 4. Monitoring and Debugging
+
+To monitor and debug the DAG:
+
+1. Use the `--inspect` flag with the CLI to see detailed execution information.
+2. Check the execution logs for any errors or unexpected behavior.
+3. Monitor the OpenAI API usage and costs through your OpenAI dashboard.
+
+## Next Steps
+
+1. Try different system prompts in the chat completion context to get different types of responses
+2. Experiment with different temperature values to control the creativity of the responses
+3. Consider adding more sophisticated formatting to the numbers before sending them to the chat completion tool
+
+This extended DAG demonstrates how to combine mathematical computation with natural language processing, creating a more interactive and engaging experience for users.
+
+## Key Points to Remember
+
+1. **Type Safety**: Always ensure proper type conversion between tools. In this case, we needed a custom tool to convert numbers to messages.
+
+2. **Entry Groups**: When adding new required inputs (like the API key), remember to update all entry groups.
+
+3. **Default Values**: Set appropriate default values for the chat completion tool to ensure consistent behavior.
+
+4. **Error Handling**: The DAG will handle errors gracefully at each step, whether from math operations, number formatting, or chat completion.
+
 ## Next Steps
 
 1. Try different system prompts in the chat completion context to get different types of responses
@@ -601,4 +660,4 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 
 <!-- List of references -->
 [math-branching-entry-guide]: ./math_branching-dag-entry.md
-[number-to-message-guide]: ./llm-openai-chat-prep-tool.md 
+[llm-openai-chat-prep-tool]: ./llm-openai-chat-prep-tool.md 

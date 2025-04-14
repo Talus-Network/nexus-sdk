@@ -1,4 +1,4 @@
-# Developing a Number to Message Tool for Chat Completion
+# Developing Tool to Prep Numeric Results for Chat Completion
 
 This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations as input for chat completion.
 
