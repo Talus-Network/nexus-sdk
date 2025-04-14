@@ -68,6 +68,9 @@ Default values provide static inputs to vertices:
 
 ## 5. Entry Groups (Optional)
 Entry groups define named starting configurations for the DAG, specifying which vertices act as entry points and which of their input ports require external data (*entry input ports*) for a given execution.
+
+<!-- TODO: <https://github.com/Talus-Network/nexus-sdk/pull/128> -->
+
 ```json
 {
   "name": "group_name",
