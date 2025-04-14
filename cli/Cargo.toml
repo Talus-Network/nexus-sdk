@@ -23,6 +23,7 @@ colored.workspace = true
 convert_case.workspace = true
 home.workspace = true
 minijinja.workspace = true
+openssl.workspace = true
 petgraph.workspace = true
 reqwest.workspace = true
 serde.workspace = true
