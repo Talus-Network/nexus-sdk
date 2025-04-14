@@ -76,7 +76,6 @@ jobs:
           override: true
 
       - name: Install cross-compilation tools
-        if: ${{ runner.os == 'Linux' }}
         uses: taiki-e/setup-cross-toolchain-action@v1
         with:
           target: ${{ matrix.target }}
