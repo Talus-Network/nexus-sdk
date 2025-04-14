@@ -1,6 +1,6 @@
 # Extending Your DAG with Entry Groups
 
-This guide builds on the [Branching Math DAG construction guide][math-branching-dag-builder-guide] by extending our example to support multiple entry points using entry groups. We'll take the original `math_branching.json` DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
+This guide builds on the [Branching Math DAG construction guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original `math_branching.json` DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
 
 ## What You'll Learn
 
@@ -15,9 +15,11 @@ Entry groups define named sets of entry points for a DAG. They allow you to:
 - Provide multiple ways to start a DAG execution
 - Group related entry vertices
 - Explicitly specify which vertices should be considered entry points
-- Select a specific starting configuration at runtime
+- Select a specific starting configuration at runtime by providing entry input ports as configuration.
 
+{% hint sytle="success" %}
 Without entry groups, a DAG uses the default entry mechanism (vertices with unsatisfied input ports become entry points). With entry groups, you gain explicit control over how the DAG can be started.
+{% endhint %}
 
 ## The Extended DAG
 
@@ -503,7 +505,7 @@ After validation, publish the DAG:
 ```bash
 # Publish the DAG
 nexus dag publish --path cli/src/dag/_dags/math_branching_entry_group.json
-# Example output: Published DAG with ID: <dag_id_hash>
+# Example output: Published DAG with Object ID: <dag_id_hash>
 ```
 
 ### Executing the DAG with Different Entry Groups

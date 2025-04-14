@@ -76,7 +76,7 @@ Once validated, publish the DAG to make it executable:
 ```bash
 # Publish the DAG (note the returned DAG ID)
 nexus dag publish --path cli/src/dag/_dags/math_branching.json
-# Example output: Published DAG with ID: <dag_id_hash>
+# Example output: Published DAG with Object ID: <dag_id_hash>
 ```
 
 Take note of the DAG ID returned by this command - you'll need it in the next step.
@@ -120,7 +120,7 @@ This demonstrates how Nexus DAGs can implement conditional logic and branching b
 
 ## Find the Results
 
-<!-- TODO: add content on how to find the result when having executed. -->
+When you execute the DAG via the `nexus dag execute` command, a successful output will return you a transaction digest and DAG execution object ID. You can use both to further examine the execution, using either the Sui CLI or an explorer.
 
 ## Next Steps
 

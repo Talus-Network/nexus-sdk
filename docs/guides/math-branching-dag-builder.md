@@ -55,7 +55,7 @@ This diagram shows the flow of data, starting from the user input, through the a
 
 As detailed in the [DAG Construction Guide](dag-construction.md), Nexus DAGs are defined in JSON and primarily consist of:
 *   `vertices`: Define all processing steps (Tools) within the DAG.
-*   `edges`: Define the data flow connections between vertices, linking output ports to input ports.
+*   `edges`: Define the data flow connections between vertices, linking output ports (or better yet, output variants) to input ports.
 *   `default_values`: Provide static or pre-configured inputs to vertices.
 *   `entry_groups` (Optional): Define named starting configurations. If omitted, entry points are determined implicitly.
 
@@ -252,7 +252,7 @@ We provide the constant values needed for the operations.
 
 ### 4. Entry Points (Implicit Default)
 
-Since we haven't defined an `entry_groups` section, Nexus uses the default entry mechanism. It identifies vertices that have input ports not satisfied by incoming edges or default values.
+Since we haven't defined an `entry_groups` section, Nexus uses the default entry mechanism, i.e. `default_group`. It identifies vertices that have input ports not satisfied by incoming edges or default values.
 
 In our case:
 *   `add_input_and_default` has input port `a`.
@@ -274,68 +274,126 @@ Combining these sections gives us the complete `math_branching.json`:
     {
       "vertex": "add_input_and_default",
       "input_port": "b",
-      "value": { "storage": "inline", "data": -3 }
-    },
-    {
-      "vertex": "is_negative",
-      "input_port": "b",
-      "value": { "storage": "inline", "data": 0 }
+      "value": {
+        "storage": "inline",
+        "data": -3
+      }
     },
     {
       "vertex": "mul_by_neg_3",
       "input_port": "b",
-      "value": { "storage": "inline", "data": -3 }
+      "value": {
+        "storage": "inline",
+        "data": -3
+      }
     },
     {
       "vertex": "mul_by_7",
       "input_port": "b",
-      "value": { "storage": "inline", "data": 7 }
+      "value": {
+        "storage": "inline",
+        "data": 7
+      }
+    },
+    {
+      "vertex": "is_negative",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 0
+      }
     },
     {
       "vertex": "add_1",
       "input_port": "b",
-      "value": { "storage": "inline", "data": 1 }
+      "value": {
+        "storage": "inline",
+        "data": 1
+      }
     }
   ],
   "vertices": [
     {
-      "kind": { "variant": "off_chain", "tool_fqn": "xyz.taluslabs.math.i64.add@1" },
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
       "name": "add_input_and_default",
       "input_ports": ["a"]
     },
     {
-      "kind": { "variant": "off_chain", "tool_fqn": "xyz.taluslabs.math.i64.cmp@1" },
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.cmp@1"
+      },
       "name": "is_negative"
     },
     {
-      "kind": { "variant": "off_chain", "tool_fqn": "xyz.taluslabs.math.i64.mul@1" },
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
       "name": "mul_by_neg_3"
     },
     {
-      "kind": { "variant": "off_chain", "tool_fqn": "xyz.taluslabs.math.i64.mul@1" },
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
       "name": "mul_by_7"
     },
     {
-      "kind": { "variant": "off_chain", "tool_fqn": "xyz.taluslabs.math.i64.add@1" },
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
       "name": "add_1"
     }
   ],
   "edges": [
     {
-      "from": { "vertex": "add_input_and_default", "output_variant": "ok", "output_port": "result" },
-      "to": { "vertex": "is_negative", "input_port": "a" }
+      "from": {
+        "vertex": "add_input_and_default",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "is_negative",
+        "input_port": "a"
+      }
     },
     {
-      "from": { "vertex": "is_negative", "output_variant": "lt", "output_port": "a" },
-      "to": { "vertex": "mul_by_neg_3", "input_port": "a" }
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "mul_by_neg_3",
+        "input_port": "a"
+      }
     },
     {
-      "from": { "vertex": "is_negative", "output_variant": "gt", "output_port": "a" },
-      "to": { "vertex": "mul_by_7", "input_port": "a" }
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "gt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "mul_by_7",
+        "input_port": "a"
+      }
     },
     {
-      "from": { "vertex": "is_negative", "output_variant": "eq", "output_port": "a" },
-      "to": { "vertex": "add_1", "input_port": "a" }
+      "from": {
+        "vertex": "is_negative",
+        "output_variant": "eq",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "add_1",
+        "input_port": "a"
+      }
     }
   ]
   // No "entry_groups" section needed, default mechanism applies.
@@ -345,7 +403,7 @@ Combining these sections gives us the complete `math_branching.json`:
 
 ## Validation and Execution with the CLI
 
-Now that we've constructed our branching math DAG, you can test it out with the Nexus CLI. For detailed steps on how to validate, publish, and execute this DAG with different inputs, see the [Math Branching DAG: 5-Minute Quickstart](math-branching-quickstart.md) guide.
+Now that you've constructed the branching math DAG, you can test it out with the Nexus CLI. For detailed steps on how to validate, publish, and execute this DAG with different inputs, see the [Math Branching DAG: 5-Minute Quickstart](math-branching-quickstart.md) guide.
 
 The quickstart provides step-by-step instructions for:
 - Validating the DAG structure
