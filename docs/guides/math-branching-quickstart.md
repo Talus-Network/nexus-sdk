@@ -5,7 +5,7 @@ This quickstart guide helps developers test the Nexus CLI with a simple end-to-e
 ## What You'll Build
 
 {% hint style="success" %}
-In the quickstart example we'll use a simple conceptual workflow consisting of standard Nexus math tools. This is example is not really useful in the real world, but will allow to showcase the Nexus concepts and Nexus CLI usage that you'll be using for all of your real world use cases.
+In the quickstart example we'll use a simple conceptual workflow consisting of standard Nexus math tools. This example is not really useful in the real world, but will allow to showcase the Nexus concepts and Nexus CLI usage that you'll be using for all of your real world use cases.
 {% endhint %}
 
 The [`math_branching.json` DAG][math-branching-dag] takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
@@ -52,12 +52,23 @@ graph TD
 
 - [Nexus CLI](../../CLI.md) installed
 <!-- TODO: Add a link to CLI installation docs -->
-- A configured Sui wallet for the publish step (can skip this step if just validating)
-<!-- TODO: add a link to Sui docs here. -->
+- A configured Sui wallet for the publish step (can skip this step if just validating). Follow the [Getting Started section in the Sui Docs](https://docs.sui.io/guides/developer/getting-started) to get you set up.
 
 {% hint style="info"%}
 In this example we will publish a DAG consisting of Nexus Tools that are running somewhere and registered (the URL can be found as metadata in the tool registry). If you were running your own tools and needed to register them, check out [Nexus CLI tool commands][nexus-cli-tool] to find out how to do this.
 {% endhint %}
+
+To check the tools that are registered in the tool registry, run:
+```bash
+nexus tool list
+```
+
+This should show the following tools running:
+
+- xyz.taluslabs.math.i64.add@1
+- xyz.taluslabs.math.i64.cmp@1
+- xyz.taluslabs.math.i64.mul@1
+- ...
 
 ## 1. Validate the DAG
 
@@ -74,9 +85,9 @@ This step ensures the DAG structure meets all Nexus workflow rules before attemp
 Once validated, publish the DAG to make it executable:
 
 ```bash
-# Publish the DAG (note the returned DAG ID)
+# Publish the DAG (note the returned DAG Object ID)
 nexus dag publish --path cli/src/dag/_dags/math_branching.json
-# Example output: Published DAG with Object ID: <dag_id_hash>
+# Example output: Published DAG with Object ID: <dag_object_id>
 ```
 
 Take note of the DAG ID returned by this command - you'll need it in the next step.
@@ -96,15 +107,15 @@ To execute the published DAG, use its ID and provide input for the entry vertex:
 ```bash
 # Example 1: Input a=10
 # Flow: (10 + -3) = 7. 7 > 0 (gt). 7 * 7 = 49.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": 10}}' --inspect
+nexus dag execute --dag-id <dag_object_id> --input-json '{"add_input_and_default": {"a": 10}}' --inspect
 
 # Example 2: Input a=-5
 # Flow: (-5 + -3) = -8. -8 < 0 (lt). -8 * -3 = 24.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": -5}}' --inspect
+nexus dag execute --dag-id <dag_object_id> --input-json '{"add_input_and_default": {"a": -5}}' --inspect
 
 # Example 3: Input a=3
 # Flow: (3 + -3) = 0. 0 == 0 (eq). 0 + 1 = 1.
-nexus dag execute --dag-id <dag_id_hash> --input-json '{"add_input_and_default": {"a": 3}}' --inspect
+nexus dag execute --dag-id <dag_object_id> --input-json '{"add_input_and_default": {"a": 3}}' --inspect
 ```
 
 The `--inspect` flag automatically retrieves and displays the execution details and results.

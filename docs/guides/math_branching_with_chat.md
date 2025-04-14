@@ -1,6 +1,6 @@
 # Extending the Math Branching DAG with Chat Completion
 
-This guide builds on the [Math Branching DAG with Entry Groups][math-branching-entry-guide] by adding a chat completion tool that explains the mathematical results. We'll learn how to:
+This guide builds on the [Math Branching DAG with Entry Groups][math-branching-entry-guide] by adding a chat completion tool that explains the mathematical results. You'll learn how to:
 
 1. Understand the need for a custom tool to bridge between math operations and chat completion
 2. Add the chat completion tool to the DAG
@@ -27,15 +27,14 @@ First, let's add both the number-to-message tool and the chat completion tool to
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "input_ports": ["api_key", "prompt", "context", "model", "max_completion_tokens", "temperature"]
+      "input_ports": ["api_key"]
     },
     {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep@1"
       },
-      "name": "format_number",
-      "input_ports": ["number", "role"]
+      "name": "format_number"
     }
   ]
 }
@@ -43,7 +42,7 @@ First, let's add both the number-to-message tool and the chat completion tool to
 
 ## Step 2: Connecting the Math Results
 
-We need to connect each of our final math operation results to the number-to-message tool:
+We need to connect each of our final math operation results to the LLM chat prep tool:
 
 ```json
 {
@@ -85,6 +84,8 @@ We need to connect each of our final math operation results to the number-to-mes
   ]
 }
 ```
+
+Remember that this works because only one of the output variants will be triggered at runtime.
 
 ## Step 3: Connecting to Chat Completion
 
@@ -238,7 +239,7 @@ graph TD
     Def5([b = 1]) --> E1;
     
     %% Connect to number formatter
-    C1 -- "result" --> F["format_number<br>(llm.openai.chat-prep.number-to-message@1)"];
+    C1 -- "result" --> F["format_number<br>(llm.openai.chat-prep@1)"];
     D1 -- "result" --> F;
     E1 -- "result" --> F;
     Def6([role = user]) --> F;
@@ -331,15 +332,14 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "input_ports": ["api_key", "prompt", "context", "model", "max_completion_tokens", "temperature", "json_schema"]
+      "input_ports": ["api_key"]
     },
     {
       "kind": {
         "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep.number-to-message@1"
+        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep@1"
       },
-      "name": "format_number",
-      "input_ports": ["number", "role"]
+      "name": "format_number"
     }
   ],
   "edges": [
@@ -584,13 +584,13 @@ For testing, you can use the Nexus CLI to execute the DAG:
 
 ```bash
 # Using the addition entry group
-nexus dag execute --dag-id <dag_id_hash> --entry-group add_entry --input-json '{
+nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{
   "add_input_and_default": {"a": 10},
   "chat_completion": {"api_key": "your-api-key"}
 }' --inspect
 
 # Using the multiplication entry group
-nexus dag execute --dag-id <dag_id_hash> --entry-group mul_entry --input-json '{
+nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{
   "mul_inputs": {"a": 5, "b": 2},
   "chat_completion": {"api_key": "your-api-key"}
 }' --inspect

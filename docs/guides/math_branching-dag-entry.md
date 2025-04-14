@@ -505,7 +505,7 @@ After validation, publish the DAG:
 ```bash
 # Publish the DAG
 nexus dag publish --path cli/src/dag/_dags/math_branching_entry_group.json
-# Example output: Published DAG with Object ID: <dag_id_hash>
+# Example output: Published DAG with Object ID: <dag_object_id>
 ```
 
 ### Executing the DAG with Different Entry Groups
@@ -516,7 +516,7 @@ The key difference when executing this DAG is that you must specify which entry 
 
 ```bash
 # Execute using the 'add_entry' group with a=10
-nexus dag execute --dag-id <dag_id_hash> --entry-group add_entry --input-json '{"add_input_and_default": {"a": 10}}' --inspect
+nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{"add_input_and_default": {"a": 10}}' --inspect
 
 # Example flow: (10 + -3) = 7. 7 > 0 (gt). 7 * 7 = 49.
 ```
@@ -525,7 +525,7 @@ nexus dag execute --dag-id <dag_id_hash> --entry-group add_entry --input-json '{
 
 ```bash
 # Execute using the 'mul_entry' group with a=5, b=2
-nexus dag execute --dag-id <dag_id_hash> --entry-group mul_entry --input-json '{"mul_inputs": {"a": 5, "b": 2}}' --inspect
+nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{"mul_inputs": {"a": 5, "b": 2}}' --inspect
 
 # Example flow: (5 * 2) = 10. 10 > 0 (gt). 10 * 7 = 70.
 ```
