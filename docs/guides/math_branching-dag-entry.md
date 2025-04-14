@@ -33,35 +33,37 @@ Here's a visual representation of the extended workflow:
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
-    %% Entry points and their inputs
-    InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
-    Def1([b = -3]) --> A;
-    InputM1[User Input: a] --> M["mul_inputs<br>(math.i64.mul@1)"];
-    InputM2[User Input: b] --> M;
-    
-    %% Entry group indicators
-    EG1["Entry Group: add_entry"] -.-> A;
-    EG2["Entry Group: mul_entry"] -.-> M;
-    
-    %% Main flow from entry paths to comparison
-    A -- "result" --> B{"is_negative<br>(math.i64.cmp@1)"};
-    M -- "result" --> B;
-    Def2([b = 0]) --> B;
-    
-    %% Branching paths based on comparison
-    B -- "lt (a < 0)" --> C["mul_by_neg_3<br>(math.i64.mul@1)"];
-    Def3([b = -3]) --> C;
-    
-    B -- "gt (a > 0)" --> D["mul_by_7<br>(math.i64.mul@1)"];
-    Def4([b = 7]) --> D;
-    
-    B -- "eq (a == 0)" --> E["add_1<br>(math.i64.add@1)"];
-    Def5([b = 1]) --> E;
-    
-    %% Final results
-    C -- "result" --> Result1((Final Result));
-    D -- "result" --> Result2((Final Result));
-    E -- "result" --> Result3((Final Result));
+    subgraph "DAG with Entry Groups"
+        %% Entry points and their inputs
+        InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
+        Def1([b = -3]) --> A;
+        InputM1[User Input: a] --> M["mul_inputs<br>(math.i64.mul@1)"];
+        InputM2[User Input: b] --> M;
+        
+        %% Entry group indicators
+        EG1["Entry Group: add_entry"] -.-> A;
+        EG2["Entry Group: mul_entry"] -.-> M;
+        
+        %% Main flow from entry paths to comparison
+        A -- "result" --> B{"is_negative<br>(math.i64.cmp@1)"};
+        M -- "result" --> B;
+        Def2([b = 0]) --> B;
+        
+        %% Branching paths based on comparison
+        B -- "lt (a < 0)" --> C["mul_by_neg_3<br>(math.i64.mul@1)"];
+        Def3([b = -3]) --> C;
+        
+        B -- "gt (a > 0)" --> D["mul_by_7<br>(math.i64.mul@1)"];
+        Def4([b = 7]) --> D;
+        
+        B -- "eq (a == 0)" --> E["add_1<br>(math.i64.add@1)"];
+        Def5([b = 1]) --> E;
+        
+        %% Final results
+        C -- "result" --> Result1((Final Result));
+        D -- "result" --> Result2((Final Result));
+        E -- "result" --> Result3((Final Result));
+    end
 
     %% Styling
     classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
