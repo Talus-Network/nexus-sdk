@@ -72,15 +72,14 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable, nightly
-          components: rustfmt, clippy
+          toolchain: stable
+          target: ${{ matrix.target }}
           override: true
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-          workspaces: cli
 
       - name: Install just
         uses: taiki-e/install-action@just
