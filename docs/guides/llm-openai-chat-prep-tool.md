@@ -235,16 +235,14 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
-      "name": "add",
-      "input_ports": ["a", "b"]
+      "name": "add"
     },
     {
       "kind": {
         "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep.number-to-message@1"
+        "tool_fqn": "xyz.taluslabs.llm.openai.chat-prep@1"
       },
-      "name": "format",
-      "input_ports": ["number", "role"]
+      "name": "format"
     },
     {
       "kind": {
@@ -252,7 +250,7 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat",
-      "input_ports": ["prompt", "api_key", "context"]
+      "input_ports": ["api_key"]
     }
   ],
   "edges": [
