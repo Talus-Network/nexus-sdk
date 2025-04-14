@@ -211,7 +211,7 @@ We need to add the chat completion API key to our entry groups:
 The complete DAG now looks like this:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'background': '#FFFFFF' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
     %% Entry points and their inputs
     InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];

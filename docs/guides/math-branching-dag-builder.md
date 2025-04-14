@@ -17,7 +17,7 @@ The goal is to build a DAG that:
 Before diving into the JSON, let's visualize the workflow using a Mermaid diagram:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'background': '#FFFFFF' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
     subgraph "Math Branching DAG"
         Input[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];

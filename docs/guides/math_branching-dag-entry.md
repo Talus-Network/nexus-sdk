@@ -31,7 +31,7 @@ We'll extend our original branching math DAG by:
 Here's a visual representation of the extended workflow:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'background': '#FFFFFF' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
     %% Entry points and their inputs
     InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
