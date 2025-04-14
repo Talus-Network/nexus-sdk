@@ -98,9 +98,6 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Install just
-        uses: taiki-e/install-action@just
-
       - name: Build binary
         run: cargo build --package nexus-cli --release --locked --target=${{ matrix.target }} $BUILD_STD
 
@@ -136,10 +133,10 @@ jobs:
           (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.get_version.outputs.value }}
           draft: true
           files: |
             *.deb
             *.tar.gz
             *.zip
-          name: ${{ steps.get_version.outputs.value }}
-          tag_name: ""
+          generate_release_notes: true
