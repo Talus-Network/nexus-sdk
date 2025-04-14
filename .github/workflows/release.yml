@@ -88,9 +88,9 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
-      - name: Install musl-tools
-        if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
-        run: sudo apt install -y musl-tools
+      - name: Install build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt install -y musl-tools libssl-dev
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
