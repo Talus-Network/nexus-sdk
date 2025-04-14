@@ -170,9 +170,7 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
 
 4. **Testing Strategy**:
    - Unit tests verify both default and custom role scenarios
-   - Tests ensure the correct string representation of numbers
    - Tests verify error handling for invalid roles
-   - Tests document the error handling path for number conversion
    - Tests check that error messages contain relevant information
 
 ## Creating the README
@@ -221,11 +219,9 @@ The conversion failed due to an invalid input.
 
 ## Error Handling
 
-This tool handles the following error cases:
+This tool handles the following error case:
 
-1. **Invalid Role**: If the provided role is not one of the valid `Role` variants, the tool returns an `err` variant with a descriptive error message.
-
-2. **Number Conversion Failure**: The tool explicitly attempts to convert the input number to a string representation. If this conversion fails for any reason, the tool returns an `err` variant with details about the conversion failure.
+**Invalid Role**: If the provided role is not one of the valid `Role` variants, the tool returns an `err` variant with a descriptive error message.
 
 ## Example Usage
 
