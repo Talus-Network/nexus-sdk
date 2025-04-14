@@ -25,7 +25,7 @@ The generated `src/main.rs` file contains a template implementation. Let's modif
 
 ### 1. Define Input and Output Types
 
-First, we need to define our input and output types. The input will take a number and an optional role, and the output will be a message that the chat completion tool can understand.
+First, we need to define our input and output types. The input will take a number and an optional role (defaulting to "user"), and the output will be a message that the Nexus standard library LLM chat completion tool can understand.
 
 ```rust
 /// Input for the number to message conversion tool
@@ -36,16 +36,7 @@ struct Input {
     number: i64,
     /// Optional role for the message (defaults to "user")
     #[serde(default)]
-    role: Option<String>,
-}
-
-/// A message that can be sent to the chat completion API
-#[derive(Serialize, JsonSchema)]
-struct Message {
-    /// The role of the author of the message
-    role: String,
-    /// The content of the message
-    value: String,
+    role: Option<Role>,
 }
 
 /// Output variants for the number to message conversion tool
@@ -62,6 +53,40 @@ enum Output {
         /// The reason for the error
         reason: String,
     },
+}
+```
+
+where:
+```rust
+/// Represents the type of a message in a chat completion request or response.
+#[derive(Debug, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, EnumString)]
+#[serde(rename_all = "lowercase", try_from = "String")]
+#[strum(ascii_case_insensitive)]
+enum Role {
+    #[default]
+    User,
+    System,
+    Assistant,
+}
+
+/// Attempts to convert a String to a Role
+impl TryFrom<String> for Role {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value
+            .parse::<Role>()
+            .map_err(|_| anyhow::anyhow!("Invalid Role: {}", value))
+    }
+}
+
+/// A message that can be sent to the chat completion API
+#[derive(Serialize, JsonSchema)]
+struct Message {
+    /// The role of the author of the message
+    role: String,
+    /// The content of the message
+    value: String,
 }
 ```
 
@@ -83,7 +108,6 @@ impl NexusTool for LlmOpenaiChatPrep {
 
     fn fqn() -> ToolFqn {
         // The fully qualified name of the tool.
-
         fqn!("xyz.taluslabs.llm-openai-chat-prep@1")
     }
 
@@ -93,32 +117,13 @@ impl NexusTool for LlmOpenaiChatPrep {
     }
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
-        // Validate the role if provided
-        if let Some(ref role) = input.role {
-            if !["user", "system", "assistant"].contains(&role.as_str()) {
-                return Output::Err {
-                    reason: format!(
-                        "Invalid role: {}. Must be one of: user, system, assistant",
-                        role
-                    ),
-                };
-            }
-        }
+        // The role is unwrapped or defaulted to "user"
+        let role = input.role.unwrap_or_default();
 
-        //The role is unwrapped or defaulted to "user"
-        let role = input.role.unwrap_or_else(|| "user".to_string());
-
-        // Convert the number to a string message with validation
-        let value = match input.number.to_string().parse::<i64>() {
-            Ok(_) => input.number.to_string(),
-            Err(e) => {
-                return Output::Err {
-                    reason: format!("Failed to validate number conversion: {}", e),
-                }
-            }
+        let message = Message {
+            role: role.to_string().to_lowercase(),
+            value: input.number.to_string(),
         };
-
-        let message = Message { role, value };
 
         Output::Ok { message }
     }
@@ -128,7 +133,6 @@ impl NexusTool for LlmOpenaiChatPrep {
 ### 3. Add Tests
 
 Make sure to add some test cases to your tool, although this is not covered in this guide.
-
 
 ### 4. Bootstrap the Tool
 
@@ -141,11 +145,13 @@ async fn main() {
 }
 ```
 
+Note that if you want to specify the host at runtime with `BIND_ADDR` env variable, a different syntax can be used. Refer to [the toolkit doc](../toolkit-rust.md#nexus_toolkitbootstrap).
+
 ## Key Implementation Details
 
 1. **Input Structure**:
    - `number`: The i64 number to convert
-   - `role`: Optional role for the message (defaults to "user")
+   - `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
 
 2. **Output Structure**:
    - `Ok` variant with a `Message` containing:
@@ -159,8 +165,7 @@ async fn main() {
      - Error messages are descriptive and include the invalid value
      - Error messages list valid options when applicable
      - Errors are returned as part of the output enum rather than using `Result`
-   - The tool validates the role if provided, ensuring it's one of: "user", "system", "assistant"
-   - The tool explicitly handles number-to-string conversion, returning an error if the conversion fails
+   - The tool uses the `Role` enum to ensure only valid roles can be used
    - All error cases are handled gracefully with descriptive error messages
 
 4. **Testing Strategy**:
@@ -183,7 +188,7 @@ Every Nexus tool must include a README.md file that documents the tool's functio
 <details>
 <summary>Example README.md</summary>
 
-# `xyz.taluslabs.llm.openai.chat-prep.number-to-message@1`
+# `xyz.taluslabs.llm-openai-chat-prep@1`
 
 Standard Nexus Tool that converts a number into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations as input for chat completion.
 
@@ -193,9 +198,9 @@ Standard Nexus Tool that converts a number into a message format compatible with
 
 The number to convert to a message. The tool will attempt to convert this number to a string representation. If the conversion fails, an error will be returned.
 
-_opt_ **`role`: [`String`]** _default_: `"user"`
+_opt_ **`role`: [`Role`]** _default_: `Role::User`
 
-The role for the message. Must be one of: `"user"`, `"system"`, or `"assistant"`. Defaults to `"user"` if not specified.
+The role for the message. Must be one of: `Role::User`, `Role::System`, or `Role::Assistant`. Defaults to `Role::User` if not specified.
 
 ## Output Variants & Ports
 
@@ -211,14 +216,14 @@ The number was successfully converted to a message.
 The conversion failed due to an invalid input.
 
 - **`err.reason`: [`String`]** - The reason for the error. This will include details about what went wrong:
-  - For invalid roles: "Invalid role: {role}. Must be one of: user, system, assistant"
-  - For number conversion failures: "Failed to convert number to string: {error}"
+  - For invalid roles: "Invalid Role: {role}"
+  - For number conversion failures: "Failed to validate number conversion: {error}"
 
 ## Error Handling
 
 This tool handles the following error cases:
 
-1. **Invalid Role**: If the provided role is not one of `"user"`, `"system"`, or `"assistant"`, the tool returns an `err` variant with a descriptive error message.
+1. **Invalid Role**: If the provided role is not one of the valid `Role` variants, the tool returns an `err` variant with a descriptive error message.
 
 2. **Number Conversion Failure**: The tool explicitly attempts to convert the input number to a string representation. If this conversion fails for any reason, the tool returns an `err` variant with details about the conversion failure.
 
