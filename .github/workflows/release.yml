@@ -73,8 +73,13 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
           override: true
+
+      - name: Install cross-compilation tools
+        if: ${{ runner.os == 'Linux' }}
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
@@ -85,7 +90,7 @@ jobs:
         uses: taiki-e/install-action@just
 
       - name: Build binary
-        run: cargo build --package nexus-cli --release --locked --target=${{ matrix.target }}
+        run: cargo build --package nexus-cli --release --locked --target=${{ matrix.target }} $BUILD_STD
 
       - name: Install cargo-deb
         uses: taiki-e/install-action@v2
