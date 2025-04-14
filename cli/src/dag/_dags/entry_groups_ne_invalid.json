@@ -2,25 +2,11 @@
   "entry_groups": [
     {
       "name": "group_a",
-      "members": [
-        {
-          "vertex": "a",
-          "input_port": "input"
-        },
-        {
-          "vertex": "b",
-          "input_port": "input"
-        }
-      ]
+      "vertices": ["a", "b"]
     },
     {
       "name": "group_b",
-      "members": [
-        {
-          "vertex": "c",
-          "input_port": "input"
-        }
-      ]
+      "vertices": ["c"]
     }
   ],
   "vertices": [
@@ -30,7 +16,7 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "a",
-      "input_ports": ["input"]
+      "entry_ports": ["input"]
     },
     {
       "kind": {
@@ -38,7 +24,7 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "b",
-      "input_ports": ["input"]
+      "entry_ports": ["input"]
     },
     {
       "kind": {
@@ -46,7 +32,7 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "c",
-      "input_ports": ["input"]
+      "entry_ports": ["input"]
     },
     {
       "kind": {
