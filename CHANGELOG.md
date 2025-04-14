@@ -20,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Changed
 
 - changing the notion of entry vertices to entry input ports and adjusting parsing, validation and PTB templates in accordance
-- removing redundant mentions of input ports from entry groups (all input ports _must_ be provided anyway)
 
 #### Fixed
 
