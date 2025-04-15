@@ -9,6 +9,10 @@ on:
       - "tools/*/README.md" # Only trigger when tools docs are changed
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+  
 jobs:
   sync-docs:
     runs-on: ubuntu-latest
@@ -67,7 +71,6 @@ jobs:
         with:
           path: gitbook-docs
           commit-message: "Update docs from ${{ env.REPO_NAME }} (commit: ${{ github.sha }})"
-          committer: "devops@taluslabs.xyz <devops@taluslabs.xyz>"
           author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
           branch: docs-update-${{ env.REPO_NAME }}-${{ github.sha }}
           delete-branch: true
