@@ -5,6 +5,7 @@ description = "Nexus CLI provides an interface to interact with the Nexus Workfl
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+homepage.workspace = true
 license-file.workspace = true
 readme.workspace = true
 authors.workspace = true

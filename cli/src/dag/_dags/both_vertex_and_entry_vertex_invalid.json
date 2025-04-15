@@ -1,5 +1,5 @@
 {
-  "entry_vertices": [
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",
@@ -15,9 +15,7 @@
       },
       "name": "b",
       "input_ports": ["input"]
-    }
-  ],
-  "vertices": [
+    },
     {
       "kind": {
         "variant": "off_chain",
