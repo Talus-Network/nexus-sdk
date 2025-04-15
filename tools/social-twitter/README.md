@@ -1043,6 +1043,110 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.get-recent-tweet-count@1`
+
+Standard Nexus Tool that retrieves tweet counts for queries from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/counts/api-reference/get-tweets-counts-recent)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`query`: [`String`]**
+
+Search query for counting tweets.
+
+_opt_ **`start_time`: [`Option<String>`]** _default_: [`None`]
+
+The oldest UTC timestamp from which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`end_time`: [`Option<String>`]** _default_: [`None`]
+
+The newest UTC timestamp to which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`since_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID greater than (more recent than) the specified ID.
+
+_opt_ **`until_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID less than (older than) the specified ID.
+
+_opt_ **`next_token`: [`Option<String>`]** _default_: [`None`]
+
+Token for pagination to get the next page of results.
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+Alternative parameter for pagination (same as next_token).
+
+_opt_ **`granularity`: [`Option<Granularity>`]** _default_: [`Granularity::Hour`]
+
+Time granularity for the counts. Options are:
+
+- `Minute`: Minute-by-minute counts
+- `Hour`: Hourly counts (default)
+- `Day`: Daily counts
+
+_opt_ **`search_count_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A comma separated list of SearchCount fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet counts were retrieved successfully.
+
+- **`ok.data`: [`Vec<TweetCount>`]** - The collection of tweet count data:
+  - `start`: Start time for the count bucket
+  - `end`: End time for the count bucket
+  - `tweet_count`: Number of tweets counted in this time period
+- **`ok.meta`: [`Option<TweetCountMeta>`]** - Metadata about the counts:
+  - `newest_id`: The newest tweet ID in the response
+  - `next_token`: Token for the next page of results
+  - `oldest_id`: The oldest tweet ID in the response
+  - `total_tweet_count`: Total count of tweets matching the query
+
+**`err`**
+
+The tweet counts could not be retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+
+  - Twitter API error (e.g., "Twitter API returned errors: Invalid Request: One or more parameters to your request was invalid.")
+  - Validation error (e.g., "Validation error: Invalid start_time format. Expected format: YYYY-MM-DDTHH:mm:ssZ")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No tweet count data found" when the API response doesn't contain count data
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
