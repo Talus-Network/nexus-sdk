@@ -13,11 +13,17 @@ This repository is a compilation of open-source Nexus packages. This includes:
 
 For more detailed documentation of the contents see [our official documentation][nexus-docs].
 
+## Quick Install
+
+```console
+$ cargo binstall --git https://github.com/Talus-Network/nexus-sdk nexus-cli
+```
+
 ## Development
 
 We use [just][just-repo]. Explore the repo by running it.
 
-```bash
+```console
 $ just
 ```
 

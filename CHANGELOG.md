@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to validate, publish, execute and inspect DAGs
 - commands to load and save configuration
 - commands to create a new Nexus network
+- release workflow
 
 #### Changed
 
