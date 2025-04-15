@@ -6,7 +6,7 @@ edition = "2024.beta"
 [dependencies.Sui]
 git = "https://github.com/MystenLabs/sui.git"
 subdir = "crates/sui-framework/packages/sui-framework"
-rev = "testnet-v1.38.1"
+rev = "mainnet-v1.45.3"
 
 [addresses]
 object_crawler_test = "0x0"
