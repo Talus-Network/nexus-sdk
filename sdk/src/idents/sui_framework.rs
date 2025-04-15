@@ -116,4 +116,9 @@ impl Transfer {
         module: TRANSFER_MODULE,
         name: sui::move_ident_str!("public_share_object"),
     };
+    /// `sui::transfer::public_transfer`
+    pub const PUBLIC_TRANSFER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TRANSFER_MODULE,
+        name: sui::move_ident_str!("public_transfer"),
+    };
 }

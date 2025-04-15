@@ -34,6 +34,11 @@ pub mod events;
 #[cfg(feature = "object_crawler")]
 pub mod object_crawler;
 
+/// Transactions module contains builders for PTBs that are submitted to Sui
+/// and perform vairous operations on the Nexus ecosystem.
+#[cfg(feature = "transactions")]
+pub mod transactions;
+
 /// Test utils container management for Sui and Redis, faucet, Move code
 /// compilation and deployment and similar.
 #[cfg(feature = "test_utils")]

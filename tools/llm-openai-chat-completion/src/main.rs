@@ -229,6 +229,7 @@ fn default_temperature() -> f32 {
 
 /// Represents the output of the OpenAI chat completion Tool.
 #[derive(Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 enum Output {
     Text {
         id: String,

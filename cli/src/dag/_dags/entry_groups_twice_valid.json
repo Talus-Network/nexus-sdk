@@ -2,14 +2,30 @@
   "entry_groups": [
     {
       "name": "group_a",
-      "vertices": ["a", "b"]
+      "members": [
+        {
+          "vertex": "a",
+          "input_port": "input"
+        },
+        {
+          "vertex": "b"
+        }
+      ]
     },
     {
       "name": "group_b",
-      "vertices": ["b", "c"]
+      "members": [
+        {
+          "vertex": "b"
+        },
+        {
+          "vertex": "c",
+          "input_port": "input"
+        }
+      ]
     }
   ],
-  "entry_vertices": [
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",
@@ -23,8 +39,7 @@
         "variant": "off_chain",
         "tool_fqn": "com.test.test@1"
       },
-      "name": "b",
-      "input_ports": ["input"]
+      "name": "b"
     },
     {
       "kind": {
@@ -33,9 +48,7 @@
       },
       "name": "c",
       "input_ports": ["input"]
-    }
-  ],
-  "vertices": [
+    },
     {
       "kind": {
         "variant": "off_chain",
