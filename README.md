@@ -1,5 +1,7 @@
 # nexus-sdk
 
+The Nexus SDK is a set of tools to help facilitate developers building with Nexus, the Agentic Workflow Engine, to build Talus agents or Talus tools.
+
 This repository is a compilation of open-source Nexus packages. This includes:
 
 - [`nexus-cli`][nexus-cli-repo]
@@ -9,7 +11,7 @@ This repository is a compilation of open-source Nexus packages. This includes:
 
 ---
 
-For more detailed documentation of the contents see [our Wiki][nexus-wiki-link].
+For more detailed documentation of the contents see [our official documentation][nexus-docs].
 
 ## Development
 
@@ -25,5 +27,5 @@ $ just
 [nexus-sdk-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/sdk
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/tools
-[nexus-wiki-link]: https://talus-labs.gitbook.io/talus-documentation
+[nexus-docs]: https://docs.talus.network
 [just-repo]: https://github.com/casey/just
