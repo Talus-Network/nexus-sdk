@@ -186,110 +186,6 @@ The tweets could not be retrieved due to an error.
 
 ---
 
-# `xyz.taluslabs.social.twitter.get-recent-tweet-count@1`
-
-Standard Nexus Tool that retrieves tweet counts for queries from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/counts/api-reference/get-tweets-counts-recent)
-
-## Input
-
-**`bearer_token`: [`String`]**
-
-The bearer token for the user's Twitter account.
-
-**`query`: [`String`]**
-
-Search query for counting tweets.
-
-_opt_ **`start_time`: [`Option<String>`]** _default_: [`None`]
-
-The oldest UTC timestamp from which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
-
-_opt_ **`end_time`: [`Option<String>`]** _default_: [`None`]
-
-The newest UTC timestamp to which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
-
-_opt_ **`since_id`: [`Option<String>`]** _default_: [`None`]
-
-Returns results with a tweet ID greater than (more recent than) the specified ID.
-
-_opt_ **`until_id`: [`Option<String>`]** _default_: [`None`]
-
-Returns results with a tweet ID less than (older than) the specified ID.
-
-_opt_ **`next_token`: [`Option<String>`]** _default_: [`None`]
-
-Token for pagination to get the next page of results.
-
-_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
-
-Alternative parameter for pagination (same as next_token).
-
-_opt_ **`granularity`: [`Option<Granularity>`]** _default_: [`Granularity::Hour`]
-
-Time granularity for the counts. Options are:
-
-- `Minute`: Minute-by-minute counts
-- `Hour`: Hourly counts (default)
-- `Day`: Daily counts
-
-_opt_ **`search_count_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
-
-A comma separated list of SearchCount fields to display.
-
-## Output Variants & Ports
-
-**`ok`**
-
-The tweet counts were retrieved successfully.
-
-- **`ok.data`: [`Vec<TweetCount>`]** - The collection of tweet count data:
-  - `start`: Start time for the count bucket
-  - `end`: End time for the count bucket
-  - `tweet_count`: Number of tweets counted in this time period
-- **`ok.meta`: [`Option<TweetCountMeta>`]** - Metadata about the counts:
-  - `newest_id`: The newest tweet ID in the response
-  - `next_token`: Token for the next page of results
-  - `oldest_id`: The oldest tweet ID in the response
-  - `total_tweet_count`: Total count of tweets matching the query
-
-**`err`**
-
-The tweet counts could not be retrieved due to an error.
-
-- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
-
-  - `network` - A network-related error occurred when connecting to Twitter
-  - `connection` - Could not establish a connection to Twitter
-  - `timeout` - The request to Twitter timed out
-  - `parse` - Failed to parse Twitter's response
-  - `auth` - Authentication or authorization error
-  - `not_found` - The requested tweet or resource was not found
-  - `rate_limit` - Twitter's rate limit was exceeded
-  - `server` - An error occurred on Twitter's servers
-  - `forbidden` - The request was forbidden
-  - `api` - An API-specific error occurred
-  - `unknown` - An unexpected error occurred
-
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-
-  - Twitter API error (e.g., "Twitter API returned errors: Invalid Request: One or more parameters to your request was invalid.")
-  - Validation error (e.g., "Validation error: Invalid start_time format. Expected format: YYYY-MM-DDTHH:mm:ssZ")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - "No tweet count data found" when the API response doesn't contain count data
-  - Unauthorized error (e.g., "Unauthorized")
-  - Other error types handled by the centralized error handling mechanism
-
-- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
-  - `401` - Unauthorized (authentication error)
-  - `403` - Forbidden
-  - `404` - Not Found
-  - `429` - Too Many Requests (rate limit exceeded)
-  - `5xx` - Server errors
-
----
-
 # `xyz.taluslabs.social.twitter.post-tweet@1`
 
 Standard Nexus Tool that posts a content to Twitter.
@@ -1151,17 +1047,41 @@ The user could not be removed from the list.
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
 
-## Error Types
+## Error Types (TwitterErrorKind)
 
-- **Network Errors**: Errors that occur during network communication with the Twitter API.
-- **Parse Errors**: Errors that occur when parsing the Twitter API response JSON.
-- **API Errors**: Errors returned by the Twitter API with specific titles, types, and details.
-- **Status Errors**: HTTP status errors from the Twitter API.
-- **Other Errors**: Any other errors that don't fit into the above categories.
+The `err.kind` field provides a categorized error type for easier programmatic handling:
+
+- **`network`**: A network-related error occurred when connecting to Twitter
+- **`connection`**: Could not establish a connection to Twitter
+- **`timeout`**: The request to Twitter timed out
+- **`parse`**: Failed to parse Twitter's response
+- **`auth`**: Authentication or authorization error
+- **`not_found`**: The requested tweet or resource was not found
+- **`rate_limit`**: Twitter's rate limit was exceeded
+- **`server`**: An error occurred on Twitter's servers
+- **`forbidden`**: The request was forbidden
+- **`api`**: An API-specific error occurred
+- **`unknown`**: An unexpected error occurred
 
 ## Error Structure
 
-Each error includes a descriptive message that follows a consistent format:
+Each error includes three primary components:
+
+1. **`kind` (TwitterErrorKind)**: The categorized error type (as described above)
+2. **`reason` (String)**: A descriptive message that provides details about the error
+3. **`status_code` (Option<u16>)**: The HTTP status code returned by Twitter API, if available
+
+### Common Status Codes
+
+- `401`: Unauthorized (authentication error)
+- `403`: Forbidden
+- `404`: Not Found
+- `429`: Too Many Requests (rate limit exceeded)
+- `5xx`: Server errors
+
+### Error Message Format
+
+The `reason` field follows a consistent format:
 
 - Network errors: `"Network error: [error details]"`
 - Parse errors: `"Response parsing error: [error details]"`
@@ -1169,8 +1089,18 @@ Each error includes a descriptive message that follows a consistent format:
 - Status errors: `"Twitter API status error: [status code]"`
 - Other errors: `"Unknown error: [message]"`
 
+## Retryable Errors
+
+Some error types are considered "retryable" and can be attempted again after appropriate backoff:
+
+- `rate_limit`: Consider retrying after the duration specified in the error message
+- `network`: Network errors may be temporary and can be retried
+- `server`: Server errors (5xx) may be temporary and can be retried
+
+Other error types typically require fixing the request (e.g., `auth`, `not_found`, `forbidden`) and should not be retried without modification.
+
 ## Error Handling in Modules
 
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
-The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
+The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users. The structured error information allows for programmatic handling of specific error conditions.
