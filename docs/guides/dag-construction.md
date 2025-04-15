@@ -4,6 +4,10 @@ This guide explains how to construct DAG (Directed Acyclic Graph) JSON files for
 
 For an explanation of the terms and rules used below, refer to [the Nexus workflow documenetation][nexus-next-workflow].
 
+{% hint sytle="info"%}
+Note that for all DAG related terms in the configuration JSON file, snake casing is applied.
+{% endhint %}
+
 ## 1. Basic Structure
 A DAG JSON file consists of sections defining the graph's components:
 ```json
