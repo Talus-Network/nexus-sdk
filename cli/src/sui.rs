@@ -1,6 +1,6 @@
 use {
     crate::{loading, notify_success, prelude::*},
-    nexus_sdk::sui,
+    nexus_sdk::{object_crawler::fetch_one, sui},
     reqwest::{header, Client, StatusCode},
 };
 
@@ -303,53 +303,18 @@ pub(crate) async fn fetch_object_by_id(
 ) -> AnyResult<sui::ObjectRef, NexusCliError> {
     let object_handle = loading!("Fetching object {object_id}...");
 
-    let options = sui::ObjectDataOptions::new().with_owner();
+    match fetch_one::<serde_json::Value>(sui, object_id).await {
+        Ok(response) => {
+            object_handle.success();
 
-    let response = match sui
-        .read_api()
-        .get_object_with_options(object_id, options)
-        .await
-    {
-        Ok(response) => response,
+            Ok(response.object_ref())
+        }
         Err(e) => {
             object_handle.error();
 
-            return Err(NexusCliError::Sui(e));
+            Err(NexusCliError::Any(e))
         }
-    };
-
-    if let Some(e) = response.error {
-        object_handle.error();
-
-        return Err(NexusCliError::Any(anyhow!(e)));
     }
-
-    let object = match response.data {
-        Some(object) => object,
-        None => {
-            object_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(
-                "The object with ID {object_id} was not found"
-            )));
-        }
-    };
-
-    // Find initial shared version for shared objects or fallback to the
-    // object's version.
-    let version = object
-        .owner
-        .and_then(|owner| match owner {
-            sui::Owner::Shared {
-                initial_shared_version,
-            } => Some(initial_shared_version),
-            _ => None,
-        })
-        .unwrap_or(object.version);
-
-    object_handle.success();
-
-    Ok((object.object_id, version, object.digest).into())
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.
