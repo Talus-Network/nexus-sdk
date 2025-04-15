@@ -9,6 +9,10 @@ on:
       - "tools/*/README.md" # Only trigger when tools docs are changed
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   sync-docs:
     runs-on: ubuntu-latest
@@ -27,7 +31,6 @@ jobs:
         with:
           repository: Talus-Network/gitbook-docs
           path: gitbook-docs
-          token: ${{ secrets.GH_ACCESS_TOKEN }} # Access Token with repo access
 
       - name: Sync documentation
         run: |
@@ -66,7 +69,6 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{secrets.GH_ACCESS_TOKEN}}
           path: gitbook-docs
           commit-message: "Update docs from ${{ env.REPO_NAME }} (commit: ${{ github.sha }})"
           committer: "devops@taluslabs.xyz <devops@taluslabs.xyz>"

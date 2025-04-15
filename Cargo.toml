@@ -31,6 +31,7 @@ lazy-regex = "3.4.1"
 log = "^0.4.26"
 minijinja = "2.8.0"
 mockito = "1.7.0"
+openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
 regex = "1.11.1"
