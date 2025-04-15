@@ -15,6 +15,8 @@ The Nexus CLI is a set of tools that is used by almost all Actors in the Nexus e
 
 ## Interface design
 
+> Each command can be passed a `--json` flag that will return the output in JSON format. This is useful for programmatic access to the CLI.
+
 ### `nexus tool`
 
 Set of commands for managing Tools.
@@ -51,6 +53,8 @@ This command should also check that the URL is accessible by the Leader node. It
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral.
 
+This returns an OwnerCap object ID that can be used to manage the Tool.
+
 > This command requires that a wallet is connected to the CLI.
 
 ---
@@ -61,9 +65,11 @@ Command that makes a request to `GET <url>/meta` to fetch the Tool definition an
 
 ---
 
-**`nexus tool unregister --tool-fqn <fqn>`**
+**`nexus tool unregister --tool-fqn <fqn> --owner-cap <object_id>`**
 
 Command that sends a TX to our Tool Registry and unregisters a Tool with the provided `<fqn>`. This command requires confirmation as unregistering a Tool will render all DAGs using it unusable.
+
+Owned OwnerCap object must be passed to this command for authorization.
 
 > We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
 
@@ -71,9 +77,11 @@ Command that sends a TX to our Tool Registry and unregisters a Tool with the pro
 
 ---
 
-**`nexus tool claim-collateral --tool-fqn <fqn>`**
+**`nexus tool claim-collateral --tool-fqn <fqn> --owner-cap <object_id>`**
 
 After the period of time configured in our Tool Registry, let the Tool developer claim the collateral, transferring the amount back to their wallet.
+
+Owned OwnerCap object must be passed to this command for authorization.
 
 > We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
 
@@ -100,7 +108,7 @@ Performs static analysis on a JSON DAG at the provided path. It enforces rules d
 1. For each entry group...
 2. Find all input ports
 3. For each input port...
-4. Find all paths from relevant entry vertices to this input port
+4. Find all paths from relevant entry intput ports to this input port
 5. Ensure that net concurrency on that input port node is 0
    - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
    - `N` output ports on an output variant increase the graph concurrency by `N - 1` beacause `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
@@ -124,7 +132,7 @@ Execute a DAG with the provided `<id>`. This command also accepts an entry `<gro
 The input `<data>` is a JSON string with the following structure:
 
 - The top-level object keys refer to the _entry vertex names_
-- Each top-level value is an object and its keys refer to the _input port names_ of each vertex
+- Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
