@@ -1,5 +1,4 @@
 use {
-    crate::list::models::{Includes, Meta},
     reqwest::{Response, StatusCode},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -290,83 +289,5 @@ where
         parse_successful_twitter_response(text)
     } else {
         parse_failed_twitter_response(text, status)
-    }
-}
-
-/// Helper function to parse Twitter API response
-pub async fn parse_twitter_response_v2<T>(
-    response: Response,
-) -> TwitterResult<(T, Option<Includes>, Option<Meta>)>
-where
-    T: for<'de> Deserialize<'de> + std::fmt::Debug,
-{
-    // If response is successful, parse the response as JSON
-    if response.status().is_success() {
-        match response.text().await {
-            Ok(text) => {
-                let value: serde_json::Value = serde_json::from_str(&text)?;
-                if let Some(errors) = value.get("errors") {
-                    if let Some(error) = errors.as_array().and_then(|e| e.first()) {
-                        let title = error
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("Unknown Error");
-                        let error_type = error
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("unknown");
-
-                        return Err(TwitterError::ApiError(
-                            title.to_string(),
-                            error_type.to_string(),
-                            "".to_string(),
-                        ));
-                    }
-                }
-
-                let data = if let Some(data) = value.get("data") {
-                    serde_json::from_value(data.clone())?
-                } else {
-                    serde_json::from_value(value.clone())?
-                };
-
-                let includes = if let Some(includes) = value.get("includes") {
-                    Some(serde_json::from_value(includes.clone())?)
-                } else {
-                    None
-                };
-
-                let meta = if let Some(meta) = value.get("meta") {
-                    Some(serde_json::from_value(meta.clone())?)
-                } else {
-                    None
-                };
-
-                Ok((data, includes, meta))
-            }
-            Err(e) => Err(TwitterError::Network(e)),
-        }
-    } else {
-        match response.text().await {
-            Ok(text) => {
-                if let Ok(twitter_api_error) = serde_json::from_str::<TwitterApiError>(&text) {
-                    return Err(TwitterError::from_api_error(&twitter_api_error));
-                } else if let Ok(error_response) =
-                    serde_json::from_str::<TwitterDefaultError>(&text)
-                {
-                    return Err(TwitterError::ApiError(
-                        "Twitter API Error".to_string(),
-                        "default".to_string(),
-                        format!(
-                            " - {} (Code: {})",
-                            error_response.message, error_response.code
-                        ),
-                    ));
-                } else {
-                    return Err(TwitterError::Other("Unknown Twitter API error".to_string()));
-                }
-            }
-            Err(e) => Err(TwitterError::Network(e)),
-        }
     }
 }
