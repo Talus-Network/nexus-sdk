@@ -1,15 +1,23 @@
 {
-  "entry_vertices": [
+  "entry_groups": [
+    {
+      "name": "group_a",
+      "members": [
+        {
+          "vertex": "location_decider"
+        }
+      ]
+    }
+  ],
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "location_decider",
-      "input_ports": ["messages", "messages"]
-    }
-  ],
-  "vertices": [
+      "input_ports": ["messages"]
+    },
     {
       "kind": {
         "variant": "off_chain",
