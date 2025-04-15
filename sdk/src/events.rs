@@ -269,7 +269,7 @@ mod tests {
             package_id: sui::ObjectID::random(),
             transaction_module: sui::move_ident_str!("primitives").into(),
             sender: sui::ObjectID::random().into(),
-            bcs: vec![],
+            bcs: sui::BcsEvent::new(vec![]),
             timestamp_ms: None,
             type_: sui::MoveStructTag {
                 address: *sui::ObjectID::random(),
