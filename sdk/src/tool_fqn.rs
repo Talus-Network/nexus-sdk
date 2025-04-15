@@ -37,7 +37,7 @@ impl ToolFqn {
 /// # Examples
 ///
 /// ```
-/// use nexus_sdk::{fqn, ToolFqn};
+/// use nexus_sdk::fqn;
 ///
 /// let fqn = fqn!("xyz.taluslabs.example@1");
 ///
@@ -47,14 +47,14 @@ impl ToolFqn {
 /// ```
 ///
 /// ```should_panic
-/// use nexus_sdk::{fqn, ToolFqn};
+/// use nexus_sdk::fqn;
 ///
 /// let _ = fqn!("xyz.taluslabs.example@");
 /// ```
 #[macro_export]
 macro_rules! fqn {
     ($fqn:expr) => {{
-        ($fqn as &'static str).parse::<ToolFqn>().unwrap()
+        ($fqn as &'static str).parse::<$crate::ToolFqn>().unwrap()
     }};
 }
 

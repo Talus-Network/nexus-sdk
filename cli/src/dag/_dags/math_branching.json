@@ -1,14 +1,4 @@
 {
-  "entry_vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
-      },
-      "name": "add_input_and_default",
-      "input_ports": ["a"]
-    }
-  ],
   "default_values": [
     {
       "vertex": "add_input_and_default",
@@ -52,6 +42,14 @@
     }
   ],
   "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_input_and_default",
+      "input_ports": ["a"]
+    },
     {
       "kind": {
         "variant": "off_chain",
