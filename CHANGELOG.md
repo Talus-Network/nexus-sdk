@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to load and save configuration
 - commands to create a new Nexus network
 - release workflow
+- added dev guides that showcase how to use CLI to publish and register tools, and publish and execute DAGs
 
 #### Changed
 
@@ -33,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - added basic strcuture for Nexus Tools written in Rust in the form of a trait
 - added a macro that starts a webserver for one or multiple tools, providing all necessary endpoints
 - added a first, dumb version of secret manager
+- added a dev guide that goes through the steps to use CLI to scaffold a boilerplate tool and impelement NexusTool trait
 
 ### `nexus-sdk`
 
