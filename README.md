@@ -1,8 +1,8 @@
-# nexus-sdk
+# Nexus SDK
 
-The Nexus SDK is a set of tools to help facilitate developers building with Nexus, the Agentic Workflow Engine, to build Talus agents or Talus tools.
+The **Nexus SDK** is a collection of tools that simplifies building with **Nexus**, the Agentic Workflow Engine. Developers can quickly create [Talus agents][talus-agents] or [Talus tools][talus-tools].
 
-This repository is a compilation of open-source Nexus packages. This includes:
+This repository includes open-source Nexus packages:
 
 - [`nexus-cli`][nexus-cli-repo]
 - [`nexus-sdk`][nexus-sdk-repo]
@@ -11,27 +11,99 @@ This repository is a compilation of open-source Nexus packages. This includes:
 
 ---
 
-For more detailed documentation of the contents see [our official documentation][nexus-docs].
+For complete documentation, visit the [official Nexus SDK docs][nexus-docs].
 
-## Quick Install
+## Installation
+
+You can install Nexus CLI using several convenient methods:
+
+### Using Homebrew (macOS/Linux)
+
+```sh
+brew tap talus-network/tap
+brew install nexus-cli
+```
+
+### Arch Linux
+
+The [nexus-cli](https://aur.archlinux.org/packages/nexus-cli) is also available in the AUR (Arch User Repository). You can install it using your preferred [AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
+
+```bash
+yay -S nexus-cli
+```
+
+### Using cargo-binstall (recommended for faster binaries)
+
+If you prefer quicker binary installation, use [cargo-binstall]:
+
+```bash
+cargo binstall --git https://github.com/talus-network/nexus-sdk nexus-cli
+```
+
+### Using Cargo
+
+To install directly from the source using `cargo`, run:
+
+```bash
+cargo install nexus-cli \
+  --git https://github.com/talus-network/nexus-sdk \
+  --tag v0.1.0 \
+  --locked
+```
+
+## Usage
+
+Run the `nexus` command to see all the available options:
 
 ```console
-$ cargo binstall --git https://github.com/Talus-Network/nexus-sdk nexus-cli
+$ nexus help
+Nexus CLI
+
+Usage: nexus [OPTIONS] <COMMAND>
+
+Commands:
+  tool     Manage Nexus Tools
+  conf     Manage Nexus Configuration
+  dag      Validate, publish and execute Nexus DAGs
+  network  Mange Nexus networks and leader caps
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --json     Change the output format to JSON
+  -h, --help     Print help
+  -V, --version  Print version
+
 ```
+
+For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
 ## Development
 
-We use [just][just-repo]. Explore the repo by running it.
+We use [just][just-repo], a straightforward command runner similar to `make`.
+
+To explore the available tasks, run:
 
 ```console
-$ just
+$ just --list
+Available recipes:
+    cli ...          # Commands concerning Nexus CLI
+    sdk ...          # Commands concerning the Nexus SDK
+    toolkit-rust ... # Commands concerning Nexus Toolkit for Rust
+    tools ...        # Commands concerning native Nexus Tools
 ```
+
+Learn more about `just` in the [official manual][just-manual].
 
 <!-- List of references -->
 
+[talus-agents]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index/index
+[talus-tools]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index/tool
 [nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli
+[nexus-cli-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/cli
 [nexus-sdk-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/sdk
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/tools
 [nexus-docs]: https://docs.talus.network
+[cargo-binstall]: https://github.com/cargo-bins/cargo-binstall
 [just-repo]: https://github.com/casey/just
+[just-manual]: https://just.systems/man/en/
