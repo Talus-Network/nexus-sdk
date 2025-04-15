@@ -44,14 +44,6 @@ pub struct TwitterApiError {
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameter: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_id: Option<String>,
 }
 
 /// Error type for Twitter operations
