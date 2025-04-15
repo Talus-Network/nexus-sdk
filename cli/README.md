@@ -68,4 +68,4 @@ For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-do
 
 <!-- List of references -->
 
-[nexus-cli-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/cli
+[nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli

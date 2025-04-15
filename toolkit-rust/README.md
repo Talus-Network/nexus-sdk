@@ -33,5 +33,5 @@ For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexu
 
 <!-- List of references -->
 
-[nexus-cli-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/cli
-[nexus-toolkit-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/toolkit-rust
+[nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
+[nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust

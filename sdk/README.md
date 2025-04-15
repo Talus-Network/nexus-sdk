@@ -18,4 +18,4 @@ package = "nexus-sdk"
 
 <!-- List of references -->
 
-[nexus-toolkit-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/toolkit-rust
+[nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust

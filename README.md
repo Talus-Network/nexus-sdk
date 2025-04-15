@@ -96,10 +96,10 @@ Learn more about `just` in the [official manual][just-manual].
 
 <!-- List of references -->
 
-[talus-agents]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index/index
-[talus-tools]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index/tool
+[talus-agents]: https://docs.talus.network/talus-documentation/developer-docs/index/index
+[talus-tools]: https://docs.talus.network/talus-documentation/developer-docs/index/tool
 [nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli
-[nexus-cli-docs]: https://talus-labs.gitbook.io/talus-documentation/developer-docs/index-1/cli
+[nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
 [nexus-sdk-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/sdk
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/tools
