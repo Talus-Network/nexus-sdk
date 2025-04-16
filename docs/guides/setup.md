@@ -121,6 +121,12 @@ sui client faucet --address tally \
   --url https://USERNAME:PASSWORD@faucet.devnet.production.taluslabs.dev/gas
 ```
 
+To check the balance, run:
+
+```bash
+sui client balance tally
+```
+
 ## Access Devnet Sui Explorer
 
 Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and
