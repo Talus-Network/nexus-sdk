@@ -55,7 +55,7 @@ Command that makes a request to `GET <url>/meta` to fetch the Tool definition an
 This returns an OwnerCap object ID that can be used to manage the Tool.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
@@ -73,7 +73,7 @@ Command that sends a TX to our Tool Registry and unregisters a Tool with the pro
 Owned OwnerCap object must be passed to this command for authorization.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
@@ -85,7 +85,7 @@ After the period of time configured in our Tool Registry, let the Tool developer
 Owned OwnerCap object must be passed to this command for authorization.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 **`nexus tool list`**
@@ -93,7 +93,7 @@ This command requires that a wallet is connected to the CLI..
 List all Nexus Tools available in the Tool Registry. This reads the dynamic object directly from Sui.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
@@ -125,7 +125,7 @@ Performs static analysis on a JSON DAG at the provided path. It enforces rules d
 Publishes a JSON DAG at the provided path to the Workflow. Static analysis is automatically performed prior to publishing. This command then returns the on-chain DAG object ID that can be used to execute it.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
@@ -143,7 +143,7 @@ The input `<data>` is a JSON string with the following structure:
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI..
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
