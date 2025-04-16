@@ -629,3 +629,57 @@ pub enum ReplySettings {
     #[serde(rename = "subscribers")]
     Subscribers,
 }
+
+/// A single count result from the Twitter API
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCount {
+    /// Start time for this count bucket
+    pub start: String,
+    /// End time for this count bucket
+    pub end: String,
+    /// Number of tweets counted in this time period
+    pub tweet_count: i64,
+}
+
+/// Response structure for tweet counts
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCountResponse {
+    /// Array of tweet count data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<TweetCount>>,
+    /// Error information if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<ApiError>>,
+    /// Metadata about the tweet counts request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<TweetCountMeta>,
+}
+
+/// Metadata for tweet count results
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCountMeta {
+    /// The newest tweet ID in the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub newest_id: Option<String>,
+    /// Token for the next page of results
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// The oldest tweet ID in the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_id: Option<String>,
+    /// Total count of tweets matching the query
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tweet_count: Option<i64>,
+}
+
+/// Granularity options for tweet counts
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Granularity {
+    /// Minute-by-minute counts
+    Minute,
+    /// Hourly counts (default)
+    Hour,
+    /// Daily counts
+    Day,
+}
