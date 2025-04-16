@@ -77,7 +77,7 @@ Next, create a `.envrc` file to conveniently store your RPC and faucet URLs:
 
 ```bash
 export SUI_RPC_URL=https://rpc.ssfn.devnet.production.taluslabs.dev
-export SUI_FAUCET_URL=https://faucet.devnet.production.taluslabs.dev
+export SUI_FAUCET_URL=https://faucet.devnet.production.taluslabs.dev/gas
 ```
 
 Activate these environment variables using:
@@ -118,13 +118,14 @@ To request funds from the faucet, run:
 
 ```bash
 sui client faucet --address tally \
-  --url https://USERNAME:PASSWORD@faucet.devnet.production.taluslabs.dev
+  --url https://USERNAME:PASSWORD@faucet.devnet.production.taluslabs.dev/gas
 ```
 
 ## Access Devnet Sui Explorer
 
 Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and
 request an access code.
+
 ---
 
 After completing these steps, you are ready to build and execute workflows using
