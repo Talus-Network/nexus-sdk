@@ -24,6 +24,8 @@ pub struct UsersResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<ApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub includes: Option<Includes>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Meta>,
 }
 
