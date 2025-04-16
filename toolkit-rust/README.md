@@ -1,6 +1,7 @@
 # nexus-toolkit
 
-The **Nexus Toolkit** provides essential libraries and tools for easily developing Nexus-based applications using Rust.
+The **Nexus Toolkit** provides essential interfaces and functions for easily
+developing Nexus Tools using Rust.
 
 ## Usage
 
@@ -8,17 +9,20 @@ You have two easy ways to get started with the Nexus Toolkit:
 
 ### Using Nexus CLI (recommended)
 
-The easiest way is to create a fresh Rust project preconfigured for Nexus development. To do this, first install the [Nexus CLI][nexus-cli-docs], then run:
+The easiest way is to create a fresh Rust project preconfigured for Nexus Tool
+development. To do this, first install the [Nexus CLI][nexus-cli-docs], then run:
 
 ```sh
 nexus tool new --help
 ```
 
-This command lists all available options to quickly set up your development environment.
+This command lists all available options to quickly set up your development
+environment.
 
 ### Manually Adding Dependencies
 
-You can also manually include the Nexus Toolkit in your existing project. Add the following lines to your project's `Cargo.toml`:
+You can also manually include the Nexus Toolkit in your existing project.
+Add the following lines to your project's `Cargo.toml`:
 
 ```toml
 [dependencies.nexus-toolkit]

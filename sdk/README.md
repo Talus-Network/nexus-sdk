@@ -1,13 +1,18 @@
 # nexus-sdk
 
 > [!NOTE]
-> This is an internal crate intended primarily for use within other Nexus packages. For general Nexus application development, please use the higher-level [Nexus Toolkit][nexus-toolkit-docs].
+> This is an internal crate intended primarily for use within other Nexus
+> packages. For Nexus Tool development, please use the higher-level
+> [Nexus Toolkit][nexus-toolkit-docs].
 
 ## Usage
 
-Generally, you won't need to depend on this crate directly. Instead, use the [Nexus Toolkit][nexus-toolkit-docs], which provides user-friendly interfaces and preconfigured tools for Nexus development.
+Generally, you won't need to depend on this crate directly. Instead, use the
+[Nexus Toolkit][nexus-toolkit-docs], which provides interfaces for Nexus Tool
+development.
 
-However, if you specifically require direct access to internal helper functions, you can include this crate in your project's `Cargo.toml` file:
+However, if you specifically require direct access to internal helper functions,
+you can include this crate in your project's `Cargo.toml` file:
 
 ```toml
 [dependencies.nexus-sdk]
