@@ -2,9 +2,7 @@
 
 ## Overview
 
-To enhance security on your Tool, it's essential to configure your server to
-accept incoming connections solely from the authorized Leader nodes. This guide
-provides step-by-step instructions to achieve this using UFW.
+To enhance security on your Tool, it's essential to configure your server to accept incoming connections solely from the authorized Leader nodes. This guide provides step-by-step instructions to achieve this using UFW.
 
 ## Leader Node IP Addresses
 
@@ -30,8 +28,7 @@ sudo ufw enable
 
 ### 2. Set Default Policies
 
-Configure UFW to deny all incoming connections by default and allow all outgoing
-connections:
+Configure UFW to deny all incoming connections by default and allow all outgoing connections:
 
 ```bash
 sudo ufw default deny incoming
@@ -49,8 +46,7 @@ sudo ufw allow from 35.207.42.45
 
 {% hint style="info" %}
 
-If you wish to restrict access to specific ports (e.g., SSH on port 22), modify
-the commands as follows:
+If you wish to restrict access to specific ports (e.g., SSH on port 22), modify the commands as follows:
 
 ```bash
 sudo ufw allow from 35.211.137.107 to any port 22 proto tcp
@@ -67,8 +63,7 @@ Check the current UFW status and rules to confirm the configuration:
 sudo ufw status verbose
 ```
 
-You should see entries indicating that connections from the specified IP
-addresses are allowed.
+You should see entries indicating that connections from the specified IP addresses are allowed.
 
 ## Additional Resources
 
@@ -77,5 +72,4 @@ addresses are allowed.
 
 ---
 
-By following this guide, your Tool will be configured to accept connections only
-from the specified Leader nodes, enhancing the security of your deployment.
+By following this guide, your Tool will be configured to accept connections only from the specified Leader nodes, enhancing the security of your deployment.
