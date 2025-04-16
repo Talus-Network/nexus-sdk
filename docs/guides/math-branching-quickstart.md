@@ -100,9 +100,10 @@ To execute the published DAG, use its ID and provide input for the entry vertex:
 
 **Input JSON Structure:**
 
+> **Example Input:** provide value 10 to port 'a' of 'add_input_and_default'
+
 ```json
-// Example Input: provide value 10 to port 'a' of 'add_input_and_default'
-"{\"add_input_and_default\": {\"a\": 10}}"
+{ "add_input_and_default": { "a": 10 } }
 ```
 
 **Test Different Execution Paths:**
