@@ -69,6 +69,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.DOCS_PAT }}
           path: gitbook-docs
           commit-message: "Update docs from ${{ env.REPO_NAME }} (commit: ${{ github.sha }})"
           committer: "devops@taluslabs.xyz <devops@taluslabs.xyz>"
