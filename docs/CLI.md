@@ -108,7 +108,7 @@ Performs static analysis on a JSON DAG at the provided path. It enforces rules d
 1. For each entry group...
 2. Find all input ports
 3. For each input port...
-4. Find all paths from relevant entry intput ports to this input port
+4. Find all paths from relevant entry vertices to this input port
 5. Ensure that net concurrency on that input port node is 0
    - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
    - `N` output ports on an output variant increase the graph concurrency by `N - 1` beacause `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
