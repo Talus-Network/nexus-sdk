@@ -60,9 +60,11 @@ nexus --version
 
 ## Configure the Talus devnet
 
-> [!IMPORTANT]
-> The Talus `devnet` is currently private and accessible only through approved
-> credentials. To request access, please submit your details using this [Google Form]().
+{% hint style="warning" %}
+The Talus `devnet` is currently private and accessible only through approved
+credentials. To request access, please submit your details using the form
+provided in the navigation bar.
+{% endhint %}
 
 Once you receive your credentials, configure your Nexus CLI to connect to the
 Talus `devnet` by running:
@@ -86,10 +88,11 @@ Activate these environment variables using:
 source .envrc
 ```
 
-> [!TIP]
-> To automatically load these variables every time you navigate to the project
-> directory, consider using [direnv](https://direnv.net/). After installing it,
-> run direnv allow within your project directory.
+{% hint style="success" %}
+To automatically load these variables every time you navigate to the project
+directory, consider using [direnv](https://direnv.net/). After installing it,
+run `direnv allow` within your project directory.
+{% endhint %}
 
 ### Configure the Sui client
 
@@ -110,9 +113,10 @@ Create a new wallet with the following command:
 sui client new-address ed25519 tally
 ```
 
-> [!IMPORTANT]
-> This command will output your wallet details, including your address and
-> recovery phrase. Ensure you store this information securely.
+{% hint style="danger" %}
+This command will output your wallet details, including your address and
+recovery phrase. Ensure you store this information securely.
+{% endhint %}
 
 To request funds from the faucet, run:
 
