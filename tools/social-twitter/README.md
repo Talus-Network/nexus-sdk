@@ -626,6 +626,88 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
+# `xyz.taluslabs.social.twitter.get-user-followers@1`
+
+Standard Nexus Tool that retrieves followers of a user by their ID.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/users/follows/api-reference/get-users-id-followers)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`user_id`: [`String`]**
+
+The ID of the User to lookup followers for (e.g. "2244994945").
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
+
+The maximum number of results to return per page (range: 1-1000).
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+This parameter is used to get a specified 'page' of results.
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A comma separated list of User fields to display.
+
+_opt_ **`expansions_fields`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A comma separated list of fields to expand.
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A comma separated list of Tweet fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The followers were retrieved successfully.
+
+- **`ok.followers`: [`Vec<UserData>`]** - Array of user data for followers, containing:
+  - `id`: The user's unique identifier
+  - `name`: The user's display name
+  - `username`: The user's @username
+  - `protected` (optional): Whether the user's account is protected
+  - `created_at` (optional): When the user's account was created
+  - `description` (optional): The user's profile description/bio
+  - `location` (optional): The user's location
+  - `profile_image_url` (optional): URL of the user's profile image
+  - `verified` (optional): Whether the user is verified
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response, containing:
+  - `result_count` (optional): Number of results returned
+  - `next_token` (optional): Pagination token for next results
+  - `previous_token` (optional): Pagination token for previous results
+
+**`err`**
+
+The followers could not be retrieved due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested user was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # `xyz.taluslabs.social.twitter.create-list@1`
 
 Standard Nexus Tool that creates a new list on Twitter.
