@@ -44,7 +44,9 @@ This command should also check that the URL is accessible by the Leader node. It
 
 **`nexus tool validate --on-chain <ident>`**
 
-🚧 This is TBD... 🚧
+{% hint style="warning" %}
+The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic. 
+{% endhint %}
 
 ---
 
@@ -62,7 +64,9 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tool register --on-chain <ident>`**
 
-🚧 This is TBD... 🚧
+{% hint style="warning" %}
+The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic. 
+{% endhint %}
 
 ---
 
