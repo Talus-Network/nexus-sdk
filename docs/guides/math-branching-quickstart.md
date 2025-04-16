@@ -8,7 +8,7 @@ This quickstart guide helps developers test the Nexus CLI with a simple end-to-e
 In the quickstart example we'll use a simple conceptual workflow consisting of standard Nexus math tools. This example is not really useful in the real world, but will allow to showcase the Nexus concepts and Nexus CLI usage that you'll be using for all of your real world use cases.
 {% endhint %}
 
-The [`math_branching.json` DAG](../../cli/src/dag/_dags/math_branching.json) takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
+The [`math_branching.json` DAG](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
 
 * If negative: Multiply by `-3`
 * If positive: Multiply by `7`
@@ -19,7 +19,6 @@ Here's a visual representation of the workflow:
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
-    subgraph "Math Branching DAG"
         Input[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
         Def1([b = -3]) --> A;
         A -- "result" --> B{"is_negative<br>(math.i64.cmp@1)"};
@@ -37,7 +36,6 @@ graph TD
         C -- "result" --> Result1((Final Result));
         D -- "result" --> Result2((Final Result));
         E -- "result" --> Result3((Final Result));
-    end
 
     classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
     classDef input fill:#23D3F8,stroke:#000000,stroke-width:2px,color:#000000;
@@ -52,7 +50,7 @@ graph TD
 
 ## Prerequisites
 
-* [Nexus CLI](../../CLI.md) installed
+* [Nexus CLI](setup.md#install-the-nexus-cli) installed.
 * A configured Sui wallet for the publish step (can skip this step if just validating). Follow the [Getting Started section in the Sui Docs](https://docs.sui.io/guides/developer/getting-started) to get you set up.
 
 {% hint style="info" %}
@@ -138,6 +136,6 @@ When you execute the DAG via the `nexus dag execute` command, a successful outpu
 
 ## Next Steps
 
-* Read the full [Agent Builder Guide](agent-builder-guide.md) to understand how this DAG is constructed
+* Read the full [Agent Builder Guide](math-branching-dag-builder.md) to understand how this DAG is constructed
 * Study the [DAG Construction Guide](dag-construction.md) for more advanced DAG features
 * Try building your own DAG with different tools and logic flows

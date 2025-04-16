@@ -25,9 +25,7 @@ brew install nexus-cli
 
 #### Arch Linux
 
-The [nexus-cli](https://aur.archlinux.org/packages/nexus-cli) is also available
-in the AUR (Arch User Repository). You can install it using your preferred
-[AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
+The [nexus-cli](https://aur.archlinux.org/packages/nexus-cli) is also available in the AUR (Arch User Repository). You can install it using your preferred [AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
 
 ```bash
 yay -S nexus-cli
@@ -133,8 +131,7 @@ sui client balance tally
 
 ## Access Devnet Sui Explorer
 
-Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and
-request an access code.
+Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and request an access code.
 
 ---
 

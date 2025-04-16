@@ -8,14 +8,11 @@ The Nexus CLI is a set of tools that is used by almost all Actors in the Nexus e
 - Tool developers use it to scaffold, validate and register tools
 - Nexus developers use it for debugging, testing and both use cases mentioned above
 
-## Open questions
-
-- before public release, Tool<>Leader authorization needs to be implemented
-- publishing and installtion of the CLI, SDK and Tookit needs to be solved
-
 ## Interface design
 
-> Each command can be passed a `--json` flag that will return the output in JSON format. This is useful for programmatic access to the CLI.
+{% hint style="info" %}
+Each command can be passed a `--json` flag that will return the output in JSON format. This is useful for programmatic access to the CLI.
+{% endhint %}
 
 ### `nexus tool`
 
@@ -37,7 +34,9 @@ Validate an off-chain Nexus Tool on the provided URL. This command checks whethe
 2. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
 3. `POST /invoke` the CLI can check that the endpoint exists.
 
-> As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
+{% hint style="success" %}
+As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
+{% endhint %}
 
 This command should also check that the URL is accessible by the Leader node. It should, however, be usable with `localhost` Tools for development purposes, printing a warning.
 
@@ -45,7 +44,7 @@ This command should also check that the URL is accessible by the Leader node. It
 
 **`nexus tool validate --on-chain <ident>`**
 
-[Issue #96](https://github.com/Talus-Network/nexus-next/issues/96)
+🚧 This is TBD... 🚧
 
 ---
 
@@ -55,13 +54,15 @@ Command that makes a request to `GET <url>/meta` to fetch the Tool definition an
 
 This returns an OwnerCap object ID that can be used to manage the Tool.
 
-> This command requires that a wallet is connected to the CLI.
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 ---
 
 **`nexus tool register --on-chain <ident>`**
 
-[Issue #96](https://github.com/Talus-Network/nexus-next/issues/96)
+🚧 This is TBD... 🚧
 
 ---
 
@@ -71,9 +72,9 @@ Command that sends a TX to our Tool Registry and unregisters a Tool with the pro
 
 Owned OwnerCap object must be passed to this command for authorization.
 
-> We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
-
-> This command requires that a wallet is connected to the CLI.
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 ---
 
@@ -83,15 +84,17 @@ After the period of time configured in our Tool Registry, let the Tool developer
 
 Owned OwnerCap object must be passed to this command for authorization.
 
-> We could provide ergonomics by letting the user use the off-chain Tool URL from which we fetch the FQN.
-
-> This command requires that a wallet is connected to the CLI.
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 **`nexus tool list`**
 
 List all Nexus Tools available in the Tool Registry. This reads the dynamic object directly from Sui.
 
-> This command requires that a wallet is connected to the CLI.
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 ---
 
@@ -121,7 +124,9 @@ Performs static analysis on a JSON DAG at the provided path. It enforces rules d
 
 Publishes a JSON DAG at the provided path to the Workflow. Static analysis is automatically performed prior to publishing. This command then returns the on-chain DAG object ID that can be used to execute it.
 
-> This command requires that a wallet is connected to the CLI.
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 ---
 
@@ -137,7 +142,9 @@ The input `<data>` is a JSON string with the following structure:
 
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 
-> This command requires that a wallet is connected to the CLI..
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI..
+{% endhint %}
 
 ---
 

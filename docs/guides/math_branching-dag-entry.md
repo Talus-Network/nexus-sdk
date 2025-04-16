@@ -1,6 +1,6 @@
 # Extending Your DAG with Entry Groups
 
-This guide builds on the [Branching Math DAG construction guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original `math_branching.json` DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
+This guide builds on the [Build the Quickstart guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
 
 ## What You'll Learn
 
@@ -33,7 +33,6 @@ Here's a visual representation of the extended workflow:
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
-    subgraph "DAG with Entry Groups"
         %% Entry points and their inputs
         InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
         Def1([b = -3]) --> A;
@@ -63,7 +62,6 @@ graph TD
         C -- "result" --> Result1((Final Result));
         D -- "result" --> Result2((Final Result));
         E -- "result" --> Result3((Final Result));
-    end
 
     %% Styling
     classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
@@ -87,7 +85,7 @@ Both paths connect to the same comparison vertex, which then branches based on w
 
 ## Step-by-Step Construction
 
-Let's build the [`math_branching_entry_group.json`][math-branching-entry-group-dag] file step by step.
+Let's build the `math_branching_entry_group.json` file step by step.
 
 ### 1. Define Vertices (`vertices` list)
 
@@ -559,5 +557,4 @@ For more advanced usage of entry groups and other DAG features, refer to the [DA
 
 <!-- List of references -->
 [dag-construction]: ./dag-construction.md
-[math-branching-entry-group-dag]: ../../cli/src/dag/_dags/math_branching_entry_group.json
 [math-branching-dag-builder-guide]: ./math-branching-dag-builder.md
