@@ -1,4 +1,4 @@
-# Developing Tool to Prep Numeric Results for Chat Completion
+# Build the Missing Tool
 
 This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations as input for chat completion.
 
@@ -13,9 +13,10 @@ cd tools/llm-openai-chat-prep
 ```
 
 This command creates a new project with the following structure:
-- `Cargo.toml` with the default dependencies
-- `src/main.rs` with a basic tool implementation
-- `README.md` for documentation
+
+* `Cargo.toml` with the default dependencies
+* `src/main.rs` with a basic tool implementation
+* `README.md` for documentation
 
 The generated `Cargo.toml` will include all default dependencies.
 
@@ -150,28 +151,25 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
 ## Key Implementation Details
 
 1. **Input Structure**:
-   - `number`: The i64 number to convert
-   - `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
-
+   * `number`: The i64 number to convert
+   * `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
 2. **Output Structure**:
-   - `Ok` variant with a `Message` containing:
-     - `role`: The message role
-     - `value`: The string representation of the number
-   - `Err` variant with an error reason
-
+   * `Ok` variant with a `Message` containing:
+     * `role`: The message role
+     * `value`: The string representation of the number
+   * `Err` variant with an error reason
 3. **Error Handling**:
-   - Following the Nexus Tool development guidelines:
-     - Error variants are named with `err` prefix (e.g., `Err`)
-     - Error messages are descriptive and include the invalid value
-     - Error messages list valid options when applicable
-     - Errors are returned as part of the output enum rather than using `Result`
-   - The tool uses the `Role` enum to ensure only valid roles can be used
-   - All error cases are handled gracefully with descriptive error messages
-
+   * Following the Nexus Tool development guidelines:
+     * Error variants are named with `err` prefix (e.g., `Err`)
+     * Error messages are descriptive and include the invalid value
+     * Error messages list valid options when applicable
+     * Errors are returned as part of the output enum rather than using `Result`
+   * The tool uses the `Role` enum to ensure only valid roles can be used
+   * All error cases are handled gracefully with descriptive error messages
 4. **Testing Strategy**:
-   - Unit tests verify both default and custom role scenarios
-   - Tests verify error handling for invalid roles
-   - Tests check that error messages contain relevant information
+   * Unit tests verify both default and custom role scenarios
+   * Tests verify error handling for invalid roles
+   * Tests check that error messages contain relevant information
 
 ## Creating the README
 
@@ -184,46 +182,47 @@ Every Nexus tool must include a README.md file that documents the tool's functio
 5. (Optional) Example usage in a DAG
 
 <details>
+
 <summary>Example README.md</summary>
 
-# `xyz.taluslabs.llm-openai-chat-prep@1`
+## `xyz.taluslabs.llm-openai-chat-prep@1`
 
 Standard Nexus Tool that converts a number into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations as input for chat completion.
 
-## Input
+### Input
 
-**`number`: [`prim@i64`]**
+**`number`: \[`prim@i64`]**
 
 The number to convert to a message. The tool will attempt to convert this number to a string representation. If the conversion fails, an error will be returned.
 
-_opt_ **`role`: [`Role`]** _default_: `Role::User`
+_opt_ **`role`: \[`Role`]** _default_: `Role::User`
 
 The role for the message. Must be one of: `Role::User`, `Role::System`, or `Role::Assistant`. Defaults to `Role::User` if not specified.
 
-## Output Variants & Ports
+### Output Variants & Ports
 
 **`ok`**
 
 The number was successfully converted to a message.
 
-- **`ok.message.role`: [`String`]** - The role of the message (user, system, or assistant).
-- **`ok.message.value`: [`String`]** - The string representation of the number.
+* **`ok.message.role`: \[`String`]** - The role of the message (user, system, or assistant).
+* **`ok.message.value`: \[`String`]** - The string representation of the number.
 
 **`err`**
 
 The conversion failed due to an invalid input.
 
-- **`err.reason`: [`String`]** - The reason for the error. This will include details about what went wrong:
-  - For invalid roles: "Invalid Role: {role}"
-  - For number conversion failures: "Failed to validate number conversion: {error}"
+* **`err.reason`: \[`String`]** - The reason for the error. This will include details about what went wrong:
+  * For invalid roles: "Invalid Role: {role}"
+  * For number conversion failures: "Failed to validate number conversion: {error}"
 
-## Error Handling
+### Error Handling
 
 This tool handles the following error case:
 
 **Invalid Role**: If the provided role is not one of the valid `Role` variants, the tool returns an `err` variant with a descriptive error message.
 
-## Example Usage
+### Example Usage
 
 This tool is typically used in a DAG to convert the output of a mathematical operation into a format that can be used as input for the chat completion tool. For example:
 
@@ -322,29 +321,30 @@ Note that you'll have to add the chat completion api key still. It is recommende
 
 ## Build, Run, Register your Tool
 
-1. Build the tool:
-   ```bash
-   cargo build
-   ```
+1.  Build the tool:
 
-2. Start the tool server:
-   ```bash
-   cargo run
-   ```
+    ```bash
+    cargo build
+    ```
+2.  Start the tool server:
 
-3. Validate the tool:
-   ```bash
-   nexus tool validate --off-chain http://localhost:8080
-   ```
+    ```bash
+    cargo run
+    ```
+3.  Validate the tool:
 
-4. Register the tool:
-   ```bash
-   nexus tool register --off-chain http://localhost:8080
-   ```
+    ```bash
+    nexus tool validate --off-chain http://localhost:8080
+    ```
+4.  Register the tool:
+
+    ```bash
+    nexus tool register --off-chain http://localhost:8080
+    ```
 
 ## Did you catch it?
 
-The example provided here, while functional does not provide the optimal design according to the guidelines in [the Tool development guide][tool-development]. If you did not already think of this while going through the above setup, go through the best practices and see what you could improve about the Tool's design.
+The example provided here, while functional does not provide the optimal design according to the guidelines in [the Tool development guide](../tool-development.md). If you did not already think of this while going through the above setup, go through the best practices and see what you could improve about the Tool's design.
 
 {% hint style="success" %}
 Consider for what use cases you could use this tool to prepare it to add as an LLM chat completion prompt... is it widely useful or only in specific cases? How could you improve this?
@@ -352,7 +352,4 @@ Consider for what use cases you could use this tool to prepare it to add as an L
 
 ## Next Steps
 
-This tool provides a simple but essential bridge between mathematical operations and chat completion, enabling the creation of more sophisticated DAGs that combine numerical computation with natural language processing. Follow along with the developer guides to expand the [Math Branching Example DAG with chat completion](./math_branching_with_chat.md).
-
-<!-- List of references -->
-[tool-development]: ../tool-development.md
+This tool provides a simple but essential bridge between mathematical operations and chat completion, enabling the creation of more sophisticated DAGs that combine numerical computation with natural language processing. Follow along with the developer guides to expand the [Math Branching Example DAG with chat completion](math_branching_with_chat.md).
