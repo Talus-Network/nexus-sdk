@@ -4,7 +4,7 @@
 
 The Nexus CLI is a set of tools that is used by almost all Actors in the Nexus ecosystem.
 
-- Agent developers use it to create Smart Agent Packages
+- Agent developers use it to create Talus Agent Packages
 - Tool developers use it to scaffold, validate and register tools
 - Nexus developers use it for debugging, testing and both use cases mentioned above
 
