@@ -15,7 +15,6 @@ env:
   RUSTFLAGS: >
     -C codegen-units=1
     -C linker=rust-lld
-    --debuginfo-level-std=1
 
 jobs:
   base_branch_coverage:
