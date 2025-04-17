@@ -1,14 +1,6 @@
 {
   "default_values": [
     {
-      "vertex": "add_input_and_default",
-      "input_port": "b",
-      "value": {
-        "storage": "inline",
-        "data": -3
-      }
-    },
-    {
       "vertex": "mul_by_neg_3",
       "input_port": "b",
       "value": {
@@ -41,14 +33,32 @@
       }
     }
   ],
+  "entry_groups": [
+    {
+      "name": "group_a",
+      "vertices": ["add_inputs"]
+    },
+    {
+      "name": "group_b",
+      "vertices": ["mul_inputs"]
+    }
+  ],
   "vertices": [
     {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
-      "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "name": "add_inputs",
+      "entry_ports": ["a", "b"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
+      },
+      "name": "mul_inputs",
+      "entry_ports": ["a", "b"]
     },
     {
       "kind": {
@@ -82,7 +92,18 @@
   "edges": [
     {
       "from": {
-        "vertex": "add_input_and_default",
+        "vertex": "add_inputs",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "is_negative",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "mul_inputs",
         "output_variant": "ok",
         "output_port": "result"
       },

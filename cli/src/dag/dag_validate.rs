@@ -204,12 +204,11 @@ mod tests {
 
     #[test]
     fn test_cyclic_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
+        let dag: Dag = serde_json::from_str(include_str!("_dags/cyclic_invalid.json")).unwrap();
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: a.input' has an edge leading to it and therefore cannot be an entry port."));
     }
 
     // == Parser tests ==
@@ -221,7 +220,7 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry 'Vertex: a' is not connected to the DAG."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' is not connected to the DAG."));
     }
 
     #[test]
@@ -231,19 +230,18 @@ mod tests {
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is already present in the graph or has an edge leading into it and therefore cannot have a default value."));
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is an entry port or has an edge leading into it and therefore cannot have a default value."));
     }
 
     #[test]
-    fn test_references_vertex_with_ports_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!(
-            "_dags/references_vertex_with_ports_invalid.json"
-        ))
-        .unwrap();
+    fn test_references_non_existing_vertex() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/references_non_existing_vertex.json"))
+                .unwrap();
 
         let res = validate(dag);
 
-        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_a' references a vertex 'location_decider' that has input ports."));
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_a' references a non-existing vertex 'invalid'."));
     }
 
     #[test]

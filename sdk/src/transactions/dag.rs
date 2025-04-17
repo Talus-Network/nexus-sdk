@@ -66,47 +66,47 @@ pub fn create(
         dag_arg = create_edge(tx, workflow_pkg_id, dag_arg, edge)?;
     }
 
-    // Create all entry input ports and vertices. Or create a default entry
-    // group with all specified input ports if none is present.
+    // Create all entry ports and vertices. Or create a default entry group
+    // with all specified entry ports if none is present.
     if let Some(entry_groups) = &dag.entry_groups {
         for entry_group in entry_groups {
-            for member in &entry_group.members {
-                match &member.input_port {
-                    Some(input_port) => {
+            for vertex in &entry_group.vertices {
+                let entry_ports = dag
+                    .vertices
+                    .iter()
+                    .find(|v| &v.name == vertex)
+                    .and_then(|v| v.entry_ports.as_ref());
+
+                if let Some(entry_ports) = entry_ports {
+                    for entry_port in entry_ports {
                         dag_arg = mark_entry_input_port(
                             tx,
                             workflow_pkg_id,
                             dag_arg,
-                            &member.vertex,
-                            input_port,
+                            vertex,
+                            entry_port,
                             &entry_group.name,
                         )?;
                     }
-                    None => {
-                        dag_arg = mark_entry_vertex(
-                            tx,
-                            workflow_pkg_id,
-                            dag_arg,
-                            &member.vertex,
-                            &entry_group.name,
-                        )?;
-                    }
+                } else {
+                    dag_arg =
+                        mark_entry_vertex(tx, workflow_pkg_id, dag_arg, vertex, &entry_group.name)?;
                 }
             }
         }
     } else {
         for vertex in &dag.vertices {
-            let Some(input_ports) = vertex.input_ports.as_ref() else {
+            let Some(entry_ports) = vertex.entry_ports.as_ref() else {
                 continue;
             };
 
-            for input_port in input_ports {
+            for entry_port in entry_ports {
                 dag_arg = mark_entry_input_port(
                     tx,
                     workflow_pkg_id,
                     dag_arg,
                     &vertex.name,
-                    input_port,
+                    entry_port,
                     DEFAULT_ENTRY_GROUP,
                 )?;
             }
@@ -254,14 +254,14 @@ pub fn mark_entry_input_port(
     workflow_pkg_id: sui::ObjectID,
     dag: sui::Argument,
     vertex: &str,
-    input_port: &str,
+    entry_port: &str,
     entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
-    let entry_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, input_port)?;
+    let entry_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, entry_port)?;
 
     // `entry_group: EntryGroup`
     let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
@@ -478,7 +478,7 @@ mod tests {
             kind: VertexKind::OffChain {
                 tool_fqn: fqn!("xyz.tool.test@1"),
             },
-            input_ports: None,
+            entry_ports: None,
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();

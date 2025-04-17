@@ -6,7 +6,7 @@
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "location_decider",
-      "input_ports": ["messages"]
+      "entry_ports": ["messages"]
     },
     {
       "kind": {

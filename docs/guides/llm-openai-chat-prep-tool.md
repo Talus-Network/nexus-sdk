@@ -14,9 +14,9 @@ cd tools/llm-openai-chat-prep
 
 This command creates a new project with the following structure:
 
-* `Cargo.toml` with the default dependencies
-* `src/main.rs` with a basic tool implementation
-* `README.md` for documentation
+- `Cargo.toml` with the default dependencies
+- `src/main.rs` with a basic tool implementation
+- `README.md` for documentation
 
 The generated `Cargo.toml` will include all default dependencies.
 
@@ -58,6 +58,7 @@ enum Output {
 ```
 
 where:
+
 ```rust
 /// Represents the type of a message in a chat completion request or response.
 #[derive(Debug, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, EnumString)]
@@ -151,25 +152,25 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
 ## Key Implementation Details
 
 1. **Input Structure**:
-   * `number`: The i64 number to convert
-   * `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
+   - `number`: The i64 number to convert
+   - `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
 2. **Output Structure**:
-   * `Ok` variant with a `Message` containing:
-     * `role`: The message role
-     * `value`: The string representation of the number
-   * `Err` variant with an error reason
+   - `Ok` variant with a `Message` containing:
+     - `role`: The message role
+     - `value`: The string representation of the number
+   - `Err` variant with an error reason
 3. **Error Handling**:
-   * Following the Nexus Tool development guidelines:
-     * Error variants are named with `err` prefix (e.g., `Err`)
-     * Error messages are descriptive and include the invalid value
-     * Error messages list valid options when applicable
-     * Errors are returned as part of the output enum rather than using `Result`
-   * The tool uses the `Role` enum to ensure only valid roles can be used
-   * All error cases are handled gracefully with descriptive error messages
+   - Following the Nexus Tool development guidelines:
+     - Error variants are named with `err` prefix (e.g., `Err`)
+     - Error messages are descriptive and include the invalid value
+     - Error messages list valid options when applicable
+     - Errors are returned as part of the output enum rather than using `Result`
+   - The tool uses the `Role` enum to ensure only valid roles can be used
+   - All error cases are handled gracefully with descriptive error messages
 4. **Testing Strategy**:
-   * Unit tests verify both default and custom role scenarios
-   * Tests verify error handling for invalid roles
-   * Tests check that error messages contain relevant information
+   - Unit tests verify both default and custom role scenarios
+   - Tests verify error handling for invalid roles
+   - Tests check that error messages contain relevant information
 
 ## Creating the README
 
@@ -205,16 +206,16 @@ The role for the message. Must be one of: `Role::User`, `Role::System`, or `Role
 
 The number was successfully converted to a message.
 
-* **`ok.message.role`: \[`String`]** - The role of the message (user, system, or assistant).
-* **`ok.message.value`: \[`String`]** - The string representation of the number.
+- **`ok.message.role`: \[`String`]** - The role of the message (user, system, or assistant).
+- **`ok.message.value`: \[`String`]** - The string representation of the number.
 
 **`err`**
 
 The conversion failed due to an invalid input.
 
-* **`err.reason`: \[`String`]** - The reason for the error. This will include details about what went wrong:
-  * For invalid roles: "Invalid Role: {role}"
-  * For number conversion failures: "Failed to validate number conversion: {error}"
+- **`err.reason`: \[`String`]** - The reason for the error. This will include details about what went wrong:
+  - For invalid roles: "Invalid Role: {role}"
+  - For number conversion failures: "Failed to validate number conversion: {error}"
 
 ### Error Handling
 
@@ -249,7 +250,7 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat",
-      "input_ports": ["api_key"]
+      "entry_ports": ["api_key"]
     }
   ],
   "edges": [
@@ -316,7 +317,8 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
 }
 ```
 
-Note that you'll have to add the chat completion api key still. It is recommended to use entry input ports for this.
+Note that you'll have to add the chat completion api key still. It is recommended to use _entry ports_ for this.
+
 </details>
 
 ## Build, Run, Register your Tool
@@ -326,16 +328,19 @@ Note that you'll have to add the chat completion api key still. It is recommende
     ```bash
     cargo build
     ```
+
 2.  Start the tool server:
 
     ```bash
     cargo run
     ```
+
 3.  Validate the tool:
 
     ```bash
     nexus tool validate --off-chain http://localhost:8080
     ```
+
 4.  Register the tool:
 
     ```bash

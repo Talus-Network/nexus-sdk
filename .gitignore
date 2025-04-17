@@ -1,6 +1,7 @@
 # Build files
 target
 sdk/tests/move/object_crawler_test/build
+sdk/tests/move/object_crawler_test/Move.lock
 
 # Environment
 .env

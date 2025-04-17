@@ -34,22 +34,15 @@ pub enum VertexKind {
 pub struct Vertex {
     pub kind: VertexKind,
     pub name: String,
-    pub input_ports: Option<Vec<String>>,
+    pub entry_ports: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct EntryGroup {
     pub name: String,
-    pub members: Vec<EntryMember>,
-}
-
-/// Entry members are either pairs of vertex + input port or just vertex names.
-/// If only a vertex name is provided, the vertex in question must have no input
-/// ports.
-#[derive(Clone, Debug, Deserialize)]
-pub struct EntryMember {
-    pub vertex: String,
-    pub input_port: Option<String>,
+    /// List of vertex names that are part of this entry group. All entry ports
+    /// of these vertices need to be provided data for when executing the DAG.
+    pub vertices: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

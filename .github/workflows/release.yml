@@ -34,8 +34,11 @@ permissions:
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 1
   CARGO_INCREMENTAL: 0
   CLICOLOR: 1
+  RUSTFLAGS: >
+    -C codegen-units=1
 
 jobs:
   cli:
@@ -69,13 +72,6 @@ jobs:
         with:
           file: Cargo.toml
           field: workspace.package.version
-
-      - name: Increase swapfile
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "6G"
-        continue-on-error: true
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
