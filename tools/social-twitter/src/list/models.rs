@@ -28,6 +28,18 @@ pub struct ListResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ListsResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<ListData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<ApiError>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub includes: Option<Includes>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Meta>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct ListMemberResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<ListMemberData>,
