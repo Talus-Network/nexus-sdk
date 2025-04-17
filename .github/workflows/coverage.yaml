@@ -9,17 +9,12 @@ on:
       - tools/**
 jobs:
   base_branch_coverage:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-default
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-tags: false
-
-      - name: Increase swapfile
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "8G"
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
@@ -57,16 +52,11 @@ jobs:
           path: lcov.info
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-default
     needs: base_branch_coverage
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Increase swapfile
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "8G"
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4

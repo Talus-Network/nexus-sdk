@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   sync-docs:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-default
     name: Sync docs to gitbook-docs repo
 
     steps:
@@ -85,4 +85,4 @@ jobs:
             ${{ env.REPO_NAME }}
           team-reviewers: |
             engineering
-              
+

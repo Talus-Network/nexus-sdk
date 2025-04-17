@@ -20,15 +20,10 @@ jobs:
   # 4. Build, fmt, clippy and test the native Nexus Tools
   build-and-test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-default
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-
-      - name: Increase swapfile
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "6G"
 
       # 1.
       - name: Install Rust
