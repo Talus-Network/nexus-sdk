@@ -7,6 +7,16 @@ on:
       - sdk/**
       - toolkit-rust/**
       - tools/**
+
+# Fix for OOM.
+env:
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: >
+    -C codegen-units=1
+    -C linker=rust-lld
+    --debuginfo-level-std=1
+
 jobs:
   base_branch_coverage:
     runs-on: namespace-profile-default
