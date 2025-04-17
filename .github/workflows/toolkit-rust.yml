@@ -13,6 +13,13 @@ on:
       - "toolkit-rust/**"
       - ".github/workflows/toolkit-rust.yml"
 
+# Fix for OOM.
+env:
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: >
+    -C codegen-units=1
+
 jobs:
   # 1. Install Rust
   # 2. Install Rust cache
@@ -20,7 +27,7 @@ jobs:
   # 4. Build, fmt, clippy and test the Toolkit for Rust
   build-and-test:
     name: Build and test
-    runs-on: namespace-profile-default
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

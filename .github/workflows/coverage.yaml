@@ -17,7 +17,7 @@ env:
 
 jobs:
   base_branch_coverage:
-    runs-on: namespace-profile-default
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +60,7 @@ jobs:
           path: lcov.info
 
   coverage:
-    runs-on: namespace-profile-default
+    runs-on: ubuntu-latest
     needs: base_branch_coverage
     steps:
       - name: Checkout Code
@@ -92,21 +92,6 @@ jobs:
 
       - name: Install cargo-llvm-cov
         run: cargo binstall cargo-llvm-cov --force
-
-      # built sui image can be too big for a github runner
-      # we can run out of space, possibly due to the free space
-      # we used as swap
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # if set to "true" but frees about 6 GB
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
 
       - name: Generate Coverage (PR Branch)
         run: |
