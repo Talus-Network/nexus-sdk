@@ -14,7 +14,6 @@ env:
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: >
     -C codegen-units=1
-    -C linker=rust-lld
 
 jobs:
   base_branch_coverage:
