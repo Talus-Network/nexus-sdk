@@ -11,7 +11,7 @@ This guide builds on the [Math Branching DAG with Entry Groups][math-branching-e
 
 Before we can connect our math operations to the chat completion tool, we need to understand a key challenge: type safety. The chat completion tool expects a `Message` struct as input, but our math operations output numbers. We can't directly connect these without proper type conversion.
 
-This is where we need a custom tool to bridge this gap. We'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that we developed in the [LLM Chat Completion Prep Guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
+This is where we need a custom tool to bridge this gap. We'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that we developed in the [Build the Missing Tool guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
 
 ## Step 1: Adding the Required Tools
 
@@ -191,7 +191,6 @@ The complete DAG now looks like this:
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
-    subgraph "DAG with Chat Completion"
         %% Entry points and their inputs
         InputA1[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
         Def1([b = -3]) --> A;
@@ -231,7 +230,6 @@ graph TD
 
         %% Final result
         C -- "response" --> Result((Final Result));
-    end
 
     %% Styling
     classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
