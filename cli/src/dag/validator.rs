@@ -11,8 +11,8 @@ type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec
 /// rules.
 ///
 /// See our wiki for more information on the rules:
-/// <https://talus-labs.gitbook.io/talus-documentation/devs/index/workflow#rules>
-/// <https://talus-labs.gitbook.io/talus-documentation/devs/index-1/cli#nexus-dag>
+/// <https://docs.talus.network/talus-documentation/devs/index/workflow#rules>
+/// <https://docs.talus.network/talus-documentation/devs/index-1/cli#nexus-dag>
 pub(crate) fn validate(dag: Dag) -> AnyResult<()> {
     // Parse the dag into a petgraph DiGraph.
     let (graph, vertex_entry_groups) = try_into_graph(dag)?;

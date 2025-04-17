@@ -1,6 +1,6 @@
 # Build the Quickstart
 
-This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the `math_branching.json` DAG step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
+This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
 
 The goal is to build a DAG that:
 
@@ -20,7 +20,6 @@ Before diving into the JSON, let's visualize the workflow using a Mermaid diagra
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'background': '#ECEBE9' }}}%%
 graph TD
-    subgraph "Math Branching DAG"
         Input[User Input: a] --> A["add_input_and_default<br>(math.i64.add@1)"];
         Def1([b = -3]) --> A;
         A --> B{"is_negative<br>(math.i64.cmp@1)"};
@@ -38,7 +37,6 @@ graph TD
         C --> Result1((Final Result));
         D --> Result2((Final Result));
         E --> Result3((Final Result));
-    end
 
     classDef tool fill:#FFA1C1,stroke:#000000,stroke-width:2px,color:#000000;
     classDef input fill:#23D3F8,stroke:#000000,stroke-width:2px,color:#000000;
@@ -408,7 +406,7 @@ Combining these sections gives us the complete `math_branching.json`:
 
 ## Validation and Execution with the CLI
 
-Now that you've constructed the branching math DAG, you can test it out with the Nexus CLI. For detailed steps on how to validate, publish, and execute this DAG with different inputs, see the [Math Branching DAG: 5-Minute Quickstart](math-branching-quickstart.md) guide.
+Now that you've constructed the branching math DAG, you can test it out with the Nexus CLI. For detailed steps on how to validate, publish, and execute this DAG with different inputs, see the [Dev Quickstart](math-branching-quickstart.md) guide.
 
 The quickstart provides step-by-step instructions for:
 
