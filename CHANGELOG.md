@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON DAG definition no longer specifies entry input ports
 - renamed JSON DAG `vertices.input_ports` to `vertices.entry_ports`
 
+### `nexus-sdk`
+
+#### Fixed
+
+- `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
+
 ## [`0.1.0`] - 2025-04-14
 
 ### `nexus-cli`
