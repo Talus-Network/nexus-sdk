@@ -1,0 +1,21 @@
+[package]
+name = "social-twitter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oauth1-request = "0.6.1"
+
+thiserror.workspace = true
+tokio.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+serde_json.workspace = true
+serde.workspace = true
+schemars.workspace = true
+
+# === Nexus deps ===
+nexus-toolkit.workspace = true
+nexus-sdk.workspace = true
+
+[dev-dependencies]
+mockito = "1.7.0"
