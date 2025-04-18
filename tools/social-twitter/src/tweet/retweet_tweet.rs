@@ -3,13 +3,16 @@
 //! Standard Nexus Tool that retweets a tweet.
 
 use {
-    crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
+    super::models::RetweetResponse,
+    crate::{
+        auth::TwitterAuth,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
+    },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json::Value,
+    serde_json::json,
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -49,7 +52,7 @@ impl NexusTool for RetweetTweet {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -66,137 +69,45 @@ impl NexusTool for RetweetTweet {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        let client = Client::new();
+        // Build the endpoint for the Twitter API
+        let suffix = format!("users/{}/retweets", request.user_id);
 
-        let url = format!("{}/{}/retweets", self.api_base, request.user_id);
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                }
+            }
+        };
 
-        // Generate OAuth authorization header with the complete URL
-        let auth_header = request.auth.generate_auth_header(&url);
-
-        // Format the request body with the tweet_id
-        let request_body = format!(r#"{{"tweet_id": "{}"}}"#, request.tweet_id);
-
-        let response = client
-            .post(&url)
-            .header("Authorization", auth_header)
-            .header("Content-Type", "application/json")
-            .body(request_body)
-            .send()
-            .await;
-
-        match response {
-            Err(e) => Output::Err {
-                reason: format!("Failed to send retweet request to Twitter API: {}", e),
-            },
-            Ok(result) => {
-                let text = match result.text().await {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Failed to read Twitter API response: {}", e),
-                        }
-                    }
-                    Ok(text) => text,
-                };
-
-                let json: Value = match serde_json::from_str(&text) {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Invalid JSON response: {}", e),
-                        }
-                    }
-                    Ok(json) => json,
-                };
-
-                // Check for error response with code/message format
-                if let Some(code) = json.get("code") {
-                    let message = json
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Unknown error");
-
+        match client
+            .post::<RetweetResponse, _>(&request.auth, json!({ "tweet_id": request.tweet_id }))
+            .await
+        {
+            Ok(response) => {
+                // Check if we have data
+                if let Some(data) = response.data {
+                    println!("Retweeted tweet: {:?}", data);
+                    return Output::Ok {
+                        tweet_id: data.rest_id,
+                        retweeted: data.retweeted,
+                    };
+                } else if let Some(errors) = response.errors {
                     return Output::Err {
-                        reason: format!("Twitter API error: {} (Code: {})", message, code),
+                        reason: errors.first().unwrap().detail.clone().unwrap_or_default(),
+                    };
+                } else {
+                    return Output::Err {
+                        reason: "Failed to retweet: Unknown error".to_string(),
                     };
                 }
-
-                // Check for error response with detail/status/title format
-                if let Some(detail) = json.get("detail") {
-                    let status = json.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
-                    let title = json
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown");
-
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API error: {} (Status: {}, Title: {})",
-                            detail.as_str().unwrap_or("Unknown error"),
-                            status,
-                            title
-                        ),
-                    };
-                }
-
-                // Check for errors array
-                if let Some(errors) = json.get("errors") {
-                    if let Some(error) = errors.get(0) {
-                        let title = error
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("Unknown error");
-                        let error_type = error
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("Unknown type");
-                        return Output::Err {
-                            reason: format!("Twitter API error: {} (type: {})", title, error_type),
-                        };
-                    }
-                    return Output::Err {
-                        reason: format!("Twitter API returned errors: {}", errors),
-                    };
-                }
-
-                // Check for success response format
-                let data = match json.get("data") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(data) => data,
-                };
-
-                // Check for retweeted field
-                let retweeted = match data.get("retweeted") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(retweeted) => retweeted.as_bool().unwrap_or(false),
-                };
-
-                // Check if the tweet was retweeted
-                if !retweeted {
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API indicated the tweet was not retweeted: {}",
-                            json
-                        ),
-                    };
-                }
-
-                // Successfully retweeted the tweet
-                Output::Ok {
-                    tweet_id: request.tweet_id,
-                    retweeted,
+            }
+            Err(e) => {
+                let error_response = e.to_string();
+                Output::Err {
+                    reason: error_response,
                 }
             }
         }
@@ -220,7 +131,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, RetweetTweet) {
         let server = Server::new_async().await;
-        let tool = RetweetTweet::with_api_base(&(server.url() + "/users"));
+        let tool = RetweetTweet::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -258,7 +169,6 @@ mod tests {
             .await;
 
         let result = tool.invoke(create_test_input()).await;
-        println!("Test result: {:?}", result);
 
         match result {
             Output::Ok {
@@ -276,14 +186,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_unauthorized_error() {
-        // Create server and tool
         let (mut server, tool) = create_server_and_tool().await;
 
-        // Set up mock for 401 Unauthorized response
         let mock = server
             .mock("POST", "/users/12345/retweets")
             .with_status(401)
-            .with_header("content-type", "application/problem+json")
+            .with_header("content-type", "application/json")
             .with_body(
                 json!({
                     "status": 401,
@@ -296,10 +204,8 @@ mod tests {
             .create_async()
             .await;
 
-        // Test the retweet request
         let result = tool.invoke(create_test_input()).await;
 
-        // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
             Output::Err { reason } => {
@@ -307,7 +213,6 @@ mod tests {
             }
         }
 
-        // Verify that the mock was called
         mock.assert_async().await;
     }
 
@@ -318,7 +223,7 @@ mod tests {
         let mock = server
             .mock("POST", "/users/12345/retweets")
             .with_status(429)
-            .with_header("content-type", "application/problem+json")
+            .with_header("content-type", "application/json")
             .with_body(
                 json!({
                     "status": 429,
@@ -332,11 +237,10 @@ mod tests {
             .await;
 
         let result = tool.invoke(create_test_input()).await;
-
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
             Output::Err { reason } => {
-                assert!(reason.contains("Rate limit exceeded"));
+                assert!(reason.contains("Too Many Requests"));
             }
         }
 
@@ -349,18 +253,14 @@ mod tests {
 
         let mock = server
             .mock("POST", "/users/12345/retweets")
-            .with_status(200)
+            .with_status(404)
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
                     "errors": [{
                         "title": "Not Found Error",
                         "type": "https://api.twitter.com/2/problems/resource-not-found",
-                        "detail": "Tweet not found",
-                        "value": "67890",
-                        "resource_type": "tweet",
-                        "parameter": "tweet_id",
-                        "resource_id": "67890"
+                        "detail": "Tweet not found"
                     }]
                 })
                 .to_string(),
@@ -373,7 +273,7 @@ mod tests {
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
             Output::Err { reason } => {
-                assert!(reason.contains("Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)"));
+                assert!(reason.contains("Not Found Error"));
             }
         }
 

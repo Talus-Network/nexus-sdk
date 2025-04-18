@@ -8,6 +8,7 @@ mod auth;
 mod error;
 mod list;
 mod tweet;
+mod twitter_client;
 mod user;
 
 /// This function bootstraps the tool and starts the server.
