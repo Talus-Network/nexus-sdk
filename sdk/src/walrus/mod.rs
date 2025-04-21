@@ -2,7 +2,9 @@
 //!
 //! This module allows for:
 //! - Uploading files to the Walrus network
+//! - Uploading JSON data to the Walrus network
 //! - Downloading files from the Walrus network
+//! - Reading and parsing JSON data from the Walrus network
 //! - Verifying the existence of files in the Walrus network
 
 mod client;
