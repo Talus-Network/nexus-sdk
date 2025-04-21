@@ -167,6 +167,7 @@ optional = true
 [dev-dependencies]
 assert_matches = "1.5.0"
 tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
 
 # === Build deps ===
 [build-dependencies]
