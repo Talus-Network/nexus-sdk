@@ -302,7 +302,7 @@ The tweet posting failed.
 # `xyz.taluslabs.social.twitter.delete-tweet@1`
 
 Standard Nexus Tool that deletes a tweet.
-Twitter api [reference](https://docs.x.com/x-api/posts/delete-post)
+Twitter api [reference](https://docs.x.com/x-api/posts/post-delete-by-post-id#post-delete-by-post-id)
 
 ## Input
 
@@ -331,17 +331,28 @@ The tweet was successfully deleted.
 
 **`err`**
 
-The tweet deletion failed.
+The tweets could not be retrieved due to an error.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error status (Code/Message format)
-  - Twitter API error details (Detail/Status/Title format)
-  - Unauthorized error
-  - Invalid JSON response
-  - Failed to read Twitter API response
-  - Failed to send delete request to Twitter API
-  - Unexpected response format from Twitter API
-  - Twitter API indicated the tweet was not deleted
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible
+  values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 

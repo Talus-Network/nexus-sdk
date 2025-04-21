@@ -3,15 +3,13 @@
 //! Standard Nexus Tool that deletes a tweet.
 
 use {
-    crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
+    crate::{auth::TwitterAuth, error::TwitterErrorKind, tweet::TWITTER_API_BASE},
+    nexus_sdk::{fqn, ToolFqn},
+    nexus_toolkit::*,
     reqwest::Client,
-    ::{
-        nexus_sdk::{fqn, ToolFqn},
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serde::{Deserialize, Serialize},
-        serde_json::Value,
-    },
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
+    serde_json::Value,
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -32,8 +30,13 @@ pub(crate) enum Output {
         deleted: bool,
     },
     Err {
-        /// Error message
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -80,25 +83,34 @@ impl NexusTool for DeleteTweet {
         match response {
             Err(e) => Output::Err {
                 reason: format!("Failed to send delete request to Twitter API: {}", e),
+                kind: TwitterErrorKind::Network,
+                status_code: None,
             },
             Ok(result) => {
                 let text = match result.text().await {
                     Err(e) => {
                         return Output::Err {
                             reason: format!("Failed to read Twitter API response: {}", e),
+                            kind: TwitterErrorKind::Parse,
+                            status_code: None,
                         }
                     }
                     Ok(text) => text,
                 };
 
+                println!("text: {}", text);
                 let json: Value = match serde_json::from_str(&text) {
                     Err(e) => {
                         return Output::Err {
                             reason: format!("Invalid JSON response: {}", e),
+                            kind: TwitterErrorKind::Parse,
+                            status_code: None,
                         }
                     }
                     Ok(json) => json,
                 };
+
+                println!("json: {}", json);
 
                 // Check for error response with code/message format
                 if let Some(code) = json.get("code") {
@@ -109,6 +121,8 @@ impl NexusTool for DeleteTweet {
 
                     return Output::Err {
                         reason: format!("Twitter API error: {} (Code: {})", message, code),
+                        kind: TwitterErrorKind::Parse,
+                        status_code: Some(code.as_u64().unwrap_or(0) as u16),
                     };
                 }
 
@@ -127,6 +141,8 @@ impl NexusTool for DeleteTweet {
                             status,
                             title
                         ),
+                        kind: TwitterErrorKind::Api,
+                        status_code: Some(status as u16),
                     };
                 }
 
@@ -134,6 +150,8 @@ impl NexusTool for DeleteTweet {
                 if let Some(errors) = json.get("errors") {
                     return Output::Err {
                         reason: format!("Twitter API returned errors: {}", errors),
+                        kind: TwitterErrorKind::Api,
+                        status_code: None,
                     };
                 }
 
@@ -145,6 +163,8 @@ impl NexusTool for DeleteTweet {
                                 "Unexpected response format from Twitter API: {}",
                                 json
                             ),
+                            kind: TwitterErrorKind::NotFound,
+                            status_code: None,
                         }
                     }
                     Some(data) => data,
@@ -157,6 +177,8 @@ impl NexusTool for DeleteTweet {
                                 "Unexpected response format from Twitter API: {}",
                                 json
                             ),
+                            kind: TwitterErrorKind::NotFound,
+                            status_code: None,
                         }
                     }
                     Some(deleted) => deleted.as_bool().unwrap_or(false),
@@ -168,6 +190,8 @@ impl NexusTool for DeleteTweet {
                             "Twitter API indicated the tweet was not deleted: {}",
                             json
                         ),
+                        kind: TwitterErrorKind::NotFound,
+                        status_code: None,
                     };
                 }
 
@@ -239,7 +263,14 @@ mod tests {
             Output::Ok { deleted } => {
                 assert_eq!(deleted, true);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (Kind: {:?}, Status Code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
@@ -274,12 +305,18 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Unauthorized") && reason.contains("Status: 401"),
                     "Error should indicate unauthorized access. Got: {}",
                     reason
                 );
+                assert_eq!(kind, TwitterErrorKind::Api);
+                assert_eq!(status_code, Some(401));
             }
         }
 
@@ -306,7 +343,11 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Invalid JSON"),
                     "Error should indicate invalid JSON. Got: {}",
@@ -345,7 +386,11 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Unexpected response format"),
                     "Error should indicate unexpected format. Got: {}",
@@ -384,7 +429,11 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("not deleted"),
                     "Error should indicate tweet was not deleted. Got: {}",
