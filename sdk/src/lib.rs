@@ -43,3 +43,8 @@ pub mod transactions;
 /// compilation and deployment and similar.
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
+
+/// Walrus client provides integration with the Walrus decentralized blob storage
+/// system for storing and retrieving files.
+#[cfg(feature = "walrus")]
+pub mod walrus;
