@@ -3,7 +3,7 @@ name: Sync Documentation
 on:
   push:
     branches:
-      - main # or your default branch
+      - staging
     paths:
       - "docs/**" # Only trigger when docs are changed
       - "tools/*/README.md" # Only trigger when tools docs are changed
@@ -85,4 +85,3 @@ jobs:
             ${{ env.REPO_NAME }}
           team-reviewers: |
             engineering
-              

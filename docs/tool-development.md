@@ -20,16 +20,16 @@ These guidelines are not meant to be technical specifications but rather a set o
 
 ### ... should be as generic as possible
 
-- ✅: Tool that encapsulates some API functinality like OpenAI chat completion with all its parameters.
+- ✅: Tool that encapsulates some API functionality like OpenAI chat completion with all its parameters.
 - ❌: Tool that encapsulates a specific API call like OpenAI chat completion with a specific prompt.
 
 {% hint style="success" %}
-Specific Tools are not reusable, they're created ad-hoc for a single DAG. Each Tool (or set of Tools) should be thought of as a library for a given API, allowing for a wide variaty of use cases.
+Specific Tools are not reusable, they're created ad-hoc for a single DAG. Each Tool (or set of Tools) should be thought of as a library for a given API, allowing for a wide variety of use cases.
 {% endhint %}
 
 ### ... should keep the Nexus interface in mind
 
-- ✅: OpenAI chat competion Tool should have a separate Input Port for `prompt` and `context` even though the API request merges them together. This allows for default values to be set in the DAG.
+- ✅: OpenAI chat completion Tool should have a separate Input Port for `prompt` and `context` even though the API request merges them together. This allows for default values to be set in the DAG.
 - ❌: OpenAI chat completion Tool that merges `prompt` and `context` into a single Input Port.
 
 {% hint style="success" %}
@@ -70,4 +70,3 @@ Each Nexus Tool should have a clear and publicly accessible README file that des
 If using Rust, the `main.rs` file should include this documentation via `#![doc = include_str!("../path/to/README.md")]`.
 
 An example README file can be found [here](../tools/llm-openai-chat-completion/README.md).
-
