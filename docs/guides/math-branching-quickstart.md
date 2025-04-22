@@ -54,7 +54,7 @@ graph TD
 * A configured Sui wallet for the publish step (can skip this step if just validating). Follow the [Getting Started section in the Sui Docs](https://docs.sui.io/guides/developer/getting-started) to get you set up.
 
 {% hint style="info" %}
-In this example we will publish a DAG consisting of Nexus Tools that are running somewhere and registered (the URL can be found as metadata in the tool registry). If you were running your own tools and needed to register them, check out [Nexus CLI tool commands](../CLI.md#nexus-tool) to find out how to do this.
+In this example we will publish a DAG consisting of Nexus Tools that are running somewhere and registered (the URL can be found as metadata in the tool registry). If you were running your own tools and needed to register them, check out [Nexus CLI tool commands](../cli.md#nexus-tool) to find out how to do this.
 {% endhint %}
 
 To check the tools that are registered in the tool registry, run:

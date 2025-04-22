@@ -59,13 +59,10 @@ nexus --version
 ## Configure the Talus devnet
 
 {% hint style="warning" %}
-The Talus `devnet` is currently private and accessible only through approved
-credentials. To request access, please submit your details using the form
-provided in the navigation bar.
+The Talus `devnet` is currently private and accessible only through approved credentials. To request access, please submit your details using the form provided in the navigation bar.
 {% endhint %}
 
-Once you receive your credentials, configure your Nexus CLI to connect to the
-Talus `devnet` by running:
+Once you receive your credentials, configure your Nexus CLI to connect to the Talus `devnet` by running:
 
 ```bash
 nexus conf --sui.net devnet \
@@ -87,15 +84,12 @@ source .envrc
 ```
 
 {% hint style="success" %}
-To automatically load these variables every time you navigate to the project
-directory, consider using [direnv](https://direnv.net/). After installing it,
-run `direnv allow` within your project directory.
+To automatically load these variables every time you navigate to the project directory, consider using [direnv](https://direnv.net/). After installing it, run `direnv allow` within your project directory.
 {% endhint %}
 
 ### Configure the Sui client
 
-After installing the Sui binaries, configure and activate your Talus `devnet`
-environment:
+After installing the Sui binaries, configure and activate your Talus `devnet` environment:
 
 ```bash
 sui client new-env --alias devnet --rpc $SUI_RPC_URL \
@@ -112,8 +106,7 @@ sui client new-address ed25519 tally
 ```
 
 {% hint style="danger" %}
-This command will output your wallet details, including your address and
-recovery phrase. Ensure you store this information securely.
+This command will output your wallet details, including your address and recovery phrase. Ensure you store this information securely.
 {% endhint %}
 
 To request funds from the faucet, run:
@@ -131,9 +124,8 @@ sui client balance tally
 
 ## Access Devnet Sui Explorer
 
-Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and request an access code.
+Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/) and login using the same username and password you used for the RPC and Faucet.
 
 ---
 
-After completing these steps, you are ready to build and execute workflows using
-the Nexus SDK. To build your first workflow, check the [Dev Quickstart guide](math-branching-quickstart.md).
+After completing these steps, you are ready to build and execute workflows using the Nexus SDK. To build your first workflow, check the [Dev Quickstart guide](math-branching-quickstart.md).

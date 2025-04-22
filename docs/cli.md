@@ -110,7 +110,11 @@ Set of commands for managing JSON DAGs.
 
 **`nexus dag validate --path <path>`**
 
-Performs static analysis on a JSON DAG at the provided path. It enforces rules described in [[Package: Workflow]]. The algorithm enforcing rule #5 is noteworthy. It works as follows:
+Performs static analysis on a JSON DAG at the provided path. It enforces rules described in [the Workflow docs](../nexus-next/packages/workflow.md). Th
+
+{% hint style="info" %}
+If you're unsure about the terminology used below, please refer to the [glossary](../nexus-next/glossary.md).
+{% endhint %}
 
 1. For each entry group...
 2. Find all input ports
@@ -118,7 +122,7 @@ Performs static analysis on a JSON DAG at the provided path. It enforces rules d
 4. Find all paths from relevant entry vertices to this input port
 5. Ensure that net concurrency on that input port node is 0
    - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
-   - `N` output ports on an output variant increase the graph concurrency by `N - 1` beacause `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
+   - `N` output ports on an output variant increase the graph concurrency by `N - 1` because `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
    - If net concurrency is `< 0`, the input port can never be reached
    - If net concurrency is `> 0`, there is a race condition on the input port
 
