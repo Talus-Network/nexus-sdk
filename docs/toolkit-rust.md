@@ -2,7 +2,7 @@
 
 > concerns [`nexus-toolkit-rust` repo][nexus-toolkit-rust-repo]
 
-This library exports useful functinality to streamline the development of Nexus Tools in Rust. It is mainly used by **Tool developers** to bootstrap their efforts to extend the Nexus ecosystem.
+This library exports useful functionality to streamline the development of Nexus Tools in Rust. It is mainly used by **Tool developers** to bootstrap their efforts to extend the Nexus ecosystem.
 
 This documentation will go over the main features of the library and how to use them.
 
@@ -200,9 +200,9 @@ async fn main() {
     bootstrap!(MyTool)
 }
 
-/// Bootstrap muliple Tools at 127.0.0.1:8080.
+/// Bootstrap multiple Tools at 127.0.0.1:8080.
 ///
-/// When definining multiple Tools, their `NexusTool::path` must be unique.
+/// When defining multiple Tools, their `NexusTool::path` must be unique.
 #[tokio::main]
 async fn main() {
     bootstrap!([MyTool, MyOtherTool])
@@ -216,7 +216,7 @@ async fn main() {
 
 /// Bootstrap multiple Tools at a custom address.
 ///
-/// When definining multiple Tools, their `NexusTool::path` must be unique.
+/// When defining multiple Tools, their `NexusTool::path` must be unique.
 #[tokio::main]
 async fn main() {
     bootstrap!(([0, 0, 0, 0], 8081), [MyTool, MyOtherTool])
@@ -226,6 +226,6 @@ async fn main() {
 <!-- List of References -->
 
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
-[nexus-next-tool-docs]: ../nexus-next/Tool.md
-[nexus-next-workflow-docs]: ../nexus-next/packages/Workflow.md
-[nexus-cli-docs]: ./CLI.md
+[nexus-next-tool-docs]: ../nexus-next/tool.md
+[nexus-next-workflow-docs]: ../nexus-next/packages/workflow.md
+[nexus-cli-docs]: ./cli.md
