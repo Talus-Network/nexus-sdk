@@ -79,6 +79,10 @@ anyhow.workspace = true
 serde.workspace = true
 
 # === Optional deps ===
+[dependencies.futures-util]
+version = "0.3"
+optional = true
+
 [dependencies.lazy-regex]
 workspace = true
 optional = true
@@ -91,10 +95,6 @@ optional = true
 workspace = true
 optional = true
 features = ["json", "stream"]
-
-[dependencies.futures-util]
-version = "0.3"
-optional = true
 
 [dependencies.serde_json]
 workspace = true

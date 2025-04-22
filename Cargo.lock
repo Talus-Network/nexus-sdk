@@ -4628,7 +4628,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "futures-util",
  "lazy-regex",
+ "mockito",
  "move-core-types",
  "regex",
  "reqwest",
