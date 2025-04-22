@@ -8,7 +8,7 @@ use {
     tokio::{fs::File, io::AsyncWriteExt},
 };
 
-// Publisher and Aggregator URLs are from https://github.com/MystenLabs/walrus/blob/232d27ff7b3c2ba08aa4e10729b095f300b46384/docs/book/assets/operators.json
+// Publisher and Aggregator URLs are from <https://github.com/MystenLabs/walrus/blob/232d27ff7b3c2ba08aa4e10729b095f300b46384/docs/book/assets/operators.json>
 // Walrus Default API Endpoints
 pub const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
 pub const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
