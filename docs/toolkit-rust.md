@@ -15,7 +15,8 @@ Alternatively, you can add the following to your `Cargo.toml` file:
 ```toml
 [dependencies.nexus-toolkit]
 git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "..."
+tag = "v0.1.0"
+package = "nexus-toolkit"
 ```
 
 ## Exports
@@ -173,8 +174,9 @@ impl NexusTool for HttpStatus {
     // ...
 }
 ```
-
-> Notice that the `invoke` function does not return a `Result`. This is because errors are valid output variants of a Nexus Tool. The `invoke` function should handle any errors and return them as part of the output.
+{% hint style="info" %}
+Notice that the `invoke` function does not return a `Result`. This is because errors are valid output variants of a Nexus Tool. The `invoke` function should handle any errors and return them as part of the output.
+{% endhint %}
 
 ---
 

@@ -28,13 +28,7 @@ The codebase resides in [this repository](https://github.com/Talus-Network/nexus
 Docs:
 
 * [Nexus CLI](CLI.md)
-* [DAG Construction Guide](dag-construction.md)
-
-Epics:
-
-* https://github.com/Talus-Network/nexus-next/issues/69
-* https://github.com/Talus-Network/nexus-next/issues/45
-* https://github.com/Talus-Network/nexus-next/issues/15
+* [DAG Construction Guide](guides/dag-construction.md)
 
 ## Toolkit
 
@@ -47,6 +41,3 @@ Docs:
 * [Tool Development Guidelines](tool-development.md)
 * [Nexus Toolkit Rust](toolkit-rust.md)
 
-Epics:
-
-* https://github.com/Talus-Network/nexus-next/issues/69
