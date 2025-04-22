@@ -23,7 +23,7 @@ A DAG JSON file consists of sections defining the graph's components:
 
 ## 2. Vertex Definitions (`vertices` list)
 
-All vertices, whether they serve as entry points or internal steps, are defined within the main `vertices` list.
+**All** vertices are defined within the main `vertices` list.
 
 ```json
 {
@@ -38,11 +38,18 @@ All vertices, whether they serve as entry points or internal steps, are defined 
 ```
 
 - The `name` must be unique within the DAG.
-- The input ports of a tool are specified by the tool's output schema saved in the Nexus tool registry. Each input port must have exactly one of:
+{% hint style="success" %}
+The input ports of a tool are specified by the tool's output schema saved in the Nexus tool registry. Each input port must have exactly one of:
   1. An edge leading to it
   2. A default value
   3. Be part of `entry_ports`
-- A vertex acts as an _entry point_ when its name is included in the `entry_groups` array. Note that when no _entry group_ is explicitly provided, all vertices with `entry_ports` are considered a part of the _default entry group_. When beginning an execution of an _entry group_, all `entry_ports` that belong to vertices that belong to the _entry group_ must be provided with input data.
+{% endhint %}
+
+- Add the input port as part of `entry_ports` only if it does not have an edge leading into it nor has a default value.
+
+{% hint style="warning" %}
+When beginning an execution of an [_entry group_](#5-entry-groups-optional), all `entry_ports` that belong to vertices that belong to the _entry group_ must be provided with client input data.
+{% endhint %}
 
 ## 3. Edges
 
@@ -83,13 +90,11 @@ Default values provide static inputs to vertices:
 **Important Constraints:**
 
 - An _input port_ can receive data either from an _incoming edge_ or a _default value_, but **never both**. ([workflow rules][nexus-next-workflow] Rule 4)
-- Entry ports **cannot** have default values. Default values are only permitted for input ports that are _not_ entry ports. ([workflow rules][nexus-next-workflow] Rule 11)
+- Entry ports **cannot** have default values (by definition). Default values are only permitted for input ports that are _not_ entry ports. ([workflow rules][nexus-next-workflow] Rule 11)
 
 ## 5. Entry Groups (Optional)
 
-Entry groups define named starting configurations for the DAG, specifying which vertices act as entry points for a given execution.
-
-<!-- TODO: <https://github.com/Talus-Network/nexus-sdk/pull/128> -->
+Entry groups define named starting configurations for the DAG, specifying which vertices act as entry points for a given execution (possibly multiple concurrent walks).
 
 ```json
 {
@@ -102,7 +107,19 @@ Entry groups define named starting configurations for the DAG, specifying which 
 }
 ```
 
-- An _entry group_ allows selecting a specific starting workflow via `nexus dag execute --entry-group group_name ...`.
+A vertex acts as an _entry point_ when its name is included in the `entry_groups` array.
+
+{% hint style="warning" %}
+Being part of an entry group does not imply that all vertices in the group get executed immediately upon DAG execution invocation. In Nexus, any vertex will only be executed as soon as all input ports on the vertex have a value.
+{% endhint %}
+
+Practically speaking, this means that you'll need to add all vertices to the entry group that either (non-exclusive):
+- will immediately start execution
+- need to be provided client input for entry ports
+
+### Summary
+
+- An _entry group_ allows selecting a specific starting configuration of the workflow with selected entry points via `nexus dag execute --entry-group group_name ...`.
 - The `vertex` names specified **must** refer to vertices defined in the top-level `vertices` list.
 - **Input Requirement:** When executing with a specific _entry group_, input data **must** be provided via `--input-json` for each _entry port_ belonging to vertices specified in the `entry_groups` list. If a vertex in `entry_groups` has no _entry ports_, it **must** still be specified in `--input-json` with an empty object `{}`.
 - **Default Value Restriction:** As stated in Section 4, _entry ports_ that belong to the chosen _entry group_ cannot have default values.

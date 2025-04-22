@@ -110,7 +110,11 @@ Set of commands for managing JSON DAGs.
 
 **`nexus dag validate --path <path>`**
 
-Performs static analysis on a JSON DAG at the provided path. It enforces rules described in [[Package: Workflow]]. The algorithm enforcing rule #5 is noteworthy. It works as follows:
+Performs static analysis on a JSON DAG at the provided path. It enforces rules described in [the Workflow docs](../nexus-next/packages/workflow.md). Th
+
+{% hint style="info" %}
+If you're unsure about the terminology used below, please refer to the [glossary](../nexus-next/glossary.md).
+{% endhint %}
 
 1. For each entry group...
 2. Find all input ports
