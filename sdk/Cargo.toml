@@ -96,17 +96,17 @@ features = ["json", "stream"]
 version = "0.3"
 optional = true
 
-[dependencies.tokio]
-workspace = true
-features = ["full"]
-optional = true
-
 [dependencies.serde_json]
 workspace = true
 optional = true
 
 [dependencies.tempfile]
 workspace = true
+optional = true
+
+[dependencies.tokio]
+workspace = true
+features = ["io-util"]
 optional = true
 
 [dependencies.tokio-retry]
