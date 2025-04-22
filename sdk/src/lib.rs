@@ -29,13 +29,13 @@ pub mod types;
 #[cfg(feature = "events")]
 pub mod events;
 
-/// Object crawler attempts to improve the Sui SDK obejct fetching by allowing
+/// Object crawler attempts to improve the Sui SDK object fetching by allowing
 /// direct parsing into structs.
 #[cfg(feature = "object_crawler")]
 pub mod object_crawler;
 
 /// Transactions module contains builders for PTBs that are submitted to Sui
-/// and perform vairous operations on the Nexus ecosystem.
+/// and perform various operations on the Nexus ecosystem.
 #[cfg(feature = "transactions")]
 pub mod transactions;
 

@@ -2,9 +2,9 @@
 
 This guide explains how to construct DAG (Directed Acyclic Graph) JSON files for the Nexus platform. DAGs define the workflow that an Agent will execute.
 
-For an explanation of the terms and rules used below, refer to [the Nexus workflow documenetation][nexus-next-workflow].
+For an explanation of the terms and rules used below, refer to [the Nexus workflow documentation][nexus-next-workflow].
 
-{% hint sytle="info"%}
+{% hint style="info"%}
 Note that for all DAG related terms in the configuration JSON file, snake casing is applied.
 {% endhint %}
 
