@@ -11,11 +11,11 @@ For the purposes of this documentation we make distinction between different use
 * **Agent developer.** Outside contributor that creates DAGs and subsequently deploys the Agent smart contract.
 * **Agent user.** End-user that interacts with the ecosystem through clients built by us or outside contributors.
 
-## [Glossary](../nexus-next/Glossary.md)
+## [Glossary](../nexus-next/glossary.md)
 
-Ubiqutously used terms. Often these terms reference specific parts of the project so it is crucial that they be clearly defined. Find them [here](../nexus-next/Glossary.md).
+Ubiqutously used terms. Often these terms reference specific parts of the project so it is crucial that they be clearly defined. Find them [here](../nexus-next/glossary.md).
 
-## [CLI](CLI.md)
+## [CLI](cli.md)
 
 This CLI can be used by both Agent Developers and Tool Developers for various tasks. Those tasks include:
 
@@ -27,7 +27,7 @@ The codebase resides in [this repository](https://github.com/Talus-Network/nexus
 
 Docs:
 
-* [Nexus CLI](CLI.md)
+* [Nexus CLI](cli.md)
 * [DAG Construction Guide](guides/dag-construction.md)
 
 ## Toolkit

@@ -226,6 +226,6 @@ async fn main() {
 <!-- List of References -->
 
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
-[nexus-next-tool-docs]: ../nexus-next/Tool.md
-[nexus-next-workflow-docs]: ../nexus-next/packages/Workflow.md
-[nexus-cli-docs]: ./CLI.md
+[nexus-next-tool-docs]: ../nexus-next/tool.md
+[nexus-next-workflow-docs]: ../nexus-next/packages/torkflow.md
+[nexus-cli-docs]: ./cli.md
