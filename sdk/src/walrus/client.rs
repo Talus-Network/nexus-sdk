@@ -21,22 +21,31 @@ pub struct WalrusClient {
 }
 
 impl WalrusClient {
-    /// Create a new WalrusClient with optional configuration
-    ///
-    /// # Arguments
-    /// * `client` - Optional custom reqwest Client
-    /// * `publisher_url` - Optional custom publisher URL
-    /// * `aggregator_url` - Optional custom aggregator URL
-    pub fn new(
-        client: Option<Client>,
-        publisher_url: Option<String>,
-        aggregator_url: Option<String>,
-    ) -> Self {
+    /// Create a new WalrusClient with default configuration
+    pub fn new() -> Self {
         Self {
-            client: client.unwrap_or_else(Client::new),
-            publisher_url: publisher_url.unwrap_or_else(|| WALRUS_PUBLISHER_URL.to_string()),
-            aggregator_url: aggregator_url.unwrap_or_else(|| WALRUS_AGGREGATOR_URL.to_string()),
+            client: Client::new(),
+            publisher_url: WALRUS_PUBLISHER_URL.to_string(),
+            aggregator_url: WALRUS_AGGREGATOR_URL.to_string(),
         }
+    }
+
+    /// Set a custom HTTP client
+    pub fn with_client(mut self, client: Client) -> Self {
+        self.client = client;
+        self
+    }
+
+    /// Set a custom publisher URL
+    pub fn with_publisher_url(mut self, url: &str) -> Self {
+        self.publisher_url = url.to_string();
+        self
+    }
+
+    /// Set a custom aggregator URL
+    pub fn with_aggregator_url(mut self, url: &str) -> Self {
+        self.aggregator_url = url.to_string();
+        self
     }
 
     /// Upload a file to Walrus
