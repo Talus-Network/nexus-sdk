@@ -29,10 +29,11 @@ async fn setup_mock_server() -> Result<(ServerGuard, WalrusClient)> {
     let client = reqwest::Client::builder().build().unwrap();
 
     // Create a Walrus client that points to our mock server
-    let walrus_client = WalrusClient::new()
+    let walrus_client = WalrusClient::builder()
         .with_client(client)
         .with_publisher_url(&server_url)
-        .with_aggregator_url(&server_url);
+        .with_aggregator_url(&server_url)
+        .build();
 
     Ok((server, walrus_client))
 }

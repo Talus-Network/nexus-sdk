@@ -13,21 +13,28 @@ use {
 pub const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
 pub const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
 
-/// Client for interacting with the Walrus decentralized blob storage system
-pub struct WalrusClient {
+/// Builder for WalrusClient configuration
+pub struct WalrusClientBuilder {
     client: Client,
     publisher_url: String,
     aggregator_url: String,
 }
 
-impl WalrusClient {
-    /// Create a new WalrusClient with default configuration
-    pub fn new() -> Self {
+impl Default for WalrusClientBuilder {
+    /// Creates a default WalrusClientBuilder with standard configuration
+    fn default() -> Self {
         Self {
             client: Client::new(),
             publisher_url: WALRUS_PUBLISHER_URL.to_string(),
             aggregator_url: WALRUS_AGGREGATOR_URL.to_string(),
         }
+    }
+}
+
+impl WalrusClientBuilder {
+    /// Create a new WalrusClientBuilder with default configuration
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Set a custom HTTP client
@@ -46,6 +53,41 @@ impl WalrusClient {
     pub fn with_aggregator_url(mut self, url: &str) -> Self {
         self.aggregator_url = url.to_string();
         self
+    }
+
+    /// Build the WalrusClient with the configured settings
+    pub fn build(self) -> WalrusClient {
+        WalrusClient {
+            client: self.client,
+            publisher_url: self.publisher_url,
+            aggregator_url: self.aggregator_url,
+        }
+    }
+}
+
+/// Client for interacting with the Walrus decentralized blob storage system
+pub struct WalrusClient {
+    client: Client,
+    publisher_url: String,
+    aggregator_url: String,
+}
+
+impl Default for WalrusClient {
+    /// Creates a default WalrusClient with standard configuration
+    fn default() -> Self {
+        WalrusClientBuilder::default().build()
+    }
+}
+
+impl WalrusClient {
+    /// Create a new WalrusClient with default configuration
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get a builder to create a customized WalrusClient
+    pub fn builder() -> WalrusClientBuilder {
+        WalrusClientBuilder::default()
     }
 
     /// Upload a file to Walrus
