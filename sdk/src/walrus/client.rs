@@ -9,43 +9,34 @@ use {
 };
 
 // Publisher and Aggregator URLs are from https://github.com/MystenLabs/walrus/blob/232d27ff7b3c2ba08aa4e10729b095f300b46384/docs/book/assets/operators.json
-// Walrus API Endpoints
+// Walrus Default API Endpoints
 pub const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
 pub const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
-
-/// Get publisher URL from environment variable or default
-fn get_publisher_url() -> String {
-    std::env::var("WALRUS_PUBLISHER_URL").unwrap_or_else(|_| WALRUS_PUBLISHER_URL.to_string())
-}
-
-/// Get aggregator URL from environment variable or default
-fn get_aggregator_url() -> String {
-    std::env::var("WALRUS_AGGREGATOR_URL").unwrap_or_else(|_| WALRUS_AGGREGATOR_URL.to_string())
-}
 
 /// Client for interacting with the Walrus decentralized blob storage system
 pub struct WalrusClient {
     client: Client,
+    publisher_url: String,
+    aggregator_url: String,
 }
 
 impl WalrusClient {
-    /// Create a new WalrusClient with default configuration
-    pub fn new() -> Self {
+    /// Create a new WalrusClient with optional configuration
+    ///
+    /// # Arguments
+    /// * `client` - Optional custom reqwest Client
+    /// * `publisher_url` - Optional custom publisher URL
+    /// * `aggregator_url` - Optional custom aggregator URL
+    pub fn new(
+        client: Option<Client>,
+        publisher_url: Option<String>,
+        aggregator_url: Option<String>,
+    ) -> Self {
         Self {
-            client: Client::new(),
+            client: client.unwrap_or_else(Client::new),
+            publisher_url: publisher_url.unwrap_or_else(|| WALRUS_PUBLISHER_URL.to_string()),
+            aggregator_url: aggregator_url.unwrap_or_else(|| WALRUS_AGGREGATOR_URL.to_string()),
         }
-    }
-
-    /// Create a new WalrusClient with a custom reqwest Client
-    pub fn with_client(client: Client) -> Self {
-        Self { client }
-    }
-
-    /// Create a new WalrusClient with custom base URLs (useful for testing)
-    pub fn with_base_urls(client: Client, publisher_url: &str, aggregator_url: &str) -> Self {
-        std::env::set_var("WALRUS_PUBLISHER_URL", publisher_url);
-        std::env::set_var("WALRUS_AGGREGATOR_URL", aggregator_url);
-        Self { client }
     }
 
     /// Upload a file to Walrus
@@ -69,7 +60,7 @@ impl WalrusClient {
             .context(format!("Failed to read file: {:?}", file_path))?;
 
         // Construct API URL with query parameters
-        let mut url = format!("{}/v1/blobs?epochs={}", get_publisher_url(), epochs);
+        let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
         if let Some(address) = send_to {
             url.push_str(&format!("&send_object_to={}", address));
         }
@@ -111,7 +102,7 @@ impl WalrusClient {
         let json_content = serde_json::to_vec(data).context("Failed to serialize data to JSON")?;
 
         // Construct API URL with query parameters
-        let mut url = format!("{}/v1/blobs?epochs={}", get_publisher_url(), epochs);
+        let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
         if let Some(address) = send_to {
             url.push_str(&format!("&send_object_to={}", address));
         }
@@ -142,7 +133,7 @@ impl WalrusClient {
     /// * `output` - Path where the downloaded file should be saved
     pub async fn download_file(&self, blob_id: &str, output: &PathBuf) -> Result<()> {
         // Construct download URL
-        let url = format!("{}/v1/blobs/{}", get_aggregator_url(), blob_id);
+        let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send GET request
         let response = self
@@ -181,7 +172,7 @@ impl WalrusClient {
     /// * `T` - The type to deserialize the JSON into, must implement DeserializeOwned
     pub async fn read_json<T: DeserializeOwned>(&self, blob_id: &str) -> Result<T> {
         // Construct download URL
-        let url = format!("{}/v1/blobs/{}", get_aggregator_url(), blob_id);
+        let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send GET request
         let response = self
@@ -214,7 +205,7 @@ impl WalrusClient {
     /// * `Result<bool>` - True if the blob exists, false otherwise
     pub async fn verify_blob(&self, blob_id: &str) -> Result<bool> {
         // Construct URL to check blob existence
-        let url = format!("{}/v1/blobs/{}", get_aggregator_url(), blob_id);
+        let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send HEAD request to check if blob exists
         let response = self
