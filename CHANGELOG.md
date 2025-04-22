@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- Walrus client was added to sdk
+- added Walrus Client module for interact with Walrus decentralized storage
 
 #### Fixed
 
