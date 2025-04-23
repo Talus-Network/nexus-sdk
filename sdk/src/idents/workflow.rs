@@ -400,6 +400,29 @@ impl LeaderCap {
     };
 }
 
+// == `nexus_workflow::gas` ==
+
+pub struct Gas;
+
+const GAS_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas");
+
+impl Gas {
+    /// Claim leader gas for this evaluation.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas`
+    pub const CLAIM_LEADER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas"),
+    };
+    /// Sync gas for the vertices in the current execution object.
+    ///
+    /// `nexus_workflow::gas::sync_gas_state`
+    pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("sync_gas_state"),
+    };
+}
+
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
 /// creating generic types.
 pub fn into_type_tag(
