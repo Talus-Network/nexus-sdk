@@ -414,6 +414,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::move_ident_str!("claim_leader_gas"),
     };
+    /// GasService type for lookups.
+    ///
+    /// `nexus_workflow::gas::GasService`
+    pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("GasService"),
+    };
     /// Sync gas for the vertices in the current execution object.
     ///
     /// `nexus_workflow::gas::sync_gas_state`
