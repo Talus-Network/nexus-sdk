@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-sdk`
 
+#### Added
+
+- added Walrus Client module to interact with Walrus decentralized storage
+
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
