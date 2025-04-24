@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 oauth1-request = "0.6.1"
 
+thiserror.workspace = true
 tokio.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true

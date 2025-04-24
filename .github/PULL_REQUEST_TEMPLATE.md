@@ -11,3 +11,4 @@
 - [ ] keep a changelog
 - [ ] write tests
 - [ ] create tickets for `TODO: <>` statements
+- [ ] create or update documentation
