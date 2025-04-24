@@ -1,15 +1,21 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["toolkit-rust", "cli", "sdk", "tools/*"]
 
-package.edition = "2021"
-package.version = "0.2.0"
-package.repository = "https://github.com/Talus-Network/nexus-sdk"
-package.license-file = "LICENSE.txt"
-package.readme = "README.md"
-package.authors = ["Talus Engineers <engineering@taluslabs.xyz>"]
-package.keywords = ["talus", "nexus", "rust", "sui", "sdk", "toolkit"]
-package.categories = ["command-line-interface", "api-bindings"]
+[workspace.package]
+edition = "2021"
+version = "0.2.0-rc.1"
+repository = "https://github.com/Talus-Network/nexus-sdk"
+homepage = "https://talus.network"
+license-file = "LICENSE.txt"
+readme = "README.md"
+authors = ["Talus Engineers <engineering@taluslabs.xyz>"]
+keywords = ["blockchain", "cli", "framework", "nexus", "sdk", "sui", "talus"]
+categories = [
+  "api-bindings",
+  "command-line-interface",
+  "cryptography::cryptocurrencies",
+]
 
 [workspace.dependencies]
 anyhow = "1.0.97"
@@ -22,9 +28,10 @@ env_logger = "0.11.7"
 home = "0.5.11"
 jsonschema = "0.28.3"
 lazy-regex = "3.4.1"
-log = "0.4.27"
+log = "^0.4.26"
 minijinja = "2.8.0"
 mockito = "1.7.0"
+openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
 regex = "1.11.1"
@@ -48,3 +55,14 @@ warp = "0.3.7"
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
+
+
+[profile.release]
+# debug = 1 means line charts only, which is minimum needed for good stack traces
+debug = 1
+# Write debug info into a separate file.
+split-debuginfo = "packed"
+# Decrease final binary size
+strip = "debuginfo"
+# Exit process with SIGABRT when any thread panics
+panic = "abort"

@@ -7,6 +7,14 @@ on:
       - sdk/**
       - toolkit-rust/**
       - tools/**
+
+# Fix for OOM.
+env:
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: >
+    -C codegen-units=1
+
 jobs:
   base_branch_coverage:
     runs-on: ubuntu-latest
@@ -15,11 +23,6 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-tags: false
-
-      - name: Increase swapfile
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "6G"
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
@@ -62,11 +65,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Increase swapfile
-        uses: ./.github/actions/increase-swapfile
-        with:
-          swap_size: "6G"
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
