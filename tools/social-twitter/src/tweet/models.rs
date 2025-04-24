@@ -1,5 +1,9 @@
 use {
-    crate::error::TwitterApiError,
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::Value,
@@ -650,3 +654,5 @@ pub struct RetweetData {
     /// Whether the tweet was successfully retweeted
     pub retweeted: bool,
 }
+
+impl_twitter_response_parser!(RetweetResponse, RetweetData);

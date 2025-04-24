@@ -6,6 +6,7 @@ use {
     super::models::RetweetResponse,
     crate::{
         auth::TwitterAuth,
+        error::TwitterErrorKind,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
@@ -37,8 +38,13 @@ pub(crate) enum Output {
         retweeted: bool,
     },
     Err {
-        /// Error message
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -78,6 +84,8 @@ impl NexusTool for RetweetTweet {
             Err(e) => {
                 return Output::Err {
                     reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
             }
         };
@@ -86,30 +94,15 @@ impl NexusTool for RetweetTweet {
             .post::<RetweetResponse, _>(&request.auth, json!({ "tweet_id": request.tweet_id }))
             .await
         {
-            Ok(response) => {
-                // Check if we have data
-                if let Some(data) = response.data {
-                    println!("Retweeted tweet: {:?}", data);
-                    return Output::Ok {
-                        tweet_id: data.rest_id,
-                        retweeted: data.retweeted,
-                    };
-                } else if let Some(errors) = response.errors {
-                    return Output::Err {
-                        reason: errors.first().unwrap().detail.clone().unwrap_or_default(),
-                    };
-                } else {
-                    return Output::Err {
-                        reason: "Failed to retweet: Unknown error".to_string(),
-                    };
-                }
-            }
-            Err(e) => {
-                let error_response = e.to_string();
-                Output::Err {
-                    reason: error_response,
-                }
-            }
+            Ok(data) => Output::Ok {
+                tweet_id: data.rest_id,
+                retweeted: data.retweeted,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
         }
     }
 }
@@ -178,7 +171,14 @@ mod tests {
                 assert_eq!(tweet_id, "67890");
                 assert!(retweeted);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
@@ -208,8 +208,33 @@ mod tests {
 
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
-                assert!(reason.contains("Unauthorized"));
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check error message
+                assert!(
+                    reason.contains("Unauthorized"),
+                    "Expected error message to contain 'Unauthorized', got: {}",
+                    reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
+                );
             }
         }
 
@@ -239,8 +264,33 @@ mod tests {
         let result = tool.invoke(create_test_input()).await;
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
-                assert!(reason.contains("Too Many Requests"));
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected error kind RateLimit, got: {:?}",
+                    kind
+                );
+
+                // Check error message
+                assert!(
+                    reason.contains("Too Many Requests"),
+                    "Expected error message to contain 'Too Many Requests', got: {}",
+                    reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(429),
+                    "Expected status code 429, got: {:?}",
+                    status_code
+                );
             }
         }
 
@@ -272,8 +322,33 @@ mod tests {
 
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
-                assert!(reason.contains("Not Found Error"));
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected error kind NotFound, got: {:?}",
+                    kind
+                );
+
+                // Check error message
+                assert!(
+                    reason.contains("Not Found Error"),
+                    "Expected error message to contain 'Not Found Error', got: {}",
+                    reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(404),
+                    "Expected status code 404, got: {:?}",
+                    status_code
+                );
             }
         }
 
