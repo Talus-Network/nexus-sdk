@@ -59,7 +59,7 @@ nexus --version
 ## Configure the Talus devnet
 
 {% hint style="warning" %}
-The Talus `devnet` is currently private and accessible only through approved credentials. To request access, please submit your details using the form provided in the navigation bar.
+The Talus `devnet` is currently private and accessible only through approved credentials. To request access, please submit your details using the form provided in the navigation bar by clicking _Join Devnet_. We'll review your application and provide `USERNAME` and `PASSWORD` credentials when approved.
 {% endhint %}
 
 Once you receive your credentials, configure your Nexus CLI to connect to the Talus `devnet` by running:
@@ -112,6 +112,7 @@ This command will output your wallet details, including your address and recover
 To request funds from the faucet, run:
 
 ```bash
+# Pick any alias for your address, here we pick the Talus mascot name tally.
 sui client faucet --address tally \
   --url https://USERNAME:PASSWORD@faucet.devnet.production.taluslabs.dev/gas
 ```
