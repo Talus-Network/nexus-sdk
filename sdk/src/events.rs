@@ -44,6 +44,8 @@ pub enum NexusEventKind {
     ExecutionFinished(ExecutionFinishedEvent),
     #[serde(rename = "FoundingLeaderCapCreatedEvent")]
     FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent),
+    #[serde(rename = "GasSettlementUpdateEvent")]
+    GasSettlementUpdate(GasSettlementUpdateEvent),
     // These events are unused for now.
     #[serde(rename = "ToolRegistryCreatedEvent")]
     ToolRegistryCreated(serde_json::Value),
@@ -186,6 +188,18 @@ pub struct ExecutionFinishedEvent {
 pub struct FoundingLeaderCapCreatedEvent {
     pub leader_cap: sui::ObjectID,
     pub network: sui::ObjectID,
+}
+
+/// Fired by the Gas service when the gas settlement is updated. This event is
+/// used to determine whether a tool invocation was paid for by the caller.
+/// Combination of `execution` and `vertex` uniquely identifies the tool
+/// invocation.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GasSettlementUpdateEvent {
+    pub execution: sui::ObjectID,
+    pub tool_fqn: ToolFqn,
+    pub vertex: TypeName,
+    pub was_settled: bool,
 }
 
 // == Parsing ==
