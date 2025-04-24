@@ -2358,6 +2358,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fmt-cmp"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51f58afb8e10a573cb30dc65381cc266892c84215b17f6d29af59e11d70f383f"
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3799,7 +3805,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -3886,7 +3892,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -4595,7 +4601,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4607,6 +4613,7 @@ dependencies = [
  "minijinja",
  "nexus-sdk",
  "nexus-toolkit",
+ "openssl",
  "petgraph 0.7.1",
  "reqwest",
  "rstest",
@@ -4623,11 +4630,13 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "futures-util",
  "lazy-regex",
+ "mockito",
  "move-core-types",
  "regex",
  "reqwest",
@@ -4648,7 +4657,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -4838,6 +4847,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "oauth-credentials"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d6f9dee4cc95bd06fe0c1225a2b5680e0611627e1643ce78eb76daddd8dbccc"
+
+[[package]]
+name = "oauth1-request"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "498447ee9c67221e1a558d5d49f63594c6ccaa2cdd437abec55c92e8c61887bc"
+dependencies = [
+ "base64 0.22.1",
+ "cfg-if",
+ "digest 0.10.7",
+ "fmt-cmp",
+ "hmac",
+ "oauth-credentials",
+ "oauth1-request-derive",
+ "percent-encoding",
+ "rand 0.8.5",
+ "sha1",
+]
+
+[[package]]
+name = "oauth1-request-derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfe4c99deecc1a12b90d134256879897827028925bce89cea2f51469599dd91"
+dependencies = [
+ "proc-macro-crate 3.3.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4932,6 +4978,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
+name = "openssl-src"
+version = "300.5.0+3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8ce546f549326b0e6052b649198487d91320875da901e7bd11a06d1ee3f9c2f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4939,6 +4994,7 @@ checksum = "8288979acd84749c744a9014b4382d42b8f7b2592847b5afb2ed29e5d16ede07"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -6839,6 +6895,22 @@ name = "snap"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
+
+[[package]]
+name = "social-twitter"
+version = "0.1.0"
+dependencies = [
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "oauth1-request",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
 
 [[package]]
 name = "socket2"
