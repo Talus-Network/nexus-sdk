@@ -3,9 +3,9 @@
 //! This module contains tools for Twitter operations.
 
 pub(crate) mod get_mentioned_tweets;
+pub(crate) mod get_recent_tweet_count;
 pub(crate) mod get_tweet;
 pub(crate) mod get_user_tweets;
-pub(crate) mod get_recent_tweet_count;
 pub(crate) mod like_tweet;
 pub(crate) mod models;
 pub(crate) mod post_tweet;
