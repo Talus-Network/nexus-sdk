@@ -4,7 +4,7 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
         list::models::{Expansion, Meta},
         tweet::{
             models::{TweetField, UserField},
@@ -59,8 +59,13 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Error message if the list tweets failed
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -96,9 +101,15 @@ impl NexusTool for GetListMembers {
                 data: users_response.data,
                 meta: users_response.meta,
             },
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let error_response: TwitterErrorResponse = e.to_error_response();
+
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -257,7 +268,14 @@ mod tests {
                 assert_eq!(meta.result_count.unwrap(), 2);
                 assert_eq!(meta.next_token.unwrap(), "next_page_token");
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {}, kind: {:?}, status_code: {:?}",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
@@ -297,12 +315,28 @@ mod tests {
 
         // Verify the response
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("List not found"),
                     "Expected error message to contain 'List not found', got: {}",
                     reason
                 );
+
+                // Accept either NotFound or Api error kinds
+                if kind == TwitterErrorKind::NotFound || kind == TwitterErrorKind::Api {
+                    // Good
+                } else {
+                    panic!("Expected error kind NotFound or Api, got: {:?}", kind);
+                }
+
+                // Check status code - it might be 404 or None depending on the response structure
+                if status_code != Some(404) && status_code.is_some() {
+                    panic!("Expected status code 404 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { data, meta: _ } => panic!("Expected error, got success: {:?}", data),
         }
@@ -338,12 +372,28 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
                 );
+
+                // Accept either Auth or Api error kinds
+                if kind == TwitterErrorKind::Auth || kind == TwitterErrorKind::Api {
+                    // Good
+                } else {
+                    panic!("Expected error kind Auth or Api, got: {:?}", kind);
+                }
+
+                // Check status code - it might be 401 or None depending on the response structure
+                if status_code != Some(401) && status_code.is_some() {
+                    panic!("Expected status code 401 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -378,13 +428,29 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Rate limit exceeded")
                         || reason.contains("Rate Limit Exceeded"),
                     "Expected error message to contain rate limit information, got: {}",
                     reason
                 );
+
+                // Accept either RateLimit or Api error kinds
+                if kind == TwitterErrorKind::RateLimit || kind == TwitterErrorKind::Api {
+                    // Good
+                } else {
+                    panic!("Expected error kind RateLimit or Api, got: {:?}", kind);
+                }
+
+                // Check status code - it might be 429 or None depending on the response structure
+                if status_code != Some(429) && status_code.is_some() {
+                    panic!("Expected status code 429 or None, got: {:?}", status_code);
+                }
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
@@ -423,7 +489,14 @@ mod tests {
                     assert_eq!(meta.result_count.unwrap(), 0);
                 }
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {}, kind: {:?}, status_code: {:?}",
+                reason, kind, status_code
+            ),
         }
 
         mock.assert_async().await;
@@ -446,11 +519,24 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Response parsing error") || reason.contains("Failed to parse"),
                     "Expected error message to contain parsing error information, got: {}",
                     reason
+                );
+
+                // Check for Parse error kind
+                assert_eq!(kind, TwitterErrorKind::Parse, "Expected Parse error kind");
+
+                // Parsing errors typically don't have status codes
+                assert_eq!(
+                    status_code, None,
+                    "Parsing errors should not have status codes"
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),

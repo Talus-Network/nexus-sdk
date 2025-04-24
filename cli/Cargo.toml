@@ -5,11 +5,16 @@ description = "Nexus CLI provides an interface to interact with the Nexus Workfl
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+homepage.workspace = true
 license-file.workspace = true
 readme.workspace = true
 authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+[[bin]]
+name = "nexus"
+path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
@@ -18,6 +23,7 @@ colored.workspace = true
 convert_case.workspace = true
 home.workspace = true
 minijinja.workspace = true
+openssl.workspace = true
 petgraph.workspace = true
 reqwest.workspace = true
 serde.workspace = true
