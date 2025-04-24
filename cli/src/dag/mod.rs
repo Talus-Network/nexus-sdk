@@ -2,7 +2,6 @@ mod dag_execute;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
-mod parser;
 mod validator;
 
 use {
@@ -11,7 +10,7 @@ use {
     dag_inspect_execution::*,
     dag_publish::*,
     dag_validate::*,
-    parser::DEFAULT_ENTRY_GROUP,
+    nexus_sdk::types::DEFAULT_ENTRY_GROUP,
 };
 
 #[derive(Subcommand)]
