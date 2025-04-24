@@ -69,7 +69,7 @@ pub(crate) async fn register_tool(
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    // Explicilty check that we're registering an off-chain tool. This is mainly
+    // Explicitly check that we're registering an off-chain tool. This is mainly
     // for when we implement logic for on-chain so that we don't forget to
     // adjust the transaction.
     if ident_check.on_chain.is_some() {
@@ -128,7 +128,7 @@ pub(crate) async fn register_tool(
 
     let Some(object_id) = owner_cap else {
         return Err(NexusCliError::Any(anyhow!(
-            "Could not find the OnwerCap object ID in the transaction response."
+            "Could not find the OwnerCap object ID in the transaction response."
         )));
     };
 
