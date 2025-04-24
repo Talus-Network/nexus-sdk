@@ -157,6 +157,7 @@ where
             owner,
             data: parsed,
             version: data.version,
+            digest: data.digest,
         }),
         Err(e) => bail!("Could not parse object {object_id}: {e}"),
     }
@@ -173,6 +174,7 @@ pub struct Response<T> {
     pub owner: sui::Owner,
     pub version: sui::SequenceNumber,
     pub data: T,
+    pub digest: sui::ObjectDigest,
 }
 
 impl<T> Response<T> {
@@ -188,6 +190,15 @@ impl<T> Response<T> {
                 initial_shared_version,
             } => initial_shared_version,
             _ => self.version,
+        }
+    }
+
+    // Get a Sui object ref.
+    pub fn object_ref(&self) -> sui::ObjectRef {
+        sui::ObjectRef {
+            object_id: self.id,
+            version: self.get_initial_version(),
+            digest: self.digest,
         }
     }
 }
