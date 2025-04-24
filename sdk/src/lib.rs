@@ -29,12 +29,22 @@ pub mod types;
 #[cfg(feature = "events")]
 pub mod events;
 
-/// Object crawler attempts to improve the Sui SDK obejct fetching by allowing
+/// Object crawler attempts to improve the Sui SDK object fetching by allowing
 /// direct parsing into structs.
 #[cfg(feature = "object_crawler")]
 pub mod object_crawler;
+
+/// Transactions module contains builders for PTBs that are submitted to Sui
+/// and perform various operations on the Nexus ecosystem.
+#[cfg(feature = "transactions")]
+pub mod transactions;
 
 /// Test utils container management for Sui and Redis, faucet, Move code
 /// compilation and deployment and similar.
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
+
+/// Walrus client provides integration with the Walrus decentralized blob storage
+/// system for storing and retrieving files.
+#[cfg(feature = "walrus")]
+pub mod walrus;
