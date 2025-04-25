@@ -9,7 +9,7 @@ base64 = "0.13.0"
 
 thiserror.workspace = true
 tokio.workspace = true
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, features = ["json", "multipart"] }
 serde_json.workspace = true
 serde.workspace = true
 schemars.workspace = true
