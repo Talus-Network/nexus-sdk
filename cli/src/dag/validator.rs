@@ -1,21 +1,21 @@
 use {
-    crate::{
-        dag::parser::{Dag, DEFAULT_ENTRY_GROUP},
-        prelude::*,
-    },
+    crate::prelude::*,
+    nexus_sdk::types::{Dag, DEFAULT_ENTRY_GROUP},
     petgraph::graph::{DiGraph, NodeIndex},
     std::collections::{HashMap, HashSet},
 };
+
+type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>);
 
 /// Validate function takes a DAG and validates it based on nexus execution
 /// rules.
 ///
 /// See our wiki for more information on the rules:
-/// <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>
-/// <https://github.com/Talus-Network/nexus-next/wiki/CLI#nexus-dag>
+/// <https://docs.talus.network/talus-documentation/devs/index/workflow#rules>
+/// <https://docs.talus.network/talus-documentation/devs/index-1/cli#nexus-dag>
 pub(crate) fn validate(dag: Dag) -> AnyResult<()> {
     // Parse the dag into a petgraph DiGraph.
-    let graph: DiGraph<GraphNode, ()> = dag.try_into()?;
+    let (graph, vertex_entry_groups) = try_into_graph(dag)?;
 
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(&graph) {
         bail!("The provided graph contains one or more cycles.");
@@ -25,7 +25,7 @@ pub(crate) fn validate(dag: Dag) -> AnyResult<()> {
     has_correct_order_of_actions(&graph)?;
 
     // Check that no walks in the graph violate the concurrency rules.
-    follows_concurrency_rules(&graph)?;
+    follows_concurrency_rules(&graph, &vertex_entry_groups)?;
 
     Ok(())
 }
@@ -78,14 +78,14 @@ fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()>
 
 /// For each distinct group of entry vertices, check that the net concurrency
 /// leading from these nodes into any input port is always 0.
-fn follows_concurrency_rules(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
+fn follows_concurrency_rules(
+    graph: &DiGraph<GraphNode, ()>,
+    vertex_entry_groups: &HashMap<GraphNode, Vec<String>>,
+) -> AnyResult<()> {
     // Get all distinct groups of entry vertices.
-    let groups = graph
-        .node_indices()
-        .flat_map(|node| match &graph[node] {
-            GraphNode::Vertex { groups, .. } => groups.clone().unwrap_or_default(),
-            _ => vec![],
-        })
+    let groups = vertex_entry_groups
+        .values()
+        .flatten()
         .collect::<HashSet<_>>();
 
     // For each group...
@@ -93,12 +93,11 @@ fn follows_concurrency_rules(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
         // ... find the entry vertices in that group.
         let entry_vertices = graph
             .node_indices()
-            .filter(|&node| match &graph[node] {
-                GraphNode::Vertex {
-                    groups: Some(groups),
-                    ..
-                } => groups.contains(&group),
-                _ => false,
+            .filter(|&node| {
+                vertex_entry_groups
+                    .get(&graph[node])
+                    .unwrap_or(&vec![])
+                    .contains(group)
             })
             .collect::<Vec<_>>();
 
@@ -186,7 +185,7 @@ fn get_net_concurrency_in_subgraph(
                 // Add 1 as we only want to consume concurrency if there's more than 1 input port.
                 acc + max_tool_concurrency + 1
             }
-            // Input ports with no default values reduce concurrency.
+            // Input ports reduce concurrency.
             GraphNode::InputPort { .. } => acc - 1,
             _ => acc,
         }
@@ -204,12 +203,6 @@ enum GraphNode {
     },
     Vertex {
         name: String,
-        /// `groups` is:
-        /// - `Some(vec) if !vec.is_empty()` when it's an entry vertex
-        /// - `Some(vec) if vec.is_empty()` is unreachable as default group is
-        ///    provided in case one is missing
-        /// - `None` when it's a normal vertex
-        groups: Option<Vec<String>>,
     },
     OutputVariant {
         vertex: String,
@@ -226,7 +219,7 @@ impl std::fmt::Display for GraphNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GraphNode::InputPort { vertex, name } => write!(f, "Input port: {vertex}.{name}"),
-            GraphNode::Vertex { name, .. } => write!(f, "Vertex: {name}"),
+            GraphNode::Vertex { name } => write!(f, "Vertex: {name}"),
             GraphNode::OutputVariant { vertex, name } => {
                 write!(f, "Output variant: {vertex}.{name}")
             }
@@ -243,255 +236,214 @@ impl std::fmt::Display for GraphNode {
 
 /// [Dag] to [petgraph::graph::DiGraph]. Also performs structure checks on the
 /// graph.
-impl TryFrom<Dag> for DiGraph<GraphNode, ()> {
-    type Error = AnyError;
+fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
+    let mut graph = DiGraph::<GraphNode, ()>::new();
 
-    fn try_from(dag: Dag) -> AnyResult<Self> {
-        let mut graph = DiGraph::<GraphNode, ()>::new();
+    // Build a hash map of graph nodes that are part of entry groups. If there
+    // are no entry groups specified, we assume all vertices that have entry
+    // ports specified are part of the default entry group.
+    let mut vertex_entry_groups: HashMap<GraphNode, Vec<String>> = HashMap::new();
 
-        // Check that there is at least one entry vertex.
-        if dag.entry_vertices.is_empty() {
-            bail!("The DAG has no entry vertices.");
-        }
-
-        // For each entry vertex, find a set of entry groups it belongs to.
-        let mut vertex_entry_groups: HashMap<String, Vec<String>> = HashMap::new();
-
-        for entry_vertex in &dag.entry_vertices {
-            match &dag.entry_groups {
-                None => {
-                    vertex_entry_groups.insert(
-                        entry_vertex.name.clone(),
-                        vec![DEFAULT_ENTRY_GROUP.to_string()],
-                    );
-                }
-                Some(entry_groups) => {
-                    let entry_groups = entry_groups
-                        .iter()
-                        .filter(|entry_group| entry_group.vertices.contains(&entry_vertex.name))
-                        .map(|entry_group| entry_group.name.clone())
-                        .collect::<Vec<String>>();
-
-                    // If the entry vertex does not belong to any group, add it
-                    // to the default group.
-                    match entry_groups.len() {
-                        0 => {
-                            vertex_entry_groups.insert(
-                                entry_vertex.name.clone(),
-                                vec![DEFAULT_ENTRY_GROUP.to_string()],
-                            );
-                        }
-                        _ => {
-                            vertex_entry_groups.insert(entry_vertex.name.clone(), entry_groups);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check that entry groups only reference entry vertices and that entry
-        // group names don't use the reserved keyword.
-        let entry_groups = dag.entry_groups.unwrap_or_default();
-
-        for entry_group in &entry_groups {
-            if entry_group.name == DEFAULT_ENTRY_GROUP {
-                bail!(
-                    "Entry group '{}' uses a reserved keyword.",
-                    DEFAULT_ENTRY_GROUP
-                );
-            }
-
+    if let Some(entry_groups) = &dag.entry_groups {
+        for entry_group in entry_groups {
             for vertex in &entry_group.vertices {
-                if !dag
-                    .entry_vertices
-                    .iter()
-                    .any(|entry_vertex| entry_vertex.name == *vertex)
-                {
-                    bail!(
-                        "Entry group '{}' references a non-entry 'Vertex: {vertex}'.",
-                        entry_group.name
-                    );
-                }
-            }
-        }
-
-        // Edges are always between an output port and an input port. We also
-        // need to create edges between the tool, the output variant and the
-        // output port if they don't exist yet.
-        let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
-
-        for edge in dag.edges {
-            let origin_vertex = GraphNode::Vertex {
-                name: edge.from.vertex.clone(),
-                groups: vertex_entry_groups.get(&edge.from.vertex).cloned(),
-            };
-
-            let output_variant = GraphNode::OutputVariant {
-                vertex: edge.from.vertex.clone(),
-                name: edge.from.output_variant.clone(),
-            };
-
-            let output_port = GraphNode::OutputPort {
-                vertex: edge.from.vertex.clone(),
-                variant: edge.from.output_variant.clone(),
-                name: edge.from.output_port.clone(),
-            };
-
-            let destination_vertex = GraphNode::Vertex {
-                name: edge.to.vertex.clone(),
-                groups: vertex_entry_groups.get(&edge.to.vertex).cloned(),
-            };
-
-            let input_port = GraphNode::InputPort {
-                vertex: edge.to.vertex.clone(),
-                name: edge.to.input_port.clone(),
-            };
-
-            // Create nodes if they don't exist yet.
-            let origin_node = graph_nodes.get(&origin_vertex).copied().unwrap_or_else(|| {
-                let node = graph.add_node(origin_vertex.clone());
-
-                graph_nodes.insert(origin_vertex.clone(), node);
-
-                node
-            });
-
-            let output_variant_node =
-                graph_nodes
-                    .get(&output_variant)
-                    .copied()
-                    .unwrap_or_else(|| {
-                        let node = graph.add_node(output_variant.clone());
-
-                        graph_nodes.insert(output_variant.clone(), node);
-
-                        node
-                    });
-
-            let output_port_node = graph_nodes.get(&output_port).copied().unwrap_or_else(|| {
-                let node = graph.add_node(output_port.clone());
-
-                graph_nodes.insert(output_port.clone(), node);
-
-                node
-            });
-
-            let destination_node = graph_nodes
-                .get(&destination_vertex)
-                .copied()
-                .unwrap_or_else(|| {
-                    let node = graph.add_node(destination_vertex.clone());
-
-                    graph_nodes.insert(destination_vertex.clone(), node);
-
-                    node
-                });
-
-            let input_port_node = graph_nodes.get(&input_port).copied().unwrap_or_else(|| {
-                let node = graph.add_node(input_port.clone());
-
-                graph_nodes.insert(input_port.clone(), node);
-
-                node
-            });
-
-            // Check that these edges don't already exist.
-            if graph.contains_edge(output_variant_node, output_port_node) {
-                bail!("Edge from '{output_variant}' to '{output_port}' already exists.",);
-            }
-
-            if graph.contains_edge(output_port_node, input_port_node) {
-                bail!("Edge from '{output_port}' to '{input_port}' already exists.",);
-            }
-
-            // These are allowed.
-            if !graph.contains_edge(origin_node, output_variant_node) {
-                graph.add_edge(origin_node, output_variant_node, ());
-            }
-
-            if !graph.contains_edge(input_port_node, destination_node) {
-                graph.add_edge(input_port_node, destination_node, ());
-            }
-
-            graph.add_edge(output_variant_node, output_port_node, ());
-            graph.add_edge(output_port_node, input_port_node, ());
-        }
-
-        // Ensure we don't have duplicate vertices.
-        let mut all_entry_vertices = HashSet::new();
-        let mut all_vertices = HashSet::new();
-        let mut all_entry_input_ports = HashSet::new();
-
-        // Check that all entry vertices are in the graph. Note that connecting
-        // entry input ports to these entry vertices is not necessary as they do
-        // not matter for the validation.
-        for entry_vertex in &dag.entry_vertices {
-            let entry_vertex_ident = GraphNode::Vertex {
-                name: entry_vertex.name.clone(),
-                groups: vertex_entry_groups.get(&entry_vertex.name).cloned(),
-            };
-
-            if !graph_nodes.contains_key(&entry_vertex_ident) {
-                bail!("Entry '{entry_vertex_ident}' is not connected to the DAG.",);
-            }
-
-            if !all_entry_vertices.insert(entry_vertex_ident.clone()) {
-                bail!("Entry '{entry_vertex_ident}' is defined multiple times.",);
-            }
-
-            // Add entry input ports to the map so we can check that they do not
-            // have a default value.
-            for input_port in &entry_vertex.input_ports {
-                let input_port_ident = GraphNode::InputPort {
-                    vertex: entry_vertex.name.clone(),
-                    name: input_port.clone(),
+                let vertex_ident = GraphNode::Vertex {
+                    name: vertex.clone(),
                 };
 
-                if !all_entry_input_ports.insert(input_port_ident.clone()) {
-                    bail!("Entry '{input_port_ident}' is defined multiple times.",);
+                // Check that the group references a vertex that exists.
+                if !dag.vertices.iter().any(|v| &v.name == vertex) {
+                    bail!(
+                        "Entry group '{}' references a non-existing vertex '{}'.",
+                        entry_group.name,
+                        vertex
+                    );
                 }
+
+                let mut groups = vertex_entry_groups
+                    .remove(&vertex_ident)
+                    .unwrap_or_default();
+                groups.push(entry_group.name.clone());
+                vertex_entry_groups.insert(vertex_ident, groups);
             }
         }
-
-        // Check that all normal vertices are in the graph.
+    } else {
+        // If there are no entry groups, all vertices that have entry ports
+        // specified are part of the default entry group.
         for vertex in &dag.vertices {
+            if vertex.entry_ports.is_none() {
+                continue;
+            }
+
             let vertex_ident = GraphNode::Vertex {
                 name: vertex.name.clone(),
-                groups: vertex_entry_groups.get(&vertex.name).cloned(),
             };
 
-            if !graph_nodes.contains_key(&vertex_ident) {
-                bail!("'{vertex_ident}' is not connected to the DAG.",);
-            }
-
-            if !all_vertices.insert(vertex_ident.clone()) {
-                bail!("'{vertex_ident}' is defined multiple times.",);
-            }
+            vertex_entry_groups.insert(vertex_ident, vec![DEFAULT_ENTRY_GROUP.to_string()]);
         }
-
-        // Ensure vertex is not specified as a vertex and an entry vertex.
-        if let Some(vertex) = all_vertices.intersection(&all_entry_vertices).next() {
-            bail!("'{vertex}' is both a vertex and an entry vertex.")
-        }
-
-        // Check that none of the default value input ports are in the graph.
-        let default_values = dag.default_values.unwrap_or_default();
-
-        for default_value in default_values {
-            let default_value = GraphNode::InputPort {
-                vertex: default_value.vertex,
-                name: default_value.input_port,
-            };
-
-            if graph_nodes.contains_key(&default_value)
-                || all_entry_input_ports.contains(&default_value)
-            {
-                bail!(
-                    "'{default_value}' is already present in the graph or has an edge leading into it and therefore cannot have a default value.",
-                );
-            }
-        }
-
-        Ok(graph)
     }
+
+    // Check that there is at least one entry point.
+    if vertex_entry_groups.is_empty() {
+        bail!("The DAG has no entry vertices or ports.");
+    }
+
+    // Edges are always between an output port and an input port. We also
+    // need to create edges between the tool, the output variant and the
+    // output port if they don't exist yet.
+    let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
+
+    for edge in dag.edges {
+        let origin_vertex = GraphNode::Vertex {
+            name: edge.from.vertex.clone(),
+        };
+
+        let output_variant = GraphNode::OutputVariant {
+            vertex: edge.from.vertex.clone(),
+            name: edge.from.output_variant.clone(),
+        };
+
+        let output_port = GraphNode::OutputPort {
+            vertex: edge.from.vertex.clone(),
+            variant: edge.from.output_variant.clone(),
+            name: edge.from.output_port.clone(),
+        };
+
+        let destination_vertex = GraphNode::Vertex {
+            name: edge.to.vertex.clone(),
+        };
+
+        let input_port = GraphNode::InputPort {
+            vertex: edge.to.vertex.clone(),
+            name: edge.to.input_port.clone(),
+        };
+
+        // Create nodes if they don't exist yet.
+        let origin_node = graph_nodes.get(&origin_vertex).copied().unwrap_or_else(|| {
+            let node = graph.add_node(origin_vertex.clone());
+
+            graph_nodes.insert(origin_vertex.clone(), node);
+
+            node
+        });
+
+        let output_variant_node = graph_nodes
+            .get(&output_variant)
+            .copied()
+            .unwrap_or_else(|| {
+                let node = graph.add_node(output_variant.clone());
+
+                graph_nodes.insert(output_variant.clone(), node);
+
+                node
+            });
+
+        let output_port_node = graph_nodes.get(&output_port).copied().unwrap_or_else(|| {
+            let node = graph.add_node(output_port.clone());
+
+            graph_nodes.insert(output_port.clone(), node);
+
+            node
+        });
+
+        let destination_node = graph_nodes
+            .get(&destination_vertex)
+            .copied()
+            .unwrap_or_else(|| {
+                let node = graph.add_node(destination_vertex.clone());
+
+                graph_nodes.insert(destination_vertex.clone(), node);
+
+                node
+            });
+
+        let input_port_node = graph_nodes.get(&input_port).copied().unwrap_or_else(|| {
+            let node = graph.add_node(input_port.clone());
+
+            graph_nodes.insert(input_port.clone(), node);
+
+            node
+        });
+
+        // Check that these edges don't already exist.
+        if graph.contains_edge(output_variant_node, output_port_node) {
+            bail!("Edge from '{output_variant}' to '{output_port}' already exists.",);
+        }
+
+        if graph.contains_edge(output_port_node, input_port_node) {
+            bail!("Edge from '{output_port}' to '{input_port}' already exists.",);
+        }
+
+        // These are allowed.
+        if !graph.contains_edge(origin_node, output_variant_node) {
+            graph.add_edge(origin_node, output_variant_node, ());
+        }
+
+        if !graph.contains_edge(input_port_node, destination_node) {
+            graph.add_edge(input_port_node, destination_node, ());
+        }
+
+        graph.add_edge(output_variant_node, output_port_node, ());
+        graph.add_edge(output_port_node, input_port_node, ());
+    }
+
+    // Ensure we don't have duplicate vertices.
+    let mut all_vertices = HashSet::new();
+    let mut all_entry_ports = HashSet::new();
+
+    // Check that all normal vertices are in the graph and are unique.
+    for vertex in &dag.vertices {
+        let vertex_ident = GraphNode::Vertex {
+            name: vertex.name.clone(),
+        };
+
+        if !graph_nodes.contains_key(&vertex_ident) {
+            bail!("'{vertex_ident}' is not connected to the DAG.",);
+        }
+
+        if !all_vertices.insert(vertex_ident.clone()) {
+            bail!("'{vertex_ident}' is defined multiple times.",);
+        }
+    }
+
+    // Check that entry ports are not defined twice and that they have no edges
+    // leading into them.
+    for vertex in &dag.vertices {
+        let Some(entry_ports) = &vertex.entry_ports else {
+            continue;
+        };
+
+        for entry_port in entry_ports {
+            let entry_port_ident = GraphNode::InputPort {
+                vertex: vertex.name.clone(),
+                name: entry_port.clone(),
+            };
+
+            if graph_nodes.contains_key(&entry_port_ident) {
+                bail!("'{entry_port_ident}' has an edge leading to it and therefore cannot be an entry port.",);
+            }
+
+            if !all_entry_ports.insert(entry_port_ident.clone()) {
+                bail!("'{entry_port_ident}' is defined multiple times.",);
+            }
+        }
+    }
+
+    // Check that none of the default value input ports are in the graph.
+    let default_values = dag.default_values.unwrap_or_default();
+
+    for default_value in default_values {
+        let default_value = GraphNode::InputPort {
+            vertex: default_value.vertex,
+            name: default_value.input_port,
+        };
+
+        if graph_nodes.contains_key(&default_value) || all_entry_ports.contains(&default_value) {
+            bail!(
+                "'{default_value}' is an entry port or has an edge leading into it and therefore cannot have a default value.",
+            );
+        }
+    }
+
+    Ok((graph, vertex_entry_groups))
 }

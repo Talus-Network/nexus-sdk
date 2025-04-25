@@ -1,11 +1,12 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::idents::{move_std, workflow},
+    nexus_sdk::transactions::tool,
 };
 
 /// Claim collateral for a Tool based on the provided FQN.
 pub(crate) async fn claim_collateral(
     tool_fqn: ToolFqn,
+    owner_cap: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -41,10 +42,21 @@ pub(crate) async fn claim_collateral(
     // Fetch the tool registry object.
     let tool_registry = fetch_object_by_id(&sui, tool_registry_object_id).await?;
 
+    // Fetch the OwnerCap object.
+    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
+
     // Craft a TX to claim the collaters for a Tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    let tx = match prepare_transaction(&tool_fqn, tool_registry, workflow_pkg_id) {
+    let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+    match tool::claim_collateral_for_self(
+        &mut tx,
+        &tool_fqn,
+        owner_cap,
+        tool_registry,
+        workflow_pkg_id,
+    ) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();
@@ -69,45 +81,4 @@ pub(crate) async fn claim_collateral(
     json_output(&json!({ "digest": response.digest }))?;
 
     Ok(())
-}
-
-/// Build a programmable transaction to claim the collateral for a tool.
-fn prepare_transaction(
-    tool_fqn: &ToolFqn,
-    tool_registry: sui::ObjectRef,
-    workflow_pkg_id: sui::ObjectID,
-) -> AnyResult<sui::ProgrammableTransactionBuilder> {
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    // `self: &mut ToolRegistry`
-    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
-        id: tool_registry.object_id,
-        initial_shared_version: tool_registry.version,
-        mutable: true,
-    })?;
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(&mut tx, tool_fqn.to_string())?;
-
-    // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
-
-    // `nexus::tool_registry::claim_collateral_for_tool()`
-    tx.programmable_move_call(
-        workflow_pkg_id,
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
-            .module
-            .into(),
-        workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_TOOL
-            .name
-            .into(),
-        vec![],
-        vec![tool_registry, fqn, clock],
-    );
-
-    Ok(tx)
 }

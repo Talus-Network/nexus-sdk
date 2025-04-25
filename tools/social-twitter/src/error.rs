@@ -69,10 +69,10 @@ pub enum TwitterError {
 /// Standard error response structure for Twitter tools
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TwitterErrorResponse {
-    /// Type of error (network, server, auth, etc.)
-    pub kind: TwitterErrorKind,
     /// Detailed error message
     pub reason: String,
+    /// Type of error (network, server, auth, etc.)
+    pub kind: TwitterErrorKind,
     /// HTTP status code if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status_code: Option<u16>,
@@ -102,14 +102,14 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: None,
                 }
             }
             TwitterError::ParseError(_) => TwitterErrorResponse {
-                kind: TwitterErrorKind::Parse,
                 reason: self.to_string(),
+                kind: TwitterErrorKind::Parse,
                 status_code: None,
             },
             TwitterError::ApiError(title, error_type, _) => {
@@ -129,8 +129,8 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: code,
                 }
             }
@@ -151,14 +151,14 @@ impl TwitterError {
                 };
 
                 TwitterErrorResponse {
-                    kind,
                     reason: self.to_string(),
+                    kind,
                     status_code: Some(code),
                 }
             }
             TwitterError::Other(_) => TwitterErrorResponse {
-                kind: TwitterErrorKind::Unknown,
                 reason: self.to_string(),
+                kind: TwitterErrorKind::Unknown,
                 status_code: None,
             },
         }
@@ -174,178 +174,112 @@ struct TwitterDefaultError {
     message: String,
 }
 
+/// Parse a successful Twitter API response
+fn parse_successful_twitter_response<T>(text: String) -> TwitterResult<T>
+where
+    T: for<'de> Deserialize<'de> + std::fmt::Debug,
+{
+    // Try to parse response as JSON
+    let parsed = serde_json::from_str::<T>(&text).map_err(TwitterError::ParseError)?;
+
+    // Check if the parsed response has errors field
+    if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        if let Some(errors) = value.get("errors").and_then(|e| e.as_array()) {
+            if let Some(first_error) = errors.first() {
+                if let Ok(twitter_error) =
+                    serde_json::from_value::<TwitterApiError>(first_error.clone())
+                {
+                    return Err(TwitterError::from_api_error(&twitter_error));
+                }
+
+                return Err(parse_error_from_json(first_error));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+/// Parse a failed Twitter API response
+fn parse_failed_twitter_response<T>(text: String, status: StatusCode) -> TwitterResult<T> {
+    // Try to parse as default Twitter error format
+    if let Ok(default_error) = serde_json::from_str::<TwitterDefaultError>(&text) {
+        let (error_type, title) = match default_error.code {
+            32 => ("authentication", "Unauthorized"),
+            88 => ("rate_limit", "Rate Limit Exceeded"),
+            34 => ("not-found", "Not Found Error"),
+            _ => ("default", "Twitter API Error"),
+        };
+
+        return Err(TwitterError::ApiError(
+            title.to_string(),
+            error_type.to_string(),
+            format!(
+                " - {} (Code: {})",
+                default_error.message, default_error.code
+            ),
+        ));
+    }
+
+    // Try to parse as error response with errors array
+    if let Ok(error_response) = serde_json::from_str::<Value>(&text) {
+        if let Some(errors) = error_response.get("errors").and_then(|e| e.as_array()) {
+            if let Some(first_error) = errors.first() {
+                return Err(parse_error_from_json(first_error));
+            }
+        }
+    }
+
+    // If we couldn't parse the error response, return the status code
+    Err(TwitterError::StatusError(status))
+}
+
+/// Parse error details from a JSON Value
+fn parse_error_from_json(error: &Value) -> TwitterError {
+    let code = error.get("code").and_then(|c| c.as_i64());
+
+    let title = match code {
+        Some(32) => "Unauthorized",
+        Some(88) => "Rate Limit Exceeded",
+        Some(34) => "Not Found Error",
+        _ => error
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown Error"),
+    };
+
+    let error_type = match code {
+        Some(32) => "authentication",
+        Some(88) => "rate_limit",
+        Some(34) => "not-found",
+        _ => error
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("unknown"),
+    };
+
+    let mut detail = String::new();
+    if let Some(d) = error.get("detail").and_then(|d| d.as_str()) {
+        detail.push_str(&format!(" - {}", d));
+    }
+    if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
+        detail.push_str(&format!(" - {}", message));
+    }
+
+    TwitterError::ApiError(title.to_string(), error_type.to_string(), detail)
+}
+
 /// Helper function to parse Twitter API response
 pub async fn parse_twitter_response<T>(response: Response) -> TwitterResult<T>
 where
     T: for<'de> Deserialize<'de> + std::fmt::Debug,
 {
-    // Check if response is successful
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    let text = response.text().await.map_err(TwitterError::Network)?;
 
-        // Try to parse error response
-        match response.text().await {
-            Ok(text) => {
-                // Try to parse as default Twitter error format
-                if let Ok(default_error) = serde_json::from_str::<TwitterDefaultError>(&text) {
-                    // Check for specific error codes
-                    let error_type = match default_error.code {
-                        32 => "authentication", // Auth error
-                        88 => "rate_limit",     // Rate limit
-                        34 => "not-found",      // Not found
-                        _ => "default",
-                    };
-
-                    // Map common error codes to better titles
-                    let title = match default_error.code {
-                        32 => "Unauthorized",
-                        88 => "Rate Limit Exceeded",
-                        34 => "Not Found Error",
-                        _ => "Twitter API Error",
-                    };
-
-                    return Err(TwitterError::ApiError(
-                        title.to_string(),
-                        error_type.to_string(),
-                        format!(
-                            " - {} (Code: {})",
-                            default_error.message, default_error.code
-                        ),
-                    ));
-                }
-
-                if let Ok(error_response) = serde_json::from_str::<Value>(&text) {
-                    if let Some(errors) = error_response.get("errors").and_then(|e| e.as_array()) {
-                        if let Some(first_error) = errors.first() {
-                            // Check for code in the error object
-                            let code = first_error.get("code").and_then(|c| c.as_i64());
-
-                            // Set title based on code or fallback to title field
-                            let title = match code {
-                                Some(32) => "Unauthorized",
-                                Some(88) => "Rate Limit Exceeded",
-                                Some(34) => "Not Found Error",
-                                _ => error_response
-                                    .get("title")
-                                    .and_then(|t| t.as_str())
-                                    .unwrap_or("Unknown Error"),
-                            };
-
-                            // Set error_type based on code or fallback to type field
-                            let error_type = match code {
-                                Some(32) => "authentication",
-                                Some(88) => "rate_limit",
-                                Some(34) => "not-found",
-                                _ => error_response
-                                    .get("type")
-                                    .and_then(|t| t.as_str())
-                                    .unwrap_or("unknown"),
-                            };
-
-                            let mut detail = String::new();
-
-                            if let Some(d) = error_response.get("detail").and_then(|d| d.as_str()) {
-                                detail.push_str(&format!(" - {}", d));
-                            }
-
-                            if let Some(message) =
-                                first_error.get("message").and_then(|m| m.as_str())
-                            {
-                                detail.push_str(&format!(" - {}", message));
-                            }
-
-                            return Err(TwitterError::ApiError(
-                                title.to_string(),
-                                error_type.to_string(),
-                                detail,
-                            ));
-                        }
-                    }
-                }
-
-                // If we couldn't parse the error response, return the status code
-                Err(TwitterError::StatusError(status))
-            }
-            Err(e) => Err(TwitterError::Network(e)),
-        }
+    if status.is_success() {
+        parse_successful_twitter_response(text)
     } else {
-        // Try to parse response as JSON
-        match response.text().await {
-            Ok(text) => {
-                match serde_json::from_str::<T>(&text) {
-                    Ok(parsed) => {
-                        // Check if the parsed response has errors field
-                        if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                            if let Some(errors) = value.get("errors").and_then(|e| e.as_array()) {
-                                if let Some(first_error) = errors.first() {
-                                    // Check for code in the error object
-                                    let code = first_error.get("code").and_then(|c| c.as_i64());
-
-                                    if let Some(twitter_error) =
-                                        serde_json::from_value::<TwitterApiError>(
-                                            first_error.clone(),
-                                        )
-                                        .ok()
-                                    {
-                                        return Err(TwitterError::from_api_error(&twitter_error));
-                                    } else {
-                                        // Set title based on code or fallback to title field
-                                        let title = match code {
-                                            Some(32) => "Unauthorized",
-                                            Some(88) => "Rate Limit Exceeded",
-                                            Some(34) => "Not Found Error",
-                                            _ => first_error
-                                                .get("title")
-                                                .and_then(|t| t.as_str())
-                                                .unwrap_or("Unknown Error"),
-                                        };
-
-                                        // Set error_type based on code or fallback to type field
-                                        let error_type = match code {
-                                            Some(32) => "authentication",
-                                            Some(88) => "rate_limit",
-                                            Some(34) => "not-found",
-                                            _ => first_error
-                                                .get("type")
-                                                .and_then(|t| t.as_str())
-                                                .unwrap_or("unknown"),
-                                        };
-
-                                        let detail = first_error
-                                            .get("detail")
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| format!(" - {}", s))
-                                            .unwrap_or_default();
-
-                                        // If there's a message field, append it to the detail
-                                        let detail_with_message = if let Some(message) =
-                                            first_error.get("message").and_then(|m| m.as_str())
-                                        {
-                                            if detail.is_empty() {
-                                                format!(" - {}", message)
-                                            } else {
-                                                format!("{} - {}", detail, message)
-                                            }
-                                        } else {
-                                            detail
-                                        };
-
-                                        return Err(TwitterError::ApiError(
-                                            title.to_string(),
-                                            error_type.to_string(),
-                                            detail_with_message,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-
-                        Ok(parsed)
-                    }
-                    Err(e) => Err(TwitterError::ParseError(e)),
-                }
-            }
-            Err(e) => Err(TwitterError::Network(e)),
-        }
+        parse_failed_twitter_response(text, status)
     }
 }
