@@ -1,14 +1,4 @@
 {
-  "entry_vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "com.test.test@1"
-      },
-      "name": "ig_post_reader",
-      "input_ports": ["post_id"]
-    }
-  ],
   "default_values": [
     {
       "vertex": "restaurant_event_decider",
@@ -36,6 +26,14 @@
     }
   ],
   "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "ig_post_reader",
+      "entry_ports": ["post_id"]
+    },
     {
       "kind": {
         "variant": "off_chain",

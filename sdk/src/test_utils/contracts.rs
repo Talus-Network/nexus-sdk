@@ -1,6 +1,8 @@
 use {
     crate::sui::{self, traits::*},
-    std::path::PathBuf,
+    std::{fs::OpenOptions, path::PathBuf},
+    sui_move_build::implicit_deps,
+    sui_package_management::system_package_versions::latest_system_packages,
 };
 
 /// Publishes a Move package to Sui.
@@ -32,6 +34,7 @@ pub async fn publish_move_package(
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing();
     build_config.chain_id = Some(chain_id);
+    build_config.config.implicit_dependencies = implicit_deps(latest_system_packages());
     let package = build_config
         .build(&install_dir)
         .expect("Failed to build package.");
@@ -88,6 +91,13 @@ pub async fn publish_move_package(
             panic!("Transaction has erroneous effects: {path_str} {effects}");
         }
     }
+
+    // Create the lock file if not exists.
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&lock_file)
+        .expect("Failed to create lock file.");
 
     sui_package_management::update_lock_file(
         wallet,

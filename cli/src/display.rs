@@ -50,7 +50,7 @@ macro_rules! confirm {
     };
 }
 
-/// Notify the user of a successful operation. Basicaly [`println!`] but
+/// Notify the user of a successful operation. Basically [`println!`] but
 /// includes a not [`JSON_MODE`] check and some success formatting.
 #[macro_export]
 macro_rules! notify_success {

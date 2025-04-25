@@ -1,15 +1,13 @@
 {
-  "entry_vertices": [
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "location_decider",
-      "input_ports": ["messages"]
-    }
-  ],
-  "vertices": [
+      "entry_ports": ["messages"]
+    },
     {
       "kind": {
         "variant": "off_chain",

@@ -1,23 +1,16 @@
 //! # xyz.taluslabs.social.twitter.get-user-tweets@1
 //!
 //! Standard Nexus Tool that retrieves tweets from a user's Twitter account.
+//! Returns structured error types with specific information about the error kind (rate limit, auth, network, etc.)
+//! and HTTP status codes where applicable.
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterResult},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
         tweet::{
             models::{
-                ExcludeField,
-                ExpansionField,
-                Includes,
-                MediaField,
-                Meta,
-                PlaceField,
-                PollField,
-                Tweet,
-                TweetField,
-                TweetsResponse,
-                UserField,
+                ExcludeField, ExpansionField, Includes, MediaField, Meta, PlaceField, PollField,
+                Tweet, TweetField, TweetsResponse, UserField,
             },
             TWITTER_API_BASE,
         },
@@ -116,8 +109,13 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Error message if the get user tweets failed
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -157,14 +155,30 @@ impl NexusTool for GetUserTweets {
                         meta: response.meta,
                     }
                 } else {
-                    Output::Err {
+                    // Return an error if there's no tweet data
+                    let error_response = TwitterErrorResponse {
+                        kind: TwitterErrorKind::NotFound,
                         reason: "No tweets found".to_string(),
+                        status_code: None,
+                    };
+
+                    Output::Err {
+                        reason: error_response.reason,
+                        kind: error_response.kind,
+                        status_code: error_response.status_code,
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                // Use the centralized error conversion
+                let error_response = e.to_error_response();
+
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -371,14 +385,63 @@ mod tests {
         match output {
             Output::Ok {
                 data,
-                includes: _,
-                meta: _,
+                includes,
+                meta,
             } => {
-                assert!(!data.is_empty());
-                assert_eq!(data.len(), 1);
-                assert_eq!(data[0].id, "1346889436626259968");
+                // Verify data array length and content
+                assert!(!data.is_empty(), "Data array should not be empty");
+                assert_eq!(data.len(), 1, "Expected exactly 1 tweet");
+
+                // Verify tweet properties
+                let tweet = &data[0];
+                assert_eq!(tweet.id, "1346889436626259968", "Tweet ID mismatch");
+                assert_eq!(
+                    tweet.author_id.as_deref(),
+                    Some("2244994945"),
+                    "Author ID mismatch"
+                );
+                assert_eq!(
+                    tweet.text, "Learn how to use the user Tweet timeline",
+                    "Tweet text mismatch"
+                );
+
+                // Verify includes (if present)
+                if let Some(inc) = includes {
+                    if let Some(users) = &inc.users {
+                        assert!(!users.is_empty(), "Users array should not be empty");
+                        let user = &users[0];
+                        assert_eq!(user.id, "2244994945", "User ID mismatch");
+                        assert_eq!(user.username, "TwitterDev", "Username mismatch");
+                        assert_eq!(user.name, "X Dev", "User display name mismatch");
+                    } else {
+                        panic!("Expected users in includes");
+                    }
+                } else {
+                    panic!("Expected includes in response");
+                }
+
+                // Verify meta information
+                if let Some(m) = meta {
+                    assert_eq!(m.result_count, Some(1), "Expected result count of 1");
+                    assert_eq!(
+                        m.newest_id.as_deref(),
+                        Some("1346889436626259968"),
+                        "Newest ID mismatch"
+                    );
+                } else {
+                    panic!("Expected meta information in response");
+                }
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                panic!(
+                    "Expected success, got error: kind={:?}, reason={}, status_code={:?}",
+                    kind, reason, status_code
+                );
+            }
         }
 
         mock.assert_async().await;
@@ -409,11 +472,26 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                // Verify error kind
+                assert_eq!(kind, TwitterErrorKind::Auth, "Expected Auth error kind");
+
+                // Verify error message content
                 assert!(
                     reason.contains("Unauthorized"),
                     "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Verify status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401 for auth error"
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -447,11 +525,30 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                // Verify error kind
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::RateLimit,
+                    "Expected RateLimit error kind"
+                );
+
+                // Verify error message content
                 assert!(
                     reason.contains("Rate limit exceeded"),
                     "Expected error message to contain 'Rate limit exceeded', got: {}",
                     reason
+                );
+
+                // Verify status code
+                assert_eq!(
+                    status_code,
+                    Some(429),
+                    "Expected status code 429 for rate limit error"
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -477,11 +574,25 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                // Verify error kind
+                assert_eq!(kind, TwitterErrorKind::Parse, "Expected Parse error kind");
+
+                // Verify error message content
                 assert!(
                     reason.contains("Response parsing error"),
                     "Expected error message to contain 'Response parsing error', got: {}",
                     reason
+                );
+
+                // Verify that parsing errors don't have status codes
+                assert_eq!(
+                    status_code, None,
+                    "Parsing errors should not have status codes"
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -514,8 +625,86 @@ mod tests {
         let output = tool.invoke(create_test_input()).await;
 
         match output {
-            Output::Err { reason } => {
-                assert_eq!(reason, "No tweets found");
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                // Verify error kind
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected NotFound error kind"
+                );
+
+                // Verify error message content
+                assert_eq!(
+                    reason, "No tweets found",
+                    "Expected 'No tweets found' message"
+                );
+
+                // Verify that this specific error doesn't have a status code
+                assert_eq!(
+                    status_code, None,
+                    "The 'No tweets found' error should not have a status code"
+                );
+            }
+            Output::Ok { .. } => panic!("Expected error, got success"),
+        }
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_not_found_error() {
+        let (mut server, tool) = create_server_and_tool().await;
+
+        let mock = server
+            .mock("GET", "/users/2244994945/tweets")
+            .match_header("Authorization", "Bearer test_bearer_token")
+            .match_query(mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "errors": [{
+                        "message": "User not found",
+                        "code": 34
+                    }]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let output = tool.invoke(create_test_input()).await;
+
+        match output {
+            Output::Err {
+                kind,
+                reason,
+                status_code,
+            } => {
+                // Verify error kind
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::NotFound,
+                    "Expected NotFound error kind"
+                );
+
+                // Verify error message content
+                assert!(
+                    reason.contains("Not Found Error"),
+                    "Expected error message to contain 'Not Found Error', got: {}",
+                    reason
+                );
+
+                // Verify status code
+                assert_eq!(
+                    status_code,
+                    Some(404),
+                    "Expected status code 404 for not found error"
+                );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
