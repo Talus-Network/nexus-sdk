@@ -121,7 +121,7 @@ pub(crate) struct GasArgs {
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
-        help = "The gas budget for the transaciton.",
+        help = "The gas budget for the transaction.",
         value_name = "AMOUNT",
         default_value_t = sui::MIST_PER_SUI / 10
     )]

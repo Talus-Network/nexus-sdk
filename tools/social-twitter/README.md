@@ -64,7 +64,6 @@ The tweet was not retrieved due to an error.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
-
   - `network` - A network-related error occurred when connecting to Twitter
   - `connection` - Could not establish a connection to Twitter
   - `timeout` - The request to Twitter timed out
@@ -76,7 +75,6 @@ The tweet was not retrieved due to an error.
   - `forbidden` - The request was forbidden
   - `api` - An API-specific error occurred
   - `unknown` - An unexpected error occurred
-
 - **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
   - `401` - Unauthorized (authentication error)
   - `403` - Forbidden
@@ -166,13 +164,25 @@ The tweets were retrieved successfully.
 
 The tweets could not be retrieved due to an error.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - "No tweets found" when the API response doesn't contain tweet data
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
@@ -416,13 +426,25 @@ The mentioned tweets were retrieved successfully.
 
 The tweet mentions retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - "No tweets found" when the API response doesn't contain tweet data
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
@@ -488,16 +510,27 @@ The user was retrieved successfully.
 
 The user was not retrieved due to an error.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found) - User not found")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - User not found error (e.g., "Twitter API error: User not found (code: 50)")
-  - Invalid token error (e.g., "Twitter API error: Invalid token (code: 89)")
-  - Rate limit exceeded error (e.g., "Twitter API error: Rate limit exceeded (code: 88)")
-  - No user data found in the response
+- **`err.reason`: [`String`]** - Detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested user was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
 
 ---
 
@@ -569,16 +602,27 @@ The user was retrieved successfully.
 
 The user was not retrieved due to an error.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found) - User not found")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - User not found error (e.g., "Twitter API error: User not found (code: 50)")
-  - Invalid token error (e.g., "Twitter API error: Invalid token (code: 89)")
-  - Rate limit exceeded error (e.g., "Twitter API error: Rate limit exceeded (code: 88)")
-  - No user data found in the response
+- **`err.reason`: [`String`]** - Detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested user was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
 
 ---
 
@@ -684,13 +728,25 @@ The list was retrieved successfully.
 
 The list retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Network error (e.g., "Network error: network error: Connection refused")
-  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
-  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
-  - No list data found in the response
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
 
 ---
 
@@ -755,12 +811,20 @@ The list tweets were retrieved successfully.
 
 The list tweets retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available
 
 ---
 
@@ -813,12 +877,20 @@ The list members were retrieved successfully.
 
 The list members retrieval failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error
-  - Network error
-  - Response parsing error
-  - Status code error
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available
 
 ---
 

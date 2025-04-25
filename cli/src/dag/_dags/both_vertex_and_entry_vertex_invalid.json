@@ -1,12 +1,12 @@
 {
-  "entry_vertices": [
+  "vertices": [
     {
       "kind": {
         "variant": "off_chain",
         "tool_fqn": "com.test.test@1"
       },
       "name": "a",
-      "input_ports": ["input"]
+      "entry_ports": ["input"]
     },
     {
       "kind": {
@@ -14,10 +14,8 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "b",
-      "input_ports": ["input"]
-    }
-  ],
-  "vertices": [
+      "entry_ports": ["input"]
+    },
     {
       "kind": {
         "variant": "off_chain",

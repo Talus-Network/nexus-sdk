@@ -142,10 +142,10 @@ pub(crate) enum Output {
         meta: Option<Meta>,
     },
     Err {
-        /// Type of error (network, server, auth, etc.)
-        kind: TwitterErrorKind,
         /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
         /// HTTP status code if available
         #[serde(skip_serializing_if = "Option::is_none")]
         status_code: Option<u16>,
@@ -221,14 +221,14 @@ impl NexusTool for GetTweet {
                 } else {
                     // Return an error if there's no tweet data
                     let error_response = TwitterErrorResponse {
-                        kind: TwitterErrorKind::NotFound,
                         reason: "No tweet data found in the response".to_string(),
+                        kind: TwitterErrorKind::NotFound,
                         status_code: None,
                     };
 
                     Output::Err {
-                        kind: error_response.kind,
                         reason: error_response.reason,
+                        kind: error_response.kind,
                         status_code: error_response.status_code,
                     }
                 }
@@ -238,8 +238,8 @@ impl NexusTool for GetTweet {
                 let error_response = e.to_error_response();
 
                 Output::Err {
-                    kind: error_response.kind,
                     reason: error_response.reason,
+                    kind: error_response.kind,
                     status_code: error_response.status_code,
                 }
             }
