@@ -1,4 +1,4 @@
-//! Module definining container setups via [`testcontainers`].
+//! Module defining container setups via [`testcontainers`].
 //!
 //! Contains functions for
 //! - Sui
@@ -20,7 +20,7 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
-        .with_tag("testnet-v1.38.1");
+        .with_tag(env!("SUI_SDK_TAG")); // set in build.rs
 
     let container = sui_request
         .start()

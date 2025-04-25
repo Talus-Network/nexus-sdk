@@ -3,17 +3,28 @@
 //! TODO: <https://github.com/Talus-Network/nexus-sdk/issues/29>
 
 use {
-    schemars::JsonSchema,
-    serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer},
+    schemars::{JsonSchema, Schema, SchemaGenerator},
+    serde::{self, de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer},
     std::{
+        borrow::Cow,
         marker::PhantomData,
         ops::{Deref, DerefMut},
     },
 };
 
-#[derive(Debug, PartialEq, Eq, JsonSchema)]
+#[derive(Debug, PartialEq, Eq)]
 // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/29>
-pub struct Secret<T, E: EncryptionStrategy = BestEncryptionEver>(T, #[serde(skip)] PhantomData<E>);
+pub struct Secret<T, E: EncryptionStrategy = BestEncryptionEver>(T, PhantomData<E>);
+
+impl<T, E: EncryptionStrategy> JsonSchema for Secret<T, E> {
+    fn schema_name() -> Cow<'static, str> {
+        String::schema_name()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        String::json_schema(gen)
+    }
+}
 
 /// Encrypt T before serializing.
 impl<T, E> Serialize for Secret<T, E>

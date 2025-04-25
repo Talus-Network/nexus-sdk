@@ -175,6 +175,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_edge"),
     };
+    /// Mark a vertex as an entry vertex and assign it to a group.
+    ///
+    /// `nexus_workflow::dag::with_entry_in_group`
+    pub const WITH_ENTRY_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_entry_in_group"),
+    };
+    /// Add an input port as an entry input port and assign it to a group.
+    ///
+    /// `nexus_workflow::dag::with_entry_port_in_group`
+    pub const WITH_ENTRY_PORT_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_entry_port_in_group"),
+    };
     /// Add an entry vertex to a DAG. Entry vertex is just a Vertex with its
     /// required InputPorts specified.
     ///
@@ -182,13 +196,6 @@ impl Dag {
     pub const WITH_ENTRY_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_entry_vertex"),
-    };
-    /// Add an entry vertex that is in a specific group to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_entry_vertex_in_group`
-    pub const WITH_ENTRY_VERTEX_IN_GROUPS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::move_ident_str!("with_entry_vertex_in_groups"),
     };
     /// Add a Vertex to a DAG.
     ///
@@ -308,7 +315,14 @@ pub struct ToolRegistry;
 const TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
 
 impl ToolRegistry {
-    /// Claim collateral for a tool.
+    /// Claim collateral for a tool and transfer the balance to the tx sender.
+    ///
+    /// `nexus_workflow::tool_registry::claim_collateral_for_self`
+    pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("claim_collateral_for_self"),
+    };
+    /// Claim collateral for a tool. The function call returns Balance<SUI>.
     ///
     /// `nexus_workflow::tool_registry::claim_collateral_for_tool`
     pub const CLAIM_COLLATERAL_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -316,12 +330,34 @@ impl ToolRegistry {
         // TODO: This will likely be renamed to `claim_collateral_for_tool`.
         name: sui::move_ident_str!("claim_collateral_for_off_chain_tool"),
     };
-    /// Register an off-chain tool.
+    /// OverSlashing struct type. Used to fetch caps for slashing tools.
+    ///
+    /// `nexus_workflow::tool_registry::OverSlashing`
+    pub const OVER_SLASHING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("OverSlashing"),
+    };
+    /// OverTool struct type. Used for fetching tool owner caps.
+    ///
+    /// `nexus_workflow::tool_registry::OverTool`
+    pub const OVER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("OverTool"),
+    };
+    /// Register an off-chain tool. This returns the tool's owner cap.
     ///
     /// `nexus_workflow::tool_registry::register_off_chain_tool`
     pub const REGISTER_OFF_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool"),
+    };
+    /// Register an off-chain tool and transfer the tool's owner cap to the ctx
+    /// sender.
+    ///
+    /// `nexus_workflow::tool_registry::register_off_chain_tool_for_self`
+    pub const REGISTER_OFF_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_off_chain_tool_for_self"),
     };
     /// The ToolRegistry struct type.
     ///
