@@ -8,7 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::idents::{primitives, sui_framework, workflow},
+    nexus_sdk::{idents::workflow, transactions::dag},
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
@@ -60,10 +60,13 @@ pub(crate) async fn execute_dag(
     // Craft a TX to publish the DAG.
     let tx_handle = loading!("Crafting transaction...");
 
-    let tx = match prepare_transaction(
+    let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+    match dag::execute(
+        &mut tx,
         default_sap,
         dag,
-        entry_group,
+        &entry_group,
         input_json,
         workflow_pkg_id,
         primitives_pkg_id,
@@ -127,124 +130,4 @@ pub(crate) async fn execute_dag(
     }
 
     Ok(())
-}
-
-/// Build a programmable transaction to execute a DAG.
-fn prepare_transaction(
-    default_sap: sui::ObjectRef,
-    dag: sui::ObjectRef,
-    entry_group: String,
-    input_json: serde_json::Value,
-    workflow_pkg_id: sui::ObjectID,
-    primitives_pkg_id: sui::ObjectID,
-    network_id: sui::ObjectID,
-) -> AnyResult<sui::ProgrammableTransactionBuilder> {
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    // `self: &mut DefaultSAP`
-    let default_sap = tx.obj(sui::ObjectArg::SharedObject {
-        id: default_sap.object_id,
-        initial_shared_version: default_sap.version,
-        mutable: true,
-    })?;
-
-    // `dag: &DAG`
-    let dag = tx.obj(sui::ObjectArg::SharedObject {
-        id: dag.object_id,
-        initial_shared_version: dag.version,
-        mutable: false,
-    })?;
-
-    // `network: ID`
-    let network = sui_framework::Object::id_from_object_id(&mut tx, network_id)?;
-
-    // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(&mut tx, workflow_pkg_id, entry_group)?;
-
-    // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
-    let inner_vec_map_type = vec![
-        workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT),
-        primitives::into_type_tag(primitives_pkg_id, primitives::Data::NEXUS_DATA),
-    ];
-
-    let outer_vec_map_type = vec![
-        workflow::into_type_tag(workflow_pkg_id, workflow::Dag::VERTEX),
-        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: *sui::FRAMEWORK_PACKAGE_ID,
-            module: sui_framework::VecMap::VEC_MAP.module.into(),
-            name: sui_framework::VecMap::VEC_MAP.name.into(),
-            type_params: inner_vec_map_type.clone(),
-        })),
-    ];
-
-    let with_vertex_inputs = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        sui_framework::VecMap::EMPTY.module.into(),
-        sui_framework::VecMap::EMPTY.name.into(),
-        outer_vec_map_type.clone(),
-        vec![],
-    );
-
-    let Some(data) = input_json.as_object() else {
-        bail!(
-            "Input JSON must be an object containing the entry vertices and their respective data."
-        );
-    };
-
-    for (vertex, data) in data {
-        let Some(data) = data.as_object() else {
-            bail!(
-                "Values of input JSON must be an object containing the input ports and their respective values."
-            );
-        };
-
-        // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, vertex)?;
-
-        // `with_vertex_input: VecMap<InputPort, NexusData>`
-        let with_vertex_input = tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecMap::EMPTY.module.into(),
-            sui_framework::VecMap::EMPTY.name.into(),
-            inner_vec_map_type.clone(),
-            vec![],
-        );
-
-        for (port, value) in data {
-            // `port: InputPort`
-            let port = workflow::Dag::input_port_from_str(&mut tx, workflow_pkg_id, port)?;
-
-            // `value: NexusData`
-            let value = primitives::Data::nexus_data_from_json(&mut tx, primitives_pkg_id, value)?;
-
-            // `with_vertex_input.insert(port, value)`
-            tx.programmable_move_call(
-                sui::FRAMEWORK_PACKAGE_ID,
-                sui_framework::VecMap::INSERT.module.into(),
-                sui_framework::VecMap::INSERT.name.into(),
-                inner_vec_map_type.clone(),
-                vec![with_vertex_input, port, value],
-            );
-        }
-
-        // `with_vertex_inputs.insert(vertex, with_vertex_input)`
-        tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecMap::INSERT.module.into(),
-            sui_framework::VecMap::INSERT.name.into(),
-            outer_vec_map_type.clone(),
-            vec![with_vertex_inputs, vertex, with_vertex_input],
-        );
-    }
-
-    // `workflow::default_sap::begin_dag_execution()`
-    tx.programmable_move_call(
-        workflow_pkg_id,
-        workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.into(),
-        workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.into(),
-        vec![],
-        vec![default_sap, dag, network, entry_group, with_vertex_inputs],
-    );
-
-    Ok(tx)
 }

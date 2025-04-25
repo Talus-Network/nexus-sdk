@@ -228,7 +228,7 @@ async fn test_object_crawler() {
     assert_eq!(chair.len(), 2);
 
     // Fetch chairman.
-    let chairmain = guy
+    let chairman = guy
         .chair
         .fetch_one(
             &sui,
@@ -239,7 +239,7 @@ async fn test_object_crawler() {
         .await
         .unwrap()
         .into_inner();
-    assert_eq!(chairmain.name, "John Doe");
+    assert_eq!(chairman.name, "John Doe");
 
     // Fetch vice chairman.
     let vice_chairman = guy
@@ -259,7 +259,7 @@ async fn test_object_crawler() {
     let friends = guy.friends.fetch_all(&sui).await.unwrap();
     assert_eq!(friends.len(), 2);
 
-    // Fetch frist friend.
+    // Fetch first friend.
     let charlie = guy
         .friends
         .fetch_one(
