@@ -87,6 +87,11 @@ pub(crate) struct ConfCommand {
     conf_path: PathBuf,
 }
 
+// TODO: fix objects.
+// TODO: sui client?
+// TODO: gas_service + refs + adjust begin_exec.
+// TODO: new commands (add budget, set cost, add ticket, claim...)
+
 /// Handle the provided conf command. The [ConfCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(
@@ -154,8 +159,9 @@ pub(crate) async fn handle(
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
-    conf.sui.auth_user = sui_auth_user;
-    conf.sui.auth_password = sui_auth_password;
+    conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
+    conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
+
     conf.nexus.workflow_pkg_id = nexus_workflow_pkg_id.or(conf.nexus.workflow_pkg_id);
     conf.nexus.primitives_pkg_id = nexus_primitives_pkg_id.or(conf.nexus.primitives_pkg_id);
     conf.nexus.tool_registry_object_id =

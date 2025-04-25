@@ -59,6 +59,8 @@ pub enum NexusEventKind {
     DAGEntryVertexInputPortAdded(serde_json::Value),
     #[serde(rename = "DAGDefaultValueAddedEvent")]
     DAGDefaultValueAdded(serde_json::Value),
+    #[serde(rename = "LeaderClaimedGasEvent")]
+    LeaderClaimedGas(serde_json::Value),
 }
 
 // == Event definitions ==
