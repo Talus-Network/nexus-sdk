@@ -39,7 +39,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
-    pub(crate) nexus: NexusConf,
+    pub(crate) nexus: Option<NexusObjects>,
 }
 
 impl CliConf {
@@ -89,23 +89,16 @@ impl Default for SuiConf {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub(crate) struct NexusConf {
-    pub(crate) workflow_pkg_id: Option<sui::ObjectID>,
-    pub(crate) primitives_pkg_id: Option<sui::ObjectID>,
-    pub(crate) tool_registry_object_id: Option<sui::ObjectID>,
-    pub(crate) default_sap_object_id: Option<sui::ObjectID>,
-    pub(crate) network_id: Option<sui::ObjectID>,
-}
-
-/// Non-optional version of [NexusConf].
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Struct holding the Nexus object IDs and refs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct NexusObjects {
     pub(crate) workflow_pkg_id: sui::ObjectID,
     pub(crate) primitives_pkg_id: sui::ObjectID,
-    pub(crate) tool_registry_object_id: sui::ObjectID,
-    pub(crate) default_sap_object_id: sui::ObjectID,
+    pub(crate) inteface_pkg_id: sui::ObjectID,
     pub(crate) network_id: sui::ObjectID,
+    pub(crate) tool_registry: sui::ObjectRef,
+    pub(crate) default_sap: sui::ObjectRef,
+    pub(crate) gas_service: sui::ObjectRef,
 }
 
 /// Reusable Sui gas command args.

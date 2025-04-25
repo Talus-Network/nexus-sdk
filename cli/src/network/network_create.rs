@@ -69,7 +69,7 @@ pub(crate) async fn create_network(
         .transaction_builder()
         .move_call(
             address,
-            workflow_pkg_id,
+            *workflow_pkg_id,
             workflow::LeaderCap::CREATE_FOR_SELF_AND_ADDRESSES
                 .module
                 .as_str(),

@@ -281,8 +281,8 @@ pub fn mark_entry_input_port(
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    default_sap: sui::ObjectRef,
-    dag: sui::ObjectRef,
+    default_sap: &sui::ObjectRef,
+    dag: &sui::ObjectRef,
     entry_group: &str,
     input_json: serde_json::Value,
     workflow_pkg_id: sui::ObjectID,
@@ -640,8 +640,8 @@ mod tests {
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         execute(
             &mut tx,
-            default_sap,
-            dag,
+            &default_sap,
+            &dag,
             entry_group,
             input_json,
             workflow_pkg_id,

@@ -14,10 +14,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        tool_registry_object_id,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let NexusObjects { tool_registry, .. } = get_nexus_objects(&conf)?;
 
     // Build the Sui client.
     let sui = build_sui_client(&conf.sui).await?;
@@ -25,7 +22,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     let tools_handle = loading!("Fetching tools from the tool registry...");
 
     let tool_registry =
-        match fetch_one::<Structure<ToolRegistry>>(&sui, tool_registry_object_id).await {
+        match fetch_one::<Structure<ToolRegistry>>(&sui, tool_registry.object_id).await {
             Ok(tool_registry) => tool_registry.data.into_inner(),
             Err(e) => {
                 tools_handle.error();

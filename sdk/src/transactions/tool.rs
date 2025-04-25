@@ -9,8 +9,8 @@ use crate::{
 pub fn register_off_chain_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     meta: &ToolMeta,
-    collateral_coin: sui::Coin,
-    tool_registry: sui::ObjectRef,
+    collateral_coin: &sui::Coin,
+    tool_registry: &sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut ToolRegistry`
@@ -62,8 +62,8 @@ pub fn register_off_chain_for_self(
 pub fn unregister(
     tx: &mut sui::ProgrammableTransactionBuilder,
     tool_fqn: &ToolFqn,
-    owner_cap: sui::ObjectRef,
-    tool_registry: sui::ObjectRef,
+    owner_cap: &sui::ObjectRef,
+    tool_registry: &sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut ToolRegistry`
@@ -101,8 +101,8 @@ pub fn unregister(
 pub fn claim_collateral_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     tool_fqn: &ToolFqn,
-    owner_cap: sui::ObjectRef,
-    tool_registry: sui::ObjectRef,
+    owner_cap: &sui::ObjectRef,
+    tool_registry: &sui::ObjectRef,
     workflow_pkg_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut ToolRegistry`
@@ -164,8 +164,8 @@ mod tests {
         register_off_chain_for_self(
             &mut tx,
             &meta,
-            collateral_coin.clone(),
-            tool_registry.clone(),
+            &collateral_coin,
+            &tool_registry,
             workflow_pkg_id,
         )
         .expect("Failed to build PTB for registering a tool.");
@@ -205,8 +205,8 @@ mod tests {
         unregister(
             &mut tx,
             &tool_fqn,
-            owner_cap,
-            tool_registry.clone(),
+            &owner_cap,
+            &tool_registry,
             workflow_pkg_id,
         )
         .expect("Failed to build PTB for unregistering a tool.");
@@ -242,8 +242,8 @@ mod tests {
         claim_collateral_for_self(
             &mut tx,
             &tool_fqn,
-            owner_cap,
-            tool_registry.clone(),
+            &owner_cap,
+            &tool_registry,
             workflow_pkg_id,
         )
         .expect("Failed to build PTB for claiming collateral for a tool.");

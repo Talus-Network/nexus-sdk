@@ -18,7 +18,7 @@ pub(crate) async fn claim_collateral(
     // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id,
-        tool_registry_object_id,
+        tool_registry,
         ..
     } = get_nexus_objects(&conf)?;
 
@@ -39,9 +39,6 @@ pub(crate) async fn claim_collateral(
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Fetch the tool registry object.
-    let tool_registry = fetch_object_by_id(&sui, tool_registry_object_id).await?;
-
     // Fetch the OwnerCap object.
     let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
@@ -53,9 +50,9 @@ pub(crate) async fn claim_collateral(
     match tool::claim_collateral_for_self(
         &mut tx,
         &tool_fqn,
-        owner_cap,
+        &owner_cap,
         tool_registry,
-        workflow_pkg_id,
+        *workflow_pkg_id,
     ) {
         Ok(tx) => tx,
         Err(e) => {

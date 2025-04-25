@@ -29,7 +29,7 @@ pub(crate) async fn execute_dag(
     let NexusObjects {
         workflow_pkg_id,
         primitives_pkg_id,
-        default_sap_object_id,
+        default_sap,
         network_id,
         ..
     } = get_nexus_objects(&conf)?;
@@ -54,9 +54,6 @@ pub(crate) async fn execute_dag(
     // Fetch DAG object for its ObjectRef.
     let dag = fetch_object_by_id(&sui, dag_id).await?;
 
-    // Fetch DefaultSAP object for its ObjectRef.
-    let default_sap = fetch_object_by_id(&sui, default_sap_object_id).await?;
-
     // Craft a TX to publish the DAG.
     let tx_handle = loading!("Crafting transaction...");
 
@@ -65,12 +62,12 @@ pub(crate) async fn execute_dag(
     match dag::execute(
         &mut tx,
         default_sap,
-        dag,
+        &dag,
         &entry_group,
         input_json,
-        workflow_pkg_id,
-        primitives_pkg_id,
-        network_id,
+        *workflow_pkg_id,
+        *primitives_pkg_id,
+        *network_id,
     ) {
         Ok(tx) => tx,
         Err(e) => {
@@ -103,7 +100,7 @@ pub(crate) async fn execute_dag(
                 object_type,
                 object_id,
                 ..
-            } if object_type.address == *workflow_pkg_id
+            } if object_type.address == **workflow_pkg_id
                 && object_type.module == workflow::Dag::DAG_EXECUTION.module.into()
                 && object_type.name == workflow::Dag::DAG_EXECUTION.name.into() =>
             {
