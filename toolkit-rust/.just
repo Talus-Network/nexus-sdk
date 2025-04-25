@@ -6,26 +6,33 @@
 
 import '../just/_helpers.just'
 
+package := 'nexus-toolkit'
+
 [private]
 _default:
     @just --list toolkit-rust
 
 # Build the Toolkit for Rust project
 build: _check-cargo
-    cargo +stable build --package nexus-toolkit --release
+    cargo +stable build --package {{ package }} --release
 
 # Check the Toolkit for Rust project
 check: _check-cargo
-    cargo +stable check --package nexus-toolkit
+    cargo +stable check --package {{ package }}
 
 # Run all tests in the Toolkit for Rust project
 test: _check-cargo
-    cargo +stable test --package nexus-toolkit
+    cargo +stable test --package {{ package }}
 
 # Run rustfmt on the Toolkit for Rust project
 fmt-check: _check-cargo
-    cargo +nightly fmt --package nexus-toolkit --check
+    cargo +nightly fmt --package {{ package }} --check
 
 # Run clippy on the Toolkit for Rust project
 clippy: _check-cargo
-    cargo +stable clippy --package nexus-toolkit
+    cargo +stable clippy --package {{ package }}
+
+# Publishes the Toolkit for RUst package to crates.io
+publish: _check-cargo
+    cargo +stable publish --package {{ package }}
+    @echo "Published {{ package }} to crates.io"

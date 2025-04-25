@@ -1,0 +1,31 @@
+name: Audit Dependencies
+on:
+  push:
+    paths:
+      # Run if workflow changes
+      - ".github/workflows/audit.yml"
+      # Run on changed dependencies
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      # Run if the configuration file changes
+      - "**/audit.toml"
+  # Rerun periodically to pick up new advisories
+  schedule:
+    - cron: "0 0 * * *"
+  # Run manually
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Audit Dependencies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Audit Rust Dependencies
+        uses: actions-rust-lang/audit@v1

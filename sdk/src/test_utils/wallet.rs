@@ -52,3 +52,15 @@ active_address: \"{addr}\"",
 
     Ok((context, sui_secret_mnemonic))
 }
+
+/// Sign and execute the provided transaction.
+// TODO: remove
+#[allow(unused_variables)]
+pub async fn sign_and_execute_tx(
+    wallet: &mut sui::WalletContext,
+    tx: sui::ProgrammableTransaction,
+    gas_coin: sui::ObjectID,
+    gas_budget: u64,
+) -> anyhow::Result<sui::TransactionBlockResponse> {
+    todo!()
+}
