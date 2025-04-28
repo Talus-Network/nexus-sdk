@@ -52,9 +52,6 @@ pub(crate) struct ConfCommand {
     conf_path: PathBuf,
 }
 
-// TODO: adjust begin_exec.
-// TODO: new commands (add budget, set cost, add ticket, claim...)
-
 /// Handle the provided conf command. The [ConfCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(

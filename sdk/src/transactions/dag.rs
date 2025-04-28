@@ -1,6 +1,7 @@
 use crate::{
     idents::{primitives, sui_framework, workflow},
     sui,
+    test_utils::gas,
     types::{Dag, Data, DefaultValue, Edge, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
 };
 
@@ -283,6 +284,7 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     default_sap: &sui::ObjectRef,
     dag: &sui::ObjectRef,
+    gas_service: &sui::ObjectRef,
     entry_group: &str,
     input_json: serde_json::Value,
     workflow_pkg_id: sui::ObjectID,
@@ -301,6 +303,13 @@ pub fn execute(
         id: dag.object_id,
         initial_shared_version: dag.version,
         mutable: false,
+    })?;
+
+    // `gas_service: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: gas_service.object_id,
+        initial_shared_version: gas_service.version,
+        mutable: true,
     })?;
 
     // `network: ID`
@@ -401,6 +410,7 @@ pub fn execute(
         vec![
             default_sap,
             dag,
+            gas_service,
             network,
             entry_group,
             with_vertex_inputs,
@@ -630,6 +640,7 @@ mod tests {
         let network_id = sui::ObjectID::random();
         let default_sap = mock_sui_object_ref();
         let dag = mock_sui_object_ref();
+        let gas_service = mock_sui_object_ref();
         let entry_group = "group1";
         let input_json = serde_json::json!({
             "vertex1": {
@@ -642,6 +653,7 @@ mod tests {
             &mut tx,
             &default_sap,
             &dag,
+            &gas_service,
             entry_group,
             input_json,
             workflow_pkg_id,

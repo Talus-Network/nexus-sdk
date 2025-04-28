@@ -14,8 +14,8 @@ use {
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
     ident: ToolIdent,
+    collateral_coin: Option<sui::ObjectID>,
     sui_gas_coin: Option<sui::ObjectID>,
-    sui_collateral_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let ident_check = ident.clone();
@@ -51,14 +51,9 @@ pub(crate) async fn register_tool(
     };
 
     // Fetch gas and collateral coin objects.
-    let (gas_coin, collateral_coin) = fetch_gas_and_collateral_coins(
-        &sui,
-        conf.sui.net,
-        address,
-        sui_gas_coin,
-        sui_collateral_coin,
-    )
-    .await?;
+    let (gas_coin, collateral_coin) =
+        fetch_gas_and_collateral_coins(&sui, conf.sui.net, address, sui_gas_coin, collateral_coin)
+            .await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;

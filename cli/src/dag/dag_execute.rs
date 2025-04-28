@@ -29,8 +29,9 @@ pub(crate) async fn execute_dag(
     let NexusObjects {
         workflow_pkg_id,
         primitives_pkg_id,
-        default_sap,
         network_id,
+        default_sap,
+        gas_service,
         ..
     } = get_nexus_objects(&conf)?;
 
@@ -63,6 +64,7 @@ pub(crate) async fn execute_dag(
         &mut tx,
         default_sap,
         &dag,
+        gas_service,
         &entry_group,
         input_json,
         *workflow_pkg_id,
