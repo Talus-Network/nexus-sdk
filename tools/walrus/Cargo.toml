@@ -16,6 +16,8 @@ categories.workspace = true
 schemars.workspace = true
 serde.workspace = true
 tokio.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
 
 # === Nexus deps ===
 nexus-toolkit.workspace = true

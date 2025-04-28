@@ -4,12 +4,22 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, ToolFqn},
+    nexus_sdk::{fqn, walrus::StorageInfo, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
+    thiserror::Error,
 };
+
+/// Errors that can occur during file upload
+#[derive(Error, Debug)]
+pub enum UploadFileError {
+    #[error("Failed to upload file: {0}")]
+    UploadError(#[from] anyhow::Error),
+    #[error("Invalid file data: {0}")]
+    InvalidFile(String),
+}
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +38,7 @@ pub(crate) struct Input {
 }
 
 fn default_epochs() -> u64 {
-    1000
+    1
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -61,25 +71,46 @@ impl NexusTool for UploadFile {
     }
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
-        let client = WalrusConfig::new()
+        match self.upload(input).await {
+            Ok(storage_info) => handle_successful_upload(storage_info),
+            Err(e) => Output::Err {
+                reason: e.to_string(),
+            },
+        }
+    }
+}
+
+/// Handles the successful upload case by extracting the blob ID from the storage info
+fn handle_successful_upload(storage_info: StorageInfo) -> Output {
+    if let Some(newly_created) = storage_info.newly_created {
+        Output::Ok {
+            blob_id: newly_created.blob_object.blob_id,
+        }
+    } else if let Some(already_certified) = storage_info.already_certified {
+        Output::Ok {
+            blob_id: already_certified.blob_id,
+        }
+    } else {
+        Output::Err {
+            reason: "Neither newly created nor already certified".to_string(),
+        }
+    }
+}
+
+impl UploadFile {
+    async fn upload(&self, input: Input) -> Result<StorageInfo, UploadFileError> {
+        let walrus_client = WalrusConfig::new()
             .with_publisher_url(input.publisher_url)
             .build();
 
-        let blob = client
+        let storage_info = walrus_client
             .upload_file(
                 &PathBuf::from(&input.file_path),
                 input.epochs,
                 input.send_to,
             )
-            .await;
+            .await?;
 
-        match blob {
-            Ok(blob) => Output::Ok {
-                blob_id: blob.blob_id,
-            },
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
-        }
+        Ok(storage_info)
     }
 }
