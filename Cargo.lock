@@ -8728,6 +8728,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "walrus"
+version = "0.2.0-rc.1"
+dependencies = [
+ "anyhow",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "want"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

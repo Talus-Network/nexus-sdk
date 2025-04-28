@@ -23,3 +23,6 @@ anyhow.workspace = true
 # === Nexus deps ===
 nexus-toolkit.workspace = true
 nexus-sdk = { workspace = true, features = ["walrus"] }
+
+[dev-dependencies]
+mockito.workspace = true
