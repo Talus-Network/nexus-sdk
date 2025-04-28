@@ -3,7 +3,7 @@
 use {
     anyhow::Result,
     mockito::{Server, ServerGuard},
-    nexus_sdk::walrus::{StorageInfo, WalrusClient},
+    nexus_sdk::walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo, WalrusClient},
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
     tempfile::tempdir,
@@ -55,11 +55,14 @@ async fn test_upload_file() -> Result<()> {
 
     // Setup mock response
     let mock_response = StorageInfo {
-        blob_id: "test_blob_id".to_string(),
-        tx_digest: "test_tx_digest".to_string(),
-        object_id: "test_object_id".to_string(),
-        expiration_time: 100,
-        size: TEST_CONTENT.len() as u64,
+        newly_created: Some(NewlyCreated {
+            blob_object: BlobObject {
+                blob_id: "test_blob_id".to_string(),
+                id: "test_object_id".to_string(),
+                storage: BlobStorage { end_epoch: 100 },
+            },
+        }),
+        already_certified: None,
     };
 
     let mock = server
@@ -77,11 +80,12 @@ async fn test_upload_file() -> Result<()> {
     let storage_info = client.upload_file(&file_path, EPOCHS, None).await?;
 
     // Verify response
-    assert_eq!(storage_info.blob_id, "test_blob_id");
-    assert_eq!(storage_info.tx_digest, "test_tx_digest");
-    assert_eq!(storage_info.object_id, "test_object_id");
-    assert_eq!(storage_info.expiration_time, 100);
-    assert_eq!(storage_info.size, TEST_CONTENT.len() as u64);
+    assert!(storage_info.newly_created.is_some());
+    let blob_object = storage_info.newly_created.unwrap().blob_object;
+    assert_eq!(blob_object.blob_id, "test_blob_id");
+    assert_eq!(blob_object.id, "test_object_id");
+    assert_eq!(blob_object.storage.end_epoch, 100);
+    assert!(storage_info.already_certified.is_none());
 
     // Verify the request was made
     mock.assert_async().await;
@@ -101,11 +105,14 @@ async fn test_upload_json() -> Result<()> {
 
     // Setup mock response
     let mock_response = StorageInfo {
-        blob_id: "json_blob_id".to_string(),
-        tx_digest: "json_tx_digest".to_string(),
-        object_id: "json_object_id".to_string(),
-        expiration_time: 200,
-        size: 100, // Arbitrary size
+        newly_created: Some(NewlyCreated {
+            blob_object: BlobObject {
+                blob_id: "json_blob_id".to_string(),
+                id: "json_object_id".to_string(),
+                storage: BlobStorage { end_epoch: 200 },
+            },
+        }),
+        already_certified: None,
     };
 
     let mock = server
@@ -123,11 +130,12 @@ async fn test_upload_json() -> Result<()> {
     let storage_info = client.upload_json(&test_data, EPOCHS, None).await?;
 
     // Verify response
-    assert_eq!(storage_info.blob_id, "json_blob_id");
-    assert_eq!(storage_info.tx_digest, "json_tx_digest");
-    assert_eq!(storage_info.object_id, "json_object_id");
-    assert_eq!(storage_info.expiration_time, 200);
-    assert_eq!(storage_info.size, 100);
+    assert!(storage_info.newly_created.is_some());
+    let blob_object = storage_info.newly_created.unwrap().blob_object;
+    assert_eq!(blob_object.blob_id, "json_blob_id");
+    assert_eq!(blob_object.id, "json_object_id");
+    assert_eq!(blob_object.storage.end_epoch, 200);
+    assert!(storage_info.already_certified.is_none());
 
     // Verify the request was made
     mock.assert_async().await;
