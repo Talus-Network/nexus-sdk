@@ -122,8 +122,22 @@ fn handle_successful_upload(storage_info: StorageInfo) -> Output {
     }
 }
 
+fn validate_file_path(file_path: &str) -> Result<(), UploadFileError> {
+    let file_path = PathBuf::from(file_path);
+    if !file_path.exists() {
+        return Err(UploadFileError::InvalidFile(format!(
+            "File does not exist: {}",
+            file_path.display()
+        )));
+    }
+    Ok(())
+}
+
 impl UploadFile {
     async fn upload(&self, input: Input) -> Result<StorageInfo, UploadFileError> {
+        // Validate file path
+        validate_file_path(&input.file_path)?;
+
         let walrus_client = WalrusConfig::new()
             .with_publisher_url(input.publisher_url)
             .build();
@@ -137,5 +151,289 @@ impl UploadFile {
             .await?;
 
         Ok(storage_info)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, serde_json::json};
+
+    // Override upload method for testing
+    impl UploadFile {
+        // Helper method for testing
+        fn with_custom_client() -> Self {
+            Self {}
+        }
+
+        async fn upload_for_test(
+            &self,
+            input: Input,
+            client: WalrusClient,
+        ) -> Result<StorageInfo, UploadFileError> {
+            // Validate file path
+            validate_file_path(&input.file_path)?;
+
+            let storage_info = client
+                .upload_file(
+                    &PathBuf::from(&input.file_path),
+                    input.epochs,
+                    input.send_to,
+                )
+                .await?;
+
+            Ok(storage_info)
+        }
+
+        async fn create_server_and_input(file_path: &str) -> (mockito::ServerGuard, Input) {
+            let server = Server::new_async().await;
+            let server_url = server.url();
+
+            // Set up test input with server URL
+            let input = Input {
+                file_path: file_path.to_string(),
+                publisher_url: Some(server_url.clone()),
+                epochs: 1,
+                send_to: None,
+            };
+
+            (server, input)
+        }
+
+        async fn create_test_file(file_path: &str, file_content: &str) {
+            let file_path = PathBuf::from(file_path);
+            std::fs::write(&file_path, file_content).unwrap();
+        }
+
+        async fn remove_test_file(file_path: &str) {
+            let file_path = PathBuf::from(file_path);
+            std::fs::remove_file(&file_path).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_newly_created() {
+        // Create test file
+        let file_path = "test.txt";
+        UploadFile::create_test_file(file_path, "test").await;
+
+        // Create server and input
+        let (mut server, input) = UploadFile::create_server_and_input(file_path).await;
+
+        // Set up mock response for newly created blob
+        let mock = server
+            .mock("PUT", "/v1/blobs")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "newlyCreated": {
+                        "blobObject": {
+                            "blobId": "test_blob_id",
+                            "id": "test_object_id",
+                            "storage": {
+                                "endEpoch": 100
+                            }
+                        }
+                    },
+                    "alreadyCertified": null
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Create a client that points to our mock server
+        let walrus_client = WalrusConfig::new()
+            .with_publisher_url(Some(server.url()))
+            .build();
+
+        // Call the tool with our test client
+        let tool = UploadFile::with_custom_client();
+        let result = match tool.upload_for_test(input, walrus_client).await {
+            Ok(storage_info) => handle_successful_upload(storage_info),
+            Err(e) => Output::Err {
+                reason: e.to_string(),
+            },
+        };
+
+        // Verify the result
+        match result {
+            Output::Ok {
+                blob_id,
+                newly_created,
+                already_certified,
+                end_epoch,
+                sui_object_id,
+                tx_digest,
+            } => {
+                assert_eq!(blob_id, "test_blob_id");
+                assert_eq!(newly_created, Some(true));
+                assert_eq!(already_certified, None);
+                assert_eq!(end_epoch, 100);
+                assert_eq!(sui_object_id, Some("test_object_id".to_string()));
+                assert_eq!(tx_digest, None);
+            }
+            Output::Err { reason } => {
+                panic!("Expected OK result, got error: {}", reason);
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+
+        // Clean up test file
+        UploadFile::remove_test_file("test.txt").await;
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_already_certified() {
+        // Create test file
+        let file_path = "test_already_certified.txt";
+        UploadFile::create_test_file(file_path, "test").await;
+
+        // Create server and input
+        let (mut server, input) = UploadFile::create_server_and_input(file_path).await;
+
+        // Set up mock response for already certified blob
+        let mock = server
+            .mock("PUT", "/v1/blobs")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "newlyCreated": null,
+                    "alreadyCertified": {
+                        "blobId": "certified_blob_id",
+                        "endEpoch": 200,
+                        "event": {
+                            "txDigest": "certified_tx_digest",
+                            "timestampMs": 12345678,
+                            "suiAddress": "sui_address"
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Create a client that points to our mock server
+        let walrus_client = WalrusConfig::new()
+            .with_publisher_url(Some(server.url()))
+            .build();
+
+        // Call the tool with our test client
+        let tool = UploadFile::with_custom_client();
+        let result = match tool.upload_for_test(input, walrus_client).await {
+            Ok(storage_info) => handle_successful_upload(storage_info),
+            Err(e) => Output::Err {
+                reason: e.to_string(),
+            },
+        };
+
+        // Verify the result
+        match result {
+            Output::Ok {
+                blob_id,
+                newly_created,
+                already_certified,
+                end_epoch,
+                sui_object_id,
+                tx_digest,
+            } => {
+                assert_eq!(blob_id, "certified_blob_id");
+                assert_eq!(newly_created, None);
+                assert_eq!(already_certified, Some(true));
+                assert_eq!(end_epoch, 200);
+                assert_eq!(sui_object_id, None);
+                assert_eq!(tx_digest, Some("certified_tx_digest".to_string()));
+            }
+            Output::Err { reason } => {
+                panic!("Expected OK result, got error: {}", reason);
+            }
+        }
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+
+        // Clean up test file
+        UploadFile::remove_test_file("test_already_certified.txt").await;
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_error() {
+        // Create test file
+        let file_path = "test_error.txt";
+        UploadFile::create_test_file(file_path, "test").await;
+
+        // Create server and input
+        let (mut server, input) = UploadFile::create_server_and_input(file_path).await;
+
+        // Set up mock response for error
+        let mock = server
+            .mock("PUT", "/v1/blobs")
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "error": "Internal server error"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Create a client that points to our mock server
+        let walrus_client = WalrusConfig::new()
+            .with_publisher_url(Some(server.url()))
+            .build();
+
+        // Call the tool with our test client
+        let tool = UploadFile::with_custom_client();
+        let result = tool.upload_for_test(input, walrus_client).await;
+
+        // Verify the result is an error
+        assert!(result.is_err());
+        let error_message = result.unwrap_err().to_string();
+        assert!(
+            error_message.contains("500") || error_message.contains("server error"),
+            "Error message '{}' should contain 500 or server error",
+            error_message
+        );
+
+        // Verify that the mock was called
+        mock.assert_async().await;
+
+        // Clean up test file
+        UploadFile::remove_test_file("test_error.txt").await;
+    }
+
+    #[tokio::test]
+    async fn test_upload_invalid_file() {
+        // Create test input with non-existent file path
+        let file_path = "non_existent_file.txt";
+        let input = Input {
+            file_path: file_path.to_string(),
+            publisher_url: None,
+            epochs: 1,
+            send_to: None,
+        };
+
+        // Call the tool
+        let tool = UploadFile::with_custom_client();
+        let result = tool.invoke(input).await;
+
+        // Verify the result
+        match result {
+            Output::Ok { .. } => {
+                panic!("Expected error result, got OK");
+            }
+            Output::Err { reason } => {
+                assert!(reason.contains("File does not exist"));
+            }
+        }
     }
 }

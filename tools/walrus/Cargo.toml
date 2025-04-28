@@ -18,6 +18,8 @@ serde.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+serde_json.workspace = true
+mockito.workspace = true
 
 # === Nexus deps ===
 nexus-toolkit.workspace = true
