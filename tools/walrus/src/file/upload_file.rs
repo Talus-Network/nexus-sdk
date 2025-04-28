@@ -44,8 +44,24 @@ fn default_epochs() -> u64 {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok { blob_id: String },
-    Err { reason: String },
+    Ok {
+        blob_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end_epoch: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        newly_created: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        already_certified: Option<bool>,
+        // if the blob is already certified, this will be the tx digest of the blob object
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tx_digest: Option<String>,
+        // if the blob is newly created, this will be the sui object ID of the blob object
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sui_object_id: Option<String>,
+    },
+    Err {
+        reason: String,
+    },
 }
 
 pub(crate) struct UploadFile;
@@ -84,11 +100,21 @@ impl NexusTool for UploadFile {
 fn handle_successful_upload(storage_info: StorageInfo) -> Output {
     if let Some(newly_created) = storage_info.newly_created {
         Output::Ok {
+            end_epoch: None,
+            newly_created: Some(true),
             blob_id: newly_created.blob_object.blob_id,
+            tx_digest: None,
+            sui_object_id: Some(newly_created.blob_object.id),
+            already_certified: None,
         }
     } else if let Some(already_certified) = storage_info.already_certified {
         Output::Ok {
+            end_epoch: Some(already_certified.end_epoch),
+            newly_created: Some(false),
             blob_id: already_certified.blob_id,
+            tx_digest: Some(already_certified.event.tx_digest),
+            sui_object_id: None,
+            already_certified: Some(true),
         }
     } else {
         Output::Err {
