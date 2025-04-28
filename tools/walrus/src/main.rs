@@ -7,5 +7,5 @@ mod json;
 
 #[tokio::main]
 async fn main() {
-    bootstrap!([json::upload_json::UploadJson])
+    bootstrap!([json::upload_json::UploadJson, json::read_json::ReadJson]);
 }
