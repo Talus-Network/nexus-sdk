@@ -15,7 +15,10 @@ categories.workspace = true
 [dependencies]
 schemars.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
 
 # === Nexus deps ===
 nexus-toolkit.workspace = true

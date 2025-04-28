@@ -4,11 +4,21 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, ToolFqn},
+    nexus_sdk::{fqn, walrus::StorageInfo, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
+    thiserror::Error,
 };
+
+/// Errors that can occur during JSON upload
+#[derive(Error, Debug)]
+pub enum UploadJsonError {
+    #[error("Failed to upload JSON: {0}")]
+    UploadError(#[from] anyhow::Error),
+    #[error("Invalid JSON data: {0}")]
+    InvalidJson(String),
+}
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -51,7 +61,7 @@ impl NexusTool for UploadJson {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.json.upload")
+        fqn!("xyz.taluslabs.walrus.json.upload@1")
     }
 
     fn path() -> &'static str {
@@ -63,22 +73,35 @@ impl NexusTool for UploadJson {
     }
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
+        match self.upload(input).await {
+            Ok(storage_info) => {
+                println!("storage_info: {:?}", storage_info);
+                Output::Ok {
+                    blob_id: storage_info.blob_id,
+                }
+            }
+            Err(e) => Output::Err {
+                reason: e.to_string(),
+            },
+        }
+    }
+}
+
+impl UploadJson {
+    async fn upload(&self, input: Input) -> Result<StorageInfo, UploadJsonError> {
+        // Validate JSON before proceeding
+        serde_json::from_str::<serde_json::Value>(&input.json)
+            .map_err(|e| UploadJsonError::InvalidJson(e.to_string()))?;
+
         let walrus_client = WalrusConfig::new()
             .with_publisher_url(input.publisher_url)
             .with_aggregator_url(input.aggregator_url)
             .build();
 
-        let blob = walrus_client
+        let storage_info = walrus_client
             .upload_json(&input.json, input.epochs, input.send_to_address)
-            .await;
+            .await?;
 
-        match blob {
-            Ok(blob) => Output::Ok {
-                blob_id: blob.blob_id,
-            },
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
-        }
+        Ok(storage_info)
     }
 }
