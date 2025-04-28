@@ -1,7 +1,6 @@
 use crate::{
     idents::{primitives, sui_framework, workflow},
     sui,
-    test_utils::gas,
     types::{Dag, Data, DefaultValue, Edge, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
 };
 
