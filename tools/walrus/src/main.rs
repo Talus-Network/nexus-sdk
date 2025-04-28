@@ -2,6 +2,7 @@
 
 use nexus_toolkit::bootstrap;
 
+mod client;
 mod json;
 
 #[tokio::main]

@@ -1,9 +1,10 @@
-//! # `xyz.taluslabs.walrus.json.upload_json@1`
+//! # `xyz.taluslabs.walrus.json.upload@1`
 //!
 //! Standard Nexus Tool that uploads a JSON file to Walrus and returns the blob ID.
 
 use {
-    nexus_sdk::{fqn, walrus::WalrusClient, ToolFqn},
+    crate::client::WalrusConfig,
+    nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -14,6 +15,22 @@ use {
 pub(crate) struct Input {
     /// The JSON data to upload
     json: String,
+    /// The walrus publisher URL
+    #[serde(default)]
+    publisher_url: Option<String>,
+    /// The URL of the aggregator to upload the JSON to
+    #[serde(default)]
+    aggregator_url: Option<String>,
+    /// Number of epochs to store the data
+    #[serde(default = "default_epochs")]
+    epochs: u64,
+    /// Optional address to which the created Blob object should be sent
+    #[serde(default)]
+    send_to_address: Option<String>,
+}
+
+fn default_epochs() -> u64 {
+    1
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -34,7 +51,7 @@ impl NexusTool for UploadJson {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.json.upload_json")
+        fqn!("xyz.taluslabs.walrus.json.upload")
     }
 
     fn path() -> &'static str {
@@ -46,9 +63,14 @@ impl NexusTool for UploadJson {
     }
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
-        let client = WalrusClient::new();
+        let walrus_client = WalrusConfig::new()
+            .with_publisher_url(input.publisher_url)
+            .with_aggregator_url(input.aggregator_url)
+            .build();
 
-        let blob = client.upload_json(&input.json, 1000, None).await;
+        let blob = walrus_client
+            .upload_json(&input.json, input.epochs, input.send_to_address)
+            .await;
 
         match blob {
             Ok(blob) => Output::Ok {
