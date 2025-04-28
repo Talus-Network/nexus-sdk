@@ -46,8 +46,23 @@ fn default_epochs() -> u64 {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok { blob_id: String },
-    Err { reason: String },
+    Ok {
+        blob_id: String,
+        end_epoch: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        newly_created: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        already_certified: Option<bool>,
+        // if the blob is already certified, this will be the tx digest of the blob object
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tx_digest: Option<String>,
+        // if the blob is newly created, this will be the sui object ID of the blob object
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sui_object_id: Option<String>,
+    },
+    Err {
+        reason: String,
+    },
 }
 
 pub(crate) struct UploadJson;
@@ -75,9 +90,26 @@ impl NexusTool for UploadJson {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         match self.upload(input).await {
             Ok(storage_info) => {
-                println!("storage_info: {:?}", storage_info);
-                Output::Ok {
-                    blob_id: storage_info.blob_id,
+                if let Some(ac) = &storage_info.already_certified {
+                    Output::Ok {
+                        blob_id: ac.blob_id.clone(),
+                        newly_created: None,
+                        already_certified: Some(true),
+                        end_epoch: ac.end_epoch,
+                        sui_object_id: None,
+                        tx_digest: Some(ac.event.tx_digest.clone()),
+                    }
+                } else {
+                    let created_blob = storage_info.newly_created.unwrap();
+
+                    Output::Ok {
+                        blob_id: created_blob.blob_object.blob_id,
+                        newly_created: Some(true),
+                        already_certified: None,
+                        end_epoch: created_blob.blob_object.storage.end_epoch,
+                        sui_object_id: Some(created_blob.blob_object.id),
+                        tx_digest: None,
+                    }
                 }
             }
             Err(e) => Output::Err {
