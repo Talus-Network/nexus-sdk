@@ -102,19 +102,6 @@ impl NexusTool for UploadJson {
                 } else {
                     let created_blob = storage_info.newly_created.unwrap();
 
-<<<<<<< HEAD
-        let blob = client.upload_json(&input.json, 1000, None).await;
-
-        match blob {
-            Ok(blob) => {
-                if let Some(blob) = blob.newly_created {
-                    Output::Ok {
-                        blob_id: blob.blob_object.blob_id,
-                    }
-                } else {
-                    Output::Err {
-                        reason: "No blob ID returned".to_string(),
-=======
                     Output::Ok {
                         blob_id: created_blob.blob_object.blob_id,
                         newly_created: Some(true),
@@ -122,7 +109,6 @@ impl NexusTool for UploadJson {
                         end_epoch: created_blob.blob_object.storage.end_epoch,
                         sui_object_id: Some(created_blob.blob_object.id),
                         tx_digest: None,
->>>>>>> feat/walrus-tool-upload-json
                     }
                 }
             }

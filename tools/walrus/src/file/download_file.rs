@@ -93,7 +93,7 @@ impl NexusTool for DownloadFile {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.file.download")
+        fqn!("xyz.taluslabs.walrus.file.download@1")
     }
 
     fn path() -> &'static str {
@@ -273,7 +273,7 @@ mod tests {
         // Call the tool with our test client but bypass validation
         let tool = DownloadFile::with_custom_client();
         let result = tool.download_for_test(&input, walrus_client).await;
-
+        println!("result: {:?}", result);
         // Verify the result
         assert!(
             result.is_ok(),
