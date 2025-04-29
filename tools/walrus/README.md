@@ -49,3 +49,38 @@ The blob upload failed.
     - Timeout errors
 
 ---
+
+# `xyz.taluslabs.walrus.utils.verify_blob@1`
+
+Standard Nexus Tool that verifies a blob in Walrus.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The ID of the blob to verify.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The URL of the Walrus aggregator to verify the blob against.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The blob was verified successfully.
+
+- **`ok.verified`: [`bool`]** - Whether the blob is verified
+
+**`err`**
+
+The blob verification failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+  - Possible reasons include:
+    - Blob not found
+    - Network connection errors
+    - Server-side errors
+    - Timeout errors
+
+---
