@@ -18,8 +18,10 @@ use {
 pub enum DownloadFileError {
     #[error("Failed to download file: {0}")]
     DownloadError(#[from] anyhow::Error),
-    #[error("Invalid file data: {0}")]
-    InvalidFile(String),
+    #[error("Invalid folder path: {0}")]
+    InvalidFolder(String),
+    #[error("Write error: {0}")]
+    WriteError(String),
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -120,17 +122,27 @@ impl NexusTool for DownloadFile {
 
 impl DownloadFile {
     async fn download_file(&self, input: Input) -> Result<(), DownloadFileError> {
+        // Create a unique output path
+        let output_path = input.output_path.clone();
+        let extension = input.file_extension.to_string();
+        let mut final_path = output_path.clone() + "/downloaded_file" + &extension;
+
+        // If the specified path exists, find the next available number
+        let mut counter = 1;
+        while PathBuf::from(&final_path).exists() {
+            final_path = format!("{}/downloaded_file({}){}", output_path, counter, extension);
+            counter += 1;
+        }
+
         // Validate output path
-        let output_path =
-            input.output_path.clone() + "/downloaded_file" + &input.file_extension.to_string();
-        validate_output_path(&output_path)?;
+        validate_output_path(&final_path)?;
 
         let walrus_client = WalrusConfig::new()
             .with_aggregator_url(input.aggregator_url)
             .build();
 
         let contents = walrus_client
-            .download_file(&input.blob_id, &PathBuf::from(&output_path))
+            .download_file(&input.blob_id, &PathBuf::from(&final_path))
             .await?;
 
         Ok(contents)
@@ -142,7 +154,7 @@ fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
     // Check if the directory exists
     if let Some(parent) = PathBuf::from(output_path).parent() {
         if !parent.exists() {
-            return Err(DownloadFileError::InvalidFile(format!(
+            return Err(DownloadFileError::InvalidFolder(format!(
                 "Directory does not exist: {}",
                 parent.display()
             )));
@@ -150,7 +162,7 @@ fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
 
         // Check if the directory is writable
         if !is_directory_writable(parent) {
-            return Err(DownloadFileError::InvalidFile(format!(
+            return Err(DownloadFileError::WriteError(format!(
                 "Directory is not writable: {}",
                 parent.display()
             )));
@@ -159,7 +171,7 @@ fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
 
     // Check if the file already exists and is not writable
     if PathBuf::from(output_path).exists() && !is_file_writable(&PathBuf::from(output_path)) {
-        return Err(DownloadFileError::InvalidFile(format!(
+        return Err(DownloadFileError::WriteError(format!(
             "File exists but is not writable: {}",
             PathBuf::from(output_path).display()
         )));
@@ -186,7 +198,7 @@ fn is_file_writable(path: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, std::fs, tempfile::tempdir};
+    use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, std::fs};
 
     impl DownloadFile {
         // Helper method for testing
@@ -199,29 +211,35 @@ mod tests {
             input: &Input,
             client: WalrusClient,
         ) -> Result<(), DownloadFileError> {
-            // Validate output path
-            validate_output_path(&input.output_path)?;
+            let output_path = input.output_path.clone();
+            let extension = input.file_extension.to_string();
+            let final_path = output_path + "/downloaded_file" + &extension;
 
             client
-                .download_file(&input.blob_id, &PathBuf::from(&input.output_path))
+                .download_file(&input.blob_id, &PathBuf::from(&final_path))
                 .await?;
 
             Ok(())
         }
 
-        async fn create_server_and_input(input: Input) -> (mockito::ServerGuard, Input) {
+        async fn create_server_and_input(
+            output_path: Option<String>,
+        ) -> (mockito::ServerGuard, Input, &'static [u8]) {
             let server = Server::new_async().await;
             let server_url = server.url();
 
             // Set up test input with server URL
             let input = Input {
-                blob_id: input.blob_id,
-                output_path: input.output_path,
+                blob_id: "test_blob_id".to_string(),
+                output_path: output_path.unwrap_or_else(|| "test_output_path".to_string()),
                 aggregator_url: Some(server_url.clone()),
-                file_extension: input.file_extension,
+                file_extension: FileExtension::Txt,
             };
 
-            (server, input)
+            // Create a file with the given content
+            static FILE_CONTENT: &[u8] = b"Hello, World!";
+
+            (server, input, FILE_CONTENT)
         }
 
         async fn cleanup_test_file(file_path: &String) {
@@ -230,49 +248,12 @@ mod tests {
                 fs::remove_file(&file_path).unwrap_or_default();
             }
         }
-
-        async fn test_utils(file_name: &str) -> (Input, &[u8], tempfile::TempDir) {
-            // Create a temp directory for output
-            let dir = match tempdir() {
-                Ok(dir) => dir,
-                Err(e) => {
-                    panic!("Failed to create temp directory: {}", e);
-                }
-            };
-
-            let output_path = dir.path().join(file_name);
-
-            // Ensure the directory exists
-            let parent_path = dir.path();
-            assert!(
-                parent_path.exists(),
-                "Temp directory not created: {:?}",
-                parent_path
-            );
-
-            // Create a file with the given content
-            let file_content = b"Hello, World!";
-
-            (
-                Input {
-                    blob_id: "test_blob_id".to_string(),
-                    output_path: output_path.to_string_lossy().to_string(),
-                    aggregator_url: None,
-                    file_extension: FileExtension::Txt,
-                },
-                file_content,
-                dir,
-            )
-        }
     }
 
     #[tokio::test]
     async fn test_download_file_success() {
-        // Set up test input - keep the tempdir alive for the duration of the test
-        let (input, file_content, _tempdir) = DownloadFile::test_utils("downloaded_file.txt").await;
-
         // Create server and input
-        let (mut server, input) = DownloadFile::create_server_and_input(input).await;
+        let (mut server, input, file_content) = DownloadFile::create_server_and_input(None).await;
 
         // Set up mock response
         let mock = server
@@ -301,7 +282,12 @@ mod tests {
         );
 
         // Verify the file was downloaded correctly
-        let downloaded_content = fs::read_to_string(&PathBuf::from(&input.output_path)).unwrap();
+        let final_path = format!(
+            "{}/downloaded_file{}",
+            input.output_path,
+            input.file_extension.to_string()
+        );
+        let downloaded_content = fs::read_to_string(&PathBuf::from(&final_path)).unwrap();
         assert_eq!(
             downloaded_content,
             std::str::from_utf8(file_content).unwrap()
@@ -311,16 +297,13 @@ mod tests {
         mock.assert_async().await;
 
         // Clean up test file
-        DownloadFile::cleanup_test_file(&input.output_path).await;
+        DownloadFile::cleanup_test_file(&final_path).await;
     }
 
     #[tokio::test]
     async fn test_download_file_error() {
-        // Set up test input - keep the tempdir alive for the duration of the test
-        let (input, _, _tempdir) = DownloadFile::test_utils("error_file.txt").await;
-
         // Create server and input
-        let (mut server, input) = DownloadFile::create_server_and_input(input).await;
+        let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
 
         // Set up mock response for error
         let mock = server
@@ -358,14 +341,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_nonexistent_blob() {
-        // Set up test input - keep the tempdir alive for the duration of the test
-        let (input, _, _tempdir) = DownloadFile::test_utils("nonexistent_file.txt").await;
-
-        // Clean up any existing test file
-        DownloadFile::cleanup_test_file(&input.output_path).await;
-
         // Create server and input
-        let (mut server, input) = DownloadFile::create_server_and_input(input).await;
+        let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
 
         // Set up mock response for non-existent blob
         let mock = server
@@ -404,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_formatting() {
         // Set up test parameters
-        let (input, _, _) = DownloadFile::test_utils("format_test.txt").await;
+        let (_, input, _) = DownloadFile::create_server_and_input(None).await;
 
         // Test the output formatting by directly calling the invoke method
         // and checking the format of the success output
@@ -434,32 +411,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_output_path() {
-        // Invalid directory path that definitely shouldn't exist
-        let (input, _, _) = DownloadFile::test_utils("invalid_output_path.txt").await;
-
-        // Create tool and directly validate the output path
-        let result = validate_output_path(&input.output_path);
-
-        // Expect an InvalidFile error
-        assert!(result.is_err());
-        match result {
-            Err(DownloadFileError::InvalidFile(msg)) => {
-                assert!(msg.contains("Directory does not exist"));
-            }
-            _ => panic!("Expected InvalidFile error, but got different error type"),
-        }
+        // Create an input with an invalid path
+        let (_, input, _) =
+            DownloadFile::create_server_and_input(Some("nonexistent/directory".to_string())).await;
 
         // Test through the main download method
         let tool = DownloadFile::with_custom_client();
         let result = tool.download_file(input).await;
 
-        // Expect the same InvalidFile error
+        // Expect an InvalidFolder error
         assert!(result.is_err());
         match result {
-            Err(DownloadFileError::InvalidFile(msg)) => {
+            Err(DownloadFileError::InvalidFolder(msg)) => {
                 assert!(msg.contains("Directory does not exist"));
             }
-            _ => panic!("Expected InvalidFile error, but got different error type"),
+            _ => panic!("Expected InvalidFolder error, but got different error type"),
         }
     }
 }
