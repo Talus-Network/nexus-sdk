@@ -4,12 +4,12 @@
 
 use {
     crate::client::WalrusConfig,
+    dirs,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
-    tempfile::tempdir,
     thiserror::Error,
 };
 
@@ -23,6 +23,30 @@ pub enum DownloadFileError {
 }
 
 #[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum FileExtension {
+    Txt,
+    Json,
+    Bin,
+    Png,
+    Jpg,
+    Jpeg,
+}
+
+impl std::fmt::Display for FileExtension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileExtension::Txt => write!(f, ".txt"),
+            FileExtension::Json => write!(f, ".json"),
+            FileExtension::Bin => write!(f, ".bin"),
+            FileExtension::Png => write!(f, ".png"),
+            FileExtension::Jpg => write!(f, ".jpg"),
+            FileExtension::Jpeg => write!(f, ".jpeg"),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
     /// The blob ID of the file to download
@@ -33,10 +57,20 @@ pub(crate) struct Input {
     /// The URL of the aggregator to upload the JSON to
     #[serde(default)]
     aggregator_url: Option<String>,
+    /// The file extension to save the file as
+    #[serde(default = "default_file_extension")]
+    file_extension: FileExtension,
 }
 
 fn default_output_path() -> String {
-    ".".to_string()
+    dirs::download_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn default_file_extension() -> FileExtension {
+    FileExtension::Txt
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -87,14 +121,16 @@ impl NexusTool for DownloadFile {
 impl DownloadFile {
     async fn download_file(&self, input: Input) -> Result<(), DownloadFileError> {
         // Validate output path
-        validate_output_path(&input.output_path)?;
+        let output_path =
+            input.output_path.clone() + "/downloaded_file" + &input.file_extension.to_string();
+        validate_output_path(&output_path)?;
 
         let walrus_client = WalrusConfig::new()
             .with_aggregator_url(input.aggregator_url)
             .build();
 
         let contents = walrus_client
-            .download_file(&input.blob_id, &PathBuf::from(&input.output_path))
+            .download_file(&input.blob_id, &PathBuf::from(&output_path))
             .await?;
 
         Ok(contents)
@@ -150,7 +186,7 @@ fn is_file_writable(path: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, std::fs};
+    use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, std::fs, tempfile::tempdir};
 
     impl DownloadFile {
         // Helper method for testing
@@ -182,6 +218,7 @@ mod tests {
                 blob_id: input.blob_id,
                 output_path: input.output_path,
                 aggregator_url: Some(server_url.clone()),
+                file_extension: input.file_extension,
             };
 
             (server, input)
@@ -221,6 +258,7 @@ mod tests {
                     blob_id: "test_blob_id".to_string(),
                     output_path: output_path.to_string_lossy().to_string(),
                     aggregator_url: None,
+                    file_extension: FileExtension::Txt,
                 },
                 file_content,
                 dir,
