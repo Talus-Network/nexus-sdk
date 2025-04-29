@@ -130,10 +130,25 @@ pub struct Coin;
 const COIN_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("coin");
 
 impl Coin {
+    /// `sui::coin::Coin`
+    pub const COIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("Coin"),
+    };
+    /// `sui::coin::from_balance`
+    pub const FROM_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("from_balance"),
+    };
     /// `sui::coin::into_balance`
     pub const INTO_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: COIN_MODULE,
         name: sui::move_ident_str!("into_balance"),
+    };
+    /// `sui::coin::join`
+    pub const JOIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("join"),
     };
 }
 

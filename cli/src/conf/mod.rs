@@ -20,16 +20,14 @@ pub(crate) struct ConfCommand {
     #[arg(
         long = "sui.basic-auth-user",
         help = "Set an user for basic authentication to the Sui node",
-        value_name = "USER",
-        requires = "sui.basic-auth-password"
+        value_name = "USER"
     )]
     sui_auth_user: Option<String>,
 
     #[arg(
         long = "sui.basic-auth-password",
         help = "Set a password for basic authentication to the Sui node",
-        value_name = "PASSWORD",
-        requires = "sui.basic-auth-user"
+        value_name = "PASSWORD"
     )]
     sui_auth_password: Option<String>,
 
@@ -81,6 +79,13 @@ pub(crate) async fn handle(
     }
 
     command_title!("Updating Nexus CLI Configuration");
+
+    if sui_auth_user.is_some() != sui_auth_password.is_some() {
+        return Err(NexusCliError::Any(anyhow!(
+            "Both --sui.basic-auth-user and --sui.basic-auth-password must be provided together."
+        )));
+    }
+
     let conf_handle = loading!("Updating configuration...");
 
     // If a nexus.objects file is provided, load the file and update configuration.
@@ -139,7 +144,7 @@ mod tests {
         let nexus_objects_instance = NexusObjects {
             workflow_pkg_id: sui::ObjectID::random(),
             primitives_pkg_id: sui::ObjectID::random(),
-            inteface_pkg_id: sui::ObjectID::random(),
+            interface_pkg_id: sui::ObjectID::random(),
             network_id: sui::ObjectID::random(),
             tool_registry: mock_sui_object_ref(),
             default_sap: mock_sui_object_ref(),

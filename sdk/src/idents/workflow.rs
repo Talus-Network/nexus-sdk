@@ -425,12 +425,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::move_ident_str!("claim_leader_gas"),
     };
+    /// De-escalate an OverTool owner cap into OverGas.
+    ///
+    /// `nexus_workflow::gas::deescalate`
+    pub const DEESCALATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("deescalate"),
+    };
     /// GasService type for lookups.
     ///
     /// `nexus_workflow::gas::GasService`
     pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::move_ident_str!("GasService"),
+    };
+    /// OverGas owner cap generic.
+    ///
+    /// `nexus_workflow::gas::OverGas`
+    pub const OVER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("OverGas"),
     };
     /// Create an Execution scope.
     ///
@@ -452,6 +466,13 @@ impl Gas {
     pub const SCOPE_WORKSHEET_TYPE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::move_ident_str!("scope_worksheet_type"),
+    };
+    /// Set a tool invocation cost in MIST.
+    ///
+    /// `nexus_workflow::gas::set_single_invocation_cost_mist`
+    pub const SET_SINGLE_INVOCATION_COST_MIST: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("set_single_invocation_cost_mist"),
     };
     /// Sync gas for the vertices in the current execution object.
     ///

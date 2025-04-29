@@ -61,6 +61,14 @@ pub(crate) enum ToolCommand {
             value_name = "OBJECT_ID"
         )]
         collateral_coin: Option<sui::ObjectID>,
+        #[arg(
+            long = "invocation-cost",
+            short = 'i',
+            help = "What is the cost of invoking this tool in MIST.",
+            default_value = "0",
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
@@ -157,8 +165,18 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         ToolCommand::Register {
             ident,
             collateral_coin,
+            invocation_cost,
             gas,
-        } => register_tool(ident, collateral_coin, gas.sui_gas_coin, gas.sui_gas_budget).await,
+        } => {
+            register_tool(
+                ident,
+                collateral_coin,
+                invocation_cost,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
 
         // == `$ nexus tool unregister` ==
         ToolCommand::Unregister {

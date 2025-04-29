@@ -39,6 +39,12 @@ pub(crate) async fn add_gas_budget(
     // Fetch budget coin.
     let coin = fetch_object_by_id(&sui, coin).await?;
 
+    if coin.object_id == gas_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and budget coins must be different."
+        )));
+    }
+
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 

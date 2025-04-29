@@ -8,13 +8,17 @@ use {
         sui::*,
         tool::{tool_validate::*, ToolIdent},
     },
-    nexus_sdk::{idents::primitives, transactions::tool},
+    nexus_sdk::{
+        idents::{primitives, workflow},
+        transactions::tool,
+    },
 };
 
 /// Validate and then register a new Tool.
 pub(crate) async fn register_tool(
     ident: ToolIdent,
     collateral_coin: Option<sui::ObjectID>,
+    invocation_cost: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -36,6 +40,7 @@ pub(crate) async fn register_tool(
         workflow_pkg_id,
         primitives_pkg_id,
         tool_registry,
+        gas_service,
         ..
     } = get_nexus_objects(&conf)?;
 
@@ -55,6 +60,12 @@ pub(crate) async fn register_tool(
         fetch_gas_and_collateral_coins(&sui, conf.sui.net, address, sui_gas_coin, collateral_coin)
             .await?;
 
+    if gas_coin.coin_object_id == collateral_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and collateral coins must be different."
+        )));
+    }
+
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
@@ -73,9 +84,13 @@ pub(crate) async fn register_tool(
     match tool::register_off_chain_for_self(
         &mut tx,
         &meta,
+        address.into(),
         &collateral_coin,
+        invocation_cost,
         tool_registry,
+        gas_service,
         *workflow_pkg_id,
+        *primitives_pkg_id,
     ) {
         Ok(tx) => tx,
         Err(e) => {
@@ -98,12 +113,12 @@ pub(crate) async fn register_tool(
     // Sign and submit the TX.
     let response = sign_transaction(&sui, &wallet, tx_data).await?;
 
-    // Parse the owner cap object ID from the response.
-    let owner_cap = response
+    // Parse the owner cap object IDs from the response.
+    let owner_caps = response
         .object_changes
         .unwrap_or_default()
         .into_iter()
-        .find_map(|change| match change {
+        .filter_map(|change| match change {
             sui::ObjectChange::Created {
                 object_type,
                 object_id,
@@ -113,23 +128,65 @@ pub(crate) async fn register_tool(
                     == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
                 && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
             {
+                Some((object_id, object_type))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    // Find `CloneableOwnerCap<OverTool>` object ID.
+    let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
+        match object_type.type_params.first() {
+            Some(sui::MoveTypeTag::Struct(what_for))
+                if what_for.module == workflow::ToolRegistry::OVER_TOOL.module.into()
+                    && what_for.name == workflow::ToolRegistry::OVER_TOOL.name.into() =>
+            {
                 Some(object_id)
             }
             _ => None,
-        });
+        }
+    });
 
-    let Some(object_id) = owner_cap else {
+    let Some(over_tool_id) = over_tool else {
         return Err(NexusCliError::Any(anyhow!(
-            "Could not find the OwnerCap object ID in the transaction response."
+            "Could not find the OwnerCap<OverTool> object ID in the transaction response."
+        )));
+    };
+
+    // Find `CloneableOwnerCap<OverGas>` object ID.
+    let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
+        match object_type.type_params.first() {
+            Some(sui::MoveTypeTag::Struct(what_for))
+                if what_for.module == workflow::Gas::OVER_GAS.module.into()
+                    && what_for.name == workflow::Gas::OVER_GAS.name.into() =>
+            {
+                Some(object_id)
+            }
+            _ => None,
+        }
+    });
+
+    let Some(over_gas_id) = over_gas else {
+        return Err(NexusCliError::Any(anyhow!(
+            "Could not find the OwnerCap<OverGas> object ID in the transaction response."
         )));
     };
 
     notify_success!(
-        "OwnerCap object ID: {id}",
-        id = object_id.to_string().truecolor(100, 100, 100)
+        "OwnerCap<OverTool> object ID: {id}",
+        id = over_tool_id.to_string().truecolor(100, 100, 100)
     );
 
-    json_output(&json!({ "digest": response.digest, "owner_cap_id": object_id }))?;
+    notify_success!(
+        "OwnerCap<OverGas> object ID: {id}",
+        id = over_gas_id.to_string().truecolor(100, 100, 100)
+    );
+
+    json_output(&json!({
+        "digest": response.digest,
+        "owner_cap_over_tool_id": over_tool_id,
+        "owner_cap_over_gas_id": over_gas_id,
+    }))?;
 
     Ok(())
 }

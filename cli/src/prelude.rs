@@ -94,7 +94,7 @@ impl Default for SuiConf {
 pub(crate) struct NexusObjects {
     pub(crate) workflow_pkg_id: sui::ObjectID,
     pub(crate) primitives_pkg_id: sui::ObjectID,
-    pub(crate) inteface_pkg_id: sui::ObjectID,
+    pub(crate) interface_pkg_id: sui::ObjectID,
     pub(crate) network_id: sui::ObjectID,
     pub(crate) tool_registry: sui::ObjectRef,
     pub(crate) default_sap: sui::ObjectRef,
