@@ -255,6 +255,12 @@ mod tests {
         // Create server and input
         let (mut server, input, file_content) = DownloadFile::create_server_and_input(None).await;
 
+        // Create output directory if it doesn't exist
+        let output_dir = PathBuf::from(&input.output_path);
+        if !output_dir.exists() {
+            fs::create_dir_all(&output_dir).unwrap();
+        }
+
         // Set up mock response
         let mock = server
             .mock("GET", format!("/v1/blobs/{}", input.blob_id).as_str())
@@ -336,7 +342,12 @@ mod tests {
         mock.assert_async().await;
 
         // Clean up test file (though it shouldn't exist due to the error)
-        DownloadFile::cleanup_test_file(&input.output_path).await;
+        let final_path = format!(
+            "{}/downloaded_file{}",
+            input.output_path,
+            input.file_extension.to_string()
+        );
+        DownloadFile::cleanup_test_file(&final_path).await;
     }
 
     #[tokio::test]
@@ -375,7 +386,12 @@ mod tests {
         mock.assert_async().await;
 
         // Clean up test file (though it shouldn't exist due to the error)
-        DownloadFile::cleanup_test_file(&input.output_path).await;
+        let final_path = format!(
+            "{}/downloaded_file{}",
+            input.output_path,
+            input.file_extension.to_string()
+        );
+        DownloadFile::cleanup_test_file(&final_path).await;
     }
 
     #[tokio::test]
