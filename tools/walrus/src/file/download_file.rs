@@ -215,6 +215,14 @@ mod tests {
             let extension = input.file_extension.to_string();
             let final_path = output_path + "/downloaded_file" + &extension;
 
+            // Create the directory if it doesn't exist
+            if let Some(parent) = PathBuf::from(&final_path).parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| DownloadFileError::WriteError(e.to_string()))?;
+                }
+            }
+
             client
                 .download_file(&input.blob_id, &PathBuf::from(&final_path))
                 .await?;
@@ -228,10 +236,16 @@ mod tests {
             let server = Server::new_async().await;
             let server_url = server.url();
 
+            // Create a temporary directory for testing
+            let temp_dir = std::env::temp_dir()
+                .join("walrus_test")
+                .to_string_lossy()
+                .to_string();
+
             // Set up test input with server URL
             let input = Input {
                 blob_id: "test_blob_id".to_string(),
-                output_path: output_path.unwrap_or_else(|| "test_output_path".to_string()),
+                output_path: output_path.unwrap_or_else(|| temp_dir),
                 aggregator_url: Some(server_url.clone()),
                 file_extension: FileExtension::Txt,
             };
