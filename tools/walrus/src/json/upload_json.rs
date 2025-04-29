@@ -51,9 +51,17 @@ impl NexusTool for UploadJson {
         let blob = client.upload_json(&input.json, 1000, None).await;
 
         match blob {
-            Ok(blob) => Output::Ok {
-                blob_id: blob.blob_id,
-            },
+            Ok(blob) => {
+                if let Some(blob) = blob.newly_created {
+                    Output::Ok {
+                        blob_id: blob.blob_object.blob_id,
+                    }
+                } else {
+                    Output::Err {
+                        reason: "No blob ID returned".to_string(),
+                    }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.to_string(),
             },
