@@ -237,15 +237,20 @@ mod tests {
             let server_url = server.url();
 
             // Create a temporary directory for testing
-            let temp_dir = std::env::temp_dir()
-                .join("walrus_test")
-                .to_string_lossy()
-                .to_string();
+            let temp_dir;
+            if output_path.is_none() {
+                temp_dir = std::env::temp_dir()
+                    .join(format!("walrus_test{}", FileExtension::Txt.to_string()))
+                    .to_string_lossy()
+                    .to_string();
+            } else {
+                temp_dir = output_path.clone().unwrap();
+            }
 
             // Set up test input with server URL
             let input = Input {
                 blob_id: "test_blob_id".to_string(),
-                output_path: output_path.unwrap_or_else(|| temp_dir),
+                output_path: temp_dir,
                 aggregator_url: Some(server_url.clone()),
                 file_extension: FileExtension::Txt,
             };
