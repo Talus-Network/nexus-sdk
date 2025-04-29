@@ -216,16 +216,22 @@ mod tests {
 
         // Call the tool with our test client
         let tool = VerifyBlob::with_custom_client();
-        let result = tool.verify_blob_for_test(input, walrus_client).await;
+        let result = match tool.verify_blob_for_test(input, walrus_client).await {
+            Ok(verified) => Output::Ok { verified },
+            Err(e) => Output::Err {
+                reason: e.to_string(),
+            },
+        };
 
-        // Verify the result is an error
-        assert!(result.is_err());
-        let error_message = result.unwrap_err().to_string();
-        assert!(
-            error_message.contains("500") || error_message.contains("server error"),
-            "Error message '{}' should contain 500 or server error",
-            error_message
-        );
+        // Verify the result
+        match result {
+            Output::Ok { verified } => {
+                assert!(!verified, "Expected verification to be false for 500 error");
+            }
+            Output::Err { reason } => {
+                panic!("Expected OK result, got error: {}", reason);
+            }
+        }
 
         // Verify that the mock was called
         mock.assert_async().await;
