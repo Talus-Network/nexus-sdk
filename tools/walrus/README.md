@@ -49,3 +49,39 @@ The blob upload failed.
     - Timeout errors
 
 ---
+
+# `xyz.taluslabs.walrus.json.read@1`
+
+Standard Nexus Tool that reads a JSON file from Walrus and returns the JSON data.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The blob ID of the JSON file to read.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The URL of the Walrus aggregator to read the JSON from.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The JSON data was read successfully.
+
+- **`ok.json`: [`Value`]** - The JSON data as a structured value
+- **`ok.text`: [`String`]** - The JSON data as a raw string
+
+**`err`**
+
+The JSON read operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+  - Possible reasons include:
+    - Blob not found
+    - Invalid JSON data
+    - Network connection errors
+    - Server-side errors
+
+---
