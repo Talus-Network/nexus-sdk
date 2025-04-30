@@ -131,7 +131,16 @@ impl NexusTool for UploadJson {
             Err(e) => {
                 let (kind, status_code) = match &e {
                     UploadJsonError::InvalidJson(_) => (UploadErrorKind::Validation, None),
-                    UploadJsonError::UploadError(_) => (UploadErrorKind::Network, None),
+                    UploadJsonError::UploadError(err) => {
+                        let status_code = err
+                            .to_string()
+                            .split("status ")
+                            .nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .and_then(|s| s.trim().parse::<u16>().ok());
+
+                        (UploadErrorKind::Network, status_code)
+                    }
                 };
 
                 Output::Err {
@@ -452,8 +461,8 @@ mod tests {
         assert!(result.is_err());
         let error_message = result.unwrap_err().to_string();
         assert!(
-            error_message.contains("500") || error_message.contains("server error"),
-            "Error message '{}' should contain 500 or server error",
+            error_message.contains("status 500") || error_message.contains("server error"),
+            "Error message '{}' should contain 'status 500' or 'server error'",
             error_message
         );
 
