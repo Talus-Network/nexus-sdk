@@ -45,16 +45,16 @@ This command should also check that the URL is accessible by the Leader node. It
 **`nexus tool validate --on-chain <ident>`**
 
 {% hint style="warning" %}
-The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic. 
+The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic.
 {% endhint %}
 
 ---
 
-**`nexus tool register --off-chain <url>`**
+**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id]`**
 
-Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral.
+Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
-This returns an OwnerCap object ID that can be used to manage the Tool.
+This returns 2 OwnerCap object IDs that can be used to manage the Tool and its Gas settlement methods.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -65,7 +65,7 @@ This command requires that a wallet is connected to the CLI...
 **`nexus tool register --on-chain <ident>`**
 
 {% hint style="warning" %}
-The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic. 
+The specific design for onchain tools is still in progress and as a result the implementation is not yet implemented. When running the command, it will panic.
 {% endhint %}
 
 ---
@@ -162,6 +162,22 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+### `nexus gas`
+
+Set of commands to manage Nexus gas budgets and tickets.
+
+---
+
+**`nexus gas add-budget --coin <object_id>`**
+
+Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
 ### `nexus network`
 
 Set of commands for managing Nexus networks.
@@ -173,6 +189,10 @@ Set of commands for managing Nexus networks.
 Create a new Nexus network and assign `count-leader-caps` (default: 5) leader caps to the TX sender and the addresses listed in `addresses` (default: []).
 
 The network object ID is returned.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
 
 <!-- List of References -->
 

@@ -21,14 +21,11 @@ pub(crate) enum GasCommand {
 /// Handle the provided gas command. The [GasCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> {
+    // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/154>
     match command {
         // == `$ nexus gas add-budget` ==
         GasCommand::AddBudget { coin, gas } => {
             add_gas_budget(coin, gas.sui_gas_coin, gas.sui_gas_budget).await
-        } /* TODO:
-           * Tool::SetCost
-           * Gas::EnableX
-           * Gas::DisableX
-           * Gas::BuyTicket */
+        }
     }
 }
