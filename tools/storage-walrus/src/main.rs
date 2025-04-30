@@ -3,9 +3,9 @@
 use nexus_toolkit::bootstrap;
 
 mod client;
-mod json;
+mod upload_json;
 
 #[tokio::main]
 async fn main() {
-    bootstrap!([json::upload_json::UploadJson])
+    bootstrap!([upload_json::UploadJson])
 }
