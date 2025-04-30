@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON DAG definition no longer specifies entry input ports
 - renamed JSON DAG `vertices.input_ports` to `vertices.entry_ports`
 - tool registration now takes `invocation_cost` parameter and returns 2 owner caps `OverTool` and `OverGas`
+- `nexus conf --nexus.objects` is now the only way to populate the `nexus.objects` field in the config
 
 ### `nexus-sdk`
 
