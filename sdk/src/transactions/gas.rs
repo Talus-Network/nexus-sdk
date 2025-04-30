@@ -46,16 +46,13 @@ pub fn add_budget(
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::test_utils::sui_mocks::{mock_sui_coin, mock_sui_object_ref},
-    };
+    use {super::*, crate::test_utils::sui_mocks};
     #[test]
     fn test_add_budget() {
         let workflow_pkg_id = sui::ObjectID::random();
-        let gas_service = mock_sui_object_ref();
+        let gas_service = sui_mocks::mock_sui_object_ref();
         let invoker_address = sui::ObjectID::random();
-        let coin = mock_sui_object_ref();
+        let coin = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         add_budget(

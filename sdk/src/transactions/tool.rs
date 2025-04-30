@@ -264,22 +264,22 @@ mod tests {
         .expect("Failed to build PTB for registering a tool.");
         let tx = tx.finish();
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
-            panic!("Expected last command to be a MoveCall to register a tool");
+        let sui::Command::MoveCall(call) = &tx.commands.get(1).unwrap() else {
+            panic!("Expected a command to be a MoveCall to register a tool");
         };
 
         assert_eq!(call.package, workflow_pkg_id);
 
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
+            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
                 .module
                 .to_string(),
         );
 
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL_FOR_SELF
+            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL
                 .name
                 .to_string()
         );
