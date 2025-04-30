@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.storage.walrus.upload-json1`
+//! # `xyz.taluslabs.storage.walrus.upload-json@1`
 //!
 //! Standard Nexus Tool that uploads a JSON file to Walrus and returns the blob ID.
 
