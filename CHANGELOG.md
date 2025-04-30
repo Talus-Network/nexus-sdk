@@ -9,22 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-cli`
 
+#### Added
+
+- `nexus gas add-budget` command to be able to pay for evaluations
+
 #### Changed
 
 - JSON DAG definition no longer specifies entry input ports
 - renamed JSON DAG `vertices.input_ports` to `vertices.entry_ports`
+- tool registration now takes `invocation_cost` parameter and returns 2 owner caps `OverTool` and `OverGas`
 
 ### `nexus-sdk`
 
 #### Added
 
-- added Walrus Client module to interact with Walrus decentralized storage
+- Walrus Client module to interact with Walrus decentralized storage
+- `transactions::gas` module containing PTB templates for gas-related transactions
+
+#### Changed
+
+- `transactions::tool` register PTB template now accepts invocation cost
 
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
-
 
 ## [`0.1.0`] - 2025-04-14
 
