@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.walrus.json.upload@1`
+//! # `xyz.taluslabs.storage.walrus.upload-json1`
 //!
 //! Standard Nexus Tool that uploads a JSON file to Walrus and returns the blob ID.
 
@@ -76,7 +76,7 @@ impl NexusTool for UploadJson {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.json.upload@1")
+        fqn!("xyz.taluslabs.storage.walrus.upload-json@1")
     }
 
     fn path() -> &'static str {
