@@ -61,8 +61,24 @@ pub(crate) enum Output {
         sui_object_id: Option<String>,
     },
     Err {
+        /// Detailed error message
         reason: String,
+        /// Type of error (upload, validation, etc.)
+        kind: UploadErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
+}
+
+/// Types of errors that can occur during JSON upload
+#[derive(Serialize, JsonSchema, PartialEq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadErrorKind {
+    /// Error during network request
+    Network,
+    /// Error validating JSON
+    Validation,
 }
 
 pub(crate) struct UploadJson;
@@ -112,9 +128,18 @@ impl NexusTool for UploadJson {
                     }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let (kind, status_code) = match &e {
+                    UploadJsonError::InvalidJson(_) => (UploadErrorKind::Validation, None),
+                    UploadJsonError::UploadError(_) => (UploadErrorKind::Network, None),
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind,
+                    status_code,
+                }
+            }
         }
     }
 }
@@ -253,6 +278,8 @@ mod tests {
             }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Network,
+                status_code: None,
             },
         };
 
@@ -273,8 +300,15 @@ mod tests {
                 assert_eq!(sui_object_id, Some("test_object_id".to_string()));
                 assert_eq!(tx_digest, None);
             }
-            Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                panic!(
+                    "Expected OK result, got error: {} (kind: {:?}, status: {:?})",
+                    reason, kind, status_code
+                );
             }
         }
 
@@ -346,6 +380,8 @@ mod tests {
             }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Network,
+                status_code: None,
             },
         };
 
@@ -366,8 +402,15 @@ mod tests {
                 assert_eq!(sui_object_id, None);
                 assert_eq!(tx_digest, Some("certified_tx_digest".to_string()));
             }
-            Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                panic!(
+                    "Expected OK result, got error: {} (kind: {:?}, status: {:?})",
+                    reason, kind, status_code
+                );
             }
         }
 
@@ -438,8 +481,14 @@ mod tests {
             Output::Ok { .. } => {
                 panic!("Expected error result, got OK");
             }
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(reason.contains("Invalid JSON"));
+                assert_eq!(kind, UploadErrorKind::Validation);
+                assert_eq!(status_code, None);
             }
         }
     }

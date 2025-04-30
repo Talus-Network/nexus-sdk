@@ -42,10 +42,10 @@ The JSON data was uploaded successfully.
 The blob upload failed.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-  - Possible reasons include:
-    - Invalid JSON input
-    - Network connection errors
-    - Server-side errors
-    - Timeout errors
+- **`err.kind`: [`UploadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `network` - Error during HTTP requests or network connectivity issues
+    - `validation` - Invalid JSON input or data validation failures
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
 
 ---
