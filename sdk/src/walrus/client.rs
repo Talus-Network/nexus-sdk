@@ -126,8 +126,13 @@ impl WalrusClient {
             .context("Failed to upload file")?;
 
         if !response.status().is_success() {
+            let status = response.status().as_u16();
             let error_text = response.text().await?;
-            return Err(anyhow!("Upload failed: {}", error_text));
+            return Err(anyhow!(
+                "Upload failed with status {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let storage_info: StorageInfo = response.json().await?;
@@ -169,8 +174,13 @@ impl WalrusClient {
             .context("Failed to upload JSON data")?;
 
         if !response.status().is_success() {
+            let status = response.status().as_u16();
             let error_text = response.text().await?;
-            return Err(anyhow!("Upload failed: {}", error_text));
+            return Err(anyhow!(
+                "Upload failed with status {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let storage_info: StorageInfo = response.json().await?;
@@ -195,8 +205,13 @@ impl WalrusClient {
             .context("Failed to download blob")?;
 
         if !response.status().is_success() {
+            let status = response.status().as_u16();
             let error_text = response.text().await?;
-            return Err(anyhow!("Download failed: {}", error_text));
+            return Err(anyhow!(
+                "Download failed with status {}: {}",
+                status,
+                error_text
+            ));
         }
 
         // Stream the response body to file
@@ -234,8 +249,13 @@ impl WalrusClient {
             .context("Failed to download JSON blob")?;
 
         if !response.status().is_success() {
+            let status = response.status().as_u16();
             let error_text = response.text().await?;
-            return Err(anyhow!("Download failed: {}", error_text));
+            return Err(anyhow!(
+                "Download failed with status {}: {}",
+                status,
+                error_text
+            ));
         }
 
         // Parse the JSON response
