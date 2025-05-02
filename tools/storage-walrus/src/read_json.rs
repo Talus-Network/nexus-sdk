@@ -21,6 +21,16 @@ pub enum ReadJsonError {
     InvalidJson(String),
 }
 
+/// Types of errors that can occur during JSON read
+#[derive(Serialize, JsonSchema, PartialEq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadErrorKind {
+    /// Error during network request
+    Network,
+    /// Error validating JSON
+    Validation,
+}
+
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
@@ -35,8 +45,19 @@ pub(crate) struct Input {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok { json: Value, text: String },
-    Err { reason: String },
+    Ok {
+        json: Value,
+        text: String,
+    },
+    Err {
+        /// Detailed error message
+        reason: String,
+        /// Type of error (upload, validation, etc.)
+        kind: ReadErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
+    },
 }
 
 pub(crate) struct ReadJson;
@@ -73,12 +94,25 @@ impl NexusTool for ReadJson {
                     },
                     Err(e) => Output::Err {
                         reason: ReadJsonError::InvalidJson(e.to_string()).to_string(),
+                        kind: ReadErrorKind::Validation,
+                        status_code: None,
                     },
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let status_code = e
+                    .to_string()
+                    .split("status ")
+                    .nth(1)
+                    .and_then(|s| s.split(':').next())
+                    .and_then(|s| s.trim().parse::<u16>().ok());
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind: ReadErrorKind::Network,
+                    status_code,
+                }
+            }
         }
     }
 }
