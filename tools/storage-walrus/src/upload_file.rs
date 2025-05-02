@@ -21,6 +21,16 @@ pub enum UploadFileError {
     InvalidFile(String),
 }
 
+/// Types of errors that can occur during file upload
+#[derive(Serialize, JsonSchema, PartialEq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadErrorKind {
+    /// Error during network request
+    Network,
+    /// Error validating file
+    Validation,
+}
+
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
@@ -55,7 +65,13 @@ pub(crate) enum Output {
         sui_object_id: String,
     },
     Err {
+        /// Detailed error message
         reason: String,
+        /// Type of error (upload, validation, etc.)
+        kind: UploadErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -84,9 +100,27 @@ impl NexusTool for UploadFile {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         match self.upload(input).await {
             Ok(storage_info) => handle_successful_upload(storage_info),
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let (kind, status_code) = match &e {
+                    UploadFileError::InvalidFile(_) => (UploadErrorKind::Validation, None),
+                    UploadFileError::UploadError(err) => {
+                        let status_code = err
+                            .to_string()
+                            .split("status ")
+                            .nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .and_then(|s| s.trim().parse::<u16>().ok());
+
+                        (UploadErrorKind::Network, status_code)
+                    }
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind,
+                    status_code,
+                }
+            }
         }
     }
 }
@@ -108,6 +142,8 @@ fn handle_successful_upload(storage_info: StorageInfo) -> Output {
     } else {
         Output::Err {
             reason: "Neither newly created nor already certified".to_string(),
+            kind: UploadErrorKind::Validation,
+            status_code: None,
         }
     }
 }
@@ -244,6 +280,8 @@ mod tests {
             Ok(storage_info) => handle_successful_upload(storage_info),
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Network,
+                status_code: None,
             },
         };
 
@@ -261,8 +299,14 @@ mod tests {
             Output::AlreadyCertified { .. } => {
                 panic!("Expected NewlyCreated result, got AlreadyCertified");
             }
-            Output::Err { reason } => {
-                panic!("Expected NewlyCreated result, got error: {}", reason);
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(reason, "Neither newly created nor already certified");
+                assert_eq!(kind, UploadErrorKind::Validation);
+                assert_eq!(status_code, None);
             }
         }
 
@@ -317,6 +361,8 @@ mod tests {
             Ok(storage_info) => handle_successful_upload(storage_info),
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Network,
+                status_code: None,
             },
         };
 
@@ -334,8 +380,14 @@ mod tests {
                 assert_eq!(end_epoch, 200);
                 assert_eq!(tx_digest, "certified_tx_digest");
             }
-            Output::Err { reason } => {
-                panic!("Expected AlreadyCertified result, got error: {}", reason);
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(reason, "Neither newly created nor already certified");
+                assert_eq!(kind, UploadErrorKind::Validation);
+                assert_eq!(status_code, None);
             }
         }
 
@@ -377,16 +429,46 @@ mod tests {
 
         // Call the tool with our test client
         let tool = UploadFile::with_custom_client();
-        let result = tool.upload_for_test(input, walrus_client).await;
+        let output = match tool.upload_for_test(input, walrus_client).await {
+            Ok(storage_info) => handle_successful_upload(storage_info),
+            Err(e) => {
+                let (kind, status_code) = match &e {
+                    UploadFileError::InvalidFile(_) => (UploadErrorKind::Validation, None),
+                    UploadFileError::UploadError(err) => {
+                        let status_code = err
+                            .to_string()
+                            .split("status ")
+                            .nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .and_then(|s| s.trim().parse::<u16>().ok());
 
-        // Verify the result is an error
-        assert!(result.is_err());
-        let error_message = result.unwrap_err().to_string();
-        assert!(
-            error_message.contains("500") || error_message.contains("server error"),
-            "Error message '{}' should contain 500 or server error",
-            error_message
-        );
+                        (UploadErrorKind::Network, status_code)
+                    }
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind,
+                    status_code,
+                }
+            }
+        };
+
+        // Verify the result
+        match output {
+            Output::NewlyCreated { .. } | Output::AlreadyCertified { .. } => {
+                panic!("Expected error, but got success");
+            }
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert!(reason.contains("500") || reason.contains("server error"));
+                assert_eq!(kind, UploadErrorKind::Network);
+                assert_eq!(status_code, Some(500));
+            }
+        }
 
         // Verify that the mock was called
         mock.assert_async().await;
@@ -415,8 +497,14 @@ mod tests {
             Output::NewlyCreated { .. } | Output::AlreadyCertified { .. } => {
                 panic!("Expected error result, got success");
             }
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(reason.contains("File does not exist"));
+                assert_eq!(kind, UploadErrorKind::Validation);
+                assert_eq!(status_code, None);
             }
         }
     }

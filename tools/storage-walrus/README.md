@@ -100,5 +100,10 @@ The blob was already certified in the blockchain.
 The file upload failed.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`UploadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `network` - Error during HTTP requests or network connectivity issues
+    - `validation` - Invalid file data or file validation failures
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
 
 ---
