@@ -25,12 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
 
-### `nexus-tool`
-
-#### Added
-
-- added the Walrus Client tools: JSON upload, JSON read.
-
 ## [`0.1.0`] - 2025-04-14
 
 ### `nexus-cli`
