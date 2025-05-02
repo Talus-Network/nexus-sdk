@@ -54,7 +54,6 @@ The blob upload failed.
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
 
 ---
-
 # `xyz.taluslabs.storage.walrus.read-json@1`
 
 Standard Nexus Tool that reads a JSON file from Walrus and returns the JSON data.
@@ -90,3 +89,4 @@ The JSON read operation failed.
     - Server-side errors
 
 ---
+=======
