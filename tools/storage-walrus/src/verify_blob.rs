@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.walrus.utils.verify_blob@1`
+//! # `xyz.taluslabs.storage.walrus.verify-blob@1`
 //!
 //! Standard Nexus Tool that verifies a blob.
 
@@ -43,7 +43,7 @@ impl NexusTool for VerifyBlob {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.utils.verify_blob@1")
+        fqn!("xyz.taluslabs.storage.walrus.verify-blob@1")
     }
 
     fn path() -> &'static str {
