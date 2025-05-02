@@ -12,9 +12,9 @@ readme = "README.md"
 authors = ["Talus Engineers <engineering@taluslabs.xyz>"]
 keywords = ["blockchain", "cli", "framework", "nexus", "sdk", "sui", "talus"]
 categories = [
-  "api-bindings",
-  "command-line-interface",
-  "cryptography::cryptocurrencies",
+    "api-bindings",
+    "command-line-interface",
+    "cryptography::cryptocurrencies",
 ]
 
 [workspace.dependencies]
