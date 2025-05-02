@@ -3,8 +3,7 @@ use {
     nexus_sdk::transactions::gas,
 };
 
-/// Create a new Nexus network and assign `count_leader_caps` leader caps to
-/// the provided addresses.
+/// Upload `coin` as a gas budget for the Nexus workflow.
 pub(crate) async fn add_gas_budget(
     coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
