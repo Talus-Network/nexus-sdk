@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.walrus.file.download@1`
+//! # `xyz.taluslabs.storage.walrus.download-file@1`
 //!
 //! Standard Nexus Tool that downloads a file from Walrus and saves it to a local path.
 
@@ -93,7 +93,7 @@ impl NexusTool for DownloadFile {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.file.download@1")
+        fqn!("xyz.taluslabs.storage.walrus.download-file@1")
     }
 
     fn path() -> &'static str {
