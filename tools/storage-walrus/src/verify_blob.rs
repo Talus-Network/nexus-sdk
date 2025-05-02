@@ -17,6 +17,12 @@ pub enum VerifyBlobError {
     VerificationError(#[from] anyhow::Error),
 }
 
+#[derive(Serialize, JsonSchema, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadErrorKind {
+    Server,
+}
+
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
@@ -28,8 +34,21 @@ pub(crate) struct Input {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok { verified: bool },
-    Err { reason: String },
+    Verified {
+        blob_id: String,
+    },
+    UnVerified {
+        blob_id: String,
+    },
+    Err {
+        /// Detailed error message
+        reason: String,
+        /// Type of error (upload, validation, etc.)
+        kind: UploadErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
+    },
 }
 
 pub(crate) struct VerifyBlob;
@@ -55,10 +74,20 @@ impl NexusTool for VerifyBlob {
     }
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
+        let blob_id = input.blob_id.clone();
+
         match self.verify_blob(input).await {
-            Ok(verified) => Output::Ok { verified },
+            Ok(verified) => {
+                if verified {
+                    Output::Verified { blob_id }
+                } else {
+                    Output::UnVerified { blob_id }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Server,
+                status_code: None,
             },
         }
     }
@@ -114,6 +143,7 @@ mod tests {
     async fn test_verify_blob_true() {
         // Create server and input
         let (mut server, input) = create_server_and_input().await;
+        let blob_id = input.blob_id.clone();
 
         // Set up mock response for successful verification
         let mock = server
@@ -130,19 +160,34 @@ mod tests {
         // Call the tool with our test client
         let tool = VerifyBlob::with_custom_client();
         let result = match tool.verify_blob_for_test(input, walrus_client).await {
-            Ok(verified) => Output::Ok { verified },
+            Ok(verified) => {
+                if verified {
+                    Output::Verified { blob_id }
+                } else {
+                    Output::UnVerified { blob_id }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Server,
+                status_code: None,
             },
         };
 
         // Verify the result
         match result {
-            Output::Ok { verified } => {
-                assert!(verified, "Expected verification to be true");
+            Output::Verified { blob_id: _ } => {
+                // Test passed
             }
-            Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+            Output::UnVerified { blob_id: _ } => {
+                panic!("Expected verification to be true");
+            }
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
+                panic!("Expected Verified result, got error: {}", reason);
             }
         }
 
@@ -154,6 +199,7 @@ mod tests {
     async fn test_verify_blob_false() {
         // Create server and input
         let (mut server, input) = create_server_and_input().await;
+        let blob_id = input.blob_id.clone();
 
         // Set up mock response for failed verification
         let mock = server
@@ -170,19 +216,34 @@ mod tests {
         // Call the tool with our test client
         let tool = VerifyBlob::with_custom_client();
         let result = match tool.verify_blob_for_test(input, walrus_client).await {
-            Ok(verified) => Output::Ok { verified },
+            Ok(verified) => {
+                if verified {
+                    Output::Verified { blob_id }
+                } else {
+                    Output::UnVerified { blob_id }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Server,
+                status_code: None,
             },
         };
 
         // Verify the result
         match result {
-            Output::Ok { verified } => {
-                assert!(!verified, "Expected verification to be false");
+            Output::Verified { blob_id: _ } => {
+                panic!("Expected verification to be false");
             }
-            Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+            Output::UnVerified { blob_id: _ } => {
+                // Test passed
+            }
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
+                panic!("Expected UnVerified result, got error: {}", reason);
             }
         }
 
@@ -194,6 +255,7 @@ mod tests {
     async fn test_verify_blob_error() {
         // Create server and input
         let (mut server, input) = create_server_and_input().await;
+        let blob_id = input.blob_id.clone();
 
         // Set up mock response for error
         let mock = server
@@ -217,19 +279,34 @@ mod tests {
         // Call the tool with our test client
         let tool = VerifyBlob::with_custom_client();
         let result = match tool.verify_blob_for_test(input, walrus_client).await {
-            Ok(verified) => Output::Ok { verified },
+            Ok(verified) => {
+                if verified {
+                    Output::Verified { blob_id }
+                } else {
+                    Output::UnVerified { blob_id }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.to_string(),
+                kind: UploadErrorKind::Server,
+                status_code: Some(500),
             },
         };
 
         // Verify the result
         match result {
-            Output::Ok { verified } => {
-                assert!(!verified, "Expected verification to be false for 500 error");
+            Output::Verified { blob_id: _ } => {
+                panic!("Expected verification to be false for 500 error");
             }
-            Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+            Output::UnVerified { blob_id: _ } => {
+                // Test passed
+            }
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
+                panic!("Expected UnVerified result, got error: {}", reason);
             }
         }
 

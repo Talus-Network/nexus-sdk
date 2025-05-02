@@ -71,21 +71,26 @@ The URL of the Walrus aggregator to verify the blob against.
 
 ## Output Variants & Ports
 
-**`ok`**
+**`verified`**
 
-The blob was verified successfully.
+The blob exists and is verified.
 
-- **`ok.verified`: [`bool`]** - Whether the blob is verified
+- **`verified.blob_id`: [`String`]** - The ID of the verified blob
+
+**`un_verified`**
+
+The blob does not exist or could not be verified.
+
+- **`un_verified.blob_id`: [`String`]** - The ID of the unverified blob
 
 **`err`**
 
-The blob verification failed.
+An error occurred during verification.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-  - Possible reasons include:
-    - Blob not found
-    - Network connection errors
-    - Server-side errors
-    - Timeout errors
+- **`err.kind`: [`UploadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `server` - Server-side errors during verification
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for API errors)
 
 ---
