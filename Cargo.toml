@@ -12,9 +12,9 @@ readme = "README.md"
 authors = ["Talus Engineers <engineering@taluslabs.xyz>"]
 keywords = ["blockchain", "cli", "framework", "nexus", "sdk", "sui", "talus"]
 categories = [
-  "api-bindings",
-  "command-line-interface",
-  "cryptography::cryptocurrencies",
+    "api-bindings",
+    "command-line-interface",
+    "cryptography::cryptocurrencies",
 ]
 
 [workspace.dependencies]
@@ -22,6 +22,7 @@ anyhow = "1.0.97"
 bip32 = "0.4.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive"] }
+clap_complete = "4.5.48"
 colored = "3.0.0"
 convert_case = "0.7.1"
 env_logger = "0.11.7"

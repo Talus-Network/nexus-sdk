@@ -1,3 +1,4 @@
+mod completion;
 mod conf;
 mod dag;
 mod display;
@@ -33,6 +34,8 @@ enum Command {
     Dag(dag::DagCommand),
     #[command(subcommand, about = "Mange Nexus networks and leader caps")]
     Network(network::NetworkCommand),
+    #[command(about = "Provide shell completions")]
+    Completion(completion::CompletionCommand),
 }
 
 #[tokio::main]
@@ -70,6 +73,7 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
+        Command::Completion(completion) => completion::handle(completion).await,
     };
 
     // Handle any errors that occurred during command execution.
