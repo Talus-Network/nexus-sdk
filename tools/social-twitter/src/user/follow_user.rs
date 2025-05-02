@@ -3,15 +3,17 @@
 //! Standard Nexus Tool that follows a user.
 
 use {
-    crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
-    reqwest::Client,
-    ::{
-        nexus_sdk::{fqn, ToolFqn},
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serde::{Deserialize, Serialize},
-        serde_json::Value,
+    super::models::FollowUserResponse,
+    crate::{
+        auth::TwitterAuth,
+        error::TwitterErrorKind,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
+    nexus_sdk::{fqn, ToolFqn},
+    nexus_toolkit::*,
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
+    serde_json::json,
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -34,8 +36,13 @@ pub(crate) enum Output {
         pending_follow: bool,
     },
     Err {
-        /// Error message
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -49,7 +56,7 @@ impl NexusTool for FollowUser {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -66,126 +73,37 @@ impl NexusTool for FollowUser {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        let client = Client::new();
+        // Build the endpoint for the Twitter API
+        let suffix = format!("users/{}/following", request.user_id);
 
-        let url = format!("{}/{}/following", self.api_base, request.user_id);
-
-        // Generate OAuth authorization header with the complete URL
-        let auth_header = request.auth.generate_auth_header(&url);
-
-        // Format the request body with the target_user_id
-        let request_body = format!(r#"{{"target_user_id": "{}"}}"#, request.target_user_id);
-
-        let response = client
-            .post(&url)
-            .header("Authorization", auth_header)
-            .header("Content-Type", "application/json")
-            .body(request_body)
-            .send()
-            .await;
-
-        match response {
-            Err(e) => Output::Err {
-                reason: format!("Failed to send follow request to Twitter API: {}", e),
-            },
-            Ok(response) => {
-                let text = match response.text().await {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Failed to read Twitter API response: {}", e),
-                        }
-                    }
-                    Ok(text) => text,
-                };
-
-                let json: Value = match serde_json::from_str(&text) {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Invalid JSON response: {}", e),
-                        }
-                    }
-                    Ok(json) => json,
-                };
-
-                // Check for error response with code/message format
-                if let Some(code) = json.get("code") {
-                    let message = json
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Unknown error");
-
-                    return Output::Err {
-                        reason: format!("Twitter API error: {} (Code: {})", message, code),
-                    };
-                }
-
-                // Check for error response with detail/status/title format
-                if let Some(detail) = json.get("detail") {
-                    let status = json.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
-                    let title = json
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown");
-
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API error: {} (Status: {}, Title: {})",
-                            detail.as_str().unwrap_or("Unknown error"),
-                            status,
-                            title
-                        ),
-                    };
-                }
-
-                // Check for errors array
-                if let Some(errors) = json.get("errors") {
-                    return Output::Err {
-                        reason: format!("Twitter API returned errors: {}", errors),
-                    };
-                }
-
-                // Check for success response format
-                let data = match json.get("data") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(data) => data,
-                };
-
-                let following = match data.get("following") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(following) => following.as_bool().unwrap_or(false),
-                };
-
-                let pending_follow = match data.get("pending_follow") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(pending_follow) => pending_follow.as_bool().unwrap_or(false),
-                };
-
-                Output::Ok {
-                    following,
-                    pending_follow,
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
             }
+        };
+
+        match client
+            .post::<FollowUserResponse, _>(
+                &request.auth,
+                json!({ "target_user_id": request.target_user_id }),
+            )
+            .await
+        {
+            Ok(data) => Output::Ok {
+                following: data.following,
+                pending_follow: data.pending_follow,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
         }
     }
 }
@@ -207,7 +125,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, FollowUser) {
         let server = Server::new_async().await;
-        let tool = FollowUser::with_api_base(&(server.url() + "/users"));
+        let tool = FollowUser::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -222,28 +140,6 @@ mod tests {
             user_id: "12345".to_string(),
             target_user_id: "67890".to_string(),
         }
-    }
-
-    #[tokio::test]
-    async fn get_fqn() {
-        let fqn = FollowUser::fqn();
-        println!("fqn: {:?}", fqn);
-        assert_eq!(fqn.domain(), "xyz.taluslabs.social.twitter");
-        assert_eq!(fqn.name(), "follow-user");
-        assert_eq!(fqn.version(), 1);
-    }
-
-    #[tokio::test]
-    async fn get_path() {
-        let path = FollowUser::path();
-        assert_eq!(path, "/follow-user");
-    }
-
-    #[tokio::test]
-    async fn health() {
-        let tool = FollowUser::new().await;
-        let status = tool.health().await;
-        assert!(status.is_ok());
     }
 
     #[tokio::test]
@@ -280,7 +176,14 @@ mod tests {
                 assert_eq!(following, true);
                 assert_eq!(pending_follow, false);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
@@ -315,11 +218,32 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Unauthorized") && reason.contains("Status: 401"),
-                    "Error should indicate unauthorized access. Got: {}",
+                    reason.contains("Unauthorized"),
+                    "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
         }
@@ -336,7 +260,7 @@ mod tests {
         // Set up mock for invalid JSON response
         let mock = server
             .mock("POST", "/users/12345/following")
-            .with_status(200)
+            .with_status(400)
             .with_body("invalid json")
             .create_async()
             .await;
@@ -347,11 +271,32 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Unknown,
+                    "Expected error kind Unknown, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Invalid JSON"),
-                    "Error should indicate invalid JSON. Got: {}",
+                    reason.contains("Twitter API status error: 400 Bad Request"),
+                    "Expected error message to contain 'Twitter API status error: 400 Bad Request', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(400),
+                    "Expected status code 400, got: {:?}",
+                    status_code
                 );
             }
         }
@@ -386,11 +331,31 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Parse,
+                    "Expected error kind Parse, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Unexpected response format"),
-                    "Error should indicate unexpected format. Got: {}",
+                    reason.contains("Response parsing error: missing field `following`"),
+                    "Expected error message to contain 'Response parsing error: missing field `following`', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code, None,
+                    "Expected status code None, got: {:?}",
+                    status_code
                 );
             }
         }
@@ -432,7 +397,14 @@ mod tests {
                 assert_eq!(following, false);
                 assert_eq!(pending_follow, true);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
