@@ -13,7 +13,7 @@ use {
     thiserror::Error,
 };
 
-/// Errors that can occur during file upload
+/// Errors that can occur during file download
 #[derive(Error, Debug)]
 pub enum DownloadFileError {
     #[error("Failed to download file: {0}")]
@@ -22,6 +22,18 @@ pub enum DownloadFileError {
     InvalidFolder(String),
     #[error("Write error: {0}")]
     WriteError(String),
+}
+
+/// Types of errors that can occur during file download
+#[derive(Serialize, JsonSchema, PartialEq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadErrorKind {
+    /// Error during network request
+    Network,
+    /// Error validating file paths or permissions
+    Validation,
+    /// Error writing to file system
+    FileSystem,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -78,8 +90,19 @@ fn default_file_extension() -> FileExtension {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok { blob_id: String, contents: String },
-    Err { reason: String },
+    Ok {
+        blob_id: String,
+        contents: String,
+    },
+    Err {
+        /// Detailed error message
+        reason: String,
+        /// Type of error (network, validation, etc.)
+        kind: DownloadErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
+    },
 }
 
 pub(crate) struct DownloadFile;
@@ -113,9 +136,28 @@ impl NexusTool for DownloadFile {
                 blob_id,
                 contents: format!("File downloaded to {} successfully.", output_path),
             },
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-            },
+            Err(e) => {
+                let (kind, status_code) = match &e {
+                    DownloadFileError::InvalidFolder(_) => (DownloadErrorKind::Validation, None),
+                    DownloadFileError::WriteError(_) => (DownloadErrorKind::FileSystem, None),
+                    DownloadFileError::DownloadError(err) => {
+                        let status_code = err
+                            .to_string()
+                            .split("status ")
+                            .nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .and_then(|s| s.trim().parse::<u16>().ok());
+
+                        (DownloadErrorKind::Network, status_code)
+                    }
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind,
+                    status_code,
+                }
+            }
         }
     }
 }
@@ -422,7 +464,11 @@ mod tests {
                 assert!(contents.contains("successfully"));
                 assert!(contents.contains(&input.output_path));
             }
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind: _,
+                status_code: _,
+            } => {
                 panic!("Expected OK result, got error: {}", reason);
             }
         }

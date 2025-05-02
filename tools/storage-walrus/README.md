@@ -98,11 +98,9 @@ The file was downloaded successfully.
 The file download failed.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-  - Possible reasons include:
-    - Directory does not exist
-    - Directory exists but is not writable
-    - File already exists and is not writable
-    - Network connection errors
-    - Server-side errors (e.g., 500 Internal Server Error)
-    - Blob not found (404 error)
-    - Timeout errors
+- **`err.kind`: [`DownloadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `network` - Error during HTTP requests or network connectivity issues
+    - `validation` - Path validation errors (e.g., directory does not exist)
+    - `file_system` - File system errors (e.g., directory exists but is not writable)
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
