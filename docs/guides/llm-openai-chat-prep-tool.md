@@ -1,6 +1,11 @@
 # Build the Missing Tool
 
-This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations as input for chat completion.
+This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations from the [math tool](../../tools/math/README.md) as input for the [chat completion tool](../../tools/llm-openai-chat-completion/README.md).
+
+{% hint style="info" %} Prerequisites
+* Follow the [setup guide](setup.md) to make sure you've got the [Nexus CLI](../cli.md) installed.
+* Read the [Toolkit Rust](../toolkit-rust.md) and [Tool development](../tool-development.md) docs that provide more context.
+{% endhint %}
 
 ## Project Setup
 
@@ -26,7 +31,7 @@ The generated `src/main.rs` file contains a template implementation. Let's modif
 
 ### 1. Define Input and Output Types
 
-First, we need to define our input and output types. The input will take a number and an optional role (defaulting to "user"), and the output will be a message that the Nexus standard library LLM chat completion tool can understand.
+First, we need to define our input and output types (that will correspond to the `InputPort`s and `OutputVariant`s & `OutputPort`s). The input will take a number and an optional role (defaulting to "user"), and the output will be a message that the [Nexus standard library LLM chat completion tool](../../tools/llm-openai-chat-completion/README.md) can understand.
 
 ```rust
 /// Input for the number to message conversion tool
@@ -357,4 +362,4 @@ Consider for what use cases you could use this tool to prepare it to add as an L
 
 ## Next Steps
 
-This tool provides a simple but essential bridge between mathematical operations and chat completion, enabling the creation of more sophisticated DAGs that combine numerical computation with natural language processing. Follow along with the developer guides to expand the [Math Branching Example DAG with chat completion](math-branching-with-chat.md).
+This tool provides a simple but essential bridge between mathematical operations and chat completion, enabling the creation of more sophisticated DAGs that combine numerical computation with natural language processing. Follow along with the developer guides to expand the [Math Branching Example DAG with LLM chat completion](math-branching-with-chat.md).
