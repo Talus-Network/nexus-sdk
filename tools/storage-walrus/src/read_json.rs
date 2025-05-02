@@ -1,4 +1,4 @@
-//! # `xyz.taluslabs.walrus.json.read@1`
+//! # `xyz.taluslabs.storage.walrus.read-json@1`
 //!
 //! Standard Nexus Tool that reads a JSON file from Walrus and returns the JSON data.
 
@@ -50,7 +50,7 @@ impl NexusTool for ReadJson {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.walrus.json.read@1")
+        fqn!("xyz.taluslabs.storage.walrus.read-json@1")
     }
 
     fn path() -> &'static str {

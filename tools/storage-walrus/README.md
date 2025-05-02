@@ -1,4 +1,4 @@
-# `xyz.taluslabs.storage.walrus.upload-json`
+# `xyz.taluslabs.storage.walrus.upload-json@1`
 
 Standard Nexus Tool that uploads a JSON file to Walrus and returns the blob ID.
 
@@ -52,5 +52,41 @@ The blob upload failed.
     - `network` - Error during HTTP requests or network connectivity issues
     - `validation` - Invalid JSON input or data validation failures
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
+
+---
+
+# `xyz.taluslabs.storage.walrus.read-json@1`
+
+Standard Nexus Tool that reads a JSON file from Walrus and returns the JSON data.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The blob ID of the JSON file to read.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The URL of the Walrus aggregator to read the JSON from.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The JSON data was read successfully.
+
+- **`ok.json`: [`Value`]** - The JSON data as a structured value
+- **`ok.text`: [`String`]** - The JSON data as a raw string
+
+**`err`**
+
+The JSON read operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+  - Possible reasons include:
+    - Blob not found
+    - Invalid JSON data
+    - Network connection errors
+    - Server-side errors
 
 ---
