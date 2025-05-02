@@ -1106,6 +1106,67 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
+# `xyz.taluslabs.social.twitter.follow-user@1`
+
+Standard Nexus Tool that allows a user to follow another user on Twitter.
+Twitter api [reference](https://docs.x.com/x-api/users/follow)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will follow another user.
+
+**`target_user_id`: [`String`]**
+
+The ID of the user to follow.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The follow operation was successful.
+
+- **`ok.following`: [`bool`]** - Whether the user is now following the target user
+- **`ok.pending_follow`: [`bool`]** - Whether the follow request is pending (e.g., when following a protected account)
+
+**`err`**
+
+The follow operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested user was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
