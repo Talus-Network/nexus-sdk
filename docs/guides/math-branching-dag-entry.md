@@ -2,6 +2,10 @@
 
 This guide builds on the [Build the Quickstart guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
 
+{% hint style="info" %} Prerequisites
+Follow the [setup guide](setup.md) to get properly setup in case you haven't.
+{% endhint %}
+
 ## What You'll Learn
 
 - How to add multiple entry points to a DAG
@@ -20,6 +24,10 @@ Entry groups define named sets of entry points for a DAG. They allow you to:
 {% hint style="success" %}
 Without entry groups, a DAG uses the default entry mechanism (vertices with unsatisfied input ports become entry points). With entry groups, you gain explicit control over how the DAG can be started.
 {% endhint %}
+
+### Why Use Entry Groups?
+
+The explanation above should allow you to understand why, given a certain DAG definition, you might want to have explicit control over how the DAG execution can start. However, you might be thinking: _Why design the DAG like this in the first place? Could you not simply split this up into independent DAGs?_ The answer is yes, yes you could. Whether you choose to split up different entry configurations into separate DAGs or define a composite DAG with flexibility through entry groups, will be a design choice depending on your specific preferences and use case. Nexus is agnostic to these design choices and provides you the ability to do both!
 
 ## The Extended DAG
 
@@ -290,7 +298,7 @@ Each entry group has a name and a list of vertices When executing the DAG, you'l
 
 ### 5. Why Entry Groups Are Required
 
-Without entry groups, the DAG would have an issue: both `add_input_and_default` and `mul_inputs` would be considered entry vertices, but both connect to the same input port of `is_negative`. This creates a potential race condition (violating Rule 5 of the DAG Construction Guide). With entry groups, we explicitly specify which entry paths are valid and ensure they won't be active simultaneously.
+Without entry groups, the DAG would have an issue: both `add_input_and_default` and `mul_inputs` would be considered entry vertices, but both connect to the same input port of `is_negative`. This creates a potential race condition (violating Rule 5 of the [Workflow](../../nexus-next/packages/workflow.md)). With entry groups, we explicitly specify which entry paths are valid and ensure they won't be active simultaneously.
 
 ## Putting It All Together
 
