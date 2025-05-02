@@ -366,7 +366,15 @@ mod tests {
         // Create server and input
         let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
 
-        // Set up mock response for error
+        // Set aggregator_url to the mock server URL
+        let input = Input {
+            blob_id: "test_blob_id".to_string(),
+            output_path: input.output_path,
+            aggregator_url: Some(server.url()),
+            file_extension: input.file_extension,
+        };
+
+        // Mock server error
         let mock = server
             .mock("GET", format!("/v1/blobs/{}", input.blob_id).as_str())
             .with_status(500)
@@ -375,29 +383,37 @@ mod tests {
             .create_async()
             .await;
 
-        // Create a client that points to our mock server
-        let walrus_client = WalrusConfig::new()
-            .with_aggregator_url(Some(server.url()))
-            .build();
-
-        // Call the tool with our test client, directly call the client to test the HTTP error
         let tool = DownloadFile::with_custom_client();
-        let result = tool.download_for_test(&input, walrus_client).await;
+        let output = tool.invoke(input).await;
 
-        // Verify the result is an error
-        assert!(result.is_err());
-        let error_message = result.unwrap_err().to_string();
-        assert!(
-            error_message.contains("500") || error_message.contains("server error"),
-            "Error message '{}' should contain 500 or server error",
-            error_message
-        );
+        // Print the actual reason for debugging
+        match &output {
+            Output::Ok { .. } => println!("Got Ok when expecting Err"),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                println!("Error reason: {:?}", reason);
+                println!("Error kind: {:?}", kind);
+                println!("Status code: {:?}", status_code);
+            }
+        }
 
-        // Verify that the mock was called
+        match output {
+            Output::Ok { .. } => panic!("Expected error output, but got successful download"),
+            Output::Err {
+                reason: _,
+                kind,
+                status_code,
+            } => {
+                // Be more lenient in the error message check
+                assert_eq!(kind, DownloadErrorKind::Network);
+                assert_eq!(status_code, Some(500));
+            }
+        }
+
         mock.assert_async().await;
-
-        // Clean up test file (though it shouldn't exist due to the error)
-        DownloadFile::cleanup_test_file(&input.output_path).await;
     }
 
     #[tokio::test]
@@ -405,7 +421,15 @@ mod tests {
         // Create server and input
         let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
 
-        // Set up mock response for non-existent blob
+        // Set aggregator_url to the mock server URL
+        let input = Input {
+            blob_id: "test_blob_id".to_string(),
+            output_path: input.output_path,
+            aggregator_url: Some(server.url()),
+            file_extension: input.file_extension,
+        };
+
+        // Mock not found response
         let mock = server
             .mock("GET", format!("/v1/blobs/{}", input.blob_id).as_str())
             .with_status(404)
@@ -414,29 +438,37 @@ mod tests {
             .create_async()
             .await;
 
-        // Create a client that points to our mock server
-        let walrus_client = WalrusConfig::new()
-            .with_aggregator_url(Some(server.url()))
-            .build();
-
-        // Call the tool with our test client, directly call the client to test the HTTP error
         let tool = DownloadFile::with_custom_client();
-        let result = tool.download_for_test(&input, walrus_client).await;
+        let output = tool.invoke(input).await;
 
-        // Verify the result is an error
-        assert!(result.is_err());
-        let error_message = result.unwrap_err().to_string();
-        assert!(
-            error_message.contains("404") || error_message.contains("not found"),
-            "Error message '{}' should contain 404 or not found",
-            error_message
-        );
+        // Print the actual reason for debugging
+        match &output {
+            Output::Ok { .. } => println!("Got Ok when expecting Err"),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                println!("Error reason: {:?}", reason);
+                println!("Error kind: {:?}", kind);
+                println!("Status code: {:?}", status_code);
+            }
+        }
 
-        // Verify that the mock was called
+        match output {
+            Output::Ok { .. } => panic!("Expected error output, but got successful download"),
+            Output::Err {
+                reason: _,
+                kind,
+                status_code,
+            } => {
+                // Be more lenient in the error message check
+                assert_eq!(kind, DownloadErrorKind::Network);
+                assert_eq!(status_code, Some(404));
+            }
+        }
+
         mock.assert_async().await;
-
-        // Clean up test file (though it shouldn't exist due to the error)
-        DownloadFile::cleanup_test_file(&input.output_path).await;
     }
 
     #[tokio::test]
@@ -480,17 +512,33 @@ mod tests {
         let (_, input, _) =
             DownloadFile::create_server_and_input(Some("nonexistent/directory".to_string())).await;
 
-        // Test through the main download method
         let tool = DownloadFile::with_custom_client();
-        let result = tool.download_file(input).await;
+        let output = tool.invoke(input).await;
 
-        // Expect an InvalidFolder error
-        assert!(result.is_err());
-        match result {
-            Err(DownloadFileError::InvalidFolder(msg)) => {
-                assert!(msg.contains("Directory does not exist"));
+        // Print the actual reason for debugging
+        match &output {
+            Output::Ok { .. } => println!("Got Ok when expecting Err"),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                println!("Error reason: {:?}", reason);
+                println!("Error kind: {:?}", kind);
+                println!("Status code: {:?}", status_code);
             }
-            _ => panic!("Expected InvalidFolder error, but got different error type"),
+        }
+
+        match output {
+            Output::Ok { .. } => panic!("Expected error output, but got successful download"),
+            Output::Err {
+                reason: _,
+                kind,
+                status_code,
+            } => {
+                assert_eq!(kind, DownloadErrorKind::Validation);
+                assert_eq!(status_code, None);
+            }
         }
     }
 }
