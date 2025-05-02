@@ -46,19 +46,15 @@ fn default_epochs() -> u64 {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok {
+    AlreadyCertified {
         blob_id: String,
         end_epoch: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        newly_created: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        already_certified: Option<bool>,
-        // if the blob is already certified, this will be the tx digest of the blob object
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tx_digest: Option<String>,
-        // if the blob is newly created, this will be the sui object ID of the blob object
-        #[serde(skip_serializing_if = "Option::is_none")]
-        sui_object_id: Option<String>,
+        tx_digest: String,
+    },
+    NewlyCreated {
+        blob_id: String,
+        end_epoch: u64,
+        sui_object_id: String,
     },
     Err {
         /// Detailed error message
@@ -107,24 +103,18 @@ impl NexusTool for UploadJson {
         match self.upload(input).await {
             Ok(storage_info) => {
                 if let Some(ac) = &storage_info.already_certified {
-                    Output::Ok {
+                    Output::AlreadyCertified {
                         blob_id: ac.blob_id.clone(),
-                        newly_created: None,
-                        already_certified: Some(true),
                         end_epoch: ac.end_epoch,
-                        sui_object_id: None,
-                        tx_digest: Some(ac.event.tx_digest.clone()),
+                        tx_digest: ac.event.tx_digest.clone(),
                     }
                 } else {
                     let created_blob = storage_info.newly_created.unwrap();
 
-                    Output::Ok {
+                    Output::NewlyCreated {
                         blob_id: created_blob.blob_object.blob_id,
-                        newly_created: Some(true),
-                        already_certified: None,
                         end_epoch: created_blob.blob_object.storage.end_epoch,
-                        sui_object_id: Some(created_blob.blob_object.id),
-                        tx_digest: None,
+                        sui_object_id: created_blob.blob_object.id,
                     }
                 }
             }
@@ -264,22 +254,16 @@ mod tests {
             Ok(storage_info) => {
                 println!("storage_info: {:?}", storage_info);
                 if let Some(nc) = &storage_info.newly_created {
-                    Output::Ok {
+                    Output::NewlyCreated {
                         blob_id: nc.blob_object.blob_id.clone(),
-                        newly_created: Some(true),
-                        already_certified: None,
                         end_epoch: nc.blob_object.storage.end_epoch,
-                        sui_object_id: Some(nc.blob_object.id.clone()),
-                        tx_digest: None,
+                        sui_object_id: nc.blob_object.id.clone(),
                     }
                 } else if let Some(ac) = &storage_info.already_certified {
-                    Output::Ok {
+                    Output::AlreadyCertified {
                         blob_id: ac.blob_id.clone(),
-                        newly_created: None,
-                        already_certified: Some(true),
                         end_epoch: ac.end_epoch,
-                        sui_object_id: None,
-                        tx_digest: Some(ac.event.tx_digest.clone()),
+                        tx_digest: ac.event.tx_digest.clone(),
                     }
                 } else {
                     panic!("Neither newly_created nor already_certified is Some");
@@ -294,20 +278,17 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok {
+            Output::NewlyCreated {
                 blob_id,
-                newly_created,
-                already_certified,
                 end_epoch,
                 sui_object_id,
-                tx_digest,
             } => {
                 assert_eq!(blob_id, "test_blob_id");
-                assert_eq!(newly_created, Some(true));
-                assert_eq!(already_certified, None);
                 assert_eq!(end_epoch, 100);
-                assert_eq!(sui_object_id, Some("test_object_id".to_string()));
-                assert_eq!(tx_digest, None);
+                assert_eq!(sui_object_id, "test_object_id");
+            }
+            Output::AlreadyCertified { .. } => {
+                panic!("Expected NewlyCreated result, got AlreadyCertified");
             }
             Output::Err {
                 reason,
@@ -315,7 +296,7 @@ mod tests {
                 status_code,
             } => {
                 panic!(
-                    "Expected OK result, got error: {} (kind: {:?}, status: {:?})",
+                    "Expected NewlyCreated result, got error: {} (kind: {:?}, status: {:?})",
                     reason, kind, status_code
                 );
             }
@@ -366,22 +347,16 @@ mod tests {
             Ok(storage_info) => {
                 println!("storage_info: {:?}", storage_info);
                 if let Some(nc) = &storage_info.newly_created {
-                    Output::Ok {
+                    Output::NewlyCreated {
                         blob_id: nc.blob_object.blob_id.clone(),
-                        newly_created: Some(true),
-                        already_certified: None,
                         end_epoch: nc.blob_object.storage.end_epoch,
-                        sui_object_id: Some(nc.blob_object.id.clone()),
-                        tx_digest: None,
+                        sui_object_id: nc.blob_object.id.clone(),
                     }
                 } else if let Some(ac) = &storage_info.already_certified {
-                    Output::Ok {
+                    Output::AlreadyCertified {
                         blob_id: ac.blob_id.clone(),
-                        newly_created: None,
-                        already_certified: Some(true),
                         end_epoch: ac.end_epoch,
-                        sui_object_id: None,
-                        tx_digest: Some(ac.event.tx_digest.clone()),
+                        tx_digest: ac.event.tx_digest.clone(),
                     }
                 } else {
                     panic!("Neither newly_created nor already_certified is Some");
@@ -396,20 +371,17 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok {
+            Output::NewlyCreated { .. } => {
+                panic!("Expected AlreadyCertified result, got NewlyCreated");
+            }
+            Output::AlreadyCertified {
                 blob_id,
-                newly_created,
-                already_certified,
                 end_epoch,
-                sui_object_id,
                 tx_digest,
             } => {
                 assert_eq!(blob_id, "certified_blob_id");
-                assert_eq!(newly_created, None);
-                assert_eq!(already_certified, Some(true));
                 assert_eq!(end_epoch, 200);
-                assert_eq!(sui_object_id, None);
-                assert_eq!(tx_digest, Some("certified_tx_digest".to_string()));
+                assert_eq!(tx_digest, "certified_tx_digest");
             }
             Output::Err {
                 reason,
@@ -417,7 +389,7 @@ mod tests {
                 status_code,
             } => {
                 panic!(
-                    "Expected OK result, got error: {} (kind: {:?}, status: {:?})",
+                    "Expected AlreadyCertified result, got error: {} (kind: {:?}, status: {:?})",
                     reason, kind, status_code
                 );
             }
@@ -487,8 +459,8 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok { .. } => {
-                panic!("Expected error result, got OK");
+            Output::NewlyCreated { .. } | Output::AlreadyCertified { .. } => {
+                panic!("Expected error result, got success");
             }
             Output::Err {
                 reason,
