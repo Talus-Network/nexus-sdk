@@ -44,19 +44,15 @@ fn default_epochs() -> u64 {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {
-    Ok {
+    AlreadyCertified {
         blob_id: String,
         end_epoch: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        newly_created: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        already_certified: Option<bool>,
-        // if the blob is already certified, this will be the tx digest of the blob object
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tx_digest: Option<String>,
-        // if the blob is newly created, this will be the sui object ID of the blob object
-        #[serde(skip_serializing_if = "Option::is_none")]
-        sui_object_id: Option<String>,
+        tx_digest: String,
+    },
+    NewlyCreated {
+        blob_id: String,
+        end_epoch: u64,
+        sui_object_id: String,
     },
     Err {
         reason: String,
@@ -98,22 +94,16 @@ impl NexusTool for UploadFile {
 /// Handles the successful upload case by extracting the blob ID from the storage info
 fn handle_successful_upload(storage_info: StorageInfo) -> Output {
     if let Some(newly_created) = storage_info.newly_created {
-        Output::Ok {
-            already_certified: None,
+        Output::NewlyCreated {
             blob_id: newly_created.blob_object.blob_id,
             end_epoch: newly_created.blob_object.storage.end_epoch,
-            newly_created: Some(true),
-            sui_object_id: Some(newly_created.blob_object.id),
-            tx_digest: None,
+            sui_object_id: newly_created.blob_object.id,
         }
     } else if let Some(already_certified) = storage_info.already_certified {
-        Output::Ok {
-            already_certified: Some(true),
+        Output::AlreadyCertified {
             blob_id: already_certified.blob_id,
             end_epoch: already_certified.end_epoch,
-            newly_created: None,
-            sui_object_id: None,
-            tx_digest: Some(already_certified.event.tx_digest),
+            tx_digest: already_certified.event.tx_digest,
         }
     } else {
         Output::Err {
@@ -259,23 +249,20 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok {
+            Output::NewlyCreated {
                 blob_id,
-                newly_created,
-                already_certified,
                 end_epoch,
                 sui_object_id,
-                tx_digest,
             } => {
                 assert_eq!(blob_id, "test_blob_id");
-                assert_eq!(newly_created, Some(true));
-                assert_eq!(already_certified, None);
                 assert_eq!(end_epoch, 100);
-                assert_eq!(sui_object_id, Some("test_object_id".to_string()));
-                assert_eq!(tx_digest, None);
+                assert_eq!(sui_object_id, "test_object_id");
+            }
+            Output::AlreadyCertified { .. } => {
+                panic!("Expected NewlyCreated result, got AlreadyCertified");
             }
             Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+                panic!("Expected NewlyCreated result, got error: {}", reason);
             }
         }
 
@@ -335,23 +322,20 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok {
+            Output::NewlyCreated { .. } => {
+                panic!("Expected AlreadyCertified result, got NewlyCreated");
+            }
+            Output::AlreadyCertified {
                 blob_id,
-                newly_created,
-                already_certified,
                 end_epoch,
-                sui_object_id,
                 tx_digest,
             } => {
                 assert_eq!(blob_id, "certified_blob_id");
-                assert_eq!(newly_created, None);
-                assert_eq!(already_certified, Some(true));
                 assert_eq!(end_epoch, 200);
-                assert_eq!(sui_object_id, None);
-                assert_eq!(tx_digest, Some("certified_tx_digest".to_string()));
+                assert_eq!(tx_digest, "certified_tx_digest");
             }
             Output::Err { reason } => {
-                panic!("Expected OK result, got error: {}", reason);
+                panic!("Expected AlreadyCertified result, got error: {}", reason);
             }
         }
 
@@ -428,8 +412,8 @@ mod tests {
 
         // Verify the result
         match result {
-            Output::Ok { .. } => {
-                panic!("Expected error result, got OK");
+            Output::NewlyCreated { .. } | Output::AlreadyCertified { .. } => {
+                panic!("Expected error result, got success");
             }
             Output::Err { reason } => {
                 assert!(reason.contains("File does not exist"));

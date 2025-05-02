@@ -55,10 +55,9 @@ The blob upload failed.
 
 ---
 
-
 # `xyz.taluslabs.storage.walrus.upload-file@1`
 
-Standard Nexus Tool that uploads a file to Walrus and returns the StorageInfo.
+Standard Nexus Tool that uploads a file to Walrus and returns the blob ID.
 
 ## Input
 
@@ -80,25 +79,26 @@ Optional address to which the created Blob object should be sent.
 
 ## Output Variants & Ports
 
-**`ok`**
+**`newly_created`**
 
-The file was uploaded successfully.
+A new blob was created and uploaded successfully.
 
-- **`ok.blob_id`: [`String`]** - The unique identifier for the uploaded blob
-- **`ok.end_epoch`: [`u64`]** - The epoch at which the blob will expire
-- **`ok.newly_created`: [`Option<bool>`]** - Present and `true` if a new blob was created
-- **`ok.already_certified`: [`Option<bool>`]** - Present and `true` if the blob was already certified
-- **`ok.tx_digest`: [`Option<String>`]** - Transaction digest (only if `already_certified` is true)
-- **`ok.sui_object_id`: [`Option<String>`]** - Sui object ID (only if `newly_created` is true)
+- **`newly_created.blob_id`: [`String`]** - The unique identifier for the uploaded blob
+- **`newly_created.end_epoch`: [`u64`]** - The epoch at which the blob will expire
+- **`newly_created.sui_object_id`: [`String`]** - Sui object ID of the newly created blob
+
+**`already_certified`**
+
+The blob was already certified in the blockchain.
+
+- **`already_certified.blob_id`: [`String`]** - The unique identifier for the blob
+- **`already_certified.end_epoch`: [`u64`]** - The epoch at which the blob will expire
+- **`already_certified.tx_digest`: [`String`]** - Transaction digest of the certified blob
 
 **`err`**
 
 The file upload failed.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-  - Possible reasons include:
-    - Invalid file data
-    - Network connection errors
-    - Server-side errors
-    - Timeout errors
-=======
+
+---
