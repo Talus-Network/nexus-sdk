@@ -1,5 +1,4 @@
-use crate::prelude::*;
-use crate::Cli;
+use crate::{prelude::*, Cli};
 
 #[derive(Args)]
 pub(crate) struct CompletionCommand {
