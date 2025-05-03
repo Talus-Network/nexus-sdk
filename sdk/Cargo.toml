@@ -5,6 +5,7 @@ description = "Nexus SDK provides a set of tools to interact with the Nexus Work
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+homepage.workspace = true
 license-file.workspace = true
 readme.workspace = true
 authors.workspace = true
@@ -45,6 +46,10 @@ object_crawler = ["sui_types", "serde_json"]
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
 transactions = ["sui_idents"]
 
+# Walrus client feature enables the use of the `walrus` module, providing
+# integration with the Walrus decentralized blob storage system.
+walrus = ["reqwest", "futures-util", "tokio", "serde_json"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -66,6 +71,7 @@ full = [
     "events",
     "object_crawler",
     "transactions",
+    "walrus",
 ]
 
 [dependencies]
@@ -74,6 +80,10 @@ chrono.workspace = true
 serde.workspace = true
 
 # === Optional deps ===
+[dependencies.futures-util]
+version = "0.3"
+optional = true
+
 [dependencies.lazy-regex]
 workspace = true
 optional = true
@@ -85,7 +95,7 @@ optional = true
 [dependencies.reqwest]
 workspace = true
 optional = true
-features = ["json"]
+features = ["json", "stream"]
 
 [dependencies.serde_json]
 workspace = true
@@ -93,6 +103,11 @@ optional = true
 
 [dependencies.tempfile]
 workspace = true
+optional = true
+
+[dependencies.tokio]
+workspace = true
+features = ["io-util"]
 optional = true
 
 [dependencies.tokio-retry]
@@ -152,7 +167,9 @@ optional = true
 # === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+mockito.workspace = true
 
 # === Build deps ===
 [build-dependencies]

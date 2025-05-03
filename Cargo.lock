@@ -489,6 +489,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert_fs"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7efdb1fdb47602827a342857666feb372712cbc64b414172bd6b167a02927674"
+dependencies = [
+ "anstyle",
+ "doc-comment",
+ "globwalk",
+ "predicates",
+ "predicates-core",
+ "predicates-tree",
+ "tempfile",
+]
+
+[[package]]
 name = "assert_matches"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1098,6 +1113,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
 dependencies = [
  "tinyvec",
+]
+
+[[package]]
+name = "bstr"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "234113d19d0d7d613b40e86fb654acf958910802bcceab913a4f9e7cda03b1a4"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -1798,6 +1823,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "difflib"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1869,6 +1900,12 @@ dependencies = [
  "quote",
  "syn 2.0.100",
 ]
+
+[[package]]
+name = "doc-comment"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "docker_credential"
@@ -2358,6 +2395,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fmt-cmp"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51f58afb8e10a573cb30dc65381cc266892c84215b17f6d29af59e11d70f383f"
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2584,6 +2627,30 @@ name = "glob"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
+
+[[package]]
+name = "globset"
+version = "0.4.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54a1028dfc5f5df5da8a56a73e6c153c9a9708ec57232470703592a3f18e49f5"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "globwalk"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bf760ebf69878d9fd8f110c89703d90ce35095324d1f1edcb595c63945ee757"
+dependencies = [
+ "bitflags 2.9.0",
+ "ignore",
+ "walkdir",
+]
 
 [[package]]
 name = "governor"
@@ -3254,6 +3321,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ignore"
+version = "0.4.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d89fd380afde86567dfba715db065673989d6253f42b88179abd3eae47bda4b"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
+]
+
+[[package]]
 name = "im"
 version = "15.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3799,7 +3882,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -3886,7 +3969,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -4595,9 +4678,10 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
+ "assert_fs",
  "assert_matches",
  "chrono",
  "clap",
@@ -4607,6 +4691,7 @@ dependencies = [
  "minijinja",
  "nexus-sdk",
  "nexus-toolkit",
+ "openssl",
  "petgraph 0.7.1",
  "reqwest",
  "rstest",
@@ -4623,12 +4708,14 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "assert_matches",
  "chrono",
+ "futures-util",
  "lazy-regex",
+ "mockito",
  "move-core-types",
  "regex",
  "reqwest",
@@ -4649,7 +4736,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -4839,6 +4926,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "oauth-credentials"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d6f9dee4cc95bd06fe0c1225a2b5680e0611627e1643ce78eb76daddd8dbccc"
+
+[[package]]
+name = "oauth1-request"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "498447ee9c67221e1a558d5d49f63594c6ccaa2cdd437abec55c92e8c61887bc"
+dependencies = [
+ "base64 0.22.1",
+ "cfg-if",
+ "digest 0.10.7",
+ "fmt-cmp",
+ "hmac",
+ "oauth-credentials",
+ "oauth1-request-derive",
+ "percent-encoding",
+ "rand 0.8.5",
+ "sha1",
+]
+
+[[package]]
+name = "oauth1-request-derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfe4c99deecc1a12b90d134256879897827028925bce89cea2f51469599dd91"
+dependencies = [
+ "proc-macro-crate 3.3.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4933,6 +5057,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
+name = "openssl-src"
+version = "300.5.0+3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8ce546f549326b0e6052b649198487d91320875da901e7bd11a06d1ee3f9c2f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4940,6 +5073,7 @@ checksum = "8288979acd84749c744a9014b4382d42b8f7b2592847b5afb2ed29e5d16ede07"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -5406,6 +5540,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy 0.8.24",
+]
+
+[[package]]
+name = "predicates"
+version = "3.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5d19ee57562043d37e82899fade9a22ebab7be9cef5026b07fda9cdd4293573"
+dependencies = [
+ "anstyle",
+ "difflib",
+ "predicates-core",
+]
+
+[[package]]
+name = "predicates-core"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "727e462b119fe9c93fd0eb1429a5f7647394014cf3c04ab2c0350eeb09095ffa"
+
+[[package]]
+name = "predicates-tree"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72dd2d6d381dfb73a193c7fca536518d7caee39fc8503f74e7dc0be0531b425c"
+dependencies = [
+ "predicates-core",
+ "termtree",
 ]
 
 [[package]]
@@ -6842,6 +7003,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
+name = "social-twitter"
+version = "0.1.0"
+dependencies = [
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "oauth1-request",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "socket2"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7716,6 +7893,12 @@ dependencies = [
  "rustix",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "termtree"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "testcontainers"
