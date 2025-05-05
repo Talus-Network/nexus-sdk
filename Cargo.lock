@@ -8743,6 +8743,7 @@ name = "walrus"
 version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
+ "jsonschema",
  "mockito",
  "nexus-sdk",
  "nexus-toolkit",

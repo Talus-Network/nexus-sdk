@@ -4,7 +4,7 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, ToolFqn},
+    nexus_sdk::{fqn, walrus::WalrusError, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -16,7 +16,7 @@ use {
 #[derive(Error, Debug)]
 pub enum ReadJsonError {
     #[error("Failed to read JSON: {0}")]
-    ReadError(#[from] anyhow::Error),
+    ReadError(#[from] WalrusError),
     #[error("Invalid JSON data: {0}")]
     InvalidJson(String),
     #[error("JSON validation error: {0}")]
@@ -155,12 +155,13 @@ impl NexusTool for ReadJson {
                 }
             }
             Err(e) => {
-                let status_code = e
-                    .to_string()
-                    .split("status ")
-                    .nth(1)
-                    .and_then(|s| s.split(':').next())
-                    .and_then(|s| s.trim().parse::<u16>().ok());
+                // Extract status code from WalrusError if available
+                let status_code = match &e {
+                    ReadJsonError::ReadError(WalrusError::ApiError { status_code, .. }) => {
+                        Some(*status_code)
+                    }
+                    _ => None,
+                };
 
                 Output::Err {
                     reason: e.to_string(),
@@ -182,12 +183,9 @@ impl ReadJson {
             .with_aggregator_url(aggregator_url)
             .build();
 
-        let storage_info = walrus_client.read_json(&blob_id).await;
+        let storage_info = walrus_client.read_json(&blob_id).await?;
 
-        match storage_info {
-            Ok(string_result) => Ok(string_result),
-            Err(e) => Err(ReadJsonError::ReadError(e)),
-        }
+        Ok(storage_info)
     }
 }
 
@@ -287,7 +285,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result: Result<serde_json::Value, anyhow::Error> =
+        let result: Result<serde_json::Value, WalrusError> =
             client.read_json::<serde_json::Value>(&input.blob_id).await;
 
         match result {
@@ -454,7 +452,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result: Result<serde_json::Value, anyhow::Error> =
+        let result: Result<serde_json::Value, WalrusError> =
             client.read_json::<serde_json::Value>(&input.blob_id).await;
         assert!(result.is_ok());
         let json_data = result.unwrap();
