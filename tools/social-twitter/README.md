@@ -629,7 +629,7 @@ The user was not retrieved due to an error.
 
 # `xyz.taluslabs.social.twitter.get-users-by-username@1`
 
-Standard Nexus Tool that retrieves multiple users from the Twitter API by their usernames. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/users/lookup/api-reference/get-users-by)
+Standard Nexus Tool that retrieves multiple users from the Twitter API by their usernames. Twitter api [reference](https://docs.x.com/x-api/users/user-lookup-by-usernames)
 
 ## Input
 

@@ -4,17 +4,14 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
+        error::TwitterErrorKind,
         list::models::Includes,
-        tweet::{
-            models::{ExpansionField, TweetField, UserField},
-            TWITTER_API_BASE,
-        },
+        tweet::models::{ExpansionField, TweetField, UserField},
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
         user::models::{UserData, UsersResponse},
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -73,7 +70,7 @@ impl NexusTool for GetUsersByUsername {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users/by",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -90,58 +87,26 @@ impl NexusTool for GetUsersByUsername {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        match self.fetch_users(&request).await {
-            Ok(response) => {
-                if let Some(users) = response.data {
-                    if users.is_empty() {
-                        return Output::Err {
-                            kind: TwitterErrorKind::NotFound,
-                            reason: "No users found".to_string(),
-                            status_code: None,
-                        };
-                    }
-
-                    Output::Ok {
-                        users,
-                        includes: response.includes,
-                    }
-                } else {
-                    Output::Err {
-                        kind: TwitterErrorKind::NotFound,
-                        reason: "No user data found in the response".to_string(),
-                        status_code: None,
-                    }
-                }
-            }
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some("users/by"), Some(&self.api_base)) {
+            Ok(client) => client,
             Err(e) => {
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
             }
-        }
-    }
-}
+        };
 
-impl GetUsersByUsername {
-    /// Fetch users from Twitter API by usernames
-    async fn fetch_users(&self, request: &Input) -> TwitterResult<UsersResponse> {
-        let client = Client::new();
+        // Build query parameters
+        let mut query_params = Vec::new();
 
-        // Join usernames with commas for the query parameter
-        let usernames = request.usernames.join(",");
+        // Add usernames
+        query_params.push(("usernames".to_string(), request.usernames.join(",")));
 
-        // Build request with query parameters
-        let mut req_builder = client
-            .get(&self.api_base)
-            .header("Authorization", format!("Bearer {}", request.bearer_token))
-            .query(&[("usernames", usernames)]);
-
-        // Add optional query parameters
-        if let Some(user_fields) = &request.user_fields {
+        // Add user fields if provided
+        if let Some(user_fields) = request.user_fields {
             let fields: Vec<String> = user_fields
                 .iter()
                 .map(|f| {
@@ -151,11 +116,12 @@ impl GetUsersByUsername {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("user.fields", fields.join(","))]);
+            query_params.push(("user.fields".to_string(), fields.join(",")));
         }
 
-        if let Some(expansions_fields) = &request.expansions_fields {
-            let fields: Vec<String> = expansions_fields
+        // Add expansions if provided
+        if let Some(expansions) = request.expansions_fields {
+            let fields: Vec<String> = expansions
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
@@ -164,10 +130,11 @@ impl GetUsersByUsername {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("expansions", fields.join(","))]);
+            query_params.push(("expansions".to_string(), fields.join(",")));
         }
 
-        if let Some(tweet_fields) = &request.tweet_fields {
+        // Add tweet fields if provided
+        if let Some(tweet_fields) = request.tweet_fields {
             let fields: Vec<String> = tweet_fields
                 .iter()
                 .map(|f| {
@@ -177,12 +144,33 @@ impl GetUsersByUsername {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("tweet.fields", fields.join(","))]);
+            query_params.push(("tweet.fields".to_string(), fields.join(",")));
         }
 
-        // Send the request and parse the response
-        let response = req_builder.send().await?;
-        parse_twitter_response::<UsersResponse>(response).await
+        match client
+            .get::<UsersResponse>(request.bearer_token, Some(query_params))
+            .await
+        {
+            Ok(data) => {
+                if data.0.is_empty() {
+                    Output::Err {
+                        reason: "No users found".to_string(),
+                        kind: TwitterErrorKind::NotFound,
+                        status_code: Some(404),
+                    }
+                } else {
+                    Output::Ok {
+                        users: data.0,
+                        includes: data.1,
+                    }
+                }
+            }
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
+        }
     }
 }
 
@@ -221,7 +209,7 @@ mod tests {
 
         // Set up mock response with the complete data as provided in the example
         let mock = server
-            .mock("GET", "/")
+            .mock("GET", "/users/by")
             .match_query(mockito::Matcher::UrlEncoded(
                 "usernames".into(),
                 "TwitterDev,XDevelopers".into(),
@@ -309,7 +297,7 @@ mod tests {
 
         // Set up mock response for not found using the error structure provided
         let mock = server
-            .mock("GET", "/")
+            .mock("GET", "/users/by")
             .match_query(mockito::Matcher::UrlEncoded(
                 "usernames".into(),
                 "TwitterDev,XDevelopers".into(),
@@ -359,7 +347,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
-            .mock("GET", "/")
+            .mock("GET", "/users/by")
             .match_query(mockito::Matcher::UrlEncoded(
                 "usernames".into(),
                 "TwitterDev,XDevelopers".into(),
@@ -406,7 +394,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
-            .mock("GET", "/")
+            .mock("GET", "/users/by")
             .match_query(mockito::Matcher::UrlEncoded(
                 "usernames".into(),
                 "TwitterDev,XDevelopers".into(),
@@ -453,7 +441,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let mock = server
-            .mock("GET", "/")
+            .mock("GET", "/users/by")
             .match_query(mockito::Matcher::UrlEncoded(
                 "usernames".into(),
                 "TwitterDev,XDevelopers".into(),
@@ -474,15 +462,12 @@ mod tests {
         match output {
             Output::Err {
                 reason,
-                kind: _,
+                kind,
                 status_code,
             } => {
-                assert!(
-                    reason.contains("No users found"),
-                    "Expected empty users error, got: {} ({})",
-                    reason,
-                    status_code.unwrap_or(0)
-                );
+                assert_eq!(kind, TwitterErrorKind::NotFound);
+                assert!(reason.contains("No users found"));
+                assert_eq!(status_code, Some(404));
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
         }
