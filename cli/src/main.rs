@@ -73,7 +73,7 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
-        Command::Completion(completion) => completion::handle(completion).await,
+        Command::Completion(completion) => completion::handle(completion),
     };
 
     // Handle any errors that occurred during command execution.

@@ -21,7 +21,6 @@ pub(crate) struct ConfCommand {
         long = "sui.basic-auth-user",
         help = "Set an user for basic authentication to the Sui node",
         value_name = "USER",
-        requires = "sui.basic-auth-password"
     )]
     sui_auth_user: Option<String>,
 
@@ -29,7 +28,6 @@ pub(crate) struct ConfCommand {
         long = "sui.basic-auth-password",
         help = "Set a password for basic authentication to the Sui node",
         value_name = "PASSWORD",
-        requires = "sui.basic-auth-user"
     )]
     sui_auth_password: Option<String>,
 
