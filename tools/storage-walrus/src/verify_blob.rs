@@ -4,7 +4,7 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, ToolFqn},
+    nexus_sdk::{fqn, walrus::WalrusError, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -14,7 +14,7 @@ use {
 #[derive(Error, Debug)]
 pub enum VerifyBlobError {
     #[error("Failed to verify blob: {0}")]
-    VerificationError(#[from] anyhow::Error),
+    VerificationError(#[from] WalrusError),
 }
 
 #[derive(Serialize, JsonSchema, Debug, Clone)]
@@ -84,11 +84,21 @@ impl NexusTool for VerifyBlob {
                     Output::UnVerified { blob_id }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-                kind: UploadErrorKind::Server,
-                status_code: None,
-            },
+            Err(e) => {
+                let status_code = match &e {
+                    VerifyBlobError::VerificationError(WalrusError::ApiError {
+                        status_code,
+                        ..
+                    }) => Some(*status_code),
+                    _ => None,
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind: UploadErrorKind::Server,
+                    status_code,
+                }
+            }
         }
     }
 }
@@ -99,7 +109,10 @@ impl VerifyBlob {
             .with_aggregator_url(input.aggregator_url)
             .build();
 
-        let is_verified = walrus_client.verify_blob(&input.blob_id).await?;
+        let is_verified = walrus_client
+            .verify_blob(&input.blob_id)
+            .await
+            .map_err(VerifyBlobError::VerificationError)?;
 
         Ok(is_verified)
     }
@@ -121,7 +134,10 @@ mod tests {
             input: Input,
             client: WalrusClient,
         ) -> Result<bool, VerifyBlobError> {
-            let is_verified = client.verify_blob(&input.blob_id).await?;
+            let is_verified = client
+                .verify_blob(&input.blob_id)
+                .await
+                .map_err(VerifyBlobError::VerificationError)?;
             Ok(is_verified)
         }
     }
@@ -286,11 +302,21 @@ mod tests {
                     Output::UnVerified { blob_id }
                 }
             }
-            Err(e) => Output::Err {
-                reason: e.to_string(),
-                kind: UploadErrorKind::Server,
-                status_code: Some(500),
-            },
+            Err(e) => {
+                let status_code = match &e {
+                    VerifyBlobError::VerificationError(WalrusError::ApiError {
+                        status_code,
+                        ..
+                    }) => Some(*status_code),
+                    _ => None,
+                };
+
+                Output::Err {
+                    reason: e.to_string(),
+                    kind: UploadErrorKind::Server,
+                    status_code,
+                }
+            }
         };
 
         // Verify the result
