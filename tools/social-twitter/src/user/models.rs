@@ -224,4 +224,4 @@ pub struct UrlImage {
     pub height: i32,
 }
 
-impl_twitter_response_parser!(UserResponse, UserData, includes = Includes);
+impl_twitter_response_parser!(UsersResponse, Vec<UserData>, includes = Includes);

@@ -4,15 +4,12 @@
 
 use {
     crate::{
-        error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
+        error::TwitterErrorKind,
         list::models::Includes,
-        tweet::{
-            models::{ExpansionField, TweetField, UserField},
-            TWITTER_API_BASE,
-        },
+        tweet::models::{ExpansionField, TweetField, UserField},
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
         user::models::{UserData, UsersResponse},
     },
-    reqwest::Client,
     ::{
         nexus_sdk::{fqn, ToolFqn},
         nexus_toolkit::*,
@@ -75,7 +72,7 @@ impl NexusTool for GetUsersById {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -92,50 +89,26 @@ impl NexusTool for GetUsersById {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        match self.fetch_users(&request).await {
-            Ok(response) => {
-                if let Some(users) = response.data {
-                    Output::Ok {
-                        users,
-                        includes: response.includes,
-                    }
-                } else {
-                    Output::Err {
-                        kind: TwitterErrorKind::NotFound,
-                        reason: "No user data found in the response".to_string(),
-                        status_code: None,
-                    }
-                }
-            }
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some("users"), Some(&self.api_base)) {
+            Ok(client) => client,
             Err(e) => {
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
             }
-        }
-    }
-}
+        };
 
-impl GetUsersById {
-    /// Fetch users from Twitter API
-    async fn fetch_users(&self, request: &Input) -> TwitterResult<UsersResponse> {
-        let client = Client::new();
+        // Build query parameters
+        let mut query_params = Vec::new();
 
-        // Convert the Vec<String> of IDs to a comma-separated string
-        let ids = request.ids.join(",");
+        // Add users id
+        query_params.push(("ids".to_string(), request.ids.join(",")));
 
-        // Build request with query parameters
-        let mut req_builder = client
-            .get(&self.api_base)
-            .header("Authorization", format!("Bearer {}", request.bearer_token))
-            .query(&[("ids", &ids)]);
-
-        // Add optional query parameters
-        if let Some(user_fields) = &request.user_fields {
+        // Add user fields if provided
+        if let Some(user_fields) = request.user_fields {
             let fields: Vec<String> = user_fields
                 .iter()
                 .map(|f| {
@@ -145,10 +118,11 @@ impl GetUsersById {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("user.fields", fields.join(","))]);
+            query_params.push(("user.fields".to_string(), fields.join(",")));
         }
 
-        if let Some(expansions) = &request.expansions {
+        // Add expansions if provided
+        if let Some(expansions) = request.expansions {
             let fields: Vec<String> = expansions
                 .iter()
                 .map(|f| {
@@ -158,10 +132,11 @@ impl GetUsersById {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("expansions", fields.join(","))]);
+            query_params.push(("expansions".to_string(), fields.join(",")));
         }
 
-        if let Some(tweet_fields) = &request.tweet_fields {
+        // Add tweet fields if provided
+        if let Some(tweet_fields) = request.tweet_fields {
             let fields: Vec<String> = tweet_fields
                 .iter()
                 .map(|f| {
@@ -171,18 +146,38 @@ impl GetUsersById {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("tweet.fields", fields.join(","))]);
+            query_params.push(("tweet.fields".to_string(), fields.join(",")));
         }
 
-        // Send the request and parse the response
-        let response = req_builder.send().await?;
-        parse_twitter_response::<UsersResponse>(response).await
+        match client
+            .get::<UsersResponse>(request.bearer_token, Some(query_params))
+            .await
+        {
+            Ok(response) => {
+                return Output::Ok {
+                    users: response.0,
+                    includes: response.1,
+                }
+            }
+            Err(e) => {
+                return Output::Err {
+                    reason: e.reason,
+                    kind: e.kind,
+                    status_code: e.status_code,
+                }
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ::mockito::Server, serde_json::json};
+    use {
+        super::*,
+        ::mockito::{self, Server},
+        mockito::Matcher,
+        serde_json::json,
+    };
 
     impl GetUsersById {
         fn with_api_base(api_base: &str) -> Self {
@@ -246,12 +241,17 @@ mod tests {
     async fn test_get_users_by_id_successful() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -279,7 +279,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, .. } => {
@@ -309,12 +309,23 @@ mod tests {
     async fn test_get_users_with_user_fields() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input_with_user_fields();
+        let query_params = vec![
+            ("ids".to_string(), input.ids.join(",")),
+            (
+                "user.fields".to_string(),
+                vec!["description", "created_at", "public_metrics"].join(","),
+            ),
+        ];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![
-                mockito::Matcher::UrlEncoded("ids".into(), "2244994945".into()),
-                mockito::Matcher::UrlEncoded("user.fields".into(), "description,created_at,public_metrics".into()),
-            ]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -341,7 +352,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input_with_user_fields()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, .. } => {
@@ -373,13 +384,24 @@ mod tests {
     async fn test_get_users_with_expansions() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input_with_expansions();
+        let query_params = vec![
+            ("ids".to_string(), input.ids.join(",")),
+            ("expansions".to_string(), vec!["author_id"].join(",")),
+            (
+                "tweet.fields".to_string(),
+                vec!["author_id", "created_at"].join(","),
+            ),
+        ];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![
-                mockito::Matcher::UrlEncoded("ids".into(), "2244994945".into()),
-                mockito::Matcher::UrlEncoded("expansions".into(), "author_id".into()),
-                mockito::Matcher::UrlEncoded("tweet.fields".into(), "author_id,created_at".into()),
-            ]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -408,7 +430,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input_with_expansions()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, includes } => {
@@ -442,12 +464,17 @@ mod tests {
     async fn test_empty_results() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -460,7 +487,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, .. } => {
@@ -484,12 +511,17 @@ mod tests {
     async fn test_single_user_id() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input_single_id();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -508,7 +540,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input_single_id()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, .. } => {
@@ -534,12 +566,17 @@ mod tests {
     async fn test_rate_limit_exceeded() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(429)
             .with_header("content-type", "application/json")
@@ -555,7 +592,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Err {
@@ -578,12 +615,17 @@ mod tests {
     async fn test_users_not_found() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(404)
             .with_header("content-type", "application/json")
@@ -599,7 +641,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Err {
@@ -622,38 +664,60 @@ mod tests {
     async fn test_invalid_bearer_token() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
-            .match_header("Authorization", "Bearer test_bearer_token")
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .with_status(401)
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
-                    "errors": [{
-                        "message": "Invalid token",
-                        "code": 89
-                    }]
+                    "status": 401,
+                    "title": "Unauthorized",
+                    "type": "https://api.twitter.com/2/problems/unauthorized",
+                    "detail": "Unauthorized"
                 })
                 .to_string(),
             )
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Err {
                 reason,
-                kind: _,
-                status_code: _,
+                kind,
+                status_code,
             } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Invalid token"),
-                    "Expected invalid token error"
+                    reason.contains("Unauthorized"),
+                    "Expected error message to contain 'Unauthorized', got: {}",
+                    reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -666,12 +730,17 @@ mod tests {
     async fn test_with_includes() {
         let (mut server, tool) = create_server_and_tool().await;
 
+        let input = create_test_input();
+        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+
         let mock = server
-            .mock("GET", "/")
-            .match_query(mockito::Matcher::AllOf(vec![mockito::Matcher::UrlEncoded(
-                "ids".into(),
-                "2244994945,6253282".into(),
-            )]))
+            .mock("GET", "/users")
+            .match_query(mockito::Matcher::AllOf(
+                query_params
+                    .iter()
+                    .map(|(k, v)| Matcher::UrlEncoded(k.clone(), v.clone()))
+                    .collect(),
+            ))
             .match_header("Authorization", "Bearer test_bearer_token")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -701,7 +770,7 @@ mod tests {
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
+        let output = tool.invoke(input).await;
 
         match output {
             Output::Ok { users, includes } => {
