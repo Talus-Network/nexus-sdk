@@ -8,6 +8,7 @@ mod auth;
 mod error;
 mod list;
 mod tweet;
+mod twitter_client;
 mod user;
 
 /// This function bootstraps the tool and starts the server.
@@ -20,6 +21,7 @@ async fn main() {
         tweet::get_mentioned_tweets::GetMentionedTweets,
         tweet::get_user_tweets::GetUserTweets,
         tweet::get_tweets::GetTweets,
+        tweet::retweet_tweet::RetweetTweet,
         list::create_list::CreateList,
         list::get_list::GetList,
         list::get_list_tweets::GetListTweets,

@@ -7,11 +7,15 @@ This guide builds on the [Math Branching DAG with Entry Groups][math-branching-e
 3. Connect the math results to the chat completion tool
 4. Configure the chat completion tool for optimal results
 
+{% hint style="info" %} Prerequisites
+Follow the [setup guide](setup.md) to get properly setup in case you haven't.
+{% endhint %}
+
 ## The Challenge: Type Safety Between Tools
 
-Before we can connect our math operations to the chat completion tool, we need to understand a key challenge: type safety. The chat completion tool expects a `Message` struct as input, but our math operations output numbers. We can't directly connect these without proper type conversion.
+Before you can connect our math operations to the chat completion tool, you need to understand a key challenge: type safety. The [LLM chat completion tool](../../tools/llm-openai-chat-completion/README.md)expects a `Message` struct as input, but the [math tool](../../tools/math/README.md) outputs numbers. You can't directly connect these without proper type conversion.
 
-This is where we need a custom tool to bridge this gap. We'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that we developed in the [Build the Missing Tool guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
+This is where you need a custom tool to bridge this gap. You'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that you developed in the [Build the Missing Tool guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
 
 ## Step 1: Adding the Required Tools
 
@@ -42,7 +46,7 @@ First, let's add both the number-to-message tool and the chat completion tool to
 
 ## Step 2: Connecting the Math Results
 
-We need to connect each of our final math operation results to the LLM chat prep tool:
+You need to connect each of our final math operation results to the LLM chat prep tool:
 
 ```json
 {
@@ -89,7 +93,7 @@ Remember that this works because only one of the output variants will be trigger
 
 ## Step 3: Connecting to Chat Completion
 
-Now we connect the formatted message to the chat completion tool:
+Now you connect the formatted message to the chat completion tool:
 
 ```json
 {
@@ -112,7 +116,7 @@ Now we connect the formatted message to the chat completion tool:
 
 ## Step 4: Configuring Default Values
 
-We need to set up default values for both tools:
+You need to set up default values for both tools:
 
 ```json
 {
@@ -167,7 +171,7 @@ We need to set up default values for both tools:
 
 ## Step 5: Updating Entry Groups
 
-We need to add the `chat_completion` to our entry groups:
+You need to add the `chat_completion` to our entry groups:
 
 ```json
 {
@@ -562,7 +566,7 @@ The `--inspect` flag will show you detailed information about the execution, inc
 
 To integrate this DAG into your application:
 
-1. **Store the DAG**: First, store the DAG definition in your application's configuration or database.
+1. **Store the DAG**: First, store the DAG JSON definition in your application's workspace.
 
 2. **Handle API Keys**: Securely manage the OpenAI API key. Consider using environment variables or a secrets management service.
 
