@@ -3,15 +3,16 @@
 //! Standard Nexus Tool that undoes a retweet.
 
 use {
-    crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
-    reqwest::Client,
-    ::{
-        nexus_sdk::{fqn, ToolFqn},
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serde::{Deserialize, Serialize},
-        serde_json::Value,
+    super::models::UndoRetweetResponse,
+    crate::{
+        auth::TwitterAuth,
+        error::TwitterErrorKind,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
+    nexus_sdk::{fqn, ToolFqn},
+    nexus_toolkit::*,
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -34,8 +35,13 @@ pub(crate) enum Output {
         retweeted: bool,
     },
     Err {
-        /// Error message
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -49,7 +55,7 @@ impl NexusTool for UndoRetweetTweet {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -66,121 +72,29 @@ impl NexusTool for UndoRetweetTweet {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        let client = Client::new();
+        // Build the endpoint for the Twitter API
+        let suffix = format!("users/{}/retweets/{}", request.user_id, request.tweet_id);
 
-        let url = format!(
-            "{}/{}/retweets/{}",
-            self.api_base, request.user_id, request.tweet_id
-        );
-
-        // Generate OAuth authorization header with the complete URL
-        let auth_header = request.auth.generate_auth_header_for_delete(&url);
-
-        let response = client
-            .delete(&url)
-            .header("Authorization", auth_header)
-            .send()
-            .await;
-
-        match response {
-            Err(e) => Output::Err {
-                reason: format!("Failed to send undo retweet request to Twitter API: {}", e),
-            },
-            Ok(result) => {
-                let text = match result.text().await {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Failed to read Twitter API response: {}", e),
-                        }
-                    }
-                    Ok(text) => text,
-                };
-
-                let json: Value = match serde_json::from_str(&text) {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Invalid JSON response: {}", e),
-                        }
-                    }
-                    Ok(json) => json,
-                };
-
-                // Check for error response with code/message format
-                if let Some(code) = json.get("code") {
-                    let message = json
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Unknown error");
-
-                    return Output::Err {
-                        reason: format!("Twitter API error: {} (Code: {})", message, code),
-                    };
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
-
-                // Check for error response with detail/status/title format
-                if let Some(detail) = json.get("detail") {
-                    let status = json.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
-                    let title = json
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown");
-
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API error: {} (Status: {}, Title: {})",
-                            detail.as_str().unwrap_or("Unknown error"),
-                            status,
-                            title
-                        ),
-                    };
-                }
-
-                // Check for errors array
-                if let Some(errors) = json.get("errors") {
-                    return Output::Err {
-                        reason: format!("Twitter API returned errors: {}", errors),
-                    };
-                }
-
-                // Check for success response format
-                let data = match json.get("data") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(data) => data,
-                };
-
-                // Check for retweeted field
-                let retweeted = match data.get("retweeted") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(retweeted) => retweeted.as_bool().unwrap_or(false),
-                };
-
-                // Check if the tweet was retweeted
-                if retweeted {
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API indicated the tweet was already retweeted: {}",
-                            json
-                        ),
-                    };
-                }
-
-                // Successfully retweeted the tweet
-                Output::Ok { retweeted }
             }
+        };
+
+        match client.delete::<UndoRetweetResponse>(&request.auth).await {
+            Ok(data) => Output::Ok {
+                retweeted: data.retweeted,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
         }
     }
 }
@@ -202,7 +116,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, UndoRetweetTweet) {
         let server = Server::new_async().await;
-        let tool = UndoRetweetTweet::with_api_base(&(server.url() + "/users"));
+        let tool = UndoRetweetTweet::with_api_base(&(server.url()));
         (server, tool)
     }
 
@@ -248,7 +162,13 @@ mod tests {
             Output::Ok { retweeted } => {
                 assert_eq!(retweeted, false);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                panic!("Expected success, got error: {}", reason);
+            }
         }
 
         // Verify that the mock was called
@@ -283,11 +203,33 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?} (status: {:?})",
+                    kind,
+                    status_code
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Unauthorized") && reason.contains("Status: 401"),
-                    "Error should indicate unauthorized access. Got: {}",
+                    reason.contains("Unauthorized"),
+                    "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
         }
@@ -305,6 +247,7 @@ mod tests {
         let mock = server
             .mock("DELETE", "/users/12345/retweets/67890")
             .with_status(200)
+            .with_header("content-type", "application/json")
             .with_body("invalid json")
             .create_async()
             .await;
@@ -315,12 +258,18 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
-                    reason.contains("Invalid JSON"),
-                    "Error should indicate invalid JSON. Got: {}",
+                    reason.contains("Response parsing error"),
+                    "Error should indicate response parsing error. Got: {}",
                     reason
                 );
+                assert_eq!(kind, TwitterErrorKind::Parse);
+                assert_eq!(status_code, None);
             }
         }
 
@@ -354,12 +303,18 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
-                    reason.contains("Unexpected response format"),
-                    "Error should indicate unexpected format. Got: {}",
+                    reason.contains("Response parsing error"),
+                    "Error should indicate response parsing error. Got: {}",
                     reason
                 );
+                assert_eq!(kind, TwitterErrorKind::Parse);
+                assert_eq!(status_code, None);
             }
         }
 
@@ -368,7 +323,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tweet_already_retweeted() {
+    async fn test_undo_retweet_api_returns_retweeted_true() {
         // Create server and tool
         let (mut server, tool) = create_server_and_tool().await;
 
@@ -390,13 +345,14 @@ mod tests {
         // Test the undo retweet request
         let result = tool.invoke(create_test_input()).await;
 
-        // Verify the error response
+        // Verify the response - Expect Ok with retweeted: true
         match result {
-            Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
-                assert!(
-                    reason.contains("already retweeted"),
-                    "Error should indicate tweet was already retweeted. Got: {}",
+            Output::Ok { retweeted } => {
+                assert_eq!(retweeted, true);
+            }
+            Output::Err { reason, .. } => {
+                panic!(
+                    "Expected success (Ok with retweeted: true), got error: {}",
                     reason
                 );
             }

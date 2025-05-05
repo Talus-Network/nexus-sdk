@@ -453,7 +453,7 @@ The tweet mentions retrieval failed.
 # `xyz.taluslabs.social.twitter.undo-retweet-tweet@1`
 
 Standard Nexus Tool that undoes a retweet.
-Twitter api [reference](https://docs.x.com/x-api/posts/undo-retweet)
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-unretweet-the-specified-post)
 
 ## Input
 
