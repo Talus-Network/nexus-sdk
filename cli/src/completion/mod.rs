@@ -22,8 +22,7 @@ pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError>
 
 #[cfg(test)]
 mod tests {
-    use crate::Command;
-    use super::*;
+    use {super::*, crate::Command};
 
     #[test]
     fn test_completion() {
@@ -38,7 +37,7 @@ mod tests {
                 Command::Completion(cc) => {
                     handle(cc).unwrap();
                 }
-                _ => unreachable!(),
+                _ => unreachable!("This should have been an completion command!"),
             }
         }
     }
