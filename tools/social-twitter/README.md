@@ -352,7 +352,7 @@ The like operation failed.
 # `xyz.taluslabs.social.twitter.unlike-tweet@1`
 
 Standard Nexus Tool that unlikes a tweet.
-Twitter api [reference](https://docs.x.com/x-api/posts/undo-like)
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-unlike-the-specified-post#causes-the-user-in-the-path-to-unlike-the-specified-post)
 
 ## Input
 
