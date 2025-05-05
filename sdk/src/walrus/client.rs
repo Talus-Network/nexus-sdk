@@ -1,10 +1,10 @@
 use {
     crate::walrus::models::*,
-    anyhow::{anyhow, Context, Result},
     futures_util::StreamExt,
     reqwest::Client,
     serde::{de::DeserializeOwned, Serialize},
-    std::path::PathBuf,
+    std::{io, path::PathBuf},
+    thiserror::Error,
     tokio::{fs::File, io::AsyncWriteExt},
 };
 
@@ -12,6 +12,60 @@ use {
 // Walrus Default API Endpoints
 pub const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
 pub const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
+
+/// Errors that can occur when interacting with the Walrus API
+#[derive(Error, Debug)]
+pub enum WalrusError {
+    /// Error reading file from disk
+    #[error("Failed to read file: {path:?}, error: {source}")]
+    FileReadError {
+        /// Path to the file that failed to be read
+        path: PathBuf,
+        /// The underlying IO error
+        #[source]
+        source: io::Error,
+    },
+
+    /// Error creating or writing to a file
+    #[error("Failed to write to file: {path:?}, error: {source}")]
+    FileWriteError {
+        /// Path to the file that failed to be written
+        path: PathBuf,
+        /// The underlying IO error
+        #[source]
+        source: io::Error,
+    },
+
+    /// Error serializing data to JSON
+    #[error("Failed to serialize data to JSON: {0}")]
+    SerializationError(#[from] serde_json::Error),
+
+    /// Error during HTTP request
+    #[error("HTTP request failed: {message}")]
+    RequestError {
+        /// Error message
+        message: String,
+        /// The underlying reqwest error
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// Error from API response
+    #[error("API error: {status_code} - {message}")]
+    ApiError {
+        /// HTTP status code
+        status_code: u16,
+        /// Error message from API
+        message: String,
+    },
+
+    /// Error processing stream data
+    #[error("Failed to process data stream: {0}")]
+    StreamError(#[from] reqwest::Error),
+}
+
+/// Result type used throughout the Walrus client
+pub type Result<T> = std::result::Result<T, WalrusError>;
 
 /// Builder for WalrusClient configuration
 pub struct WalrusClientBuilder {
@@ -106,9 +160,13 @@ impl WalrusClient {
         send_to: Option<String>,
     ) -> Result<StorageInfo> {
         // Read file content
-        let file_content = tokio::fs::read(file_path)
-            .await
-            .context(format!("Failed to read file: {:?}", file_path))?;
+        let file_content =
+            tokio::fs::read(file_path)
+                .await
+                .map_err(|e| WalrusError::FileReadError {
+                    path: file_path.clone(),
+                    source: e,
+                })?;
 
         // Construct API URL with query parameters
         let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
@@ -123,19 +181,29 @@ impl WalrusClient {
             .body(file_content)
             .send()
             .await
-            .context("Failed to upload file")?;
+            .map_err(|e| WalrusError::RequestError {
+                message: "Failed to upload file".to_string(),
+                source: e,
+            })?;
 
         if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let error_text = response.text().await?;
-            return Err(anyhow!(
-                "Upload failed with status {}: {}",
-                status,
-                error_text
-            ));
+            let status_code = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(WalrusError::ApiError {
+                status_code,
+                message: error_text,
+            });
         }
 
-        let storage_info: StorageInfo = response.json().await?;
+        let storage_info =
+            response
+                .json::<StorageInfo>()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to parse response".to_string(),
+                    source: e,
+                })?;
+
         Ok(storage_info)
     }
 
@@ -155,7 +223,7 @@ impl WalrusClient {
         send_to: Option<String>,
     ) -> Result<StorageInfo> {
         // Serialize data to JSON
-        let json_content = serde_json::to_vec(data).context("Failed to serialize data to JSON")?;
+        let json_content = serde_json::to_vec(data).map_err(WalrusError::SerializationError)?;
 
         // Construct API URL with query parameters
         let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
@@ -171,19 +239,29 @@ impl WalrusClient {
             .body(json_content)
             .send()
             .await
-            .context("Failed to upload JSON data")?;
+            .map_err(|e| WalrusError::RequestError {
+                message: "Failed to upload JSON data".to_string(),
+                source: e,
+            })?;
 
         if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let error_text = response.text().await?;
-            return Err(anyhow!(
-                "Upload failed with status {}: {}",
-                status,
-                error_text
-            ));
+            let status_code = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(WalrusError::ApiError {
+                status_code,
+                message: error_text,
+            });
         }
 
-        let storage_info: StorageInfo = response.json().await?;
+        let storage_info =
+            response
+                .json::<StorageInfo>()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to parse response".to_string(),
+                    source: e,
+                })?;
+
         Ok(storage_info)
     }
 
@@ -197,30 +275,43 @@ impl WalrusClient {
         let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send GET request
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to download blob")?;
+        let response =
+            self.client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to download blob".to_string(),
+                    source: e,
+                })?;
 
         if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let error_text = response.text().await?;
-            return Err(anyhow!(
-                "Download failed with status {}: {}",
-                status,
-                error_text
-            ));
+            let status_code = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(WalrusError::ApiError {
+                status_code,
+                message: error_text,
+            });
         }
 
         // Stream the response body to file
-        let mut file = File::create(output).await?;
+        let mut file = File::create(output)
+            .await
+            .map_err(|e| WalrusError::FileWriteError {
+                path: output.clone(),
+                source: e,
+            })?;
+
         let mut stream = response.bytes_stream();
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result?;
-            file.write_all(&chunk).await?;
+            let chunk = chunk_result.map_err(WalrusError::StreamError)?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| WalrusError::FileWriteError {
+                    path: output.clone(),
+                    source: e,
+                })?;
         }
 
         Ok(())
@@ -241,28 +332,33 @@ impl WalrusClient {
         let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send GET request
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to download JSON blob")?;
+        let response =
+            self.client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to download JSON blob".to_string(),
+                    source: e,
+                })?;
 
         if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let error_text = response.text().await?;
-            return Err(anyhow!(
-                "Download failed with status {}: {}",
-                status,
-                error_text
-            ));
+            let status_code = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(WalrusError::ApiError {
+                status_code,
+                message: error_text,
+            });
         }
 
         // Parse the JSON response
         let json_data = response
             .json::<T>()
             .await
-            .context("Failed to parse JSON data")?;
+            .map_err(|e| WalrusError::RequestError {
+                message: "Failed to parse JSON data".to_string(),
+                source: e,
+            })?;
 
         Ok(json_data)
     }
@@ -279,12 +375,15 @@ impl WalrusClient {
         let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
 
         // Send HEAD request to check if blob exists
-        let response = self
-            .client
-            .head(&url)
-            .send()
-            .await
-            .context("Failed to verify blob existence")?;
+        let response =
+            self.client
+                .head(&url)
+                .send()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to verify blob existence".to_string(),
+                    source: e,
+                })?;
 
         Ok(response.status().is_success())
     }
