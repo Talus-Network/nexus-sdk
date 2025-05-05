@@ -25,7 +25,7 @@ mod tests {
     use {super::*, crate::Command};
 
     #[test]
-    fn test_completion() {
+    fn test_all_shell_completions() {
         // Simulate the completion command line for all the supported shells.
         // ... and run the command line.
 
@@ -37,7 +37,7 @@ mod tests {
                 Command::Completion(cc) => {
                     handle(cc).unwrap();
                 }
-                _ => unreachable!("This should have been an completion command!"),
+                _ => unreachable!("This should have been a completion command!"),
             }
         }
     }
