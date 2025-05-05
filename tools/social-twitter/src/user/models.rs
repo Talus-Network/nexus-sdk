@@ -1,7 +1,10 @@
 use {
     crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
         list::models::{Includes, Meta},
         tweet::models::ApiError,
+        twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -12,7 +15,7 @@ pub struct UserResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<UserData>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
 }
@@ -29,7 +32,7 @@ pub struct UsersResponse {
     pub meta: Option<Meta>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct UserData {
     pub id: String,
     pub name: String,
@@ -220,3 +223,5 @@ pub struct UrlImage {
     pub width: i32,
     pub height: i32,
 }
+
+impl_twitter_response_parser!(UserResponse, UserData, includes = Includes);
