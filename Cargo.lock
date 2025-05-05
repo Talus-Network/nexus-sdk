@@ -4728,6 +4728,7 @@ dependencies = [
  "sui-sdk",
  "tempfile",
  "testcontainers-modules",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-retry",
  "toml 0.8.20",
