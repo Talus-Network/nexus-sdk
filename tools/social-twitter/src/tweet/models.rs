@@ -1,4 +1,9 @@
 use {
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::Value,
@@ -629,3 +634,25 @@ pub enum ReplySettings {
     #[serde(rename = "subscribers")]
     Subscribers,
 }
+
+/// Twitter API response for a retweet request
+#[derive(Debug, Deserialize)]
+pub struct RetweetResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<RetweetData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+/// Data structure for a successful retweet response
+#[derive(Debug, Deserialize)]
+pub struct RetweetData {
+    /// ID of the retweeted tweet
+    pub rest_id: String,
+    /// Whether the tweet was successfully retweeted
+    pub retweeted: bool,
+}
+
+impl_twitter_response_parser!(RetweetResponse, RetweetData);
