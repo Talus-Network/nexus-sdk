@@ -4,7 +4,11 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, walrus::StorageInfo, ToolFqn},
+    nexus_sdk::{
+        fqn,
+        walrus::{StorageInfo, WalrusError},
+        ToolFqn,
+    },
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -16,7 +20,7 @@ use {
 #[derive(Error, Debug)]
 pub enum UploadFileError {
     #[error("Failed to upload file: {0}")]
-    UploadError(#[from] anyhow::Error),
+    UploadError(#[from] WalrusError),
     #[error("Invalid file data: {0}")]
     InvalidFile(String),
 }
@@ -104,12 +108,10 @@ impl NexusTool for UploadFile {
                 let (kind, status_code) = match &e {
                     UploadFileError::InvalidFile(_) => (UploadErrorKind::Validation, None),
                     UploadFileError::UploadError(err) => {
-                        let status_code = err
-                            .to_string()
-                            .split("status ")
-                            .nth(1)
-                            .and_then(|s| s.split(':').next())
-                            .and_then(|s| s.trim().parse::<u16>().ok());
+                        let status_code = match err {
+                            WalrusError::ApiError { status_code, .. } => Some(*status_code),
+                            _ => None,
+                        };
 
                         (UploadErrorKind::Network, status_code)
                     }
@@ -174,7 +176,8 @@ impl UploadFile {
                 input.epochs,
                 input.send_to,
             )
-            .await?;
+            .await
+            .map_err(UploadFileError::UploadError)?;
 
         Ok(storage_info)
     }
@@ -205,7 +208,8 @@ mod tests {
                     input.epochs,
                     input.send_to,
                 )
-                .await?;
+                .await
+                .map_err(UploadFileError::UploadError)?;
 
             Ok(storage_info)
         }
@@ -435,12 +439,10 @@ mod tests {
                 let (kind, status_code) = match &e {
                     UploadFileError::InvalidFile(_) => (UploadErrorKind::Validation, None),
                     UploadFileError::UploadError(err) => {
-                        let status_code = err
-                            .to_string()
-                            .split("status ")
-                            .nth(1)
-                            .and_then(|s| s.split(':').next())
-                            .and_then(|s| s.trim().parse::<u16>().ok());
+                        let status_code = match err {
+                            WalrusError::ApiError { status_code, .. } => Some(*status_code),
+                            _ => None,
+                        };
 
                         (UploadErrorKind::Network, status_code)
                     }
