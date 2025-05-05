@@ -4,19 +4,23 @@
 
 use {
     crate::{
-        error::TwitterErrorKind,
-        tweet::models::{ExpansionField, TweetField, UserField},
-        twitter_client::{TwitterClient, TWITTER_API_BASE},
+        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
+        tweet::{
+            models::{ExpansionField, TweetField, UserField},
+            TWITTER_API_BASE,
+        },
         user::models::{
             Affiliation, ConnectionStatus, Entities, PublicMetrics, SubscriptionType, UserResponse,
             VerifiedType, Withheld,
         },
     },
-    nexus_sdk::{fqn, ToolFqn},
-    nexus_toolkit::*,
-    schemars::JsonSchema,
-    serde::{Deserialize, Serialize},
-    serde_json,
+    reqwest::Client,
+    ::{
+        nexus_sdk::{fqn, ToolFqn},
+        nexus_toolkit::*,
+        schemars::JsonSchema,
+        serde::{Deserialize, Serialize},
+    },
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -128,7 +132,7 @@ impl NexusTool for GetUserById {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string(),
+            api_base: TWITTER_API_BASE.to_string() + "/users",
         }
     }
 
@@ -145,26 +149,68 @@ impl NexusTool for GetUserById {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        // Build the endpoint for the Twitter API
-        let suffix = format!("users/{}", request.user_id);
-
-        // Create a Twitter client with the mock server URL
-        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
-            Ok(client) => client,
-            Err(e) => {
-                return Output::Err {
-                    reason: e.to_string(),
-                    kind: TwitterErrorKind::Network,
-                    status_code: None,
+        match self.fetch_user(&request).await {
+            Ok(response) => {
+                if let Some(user) = response.data {
+                    Output::Ok {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        protected: user.protected,
+                        affiliation: user.affiliation,
+                        connection_status: user.connection_status,
+                        created_at: user.created_at,
+                        description: user.description,
+                        entities: user.entities,
+                        location: user.location,
+                        most_recent_tweet_id: user.most_recent_tweet_id,
+                        pinned_tweet_id: user.pinned_tweet_id,
+                        profile_banner_url: user.profile_banner_url,
+                        profile_image_url: user.profile_image_url,
+                        public_metrics: user.public_metrics,
+                        receives_your_dm: user.receives_your_dm,
+                        subscription_type: user.subscription_type,
+                        url: user.url,
+                        verified: user.verified,
+                        verified_type: user.verified_type,
+                        withheld: user.withheld,
+                    }
+                } else {
+                    Output::Err {
+                        reason: "No user data found in the response".to_string(),
+                        kind: TwitterErrorKind::NotFound,
+                        status_code: None,
+                    }
                 }
             }
-        };
+            Err(e) => {
+                let error_response: TwitterErrorResponse = e.to_error_response();
 
-        // Build query parameters
-        let mut query_params = Vec::new();
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
+        }
+    }
+}
 
-        // Add user fields if provided
-        if let Some(user_fields) = request.user_fields {
+impl GetUserById {
+    /// Fetch user from Twitter API
+    async fn fetch_user(&self, request: &Input) -> TwitterResult<UserResponse> {
+        let client = Client::new();
+
+        // Construct URL with user ID
+        let url = format!("{}/{}", self.api_base, request.user_id);
+
+        // Build request with query parameters
+        let mut req_builder = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", request.bearer_token));
+
+        // Add optional query parameters
+        if let Some(user_fields) = &request.user_fields {
             let fields: Vec<String> = user_fields
                 .iter()
                 .map(|f| {
@@ -174,12 +220,11 @@ impl NexusTool for GetUserById {
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(("user.fields".to_string(), fields.join(",")));
+            req_builder = req_builder.query(&[("user.fields", fields.join(","))]);
         }
 
-        // Add expansions if provided
-        if let Some(expansions) = request.expansions_fields {
-            let fields: Vec<String> = expansions
+        if let Some(expansions_fields) = &request.expansions_fields {
+            let fields: Vec<String> = expansions_fields
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
@@ -188,11 +233,10 @@ impl NexusTool for GetUserById {
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(("expansions".to_string(), fields.join(",")));
+            req_builder = req_builder.query(&[("expansions", fields.join(","))]);
         }
 
-        // Add tweet fields if provided
-        if let Some(tweet_fields) = request.tweet_fields {
+        if let Some(tweet_fields) = &request.tweet_fields {
             let fields: Vec<String> = tweet_fields
                 .iter()
                 .map(|f| {
@@ -202,42 +246,12 @@ impl NexusTool for GetUserById {
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(("tweet.fields".to_string(), fields.join(",")));
+            req_builder = req_builder.query(&[("tweet.fields", fields.join(","))]);
         }
 
-        match client
-            .get::<UserResponse>(request.bearer_token, Some(query_params))
-            .await
-        {
-            Ok(data) => Output::Ok {
-                id: data.0.id,
-                name: data.0.name,
-                username: data.0.username,
-                protected: data.0.protected,
-                affiliation: data.0.affiliation,
-                connection_status: data.0.connection_status,
-                created_at: data.0.created_at,
-                description: data.0.description,
-                entities: data.0.entities,
-                location: data.0.location,
-                most_recent_tweet_id: data.0.most_recent_tweet_id,
-                pinned_tweet_id: data.0.pinned_tweet_id,
-                profile_banner_url: data.0.profile_banner_url,
-                profile_image_url: data.0.profile_image_url,
-                public_metrics: data.0.public_metrics,
-                receives_your_dm: data.0.receives_your_dm,
-                subscription_type: data.0.subscription_type,
-                url: data.0.url,
-                verified: data.0.verified,
-                verified_type: data.0.verified_type,
-                withheld: data.0.withheld,
-            },
-            Err(e) => Output::Err {
-                reason: e.reason,
-                kind: e.kind,
-                status_code: e.status_code,
-            },
-        }
+        // Send the request and parse the response
+        let response = req_builder.send().await?;
+        parse_twitter_response::<UserResponse>(response).await
     }
 }
 
@@ -248,7 +262,7 @@ mod tests {
     impl GetUserById {
         fn with_api_base(api_base: &str) -> Self {
             Self {
-                api_base: api_base.to_string(),
+                api_base: api_base.to_string() + "/users",
             }
         }
     }
