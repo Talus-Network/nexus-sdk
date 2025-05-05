@@ -2,6 +2,7 @@ mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
 mod tool_register;
+mod tool_set_invocation_cost;
 mod tool_unregister;
 mod tool_validate;
 
@@ -11,6 +12,7 @@ use {
     tool_list::*,
     tool_new::*,
     tool_register::*,
+    tool_set_invocation_cost::*,
     tool_unregister::*,
     tool_validate::*,
 };
@@ -88,7 +90,7 @@ pub(crate) enum ToolCommand {
         #[arg(
             long = "owner-cap",
             short = 'o',
-            help = "The OwnerCap object ID that must be owned by the sender.",
+            help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
         owner_cap: sui::ObjectID,
@@ -111,10 +113,38 @@ pub(crate) enum ToolCommand {
         #[arg(
             long = "owner-cap",
             short = 'o',
-            help = "The OwnerCap object ID that must be owned by the sender.",
+            help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
         owner_cap: sui::ObjectID,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Set a single invocation cost of a tool in MIST")]
+    SetInvocationCost {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to set the invocation cost for.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: sui::ObjectID,
+        #[arg(
+            long = "invocation-cost",
+            short = 'i',
+            help = "What is the cost of invoking this tool in MIST.",
+            default_value = "0",
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -201,6 +231,23 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             owner_cap,
             gas,
         } => claim_collateral(tool_fqn, owner_cap, gas.sui_gas_coin, gas.sui_gas_budget).await,
+
+        // == `$ nexus tool set-invocation-cost` ==
+        ToolCommand::SetInvocationCost {
+            tool_fqn,
+            owner_cap,
+            invocation_cost,
+            gas,
+        } => {
+            set_tool_invocation_cost(
+                tool_fqn,
+                owner_cap,
+                invocation_cost,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,

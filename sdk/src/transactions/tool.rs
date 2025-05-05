@@ -1,11 +1,12 @@
 use crate::{
     idents::{move_std, primitives, sui_framework, workflow},
     sui,
-    types::ToolMeta,
+    types::{NexusObjects, ToolMeta},
     ToolFqn,
 };
 
 /// PTB template for registering a new Nexus Tool.
+#[allow(clippy::too_many_arguments)]
 pub fn register_off_chain_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     meta: &ToolMeta,
@@ -140,6 +141,53 @@ pub fn register_off_chain_for_self(
         sui_framework::Transfer::PUBLIC_TRANSFER.name.into(),
         vec![over_gas_type],
         vec![owner_cap_over_gas, recipient],
+    ))
+}
+
+/// PTB template for setting the invocation cost of a Nexus Tool.
+pub fn set_invocation_cost(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    tool_fqn: &ToolFqn,
+    owner_cap: &sui::ObjectRef,
+    invocation_cost: u64,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
+        mutable: true,
+    })?;
+
+    // `tool_registry: &mut ToolRegistry`
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.tool_registry.object_id,
+        initial_shared_version: objects.tool_registry.version,
+        mutable: true,
+    })?;
+
+    // `owner_cap: &CloneableOwnerCap<OverGas>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
+
+    // `fqn: AsciiString`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
+
+    // `single_invocation_cost_mist: u64`
+    let single_invocation_cost_mist = tx.pure(invocation_cost)?;
+
+    // `nexus_workflow::gas::set_single_invocation_cost_mist`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.module.into(),
+        workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name.into(),
+        vec![],
+        vec![
+            gas_service,
+            tool_registry,
+            owner_cap,
+            fqn,
+            single_invocation_cost_mist,
+        ],
     ))
 }
 
@@ -363,5 +411,40 @@ mod tests {
         );
 
         assert_eq!(call.arguments.len(), 4);
+    }
+
+    #[test]
+    fn test_set_invocation_cost() {
+        let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let objects = sui_mocks::mock_nexus_objects();
+        let invocation_cost = 500;
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        set_invocation_cost(&mut tx, &objects, &tool_fqn, &owner_cap, invocation_cost)
+            .expect("Failed to build PTB for setting invocation cost.");
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to set invocation cost");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+
+        assert_eq!(
+            call.module,
+            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST
+                .module
+                .to_string(),
+        );
+
+        assert_eq!(
+            call.function,
+            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST
+                .name
+                .to_string()
+        );
+
+        assert_eq!(call.arguments.len(), 5);
     }
 }

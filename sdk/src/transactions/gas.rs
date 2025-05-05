@@ -1,6 +1,8 @@
 use crate::{
-    idents::{sui_framework, workflow},
+    idents::{move_std, sui_framework, workflow},
     sui,
+    types::NexusObjects,
+    ToolFqn,
 };
 
 /// PTB template to add gas budget to a transaction.
@@ -44,9 +46,142 @@ pub fn add_budget(
     ))
 }
 
+/// PTB template to enable the expiry gas extension for a tool.
+pub fn enable_expiry(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    tool_fqn: &ToolFqn,
+    owner_cap: &sui::ObjectRef,
+    cost_per_minute: u64,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
+        mutable: true,
+    })?;
+
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.tool_registry.object_id,
+        initial_shared_version: objects.tool_registry.version,
+        mutable: false,
+    })?;
+
+    // `owner_cap: OwnerCap<OverGas>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
+
+    // `cost_per_minute: u64`
+    let cost_per_minute = tx.pure(cost_per_minute)?;
+
+    // `fqn: ToolFqn`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
+
+    // `nexus_workflow::default_gas_extension::enable_expiry`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::DefaultGasExtension::ENABLE_EXPIRY.module.into(),
+        workflow::DefaultGasExtension::ENABLE_EXPIRY.name.into(),
+        vec![],
+        vec![gas_service, tool_registry, owner_cap, cost_per_minute, fqn],
+    ))
+}
+
+/// PTB template to disable the expiry gas extension for a tool.
+pub fn disable_expiry(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    tool_fqn: &ToolFqn,
+    owner_cap: &sui::ObjectRef,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
+        mutable: true,
+    })?;
+
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.tool_registry.object_id,
+        initial_shared_version: objects.tool_registry.version,
+        mutable: false,
+    })?;
+
+    // `owner_cap: OwnerCap<OverGas>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
+
+    // `fqn: ToolFqn`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
+
+    // `nexus_workflow::default_gas_extension::disable_expiry`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::DefaultGasExtension::DISABLE_EXPIRY.module.into(),
+        workflow::DefaultGasExtension::DISABLE_EXPIRY.name.into(),
+        vec![],
+        vec![gas_service, tool_registry, owner_cap, fqn],
+    ))
+}
+
+/// PTB template to buy an expiry gas ticket.
+pub fn buy_expiry_gas_ticket(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    tool_fqn: &ToolFqn,
+    pay_with: &sui::ObjectRef,
+    minutes: u64,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
+        mutable: true,
+    })?;
+
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.tool_registry.object_id,
+        initial_shared_version: objects.tool_registry.version,
+        mutable: false,
+    })?;
+
+    // `fqn: ToolFqn`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
+
+    // `minutes: u64`
+    let minutes = tx.pure(minutes)?;
+
+    // `pay_with: Coin<SUI>`
+    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(pay_with.to_object_ref()))?;
+
+    // `clock: &Clock`
+    let clock = tx.obj(sui::ObjectArg::SharedObject {
+        id: sui::CLOCK_OBJECT_ID,
+        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
+        mutable: false,
+    })?;
+
+    // `nexus_workflow::default_gas_extension::buy_expiry_gas_ticket`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+            .module
+            .into(),
+        workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+            .name
+            .into(),
+        vec![],
+        vec![gas_service, tool_registry, fqn, minutes, pay_with, clock],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::test_utils::sui_mocks};
+    use {
+        super::*,
+        crate::{fqn, test_utils::sui_mocks},
+    };
     #[test]
     fn test_add_budget() {
         let workflow_pkg_id = sui::ObjectID::random();
@@ -77,6 +212,95 @@ mod tests {
         assert_eq!(
             call.function,
             workflow::Gas::ADD_GAS_BUDGET.name.to_string()
+        );
+    }
+
+    #[test]
+    fn test_enable_expiry() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.test.tool@1");
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let cost_per_minute = 100;
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        enable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap, cost_per_minute).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to enable expiry");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::DefaultGasExtension::ENABLE_EXPIRY
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::DefaultGasExtension::ENABLE_EXPIRY
+                .name
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn test_disable_expiry() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.test.tool@1");
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        disable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to disable expiry");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::DefaultGasExtension::DISABLE_EXPIRY
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::DefaultGasExtension::DISABLE_EXPIRY
+                .name
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn test_buy_expiry_gas_ticket() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.test.tool@1");
+        let pay_with = sui_mocks::mock_sui_object_ref();
+        let minutes = 60;
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        buy_expiry_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, minutes).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to buy expiry gas ticket");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+                .name
+                .to_string()
         );
     }
 }
