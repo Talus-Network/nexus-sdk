@@ -4,7 +4,11 @@
 
 use {
     crate::client::WalrusConfig,
-    nexus_sdk::{fqn, walrus::StorageInfo, ToolFqn},
+    nexus_sdk::{
+        fqn,
+        walrus::{StorageInfo, WalrusError},
+        ToolFqn,
+    },
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -15,7 +19,7 @@ use {
 #[derive(Error, Debug)]
 pub enum UploadJsonError {
     #[error("Failed to upload JSON: {0}")]
-    UploadError(#[from] anyhow::Error),
+    UploadError(#[from] WalrusError),
     #[error("Invalid JSON data: {0}")]
     InvalidJson(String),
 }
@@ -122,13 +126,10 @@ impl NexusTool for UploadJson {
                 let (kind, status_code) = match &e {
                     UploadJsonError::InvalidJson(_) => (UploadErrorKind::Validation, None),
                     UploadJsonError::UploadError(err) => {
-                        let status_code = err
-                            .to_string()
-                            .split("status ")
-                            .nth(1)
-                            .and_then(|s| s.split(':').next())
-                            .and_then(|s| s.trim().parse::<u16>().ok());
-
+                        let status_code = match err {
+                            WalrusError::ApiError { status_code, .. } => Some(*status_code),
+                            _ => None,
+                        };
                         (UploadErrorKind::Network, status_code)
                     }
                 };
@@ -184,7 +185,8 @@ mod tests {
 
             let storage_info = client
                 .upload_json(&input.json, input.epochs, input.send_to_address)
-                .await?;
+                .await
+                .map_err(UploadJsonError::UploadError)?;
 
             Ok(storage_info)
         }
