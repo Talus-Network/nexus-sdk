@@ -194,6 +194,12 @@ The network object ID is returned.
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
+---
+
+### `nexus completion`
+
+Provides completion for some well-known shells.
+
 <!-- List of References -->
 
 [nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli
