@@ -24,8 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
-- Fixed a bug that erases the current basic auth credentials from the config when any value is
-  updated
+- Fixed a bug that erases the current basic auth credentials from the config when any value is updated
 
 ## [`0.1.0`] - 2025-04-14
 
@@ -39,13 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to load and save configuration
 - commands to create a new Nexus network
 - release workflow
-- added dev guides that showcase how to use CLI to publish and register tools, and publish and
-  execute DAGs
+- added dev guides that showcase how to use CLI to publish and register tools, and publish and execute DAGs
 
 #### Changed
 
-- changing the notion of entry vertices to entry input ports and adjusting parsing, validation and
-  PTB templates in accordance
+- changing the notion of entry vertices to entry input ports and adjusting parsing, validation and PTB templates in accordance
 
 #### Fixed
 
@@ -58,8 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - added basic structure for Nexus Tools written in Rust in the form of a trait
 - added a macro that starts a webserver for one or multiple tools, providing all necessary endpoints
 - added a first, dumb version of secret manager
-- added a dev guide that goes through the steps to use CLI to scaffold a boilerplate tool and
-  implement NexusTool trait
+- added a dev guide that goes through the steps to use CLI to scaffold a boilerplate tool and implement NexusTool trait
 
 ### `nexus-sdk`
 
@@ -67,8 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - added Nexus Sui identifiers module
 - added `object_crawler` that parses Sui objects to structs
-- added `test_utils` that handle spinning up Redis or Sui containers for testing, along with some
-  helper functions
+- added `test_utils` that handle spinning up Redis or Sui containers for testing, along with some helper functions
 - added `types` module and `tool_fqn` that holds some reusable types
 - added `events` module that holds definitions of Nexus events fired from Sui
 - added `sui` module that holds and categorizes all `sui_sdk` types
