@@ -221,18 +221,6 @@ fn create_validation_configuration(
         }
     };
 
-    // Pre-validate schema to check for invalid type definitions
-    if let Err(error_msg) = pre_validate_schema_types(&schema_value) {
-        return Ok(ValidationResult {
-            is_valid: false,
-            error_message: format!(
-                "Invalid schema format for '{}{}': {}",
-                schema_name, schema_description, error_msg
-            ),
-        });
-    }
-
-    // Perform the actual validation
     match jsonschema::draft202012::validate(&schema_value, json_data) {
         Ok(()) => Ok(ValidationResult {
             is_valid: true,
@@ -254,89 +242,6 @@ fn create_validation_configuration(
             })
         }
     }
-}
-
-// Helper function to pre-validate schema types before attempting validation
-fn pre_validate_schema_types(schema: &Value) -> Result<(), String> {
-    // Check if we have a JSON object
-    if !schema.is_object() {
-        return Err("Schema must be a JSON object".to_string());
-    }
-
-    // Recursively check all type definitions in the schema
-    check_schema_types(schema)
-}
-
-// Recursively checks all 'type' fields in the schema for valid JSON Schema types
-fn check_schema_types(value: &Value) -> Result<(), String> {
-    if let Some(obj) = value.as_object() {
-        // Check for 'type' field
-        if let Some(type_value) = obj.get("type") {
-            if let Some(type_str) = type_value.as_str() {
-                // Validate type string against known JSON Schema types
-                match type_str {
-                    "string" | "number" | "integer" | "boolean" | "object" | "array" | "null" => {
-                        // Valid type
-                    }
-                    invalid_type => {
-                        return Err(format!(
-                            "Invalid type '{}'. Use standard JSON Schema types: string, number, integer, boolean, object, array, null.",
-                            invalid_type
-                        ));
-                    }
-                }
-            } else if let Some(type_array) = type_value.as_array() {
-                // Handle type arrays (e.g., ["string", "null"])
-                for t in type_array {
-                    if let Some(t_str) = t.as_str() {
-                        match t_str {
-                            "string" | "number" | "integer" | "boolean" | "object" | "array"
-                            | "null" => {
-                                // Valid type
-                            }
-                            invalid_type => {
-                                return Err(format!(
-                                    "Invalid type '{}' in type array. Use standard JSON Schema types: string, number, integer, boolean, object, array, null.",
-                                    invalid_type
-                                ));
-                            }
-                        }
-                    } else {
-                        return Err("Type array must contain only string values".to_string());
-                    }
-                }
-            }
-        }
-
-        // Recursively check properties
-        if let Some(properties) = obj.get("properties") {
-            if let Some(prop_obj) = properties.as_object() {
-                for (_, prop_value) in prop_obj {
-                    if let Err(e) = check_schema_types(prop_value) {
-                        return Err(e);
-                    }
-                }
-            }
-        }
-
-        // Check items (for arrays)
-        if let Some(items) = obj.get("items") {
-            if let Err(e) = check_schema_types(items) {
-                return Err(e);
-            }
-        }
-
-        // Check all other object values recursively
-        for (key, sub_value) in obj {
-            if key != "type" && key != "properties" && key != "items" && sub_value.is_object() {
-                if let Err(e) = check_schema_types(sub_value) {
-                    return Err(e);
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
