@@ -353,7 +353,7 @@ mod tests {
         // Test the delete request
         let result = tool.invoke(create_test_input()).await;
 
-        // Test sonucunu kontrol et
+        // verify the response
         match result {
             Output::Ok { deleted } => {
                 // deleted:false dönünce de Ok yanıtı olmalı
