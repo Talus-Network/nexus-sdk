@@ -154,8 +154,8 @@ pub(crate) async fn handle(
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
-    conf.sui.auth_user = sui_auth_user;
-    conf.sui.auth_password = sui_auth_password;
+    conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
+    conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
     conf.nexus.workflow_pkg_id = nexus_workflow_pkg_id.or(conf.nexus.workflow_pkg_id);
     conf.nexus.primitives_pkg_id = nexus_primitives_pkg_id.or(conf.nexus.primitives_pkg_id);
     conf.nexus.tool_registry_object_id =
@@ -175,17 +175,17 @@ pub(crate) async fn handle(
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
-    use {super::*, assert_matches::assert_matches};
+    use {super::*, assert_fs::prelude::*, assert_matches::assert_matches};
 
     #[tokio::test]
     async fn test_conf_loads_and_saves() {
-        let path = PathBuf::from("/tmp/.nexus/conf.toml");
-        let objects_path: PathBuf = PathBuf::from("/tmp/.nexus/objects.toml");
-        std::fs::create_dir_all("/tmp/.nexus").unwrap();
-
-        assert!(!tokio::fs::try_exists(&path).await.unwrap());
+        let temp = assert_fs::TempDir::new().expect("Failed to create temp dir");
+        let conf_path = temp.child("conf.toml");
+        let objects_path = temp.child("objects.toml");
+        let wallet_path = temp.child("wallet");
 
         let nexus_workflow_pkg_id = Some(sui::ObjectID::random());
         let nexus_primitives_pkg_id = Some(sui::ObjectID::random());
@@ -206,20 +206,22 @@ mod tests {
             .expect("Failed to serialize NexusObjects to TOML");
 
         // Write the TOML string to the objects.toml file.
-        std::fs::write(&objects_path, toml_str).expect("Failed to write objects.toml");
+        objects_path
+            .write_str(&toml_str)
+            .expect("Failed to write objects.toml");
 
         let command = ConfCommand {
             sui_net: Some(SuiNet::Mainnet),
-            sui_wallet_path: Some(PathBuf::from("/tmp/.nexus/wallet")),
+            sui_wallet_path: Some(wallet_path.to_path_buf()),
             sui_auth_user: Some("user".to_string()),
             sui_auth_password: Some("pass".to_string()),
-            nexus_objects_path: Some(PathBuf::from("/tmp/.nexus/objects.toml")),
+            nexus_objects_path: Some(objects_path.to_path_buf()),
             nexus_workflow_pkg_id,
             nexus_primitives_pkg_id,
             nexus_tool_registry_object_id,
             nexus_default_sap_object_id,
             nexus_network_id,
-            conf_path: path.clone(),
+            conf_path: conf_path.to_path_buf(),
         };
 
         // Command saves values.
@@ -228,11 +230,11 @@ mod tests {
         assert_matches!(result, Ok(()));
 
         // Check that file was written to `/tmp/.nexus/conf.toml` with the correct contents.
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
+        let contents = tokio::fs::read_to_string(&conf_path.path()).await.unwrap();
         let conf = toml::from_str::<CliConf>(&contents).unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
-        assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
+        assert_eq!(conf.sui.wallet_path, wallet_path.to_path_buf());
         assert_eq!(conf.sui.auth_user, Some("user".to_string()));
         assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
         assert_eq!(conf.nexus.workflow_pkg_id, nexus_workflow_pkg_id);
@@ -259,20 +261,20 @@ mod tests {
             nexus_tool_registry_object_id: None,
             nexus_default_sap_object_id: None,
             nexus_network_id: None,
-            conf_path: path.clone(),
+            conf_path: conf_path.to_path_buf(),
         };
 
         let result = handle(command).await;
 
         assert_matches!(result, Ok(()));
 
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
+        let contents = tokio::fs::read_to_string(conf_path.path()).await.unwrap();
         let conf = toml::from_str::<CliConf>(&contents).unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Testnet);
-        assert_eq!(conf.sui.wallet_path, PathBuf::from("/tmp/.nexus/wallet"));
-        assert_eq!(conf.sui.auth_user, None);
-        assert_eq!(conf.sui.auth_password, None);
+        assert_eq!(conf.sui.wallet_path, wallet_path.to_path_buf());
+        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
+        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
         assert_eq!(conf.nexus.workflow_pkg_id, nexus_workflow_pkg_id);
         assert_eq!(conf.nexus.primitives_pkg_id, nexus_primitives_pkg_id);
         assert_eq!(
@@ -286,6 +288,6 @@ mod tests {
         assert_eq!(conf.nexus.network_id, nexus_network_id);
 
         // Remove any leftover artifacts.
-        tokio::fs::remove_dir_all("/tmp/.nexus").await.unwrap();
+        temp.close().expect("Failed to close temp dir");
     }
 }
