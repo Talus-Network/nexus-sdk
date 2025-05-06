@@ -234,7 +234,7 @@ impl NexusTool for GetRecentSearchTweets {
         // Validate input parameters first
         if let Err(e) = request.validate() {
             return Output::Err {
-                kind: TwitterErrorKind::Unknown,
+                kind: TwitterErrorKind::Validation,
                 reason: format!("Input validation error: {}", e),
                 status_code: None,
             };
@@ -833,7 +833,7 @@ mod tests {
 
         match output {
             Output::Err { reason, kind, .. } => {
-                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert_eq!(kind, TwitterErrorKind::Validation);
                 assert!(
                     reason
                         .contains("Input validation error: max_results must be between 10 and 100"),
@@ -857,7 +857,7 @@ mod tests {
 
         match output {
             Output::Err { reason, kind, .. } => {
-                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert_eq!(kind, TwitterErrorKind::Validation);
                 assert!(
                     reason.contains("Input validation error: Invalid start_time format"),
                     "Expected validation error message, got: {}",
@@ -927,7 +927,7 @@ mod tests {
 
         match output {
             Output::Err { reason, kind, .. } => {
-                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert_eq!(kind, TwitterErrorKind::Validation);
                 assert!(
                     reason.contains("Input validation error: sort_order must be either 'recency' or 'relevancy'"),
                     "Expected validation error message, got: {}",
