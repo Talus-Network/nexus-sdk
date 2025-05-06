@@ -1,8 +1,29 @@
 use {
-    crate::tweet::models::{ApiError, Entities, Meta, ReferencedTweet},
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        tweet::models::{ApiError, Meta, ReferencedTweet},
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DmConversationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<DmConversationData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DmConversationData {
+    /// Unique identifier of a DM conversation.
+    pub dm_conversation_id: String,
+    /// Unique identifier of a DM Event.
+    pub dm_event_id: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DmEventsResponse {
@@ -282,21 +303,48 @@ pub enum TweetField {
     Withheld,
 }
 
-#[derive(Deserialize, JsonSchema, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ConversationType {
     Group,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct Attachment {
     /// The media id of the attachment.
     pub media_id: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     /// The text of the message.
+    /// Required if attachments is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The attachments for the message.
+    /// Required if text is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
 }
+
+impl Message {
+    /// Validates that either text or attachments is provided
+    pub fn validate(&self) -> Result<(), String> {
+        if self.text.is_none() && self.attachments.is_none() {
+            return Err("Either text or attachments must be provided".to_string());
+        }
+        if let Some(text) = &self.text {
+            if text.is_empty() {
+                return Err("Text must not be empty".to_string());
+            }
+        }
+        if let Some(attachments) = &self.attachments {
+            if attachments.is_empty() {
+                return Err("Attachments must not be empty".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl_twitter_response_parser!(DmConversationResponse, DmConversationData);
