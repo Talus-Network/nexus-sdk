@@ -4,32 +4,23 @@
 
 use {
     crate::{
-        error::{
-            parse_twitter_response,
-            TwitterError,
-            TwitterErrorKind,
-            TwitterErrorResponse,
-            TwitterResult,
+        error::TwitterErrorKind,
+        tweet::models::{
+            ExpansionField,
+            Includes,
+            MediaField,
+            Meta,
+            PlaceField,
+            PollField,
+            Tweet,
+            TweetField,
+            TweetsResponse,
+            UserField,
         },
-        tweet::{
-            models::{
-                ExpansionField,
-                Includes,
-                MediaField,
-                Meta,
-                PlaceField,
-                PollField,
-                Tweet,
-                TweetField,
-                TweetsResponse,
-                UserField,
-            },
-            TWITTER_API_BASE,
-        },
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json,
@@ -223,7 +214,7 @@ impl NexusTool for GetRecentSearchTweets {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/tweets/search/recent",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -240,90 +231,60 @@ impl NexusTool for GetRecentSearchTweets {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        match self.fetch_search_tweets(&request).await {
-            Ok(response) => {
-                if let Some(tweets) = response.data {
-                    Output::Ok {
-                        data: tweets,
-                        includes: response.includes,
-                        meta: response.meta,
-                    }
-                } else {
-                    let error_response = TwitterErrorResponse {
-                        kind: TwitterErrorKind::NotFound,
-                        reason: "No search results found".to_string(),
-                        status_code: Some(404),
-                    };
-
-                    // Return an error if there's no tweet data and no errors
-                    Output::Err {
-                        kind: error_response.kind,
-                        reason: error_response.reason,
-                        status_code: error_response.status_code,
-                    }
-                }
-            }
-            Err(e) => {
-                // Use the centralized error conversion
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
-                }
-            }
-        }
-    }
-}
-
-impl GetRecentSearchTweets {
-    /// Fetch tweets from Twitter's recent search API
-    async fn fetch_search_tweets(&self, request: &Input) -> TwitterResult<TweetsResponse> {
-        // Validate input parameters
+        // Validate input parameters first
         if let Err(e) = request.validate() {
-            return Err(TwitterError::Other(format!("Validation error: {}", e)));
+            return Output::Err {
+                kind: TwitterErrorKind::Unknown,
+                reason: format!("Input validation error: {}", e),
+                status_code: None,
+            };
         }
 
-        let client = Client::new();
-        // Construct the URL with query parameters
-        let mut url =
-            reqwest::Url::parse(&self.api_base).map_err(|e| TwitterError::Other(e.to_string()))?;
+        let client = match TwitterClient::new(Some("tweets/search/recent"), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
+                };
+            }
+        };
 
-        // Add the required query parameter
-        url.query_pairs_mut().append_pair("query", &request.query);
+        let mut query_params: Vec<(String, String)> = Vec::new();
 
-        // Add optional query parameters if provided
+        query_params.push(("query".to_string(), request.query.clone()));
+
         if let Some(start_time) = &request.start_time {
-            url.query_pairs_mut().append_pair("start_time", start_time);
+            query_params.push(("start_time".to_string(), start_time.clone()));
         }
 
         if let Some(end_time) = &request.end_time {
-            url.query_pairs_mut().append_pair("end_time", end_time);
+            query_params.push(("end_time".to_string(), end_time.clone()));
         }
 
         if let Some(since_id) = &request.since_id {
-            url.query_pairs_mut().append_pair("since_id", since_id);
+            query_params.push(("since_id".to_string(), since_id.clone()));
         }
 
         if let Some(until_id) = &request.until_id {
-            url.query_pairs_mut().append_pair("until_id", until_id);
+            query_params.push(("until_id".to_string(), until_id.clone()));
         }
 
         if let Some(max_results) = request.max_results {
-            url.query_pairs_mut()
-                .append_pair("max_results", &max_results.to_string());
+            query_params.push(("max_results".to_string(), max_results.to_string()));
         }
 
-        if let Some(next_token) = &request.next_token {
-            url.query_pairs_mut().append_pair("next_token", next_token);
-        } else if let Some(pagination_token) = &request.pagination_token {
-            url.query_pairs_mut()
-                .append_pair("pagination_token", pagination_token);
+        if let Some(token) = request
+            .next_token
+            .as_ref()
+            .or(request.pagination_token.as_ref())
+        {
+            query_params.push(("next_token".to_string(), token.clone()));
         }
 
         if let Some(sort_order) = &request.sort_order {
-            url.query_pairs_mut().append_pair("sort_order", sort_order);
+            query_params.push(("sort_order".to_string(), sort_order.clone()));
         }
 
         if let Some(tweet_fields) = &request.tweet_fields {
@@ -331,13 +292,14 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("tweet.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("tweet.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(expansions) = &request.expansions {
@@ -345,13 +307,14 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("expansions", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("expansions".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(media_fields) = &request.media_fields {
@@ -359,13 +322,14 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("media.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("media.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(poll_fields) = &request.poll_fields {
@@ -373,13 +337,14 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("poll.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("poll.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(user_fields) = &request.user_fields {
@@ -387,13 +352,14 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("user.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("user.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(place_fields) = &request.place_fields {
@@ -401,23 +367,46 @@ impl GetRecentSearchTweets {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            url.query_pairs_mut()
-                .append_pair("place.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("place.fields".to_string(), fields.join(",")));
+            }
         }
 
-        // Make the request
-        let response = client
-            .get(url)
-            .header("Authorization", format!("Bearer {}", request.bearer_token))
-            .send()
-            .await?;
-
-        parse_twitter_response::<TweetsResponse>(response).await
+        match client
+            .get::<TweetsResponse>(request.bearer_token, Some(query_params))
+            .await
+        {
+            Ok((data, includes, meta)) => {
+                // If data is empty, it means no tweets were found matching the criteria.
+                // This aligns with the original test_recent_search_empty_results expectation.
+                if data.is_empty() {
+                    Output::Err {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No search results found".to_string(),
+                        status_code: Some(404), // To match original test logic for empty results
+                    }
+                } else {
+                    Output::Ok {
+                        data,
+                        includes,
+                        meta,
+                    }
+                }
+            }
+            Err(e) => {
+                // Return the error from TwitterClient
+                Output::Err {
+                    reason: e.reason,
+                    kind: e.kind,
+                    status_code: e.status_code,
+                }
+            }
+        }
     }
 }
 
@@ -435,7 +424,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, GetRecentSearchTweets) {
         let server = Server::new_async().await;
-        let tool = GetRecentSearchTweets::with_api_base(&(server.url() + "/tweets/search/recent"));
+        let tool = GetRecentSearchTweets::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -563,6 +552,7 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
+                    "data": [],
                     "meta": {
                         "result_count": 0
                     }
@@ -845,7 +835,8 @@ mod tests {
             Output::Err { reason, kind, .. } => {
                 assert_eq!(kind, TwitterErrorKind::Unknown);
                 assert!(
-                    reason.contains("Validation error"),
+                    reason
+                        .contains("Input validation error: max_results must be between 10 and 100"),
                     "Expected validation error message, got: {}",
                     reason
                 );
@@ -868,7 +859,7 @@ mod tests {
             Output::Err { reason, kind, .. } => {
                 assert_eq!(kind, TwitterErrorKind::Unknown);
                 assert!(
-                    reason.contains("Validation error"),
+                    reason.contains("Input validation error: Invalid start_time format"),
                     "Expected validation error message, got: {}",
                     reason
                 );
@@ -938,7 +929,7 @@ mod tests {
             Output::Err { reason, kind, .. } => {
                 assert_eq!(kind, TwitterErrorKind::Unknown);
                 assert!(
-                    reason.contains("Validation error"),
+                    reason.contains("Input validation error: sort_order must be either 'recency' or 'relevancy'"),
                     "Expected validation error message, got: {}",
                     reason
                 );

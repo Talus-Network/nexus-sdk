@@ -656,3 +656,4 @@ pub struct RetweetData {
 }
 
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
+impl_twitter_response_parser!(TweetsResponse, Vec<Tweet>, includes = Includes, meta = Meta);
