@@ -147,7 +147,7 @@ mod tests {
         let path = Path::new("/tmp/nexus-tool").join("test/src/main.rs");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
-        assert!(contents.contains("enum Output {\n    Ok {\n        // Add output ports for the `Ok` variant\n    },\n    Err {\n        reason: String,\n    },\n}"));
+        assert!(contents.contains("enum Output {\n    Ok {\n        // Add output ports for the `Ok` variant\n    },\n    Err {\n        reason: String,\n        code: Option<u16>\n    },\n}"));
         assert!(contents.contains("    async fn new() -> Self {\n        Self\n    }"));
         assert!(contents.contains("    fn fqn() -> ToolFqn {\n        // The fully qualified name of the tool.\n\n        fqn!(\"domain.author.test@1\")\n    }"));
         assert!(contents.contains("    fn path() -> &'static str {\n        \"\"\n    }"));
