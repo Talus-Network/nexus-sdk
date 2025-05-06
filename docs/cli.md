@@ -174,6 +174,12 @@ Create a new Nexus network and assign `count-leader-caps` (default: 5) leader ca
 
 The network object ID is returned.
 
+---
+
+### `nexus completion`
+
+Provides completion for some well-known shells.
+
 <!-- List of References -->
 
 [nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli
