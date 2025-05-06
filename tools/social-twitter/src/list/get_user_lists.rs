@@ -3,10 +3,9 @@
 //! Standard Nexus Tool that retrieves a list of lists for a user.
 
 use {
-    super::models::ListData,
     crate::{
         error::TwitterErrorKind,
-        list::models::{Expansion, Includes, ListField, ListsResponse, Meta, UserField},
+        list::models::{Expansion, Includes, ListData, ListField, ListsResponse, Meta, UserField},
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
@@ -172,10 +171,10 @@ impl NexusTool for GetUserLists {
             .get::<ListsResponse>(request.bearer_token, Some(query_params))
             .await
         {
-            Ok(data) => Output::Ok {
-                data: Some(data.0),
-                includes: data.1,
-                meta: data.2,
+            Ok((data, includes, meta)) => Output::Ok {
+                data: Some(data),
+                includes,
+                meta,
             },
             Err(e) => Output::Err {
                 reason: e.reason,
