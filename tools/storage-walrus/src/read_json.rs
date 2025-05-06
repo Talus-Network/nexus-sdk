@@ -126,28 +126,17 @@ impl NexusTool for ReadJson {
 
                 // If a JSON schema was provided, validate against it
                 if let Some(schema_def) = input.json_schema.as_ref() {
-                    // Create a validation configuration using all schema fields
-                    let validation_result =
-                        match create_validation_configuration(schema_def, &json_data) {
-                            Ok(result) => result,
-                            Err(e) => {
-                                return Output::Err {
-                                    reason: e.to_string(),
-                                    kind: ReadErrorKind::Schema,
-                                    status_code: None,
-                                };
-                            }
-                        };
-
-                    if validation_result.is_valid {
-                        Output::Ok { json: json_data }
-                    } else {
-                        Output::Err {
-                            reason: ReadJsonError::ValidationError(validation_result.error_message)
-                                .to_string(),
+                    // Validate JSON data against the provided schema
+                    match validate(schema_def, &json_data) {
+                        Ok(()) => {
+                            // Schema validation passed
+                            Output::Ok { json: json_data }
+                        }
+                        Err(e) => Output::Err {
+                            reason: e.to_string(),
                             kind: ReadErrorKind::Schema,
                             status_code: None,
-                        }
+                        },
                     }
                 } else {
                     // If we parsed valid JSON but no schema was provided
@@ -189,16 +178,7 @@ impl ReadJson {
     }
 }
 
-// Validation utility struct and function to use all schema fields
-struct ValidationResult {
-    is_valid: bool,
-    error_message: String,
-}
-
-fn create_validation_configuration(
-    schema_def: &WalrusJsonSchema,
-    json_data: &Value,
-) -> Result<ValidationResult, ReadJsonError> {
+fn validate(schema_def: &WalrusJsonSchema, json_data: &Value) -> Result<(), ReadJsonError> {
     // Extract the schema settings, using all fields
     let schema_name = &schema_def.name;
     let schema_description = schema_def
@@ -219,27 +199,18 @@ fn create_validation_configuration(
         }
     };
 
-    match jsonschema::draft202012::validate(&schema_value, json_data) {
-        Ok(()) => Ok(ValidationResult {
-            is_valid: true,
-            error_message: String::new(),
-        }),
-        Err(errors) => {
-            // Validation failed with schema errors
-            let error_message = format!(
-                "Schema validation failed for '{}{}': {}{}",
-                schema_name,
-                schema_description,
-                if strict_mode { "[STRICT MODE] " } else { "" },
-                errors
-            );
+    jsonschema::draft202012::validate(&schema_value, json_data).map_err(|errors| {
+        // Validation failed with schema errors
+        let error_message = format!(
+            "Schema validation failed for '{}{}': {}{}",
+            schema_name,
+            schema_description,
+            if strict_mode { "[STRICT MODE] " } else { "" },
+            errors
+        );
 
-            Ok(ValidationResult {
-                is_valid: false,
-                error_message,
-            })
-        }
-    }
+        ReadJsonError::ValidationError(error_message)
+    })
 }
 
 #[cfg(test)]
