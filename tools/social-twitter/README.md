@@ -1153,21 +1153,30 @@ The group conversation was created successfully.
 
 The group conversation creation failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error status (Code/Message format)
-  - Twitter API error details (Detail/Status/Title format)
-  - Rate limit exceeded (Status: 429)
-  - Unauthorized error
-  - Invalid JSON response
-  - Failed to read Twitter API response
-  - Failed to send request to Twitter API
-  - Other error types handled by the centralized error handling mechanism
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested conversation or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `validation` - Input validation error (e.g., empty message text or attachments)
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, `RateLimit`, or `Validation`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
 
 ---
-
-# Error Handling
-
-The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
 
 # Error Handling
 
@@ -1230,4 +1239,3 @@ Other error types typically require fixing the request (e.g., `auth`, `not_found
 All modules use the `TwitterResult<T>` type for handling errors, which is a type alias for `Result<T, TwitterError>`. This ensures consistent error propagation and formatting throughout the SDK.
 
 The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users. The structured error information allows for programmatic handling of specific error conditions.
-The error handling system makes it easier to debug issues with Twitter API calls and provides clear, actionable error messages to end users.
