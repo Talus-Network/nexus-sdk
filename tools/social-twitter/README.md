@@ -64,29 +64,17 @@ The tweet was not retrieved due to an error.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
-  <<<<<<< HEAD
-
-=======
-
-> > > > > > > main
-
-- `network` - A network-related error occurred when connecting to Twitter
-- `connection` - Could not establish a connection to Twitter
-- `timeout` - The request to Twitter timed out
-- `parse` - Failed to parse Twitter's response
-- `auth` - Authentication or authorization error
-- `not_found` - The requested tweet or resource was not found
-- `rate_limit` - Twitter's rate limit was exceeded
-- `server` - An error occurred on Twitter's servers
-- `forbidden` - The request was forbidden
-- `api` - An API-specific error occurred
-- `unknown` - An unexpected error occurred
-  <<<<<<< HEAD
-
-=======
-
-> > > > > > > main
-
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
 - **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
   - `401` - Unauthorized (authentication error)
   - `403` - Forbidden
