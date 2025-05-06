@@ -89,8 +89,8 @@ pub(crate) enum ExpiryCommand {
         )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "duration",
-            short = 'd',
+            long = "minutes",
+            short = 'm',
             help = "The duration of the ticket in minutes.",
             value_name = "MINUTES"
         )]
