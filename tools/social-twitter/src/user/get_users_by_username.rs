@@ -151,8 +151,8 @@ impl NexusTool for GetUsersByUsername {
             .get::<UsersResponse>(request.bearer_token, Some(query_params))
             .await
         {
-            Ok(data) => {
-                if data.0.is_empty() {
+            Ok((data, includes, _)) => {
+                if data.is_empty() {
                     Output::Err {
                         reason: "No users found".to_string(),
                         kind: TwitterErrorKind::NotFound,
@@ -160,8 +160,8 @@ impl NexusTool for GetUsersByUsername {
                     }
                 } else {
                     Output::Ok {
-                        users: data.0,
-                        includes: data.1,
+                        users: data,
+                        includes,
                     }
                 }
             }
