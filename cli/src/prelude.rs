@@ -1,7 +1,7 @@
 pub(crate) use {
     crate::error::NexusCliError,
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
-    clap::{builder::ValueParser, Args, Parser, Subcommand, ValueEnum},
+    clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
     nexus_sdk::{sui::traits::*, *},
     serde::{Deserialize, Serialize},
