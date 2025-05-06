@@ -178,7 +178,7 @@ impl NexusTool for GetRecentTweetCount {
         // Validate input parameters first
         if let Err(e) = request.validate() {
             return Output::Err {
-                kind: TwitterErrorKind::Unknown,
+                kind: TwitterErrorKind::Validation,
                 reason: format!("Input validation error: {}", e),
                 status_code: None,
             };
@@ -189,7 +189,7 @@ impl NexusTool for GetRecentTweetCount {
             Err(e) => {
                 return Output::Err {
                     reason: e.to_string(),
-                    kind: TwitterErrorKind::Unknown,
+                    kind: TwitterErrorKind::Network,
                     status_code: None,
                 };
             }
@@ -538,7 +538,7 @@ mod tests {
 
         match output {
             Output::Err { reason, kind, .. } => {
-                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert_eq!(kind, TwitterErrorKind::Validation);
                 assert!(
                     reason.contains("Input validation error: Invalid start_time format"),
                     "Expected validation error message, got: {}",
