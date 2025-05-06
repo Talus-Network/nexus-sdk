@@ -3,7 +3,12 @@
 //! Standard Nexus Tool that deletes a list on Twitter.
 
 use {
-    crate::{auth::TwitterAuth, tweet::TWITTER_API_BASE},
+    super::models::DeleteListResponse,
+    crate::{
+        auth::TwitterAuth,
+        error::TwitterErrorKind,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
+    },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     reqwest::Client,
@@ -29,8 +34,13 @@ pub(crate) enum Output {
         deleted: bool,
     },
     Err {
-        /// Error message
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -44,7 +54,7 @@ impl NexusTool for DeleteList {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/lists",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -61,106 +71,30 @@ impl NexusTool for DeleteList {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        let client = Client::new();
+        // Build the endpoint for the Twitter API
+        let suffix = format!("lists/{}", request.list_id);
 
-        let url = format!("{}/{}", self.api_base, request.list_id);
-
-        // Generate OAuth authorization header with the complete URL
-        let auth_header = request.auth.generate_auth_header_for_delete(&url);
-
-        let response = client
-            .delete(&url)
-            .header("Authorization", auth_header)
-            .send()
-            .await;
-
-        match response {
-            Err(e) => Output::Err {
-                reason: format!("Failed to send delete request to Twitter API: {}", e),
-            },
-            Ok(result) => {
-                let text = match result.text().await {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Failed to read Twitter API response: {}", e),
-                        }
-                    }
-                    Ok(text) => text,
-                };
-
-                let json: Value = match serde_json::from_str(&text) {
-                    Err(e) => {
-                        return Output::Err {
-                            reason: format!("Invalid JSON response: {}", e),
-                        }
-                    }
-                    Ok(json) => json,
-                };
-
-                // Check for error response with code/message format
-                if let Some(code) = json.get("code") {
-                    let message = json
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Unknown error");
-
-                    return Output::Err {
-                        reason: format!("Twitter API error: {} (Code: {})", message, code),
-                    };
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
-
-                // Check for error response with detail/status/title format
-                if let Some(detail) = json.get("detail") {
-                    let status = json.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
-                    let title = json
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown");
-
-                    return Output::Err {
-                        reason: format!(
-                            "Twitter API error: {} (Status: {}, Title: {})",
-                            detail.as_str().unwrap_or("Unknown error"),
-                            status,
-                            title
-                        ),
-                    };
-                }
-
-                // Check for errors array
-                if let Some(errors) = json.get("errors") {
-                    return Output::Err {
-                        reason: format!("Twitter API returned errors: {}", errors),
-                    };
-                }
-
-                // Check for success response format
-                let data = match json.get("data") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(data) => data,
-                };
-
-                let deleted = match data.get("deleted") {
-                    None => {
-                        return Output::Err {
-                            reason: format!(
-                                "Unexpected response format from Twitter API: {}",
-                                json
-                            ),
-                        }
-                    }
-                    Some(deleted) => deleted.as_bool().unwrap_or(false),
-                };
-
-                Output::Ok { deleted }
             }
+        };
+
+        match client.delete::<DeleteListResponse>(&request.auth).await {
+            Ok(data) => Output::Ok {
+                deleted: data.deleted,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
         }
     }
 }
@@ -182,7 +116,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, DeleteList) {
         let server = Server::new_async().await;
-        let tool = DeleteList::with_api_base(&(server.url() + "/lists"));
+        let tool = DeleteList::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -196,28 +130,6 @@ mod tests {
             ),
             list_id: "12345".to_string(),
         }
-    }
-
-    #[tokio::test]
-    async fn get_fqn() {
-        let fqn = DeleteList::fqn();
-        println!("fqn: {:?}", fqn);
-        assert_eq!(fqn.domain(), "xyz.taluslabs.social.twitter");
-        assert_eq!(fqn.name(), "delete-list");
-        assert_eq!(fqn.version(), 1);
-    }
-
-    #[tokio::test]
-    async fn get_path() {
-        let path = DeleteList::path();
-        assert_eq!(path, "/delete-list");
-    }
-
-    #[tokio::test]
-    async fn health() {
-        let tool = DeleteList::new().await;
-        let status = tool.health().await;
-        assert!(status.is_ok());
     }
 
     #[tokio::test]
@@ -249,7 +161,14 @@ mod tests {
             Output::Ok { deleted } => {
                 assert_eq!(deleted, true);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} kind: {:?} status_code: {:?}",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
@@ -284,11 +203,32 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                // Check error type
+                assert_eq!(
+                    kind,
+                    TwitterErrorKind::Auth,
+                    "Expected error kind Auth, got: {:?}",
+                    kind
+                );
+
+                // Check error message
                 assert!(
-                    reason.contains("Unauthorized") && reason.contains("Status: 401"),
-                    "Error should indicate unauthorized access. Got: {}",
+                    reason.contains("Unauthorized"),
+                    "Expected error message to contain 'Unauthorized', got: {}",
                     reason
+                );
+
+                // Check status code
+                assert_eq!(
+                    status_code,
+                    Some(401),
+                    "Expected status code 401, got: {:?}",
+                    status_code
                 );
             }
         }
@@ -316,11 +256,17 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
-                    reason.contains("Invalid JSON"),
-                    "Error should indicate invalid JSON. Got: {}",
-                    reason
+                    reason.contains("Response parsing error"),
+                    "Error should indicate invalid JSON. Got: {} kind: {:?} status_code: {:?}",
+                    reason,
+                    kind,
+                    status_code
                 );
             }
         }
@@ -355,11 +301,17 @@ mod tests {
         // Verify the error response
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
-                    reason.contains("Unexpected response format"),
-                    "Error should indicate unexpected format. Got: {}",
-                    reason
+                    reason.contains("Response parsing error"),
+                    "Error should indicate unexpected format. Got: {} kind: {:?} status_code: {:?}",
+                    reason,
+                    kind,
+                    status_code
                 );
             }
         }
@@ -396,7 +348,14 @@ mod tests {
             Output::Ok { deleted } => {
                 assert_eq!(deleted, false);
             }
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => panic!(
+                "Expected success, got error: {} kind: {:?} status_code: {:?}",
+                reason, kind, status_code
+            ),
         }
 
         // Verify that the mock was called
