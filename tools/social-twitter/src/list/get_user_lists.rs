@@ -5,13 +5,12 @@
 use {
     super::models::ListData,
     crate::{
-        error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
+        error::TwitterErrorKind,
         list::models::{Expansion, Includes, ListField, ListsResponse, Meta, UserField},
-        tweet::TWITTER_API_BASE,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json,
@@ -82,7 +81,7 @@ impl NexusTool for GetUserLists {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/users",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -99,80 +98,36 @@ impl NexusTool for GetUserLists {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        match self.fetch_user_lists(&request).await {
-            Ok(list_response) => {
-                if let Some(lists) = list_response.data {
-                    Output::Ok {
-                        data: Some(lists),
-                        includes: list_response.includes,
-                        meta: list_response.meta,
-                    }
-                } else {
-                    Output::Err {
-                        reason: "No lists found".to_string(),
-                        kind: TwitterErrorKind::NotFound,
-                        status_code: Some(404),
-                    }
-                }
-            }
+        // Build the endpoint for the Twitter API
+        let suffix = format!("users/{}/owned_lists", request.user_id);
+
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
             Err(e) => {
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    reason: error_response.reason,
-                    kind: error_response.kind,
-                    status_code: error_response.status_code,
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
                 }
             }
-        }
-    }
-}
+        };
 
-impl GetUserLists {
-    async fn fetch_user_lists(&self, request: &Input) -> TwitterResult<ListsResponse> {
-        // Create a client
-        let client = Client::new();
+        // Build query parameters
+        let mut query_params = Vec::new();
 
-        let url = format!("{}/{}/owned_lists", self.api_base, request.user_id);
-
-        let mut req_builder = client
-            .get(url)
-            .header("Authorization", format!("Bearer {}", request.bearer_token));
-
+        // Add max_results if provided
         if let Some(max_results) = request.max_results {
-            req_builder = req_builder.query(&[("max_results", max_results.to_string())]);
+            query_params.push(("max_results".to_string(), max_results.to_string()));
         }
 
-        if let Some(pagination_token) = &request.pagination_token {
-            req_builder = req_builder.query(&[("pagination_token", pagination_token)]);
+        // Add pagination_token if provided
+        if let Some(pagination_token) = request.pagination_token {
+            query_params.push(("pagination_token".to_string(), pagination_token));
         }
 
-        // Add optional query parameters if they exist
-        if let Some(list_fields) = &request.list_fields {
-            let fields: Vec<String> = list_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            req_builder = req_builder.query(&[("list.fields", fields.join(","))]);
-        }
-        if let Some(expansions) = &request.expansions {
-            let fields: Vec<String> = expansions
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            req_builder = req_builder.query(&[("expansions", fields.join(","))]);
-        }
-        if let Some(user_fields) = &request.user_fields {
+        // Add user fields if provided
+        if let Some(user_fields) = request.user_fields {
             let fields: Vec<String> = user_fields
                 .iter()
                 .map(|f| {
@@ -182,12 +137,52 @@ impl GetUserLists {
                         .to_lowercase()
                 })
                 .collect();
-            req_builder = req_builder.query(&[("user.fields", fields.join(","))]);
+            query_params.push(("user.fields".to_string(), fields.join(",")));
         }
 
-        // Make the request
-        let response = req_builder.send().await?;
-        parse_twitter_response::<ListsResponse>(response).await
+        // Add expansions if provided
+        if let Some(expansions) = request.expansions {
+            let fields: Vec<String> = expansions
+                .iter()
+                .map(|f| {
+                    serde_json::to_string(f)
+                        .unwrap()
+                        .replace("\"", "")
+                        .to_lowercase()
+                })
+                .collect();
+            query_params.push(("expansions".to_string(), fields.join(",")));
+        }
+
+        // Add list fields if provided
+        if let Some(list_fields) = request.list_fields {
+            let fields: Vec<String> = list_fields
+                .iter()
+                .map(|f| {
+                    serde_json::to_string(f)
+                        .unwrap()
+                        .replace("\"", "")
+                        .to_lowercase()
+                })
+                .collect();
+            query_params.push(("list.fields".to_string(), fields.join(",")));
+        }
+
+        match client
+            .get::<ListsResponse>(request.bearer_token, Some(query_params))
+            .await
+        {
+            Ok(data) => Output::Ok {
+                data: Some(data.0),
+                includes: data.1,
+                meta: data.2,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
+        }
     }
 }
 
@@ -198,7 +193,7 @@ mod tests {
     impl GetUserLists {
         fn with_api_base(api_base: &str) -> Self {
             Self {
-                api_base: api_base.to_string() + "/users",
+                api_base: api_base.to_string(),
             }
         }
     }

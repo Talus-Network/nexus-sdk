@@ -1,19 +1,13 @@
 use {
-    crate::tweet::models::{
-        ApiError,
-        Attachments,
-        ContextAnnotation,
-        EditControls,
-        Entities,
-        Geo,
-        NonPublicMetrics,
-        NoteTweet,
-        OrganicMetrics,
-        PromotedMetrics,
-        PublicMetrics,
-        ReferencedTweet,
-        Scopes,
-        Withheld,
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        tweet::models::{
+            ApiError, Attachments, ContextAnnotation, EditControls, Entities, Geo,
+            NonPublicMetrics, NoteTweet, OrganicMetrics, PromotedMetrics, PublicMetrics,
+            ReferencedTweet, Scopes, Withheld,
+        },
+        twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -32,7 +26,7 @@ pub struct ListsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<ListData>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -285,3 +279,10 @@ pub enum UserField {
     VerifiedType,
     Withheld,
 }
+
+impl_twitter_response_parser!(
+    ListsResponse,
+    Vec<ListData>,
+    includes = Includes,
+    meta = Meta
+);
