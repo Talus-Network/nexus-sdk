@@ -50,8 +50,12 @@ graph TD
 
 ## Prerequisites
 
-* [Nexus CLI](setup.md#install-the-nexus-cli) installed.
+* Follow the [setup guide instructions](setup.md) to get set up.
 * A configured Sui wallet for the publish step (can skip this step if just validating). Follow the [Getting Started section in the Sui Docs](https://docs.sui.io/guides/developer/getting-started) to get you set up.
+* Clone the Nexus SDK repository:
+```bash
+git clone https://github.com/Talus-Network/nexus-sdk.git
+```
 
 {% hint style="info" %}
 In this example we will publish a DAG consisting of Nexus Tools that are running somewhere and registered (the URL can be found as metadata in the tool registry). If you were running your own tools and needed to register them, check out [Nexus CLI tool commands](../cli.md#nexus-tool) to find out how to do this.
