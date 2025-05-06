@@ -1,3 +1,4 @@
+mod completion;
 mod conf;
 mod dag;
 mod display;
@@ -36,6 +37,8 @@ enum Command {
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Manage Nexus networks and leader caps")]
     Network(network::NetworkCommand),
+    #[command(about = "Provide shell completions")]
+    Completion(completion::CompletionCommand),
 }
 
 #[tokio::main]
@@ -74,6 +77,7 @@ async fn main() {
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
         Command::Gas(gas) => gas::handle(gas).await,
+        Command::Completion(completion) => completion::handle(completion),
     };
 
     // Handle any errors that occurred during command execution.

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Walrus Client module to interact with Walrus decentralized storage
 - `transactions::gas` module containing PTB templates for gas-related transactions
+- support for generating shell completions
 
 #### Changed
 
