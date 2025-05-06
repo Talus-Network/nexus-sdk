@@ -3,18 +3,16 @@
 //! Standard Nexus Tool that deletes a list on Twitter.
 
 use {
-    super::models::DeleteListResponse,
     crate::{
         auth::TwitterAuth,
         error::TwitterErrorKind,
+        list::models::DeleteListResponse,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json::Value,
 };
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
