@@ -4,21 +4,12 @@
 
 use {
     crate::{
-        error::{
-            parse_twitter_response,
-            TwitterError,
-            TwitterErrorKind,
-            TwitterErrorResponse,
-            TwitterResult,
-        },
-        tweet::{
-            models::{Granularity, TweetCount, TweetCountMeta, TweetCountResponse},
-            TWITTER_API_BASE,
-        },
+        error::TwitterErrorKind,
+        tweet::models::{Granularity, TweetCount, TweetCountMeta, TweetCountResponse},
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -167,7 +158,7 @@ impl NexusTool for GetRecentTweetCount {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/tweets/counts/recent",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -184,79 +175,52 @@ impl NexusTool for GetRecentTweetCount {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        match self.fetch_tweet_counts(&request).await {
-            Ok(response) => {
-                if let Some(tweet_counts) = response.data {
-                    Output::Ok {
-                        data: tweet_counts,
-                        meta: response.meta,
-                    }
-                } else {
-                    let error_response = TwitterErrorResponse {
-                        kind: TwitterErrorKind::NotFound,
-                        reason: "No tweet count data found".to_string(),
-                        status_code: None,
-                    };
-
-                    Output::Err {
-                        kind: error_response.kind,
-                        reason: error_response.reason,
-                        status_code: error_response.status_code,
-                    }
-                }
-            }
-            Err(e) => {
-                // Use the centralized error conversion
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
-                }
-            }
-        }
-    }
-}
-
-impl GetRecentTweetCount {
-    /// Fetch tweet counts from Twitter's recent counts API
-    async fn fetch_tweet_counts(&self, request: &Input) -> TwitterResult<TweetCountResponse> {
-        // Validate input parameters
+        // Validate input parameters first
         if let Err(e) = request.validate() {
-            return Err(TwitterError::Other(format!("Validation error: {}", e)));
+            return Output::Err {
+                kind: TwitterErrorKind::Unknown,
+                reason: format!("Input validation error: {}", e),
+                status_code: None,
+            };
         }
 
-        let client = Client::new();
-        // Construct the URL with query parameters
-        let mut url =
-            reqwest::Url::parse(&self.api_base).map_err(|e| TwitterError::Other(e.to_string()))?;
+        let client = match TwitterClient::new(Some("tweets/counts/recent"), Some(&self.api_base)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Unknown,
+                    status_code: None,
+                };
+            }
+        };
 
-        // Add the required query parameter
-        url.query_pairs_mut().append_pair("query", &request.query);
+        let mut query_params: Vec<(String, String)> = Vec::new();
 
-        // Add optional query parameters if provided
+        query_params.push(("query".to_string(), request.query.clone()));
+
         if let Some(start_time) = &request.start_time {
-            url.query_pairs_mut().append_pair("start_time", start_time);
+            query_params.push(("start_time".to_string(), start_time.clone()));
         }
 
         if let Some(end_time) = &request.end_time {
-            url.query_pairs_mut().append_pair("end_time", end_time);
+            query_params.push(("end_time".to_string(), end_time.clone()));
         }
 
         if let Some(since_id) = &request.since_id {
-            url.query_pairs_mut().append_pair("since_id", since_id);
+            query_params.push(("since_id".to_string(), since_id.clone()));
         }
 
         if let Some(until_id) = &request.until_id {
-            url.query_pairs_mut().append_pair("until_id", until_id);
+            query_params.push(("until_id".to_string(), until_id.clone()));
         }
 
-        if let Some(next_token) = &request.next_token {
-            url.query_pairs_mut().append_pair("next_token", next_token);
-        } else if let Some(pagination_token) = &request.pagination_token {
-            url.query_pairs_mut()
-                .append_pair("pagination_token", pagination_token);
+        if let Some(token) = request
+            .next_token
+            .as_ref()
+            .or(request.pagination_token.as_ref())
+        {
+            query_params.push(("next_token".to_string(), token.clone()));
         }
 
         if let Some(granularity) = &request.granularity {
@@ -265,23 +229,36 @@ impl GetRecentTweetCount {
                 Granularity::Hour => "hour",
                 Granularity::Day => "day",
             };
-            url.query_pairs_mut()
-                .append_pair("granularity", granularity_str);
+            query_params.push(("granularity".to_string(), granularity_str.to_string()));
         }
 
         if let Some(fields) = &request.search_count_fields {
-            url.query_pairs_mut()
-                .append_pair("search_count.fields", &fields.join(","));
+            if !fields.is_empty() {
+                query_params.push(("search_count.fields".to_string(), fields.join(",")));
+            }
         }
 
-        // Make the request
-        let response = client
-            .get(url)
-            .header("Authorization", format!("Bearer {}", request.bearer_token))
-            .send()
-            .await?;
-
-        parse_twitter_response::<TweetCountResponse>(response).await
+        match client
+            .get::<TweetCountResponse>(request.bearer_token, Some(query_params))
+            .await
+        {
+            Ok((data, meta)) => {
+                if data.is_empty() {
+                    Output::Err {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No tweet count data found".to_string(),
+                        status_code: None,
+                    }
+                } else {
+                    Output::Ok { data, meta }
+                }
+            }
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
+        }
     }
 }
 
@@ -299,7 +276,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, GetRecentTweetCount) {
         let server = Server::new_async().await;
-        let tool = GetRecentTweetCount::with_api_base(&(server.url() + "/tweets/counts/recent"));
+        let tool = GetRecentTweetCount::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -386,6 +363,7 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
+                    "data": [],
                     "meta": {
                         "total_tweet_count": 0
                     }
@@ -470,10 +448,10 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
-                    "errors": [{
-                        "message": "Unauthorized",
-                        "code": 32
-                    }]
+                    "title": "Unauthorized",
+                    "type": "about:blank",
+                    "status": 401,
+                    "detail": "Client Forbidden"
                 })
                 .to_string(),
             )
@@ -489,11 +467,7 @@ mod tests {
                 status_code,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Auth);
-                assert!(
-                    reason.contains("Unauthorized"),
-                    "Expected error message to contain 'Unauthorized', got: {}",
-                    reason
-                );
+                assert!(reason.contains("Unauthorized") || reason.contains("Client Forbidden"));
                 assert_eq!(status_code, Some(401));
             }
             Output::Ok { .. } => panic!("Expected error, got success"),
@@ -513,19 +487,19 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(
                 json!({
-                    "errors": [
-                        {
-                            "parameters": {
-                                "query": [
-                                    "from:TwitterDev OR"
-                                ]
-                            },
+                     "errors": [
+                         {
+                             "parameters": {
+                                 "query": [
+                                     "from:TwitterDev OR"
+                                 ]
+                             },
                             "message": "Invalid query",
                             "title": "Invalid Request",
                             "detail": "One or more parameters to your request was invalid.",
                             "type": "https://api.twitter.com/2/problems/invalid-request"
-                        }
-                    ]
+                         }
+                     ]
                 })
                 .to_string(),
             )
@@ -538,13 +512,14 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err { reason, kind, .. } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert_eq!(kind, TwitterErrorKind::Api);
-                assert!(
-                    reason.contains("Invalid query"),
-                    "Expected error message to contain 'Invalid query', got: {}",
-                    reason
-                );
+                assert!(reason.contains("Invalid Request") || reason.contains("Invalid query"));
+                assert_eq!(status_code, None);
             }
             Output::Ok { .. } => panic!("Expected error for invalid query, got success"),
         }
@@ -557,7 +532,6 @@ mod tests {
         let (mut _server, tool) = create_server_and_tool().await;
 
         let mut input = create_test_input();
-        // Invalid timestamp format
         input.start_time = Some("2023-01-01 12:00:00".to_string());
 
         let output = tool.invoke(input).await;
@@ -566,7 +540,7 @@ mod tests {
             Output::Err { reason, kind, .. } => {
                 assert_eq!(kind, TwitterErrorKind::Unknown);
                 assert!(
-                    reason.contains("Validation error"),
+                    reason.contains("Input validation error: Invalid start_time format"),
                     "Expected validation error message, got: {}",
                     reason
                 );
@@ -608,7 +582,6 @@ mod tests {
             .await;
 
         let mut input = create_test_input();
-        // Valid timestamp format
         input.start_time = Some("2023-01-01T12:00:00Z".to_string());
 
         let output = tool.invoke(input).await;

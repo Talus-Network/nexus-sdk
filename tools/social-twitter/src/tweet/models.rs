@@ -654,7 +654,7 @@ pub struct TweetCountResponse {
     pub data: Option<Vec<TweetCount>>,
     /// Error information if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     /// Metadata about the tweet counts request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<TweetCountMeta>,
@@ -709,3 +709,4 @@ pub struct RetweetData {
 }
 
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
+impl_twitter_response_parser!(TweetCountResponse, Vec<TweetCount>, meta = TweetCountMeta);
