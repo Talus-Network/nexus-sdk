@@ -1,16 +1,30 @@
-use serde::{Deserialize, Serialize};
+use {
+    super::{blob::BlobObject, sui::SuiEvent},
+    serde::{Deserialize, Serialize},
+};
 
-/// Represents information about a stored blob on the Walrus network
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StorageInfo {
-    /// The unique identifier of the blob
+/// Represents a newly created blob in the Walrus network
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NewlyCreated {
+    #[serde(rename = "blobObject")]
+    pub blob_object: BlobObject,
+}
+
+/// Represents an already certified blob in the Walrus network
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AlreadyCertified {
+    #[serde(rename = "blobId")]
     pub blob_id: String,
-    /// The Sui transaction digest where the blob was registered
-    pub tx_digest: String,
-    /// The Sui object ID of the blob
-    pub object_id: String,
-    /// The expiration time in epochs
-    pub expiration_time: u64,
-    /// The size of the blob in bytes
-    pub size: u64,
+    #[serde(rename = "endEpoch")]
+    pub end_epoch: u64,
+    pub event: SuiEvent,
+}
+
+/// Information about a blob's storage status
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StorageInfo {
+    #[serde(rename = "newlyCreated")]
+    pub newly_created: Option<NewlyCreated>,
+    #[serde(rename = "alreadyCertified")]
+    pub already_certified: Option<AlreadyCertified>,
 }
