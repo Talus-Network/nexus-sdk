@@ -19,12 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - added Walrus Client module to interact with Walrus decentralized storage
+- added support for generating shell completions
 
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
-
 
 ## [`0.1.0`] - 2025-04-14
 
