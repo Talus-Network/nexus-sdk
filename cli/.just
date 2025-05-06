@@ -16,14 +16,6 @@ _default:
 build: _check-cargo
     cargo +stable build --package {{ package }} --release
 
-# Install the CLI with `cargo install`
-_install: build
-    cargo +stable install --path . --bin nexus-cli
-
-# Install the CLI as `nexus` alias in `~/.local/bin`
-_install-alias: _install
-    cp ../target/release/nexus-cli ~/.local/bin/nexus
-
 # Check the CLI project
 check: _check-cargo
     cargo +stable check --package {{ package }}
