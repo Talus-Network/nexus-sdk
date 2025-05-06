@@ -1278,6 +1278,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.5.48"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be8c97f3a6f02b9e24cadc12aaba75201d18754b53ea0a9d99642f806ccdb4c9"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.5.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4685,6 +4694,7 @@ dependencies = [
  "assert_matches",
  "bip32",
  "clap",
+ "clap_complete",
  "colored 3.0.0",
  "convert_case 0.7.1",
  "home",
@@ -4728,6 +4738,7 @@ dependencies = [
  "sui-sdk",
  "tempfile",
  "testcontainers-modules",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-retry",
  "toml 0.8.20",
@@ -8725,6 +8736,21 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "walrus"
+version = "0.2.0-rc.1"
+dependencies = [
+ "anyhow",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
