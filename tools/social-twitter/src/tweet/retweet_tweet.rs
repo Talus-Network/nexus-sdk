@@ -91,7 +91,11 @@ impl NexusTool for RetweetTweet {
         };
 
         match client
-            .post::<RetweetResponse, _>(&request.auth, json!({ "tweet_id": request.tweet_id }))
+            .post::<RetweetResponse, _>(
+                &request.auth,
+                Some(json!({ "tweet_id": request.tweet_id })),
+                None,
+            )
             .await
         {
             Ok(data) => Output::Ok {

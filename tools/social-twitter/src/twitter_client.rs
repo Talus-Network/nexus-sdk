@@ -7,7 +7,7 @@ use {
         auth::TwitterAuth,
         error::{parse_twitter_response, TwitterError, TwitterErrorResponse},
     },
-    reqwest::Client,
+    reqwest::{multipart::Form, Client},
     serde::{de::DeserializeOwned, Serialize},
     serde_json::Value,
     std::sync::Arc,
@@ -70,23 +70,30 @@ impl TwitterClient {
     pub async fn post<T, U>(
         &self,
         auth: &TwitterAuth,
-        body: U,
+        body: Option<U>,
+        form: Option<Form>,
     ) -> Result<T::Output, TwitterErrorResponse>
     where
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        let raw_response: T = self.make_request("POST", auth, Some(body)).await?;
+        let raw_response: T = self.make_request("POST", auth, body, form).await?;
         raw_response.parse_twitter_response()
     }
 
     /// Makes a GET request to the Twitter API with a bearer token
-    pub async fn get<T>(&self, bearer_token: String) -> Result<T, TwitterErrorResponse>
+    pub async fn get<T>(
+        &self,
+        bearer_token: String,
+        query_params: Option<Vec<(String, String)>>,
+    ) -> Result<T::Output, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request_with_bearer_token::<T>("GET", bearer_token)
-            .await
+        let raw_response = self
+            .make_request_with_bearer_token::<T>("GET", bearer_token, query_params)
+            .await?;
+        raw_response.parse_twitter_response()
     }
 
     /// Makes a GET request to the Twitter API with auth
@@ -94,7 +101,7 @@ impl TwitterClient {
     where
         T: DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request::<T, Value>("GET", auth, None).await
+        self.make_request::<T, Value>("GET", auth, None, None).await
     }
 
     /// Makes a PUT request to the Twitter API
@@ -103,15 +110,16 @@ impl TwitterClient {
         T: DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        self.make_request("PUT", auth, Some(body)).await
+        self.make_request("PUT", auth, Some(body), None).await
     }
 
     /// Makes a DELETE request to the Twitter API
     pub async fn delete<T>(&self, auth: &TwitterAuth) -> Result<T, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: DeserializeOwned + std::fmt::Debug + 'static,
     {
-        self.make_request::<T, Value>("DELETE", auth, None).await
+        self.make_request::<T, Value>("DELETE", auth, None, None)
+            .await
     }
 
     /// Makes an authenticated request to the Twitter API with auth
@@ -122,6 +130,7 @@ impl TwitterClient {
         method: &str,
         auth: &TwitterAuth,
         body: Option<Value>,
+        form: Option<Form>,
     ) -> Result<T, TwitterErrorResponse>
     where
         T: DeserializeOwned + std::fmt::Debug,
@@ -153,6 +162,10 @@ impl TwitterClient {
             request = request.json(&body);
         }
 
+        if let Some(form) = form {
+            request = request.multipart(form);
+        }
+
         // Network/connection errors
         let response = match request.send().await {
             Ok(response) => response,
@@ -173,6 +186,7 @@ impl TwitterClient {
         &self,
         method: &str,
         bearer_token: String,
+        query_params: Option<Vec<(String, String)>>,
     ) -> Result<T, TwitterErrorResponse>
     where
         T: DeserializeOwned + std::fmt::Debug,
@@ -185,6 +199,11 @@ impl TwitterClient {
         request = request
             .header("Authorization", format!("Bearer {}", bearer_token))
             .header("Content-Type", "application/json");
+
+        // Add query parameters if provided
+        if let Some(params) = query_params {
+            request = request.query(&params);
+        }
 
         // Network/connection errors
         let response = match request.send().await {
@@ -202,20 +221,24 @@ impl TwitterClient {
     }
 }
 
-/// Trait to implement `TwitterApiParsedResponse` for a given response type and data type
+/// Trait for parsing Twitter API responses into a specific output type.
 ///
-/// This trait implements the `TwitterApiParsedResponse` trait for a given response type and data type.
+/// Types that implement this trait can transform Twitter API responses
+/// into usable Rust types, or return a standardized error when parsing fails.
 pub trait TwitterApiParsedResponse {
     type Output;
 
+    /// Parses the Twitter API response into the associated `Output` type.
     fn parse_twitter_response(self) -> Result<Self::Output, TwitterErrorResponse>;
 }
 
 /// Macro to implement `TwitterApiParsedResponse` for a given response type and data type
 ///
 /// This macro implements the `TwitterApiParsedResponse` trait for a given response type and data type.
+/// It handles both simple responses (just data) and complex responses (data + includes + meta).
 #[macro_export]
 macro_rules! impl_twitter_response_parser {
+    // Simple case - just data
     ($response_ty:ty, $data_ty:ty) => {
         impl TwitterApiParsedResponse for $response_ty {
             type Output = $data_ty;
@@ -232,7 +255,7 @@ macro_rules! impl_twitter_response_parser {
                     }
                 }
 
-                // If we have data, check if we need to include meta and includes
+                // If we have data, return it
                 if let Some(data) = self.data {
                     return Ok(data);
                 }

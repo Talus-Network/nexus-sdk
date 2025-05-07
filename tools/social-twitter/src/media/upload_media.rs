@@ -3,14 +3,15 @@
 //! Standard Nexus Tool that uploads media to Twitter.
 
 use {
+    super::MEDIA_UPLOAD_ENDPOINT,
     crate::{
         auth::TwitterAuth,
-        error::{parse_twitter_response, TwitterError, TwitterResult},
-        media::{
-            models::{MediaCategory, MediaUploadResponse, ProcessingInfo},
-            MEDIA_UPLOAD_ENDPOINT,
+        error::{parse_twitter_response, TwitterError, TwitterErrorKind, TwitterResult},
+        media::models::{
+            EmptyResponse, MediaCategory, MediaType, MediaUploadData, MediaUploadResponse,
+            ProcessingInfo,
         },
-        tweet::TWITTER_API_BASE,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
     base64,
     nexus_sdk::{fqn, ToolFqn},
@@ -21,6 +22,7 @@ use {
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
+    serde_json::json,
 };
 
 /// Input for media upload
@@ -35,7 +37,7 @@ pub(crate) struct Input {
     media_data: String,
 
     /// The MIME type of the media being uploaded. For example, video/mp4.
-    media_type: String,
+    media_type: MediaType,
 
     /// A string enum value which identifies a media use-case.
     media_category: MediaCategory,
@@ -70,8 +72,13 @@ pub(crate) enum Output {
     },
     /// Upload error
     Err {
-        /// Error message if the upload failed
+        /// Detailed error message
         reason: String,
+        /// Type of error (network, server, auth, etc.)
+        kind: TwitterErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -85,7 +92,7 @@ impl NexusTool for UploadMedia {
 
     async fn new() -> Self {
         Self {
-            api_base: format!("{}{}", TWITTER_API_BASE, MEDIA_UPLOAD_ENDPOINT),
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -102,19 +109,33 @@ impl NexusTool for UploadMedia {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
+        // Create a Twitter client with the mock server URL
+        let client = match TwitterClient::new(Some(MEDIA_UPLOAD_ENDPOINT), Some(TWITTER_API_BASE)) {
+            Ok(client) => client,
+            Err(e) => {
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
+                };
+            }
+        };
+
         // Decode base64 media data
         let media_data = match base64::decode(&request.media_data) {
             Ok(data) => data,
             Err(e) => {
                 return Output::Err {
                     reason: format!("Failed to decode media data: {}", e),
-                }
+                    kind: TwitterErrorKind::Unknown,
+                    status_code: None,
+                };
             }
         };
 
         // Upload media using chunking process
         match upload_media(
-            &self.api_base,
+            &client,
             &request.auth,
             &media_data,
             &request.media_type,
@@ -128,18 +149,15 @@ impl NexusTool for UploadMedia {
         )
         .await
         {
-            Ok(response) => match response.data {
-                Some(data) => Output::Ok {
-                    media_id: data.id,
-                    media_key: data.media_key,
-                    processing_info: data.processing_info,
-                },
-                None => Output::Err {
-                    reason: "No data in response".to_string(),
-                },
+            Ok(response) => Output::Ok {
+                media_id: response.id,
+                media_key: response.media_key,
+                processing_info: response.processing_info,
             },
             Err(e) => Output::Err {
                 reason: format!("Failed to upload media: {}", e),
+                kind: TwitterErrorKind::Unknown,
+                status_code: None,
             },
         }
     }
@@ -147,16 +165,14 @@ impl NexusTool for UploadMedia {
 
 /// Upload media to Twitter in chunks
 async fn upload_media(
-    api_url: &str,
+    client: &TwitterClient,
     auth: &TwitterAuth,
     media_data: &[u8],
-    media_type: &str,
+    media_type: &MediaType,
     media_category: &MediaCategory,
     chunk_size: usize,
     additional_owners: Option<&Vec<String>>,
-) -> TwitterResult<MediaUploadResponse> {
-    let client = Client::new();
-
+) -> TwitterResult<MediaUploadData> {
     // Calculate optimal chunk size if not specified
     let optimal_chunk_size = if chunk_size > 0 {
         chunk_size
@@ -167,7 +183,6 @@ async fn upload_media(
     // 1. INIT phase - Initialize upload
     let init_response = init_upload(
         &client,
-        api_url,
         auth,
         media_data.len() as u32,
         media_type,
@@ -176,28 +191,23 @@ async fn upload_media(
     )
     .await?;
 
-    let media_id = init_response
-        .data
-        .as_ref()
-        .ok_or_else(|| TwitterError::Other("Media upload initialization failed".to_string()))?
-        .id
-        .clone();
+    let media_id = init_response.id.clone();
 
     // 2. APPEND phase - Upload chunks
     let chunks = media_data.chunks(optimal_chunk_size).enumerate();
 
     for (i, chunk) in chunks {
-        append_chunk(&client, api_url, auth, &media_id, chunk, i as i32).await?;
+        append_chunk(&client, auth, &media_id, chunk, i as i32).await?;
     }
 
     // 3. FINALIZE phase - Complete the upload
-    finalize_upload(&client, api_url, auth, &media_id).await
+    finalize_upload(&client, auth, &media_id).await
 }
 
 /// Calculate optimal chunk size based on media size and type
 fn calculate_optimal_chunk_size(
     media_size: usize,
-    media_type: &str,
+    media_type: &MediaType,
     media_category: &MediaCategory,
 ) -> usize {
     // Twitter API's maximum chunk size is 5MB as per documentation
@@ -216,19 +226,25 @@ fn calculate_optimal_chunk_size(
 
     // Twitter doc mentions optimizing for cellular clients, so we set reasonable limits
     // For images (typically smaller and faster to upload)
-    if media_type.starts_with("image/") && !media_type.contains("gif") {
+    if *media_type == MediaType::ImageJpeg
+        || *media_type == MediaType::ImageGif
+        || *media_type == MediaType::ImagePng
+        || *media_type == MediaType::ImageWebp
+    {
         // For larger images, still keep chunks reasonably sized
         return std::cmp::min(media_size / 4, 2 * 1024 * 1024); // Max 2MB chunks for images
     }
 
     // For GIFs, which can be larger but still image-based
-    if media_type == "image/gif" || matches!(media_category, MediaCategory::TweetGif) {
+    if *media_type == MediaType::ImageGif || matches!(media_category, MediaCategory::TweetGif) {
         // Balance between speed and reliability
         return 3 * 1024 * 1024; // 3MB for GIFs
     }
 
     // For videos, which are usually much larger files
-    if media_type.starts_with("video/")
+    if *media_type == MediaType::VideoMp4
+        || *media_type == MediaType::VideoWebm
+        || *media_type == MediaType::VideoMp2t
         || matches!(
             media_category,
             MediaCategory::TweetVideo | MediaCategory::DmVideo | MediaCategory::AmplifyVideo
@@ -271,120 +287,114 @@ fn calculate_optimal_chunk_size(
 
 /// Initialize a media upload (INIT command)
 async fn init_upload(
-    client: &Client,
-    api_url: &str,
+    client: &TwitterClient,
+    // api_url: &str,
     auth: &TwitterAuth,
     total_bytes: u32,
-    media_type: &str,
+    media_type: &MediaType,
     media_category: &MediaCategory,
     additional_owners: Option<&Vec<String>>,
-) -> TwitterResult<MediaUploadResponse> {
-    let mut form = Form::new();
-
+) -> TwitterResult<MediaUploadData> {
     // Required parameters
-    form = form
+    let form = Form::new()
         .text("command", "INIT")
         .text("total_bytes", total_bytes.to_string())
-        .text("media_type", media_type.to_string());
+        .text("media_type", serde_json::to_string(media_type).unwrap())
+        .text(
+            "media_category",
+            serde_json::to_string(media_category).unwrap(),
+        )
+        .text(
+            "additional_owners",
+            additional_owners
+                .map(|owners| owners.join(","))
+                .unwrap_or_default(),
+        );
 
-    // Add media category
-    let media_category_str = match media_category {
-        MediaCategory::AmplifyVideo => "amplify_video",
-        MediaCategory::TweetGif => "tweet_gif",
-        MediaCategory::TweetImage => "tweet_image",
-        MediaCategory::TweetVideo => "tweet_video",
-        MediaCategory::DmVideo => "dm_video",
-        MediaCategory::Subtitles => "subtitles",
-    };
-    form = form.text("media_category", media_category_str);
-
-    // Add optional additional owners if present
-    if let Some(owners) = additional_owners {
-        if !owners.is_empty() {
-            form = form.text("additional_owners", owners.join(","));
-        }
+    match client
+        .post::<MediaUploadResponse, ()>(auth, None, Some(form))
+        .await
+    {
+        Ok(response) => Ok(response),
+        Err(e) => Err(TwitterError::Other(format!(
+            "Failed to initialize media upload: {:?}",
+            e
+        ))),
     }
-
-    // Send the request
-    let auth_header = auth.generate_auth_header(api_url);
-
-    let response = client
-        .post(api_url)
-        .header("Authorization", auth_header)
-        .multipart(form)
-        .send()
-        .await?;
-
-    parse_twitter_response::<MediaUploadResponse>(response).await
 }
 
 /// Append a chunk to the upload (APPEND command)
 async fn append_chunk(
-    client: &Client,
-    api_url: &str,
+    client: &TwitterClient,
     auth: &TwitterAuth,
     media_id: &str,
     chunk: &[u8],
     segment_index: i32,
 ) -> TwitterResult<()> {
+    // Validate segment_index is within allowed range (0-999)
+    if segment_index < 0 || segment_index > 999 {
+        return Err(TwitterError::Other(format!(
+            "Invalid segment_index: {}. Must be between 0 and 999",
+            segment_index
+        )));
+    }
+
     // Create part for the media chunk
     let part = Part::bytes(chunk.to_vec()).file_name("media.bin"); // Generic filename, doesn't matter
 
-    // Create form with APPEND command
+    // Create form with APPEND command as per Twitter API docs
     let form = Form::new()
         .text("command", "APPEND")
         .text("media_id", media_id.to_string())
         .text("segment_index", segment_index.to_string())
         .part("media", part);
 
-    // Send the request
-    let auth_header = auth.generate_auth_header(api_url);
-
-    let response = client
-        .post(api_url)
-        .header("Authorization", auth_header)
-        .multipart(form)
-        .send()
-        .await?;
-
-    // APPEND should return 204 No Content
-    if response.status() != reqwest::StatusCode::NO_CONTENT {
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(TwitterError::Other(format!(
-            "Failed to append media chunk: {}",
-            error_text
-        )));
+    // Send request and handle empty response (HTTP 2XX)
+    match client
+        .post::<EmptyResponse, ()>(auth, None, Some(form))
+        .await
+    {
+        Ok(_) => Ok(()), // Success - empty response body with HTTP 2XX
+        Err(e) => {
+            // Check if we got a non-204 status code
+            if let Some(status_code) = e.status_code {
+                if status_code != 204 {
+                    return Err(TwitterError::Other(format!(
+                        "Failed to append media chunk: Unexpected status code {}",
+                        status_code
+                    )));
+                }
+            }
+            Err(TwitterError::Other(format!(
+                "Failed to append media chunk: {}",
+                e.reason
+            )))
+        }
     }
-
-    Ok(())
 }
 
 /// Finalize the media upload (FINALIZE command)
 async fn finalize_upload(
-    client: &Client,
-    api_url: &str,
+    client: &TwitterClient,
+    // api_url: &str,
     auth: &TwitterAuth,
     media_id: &str,
-) -> TwitterResult<MediaUploadResponse> {
+) -> TwitterResult<MediaUploadData> {
     // Create form with FINALIZE command
     let form = Form::new()
         .text("command", "FINALIZE")
         .text("media_id", media_id.to_string());
 
-    // Send the request
-    let auth_header = auth.generate_auth_header(api_url);
-
-    let response = client
-        .post(api_url)
-        .header("Authorization", auth_header)
-        .multipart(form)
-        .send()
-        .await?;
-
-    parse_twitter_response::<MediaUploadResponse>(response).await
+    match client
+        .post::<MediaUploadResponse, ()>(auth, None, Some(form))
+        .await
+    {
+        Ok(data) => Ok(data),
+        Err(e) => Err(TwitterError::Other(format!(
+            "Failed to finalize media upload: {:?}",
+            e
+        ))),
+    }
 }
 
 /// Check media upload status
@@ -409,7 +419,7 @@ async fn _check_media_status(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, mockito::Server, serde_json::json};
+    use {super::*, crate::media::models::ProcessingState, mockito::Server, serde_json::json};
 
     impl UploadMedia {
         fn with_api_base(api_base: &str) -> Self {
@@ -419,10 +429,12 @@ mod tests {
         }
     }
 
-    async fn create_server_and_tool() -> (mockito::ServerGuard, UploadMedia) {
+    async fn create_server_and_tool() -> (mockito::ServerGuard, UploadMedia, TwitterClient) {
         let server = Server::new_async().await;
         let tool = UploadMedia::with_api_base(&server.url());
-        (server, tool)
+        let client = TwitterClient::new(Some("media/upload"), Some(&server.url())).unwrap();
+
+        (server, tool, client)
     }
 
     fn create_test_input() -> Input {
@@ -434,7 +446,7 @@ mod tests {
                 "test_access_token_secret",
             ),
             media_data: "SGVsbG8gV29ybGQ=".to_string(), // "Hello World" as base64
-            media_type: "image/jpeg".to_string(),
+            media_type: MediaType::ImageJpeg,
             media_category: MediaCategory::TweetImage,
             additional_owners: vec![],
             chunk_size: 1024,
@@ -444,7 +456,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_base64() {
         // Create server and tool
-        let (_, tool) = create_server_and_tool().await;
+        let (_, tool, _) = create_server_and_tool().await;
 
         // Create input with invalid base64
         let mut input = create_test_input();
@@ -456,12 +468,18 @@ mod tests {
         // Verify the response is an error
         match result {
             Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
                 assert!(
                     reason.contains("Failed to decode media data"),
                     "Error message should indicate base64 decode failure, got: {}",
                     reason
                 );
+                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert!(status_code.is_none());
             }
         }
     }
@@ -469,11 +487,12 @@ mod tests {
     #[tokio::test]
     async fn test_init_failure() {
         // Create server and tool
-        let (mut server, tool) = create_server_and_tool().await;
+        let (mut server, _, client) = create_server_and_tool().await;
+        let input = create_test_input();
 
         // Set up mock for INIT failure
         let mock = server
-            .mock("POST", "/")
+            .mock("POST", "/media/upload")
             .with_status(400)
             .with_header("content-type", "application/json")
             .with_body(
@@ -490,19 +509,25 @@ mod tests {
             .create_async()
             .await;
 
-        // Test the media upload
-        let result = tool.invoke(create_test_input()).await;
+        // Call init_upload directly
+        let result = init_upload(
+            &client,
+            &input.auth,
+            1024,
+            &input.media_type,
+            &input.media_category,
+            None,
+        )
+        .await;
 
         // Verify the response is an error
-        match result {
-            Output::Ok { .. } => panic!("Expected error, got success"),
-            Output::Err { reason } => {
-                assert!(
-                    reason.contains("Failed to upload media"),
-                    "Error message should indicate upload failure, got: {}",
-                    reason
-                );
-            }
+        assert!(result.is_err(), "Expected error, got success: {:?}", result);
+        if let Err(e) = result {
+            assert!(
+                e.to_string().contains("Failed to initialize media upload"),
+                "Error message should indicate init failure, got: {}",
+                e
+            );
         }
 
         // Verify that the mock was called
@@ -514,18 +539,12 @@ mod tests {
     #[tokio::test]
     async fn test_init_upload() {
         // Create a client and server
-        let (mut server, _) = create_server_and_tool().await;
-        let client = Client::new();
-        let auth = TwitterAuth::new(
-            "test_consumer_key",
-            "test_consumer_secret",
-            "test_access_token",
-            "test_access_token_secret",
-        );
+        let (mut server, _, client) = create_server_and_tool().await;
+        let input = create_test_input();
 
         // Set up mock for INIT
         let mock = server
-            .mock("POST", "/")
+            .mock("POST", "/media/upload")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
@@ -544,11 +563,10 @@ mod tests {
         // Call init_upload directly
         let result = init_upload(
             &client,
-            &server.url(),
-            &auth,
+            &input.auth,
             1024,
-            "image/jpeg",
-            &MediaCategory::TweetImage,
+            &input.media_type,
+            &input.media_category,
             None,
         )
         .await;
@@ -560,10 +578,8 @@ mod tests {
             result
         );
         if let Ok(response) = result {
-            assert!(response.data.is_some(), "Expected data in response");
-            let data = response.data.unwrap();
-            assert_eq!(data.id, "12345678901234567890");
-            assert_eq!(data.media_key, "12_12345678901234567890");
+            assert_eq!(response.id, "12345678901234567890");
+            assert_eq!(response.media_key, "12_12345678901234567890");
         }
 
         // Verify the mock was called
@@ -573,27 +589,22 @@ mod tests {
     #[tokio::test]
     async fn test_append_chunk() {
         // Create a client and server
-        let (mut server, _) = create_server_and_tool().await;
-        let client = Client::new();
-        let auth = TwitterAuth::new(
-            "test_consumer_key",
-            "test_consumer_secret",
-            "test_access_token",
-            "test_access_token_secret",
-        );
+        let (mut server, _, client) = create_server_and_tool().await;
+        let input = create_test_input();
 
         // Set up mock for APPEND
         let mock = server
-            .mock("POST", "/")
+            .mock("POST", "/media/upload")
             .with_status(204) // APPEND returns 204 No Content
+            .with_header("content-type", "application/json")
+            .with_body("") // Empty body for 204 response
             .create_async()
             .await;
 
         // Call append_chunk directly
         let result = append_chunk(
             &client,
-            &server.url(),
-            &auth,
+            &input.auth,
             "12345678901234567890",
             "Hello World".as_bytes(),
             0,
@@ -614,18 +625,12 @@ mod tests {
     #[tokio::test]
     async fn test_finalize_upload() {
         // Create a client and server
-        let (mut server, _) = create_server_and_tool().await;
-        let client = Client::new();
-        let auth = TwitterAuth::new(
-            "test_consumer_key",
-            "test_consumer_secret",
-            "test_access_token",
-            "test_access_token_secret",
-        );
+        let (mut server, _, client) = create_server_and_tool().await;
+        let input = create_test_input();
 
         // Set up mock for FINALIZE
         let mock = server
-            .mock("POST", "/")
+            .mock("POST", "/media/upload")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
@@ -645,7 +650,7 @@ mod tests {
             .await;
 
         // Call finalize_upload directly
-        let result = finalize_upload(&client, &server.url(), &auth, "12345678901234567890").await;
+        let result = finalize_upload(&client, &input.auth, "12345678901234567890").await;
 
         // Verify success
         assert!(
@@ -654,13 +659,13 @@ mod tests {
             result
         );
         if let Ok(response) = result {
-            assert!(response.data.is_some(), "Expected data in response");
-            let data = response.data.unwrap();
-            assert_eq!(data.id, "12345678901234567890");
-            assert_eq!(data.media_key, "12_12345678901234567890");
-            assert!(data.processing_info.is_some());
-            let processing_info = data.processing_info.unwrap();
-            assert_eq!(processing_info.state, "succeeded");
+            assert_eq!(response.id, "12345678901234567890");
+            assert_eq!(response.media_key, "12_12345678901234567890");
+            assert!(response.processing_info.is_some());
+            assert_eq!(
+                response.processing_info.unwrap().state,
+                ProcessingState::Succeeded
+            );
         }
 
         // Verify the mock was called
