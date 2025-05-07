@@ -4738,6 +4738,7 @@ dependencies = [
  "sui-sdk",
  "tempfile",
  "testcontainers-modules",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-retry",
  "toml 0.8.20",
@@ -8735,6 +8736,21 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "walrus"
+version = "0.2.0-rc.1"
+dependencies = [
+ "anyhow",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
