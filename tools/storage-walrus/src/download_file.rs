@@ -120,7 +120,7 @@ impl NexusTool for DownloadFile {
     }
 
     fn path() -> &'static str {
-        "/file/download"
+        "/download-file"
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
