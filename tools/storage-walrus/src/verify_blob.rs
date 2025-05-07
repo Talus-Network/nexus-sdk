@@ -37,7 +37,7 @@ pub(crate) enum Output {
     Verified {
         blob_id: String,
     },
-    UnVerified {
+    Unverified {
         blob_id: String,
     },
     Err {
@@ -81,7 +81,7 @@ impl NexusTool for VerifyBlob {
                 if verified {
                     Output::Verified { blob_id }
                 } else {
-                    Output::UnVerified { blob_id }
+                    Output::Unverified { blob_id }
                 }
             }
             Err(e) => {
@@ -180,7 +180,7 @@ mod tests {
                 if verified {
                     Output::Verified { blob_id }
                 } else {
-                    Output::UnVerified { blob_id }
+                    Output::Unverified { blob_id }
                 }
             }
             Err(e) => Output::Err {
@@ -195,7 +195,7 @@ mod tests {
             Output::Verified { blob_id: _ } => {
                 // Test passed
             }
-            Output::UnVerified { blob_id: _ } => {
+            Output::Unverified { blob_id: _ } => {
                 panic!("Expected verification to be true");
             }
             Output::Err {
@@ -236,7 +236,7 @@ mod tests {
                 if verified {
                     Output::Verified { blob_id }
                 } else {
-                    Output::UnVerified { blob_id }
+                    Output::Unverified { blob_id }
                 }
             }
             Err(e) => Output::Err {
@@ -251,7 +251,7 @@ mod tests {
             Output::Verified { blob_id: _ } => {
                 panic!("Expected verification to be false");
             }
-            Output::UnVerified { blob_id: _ } => {
+            Output::Unverified { blob_id: _ } => {
                 // Test passed
             }
             Output::Err {
@@ -299,7 +299,7 @@ mod tests {
                 if verified {
                     Output::Verified { blob_id }
                 } else {
-                    Output::UnVerified { blob_id }
+                    Output::Unverified { blob_id }
                 }
             }
             Err(e) => {
@@ -324,7 +324,7 @@ mod tests {
             Output::Verified { blob_id: _ } => {
                 panic!("Expected verification to be false for 500 error");
             }
-            Output::UnVerified { blob_id: _ } => {
+            Output::Unverified { blob_id: _ } => {
                 // Test passed
             }
             Output::Err {

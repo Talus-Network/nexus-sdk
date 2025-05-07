@@ -77,11 +77,11 @@ The blob exists and is verified.
 
 - **`verified.blob_id`: [`String`]** - The ID of the verified blob
 
-**`un_verified`**
+**`unverified`**
 
 The blob does not exist or could not be verified.
 
-- **`un_verified.blob_id`: [`String`]** - The ID of the unverified blob
+- **`unverified.blob_id`: [`String`]** - The ID of the unverified blob
 
 **`err`**
 
