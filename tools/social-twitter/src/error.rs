@@ -32,6 +32,8 @@ pub enum TwitterErrorKind {
     Api,
     /// Unknown error
     Unknown,
+    /// Validation error
+    Validation,
 }
 
 /// A Twitter API error returned by the API
