@@ -22,6 +22,7 @@ pub struct TwitterClient {
 }
 
 pub(crate) const TWITTER_API_BASE: &str = "https://api.twitter.com/2";
+pub(crate) const TWITTER_X_API_BASE: &str = "https://api.x.com/2";
 
 #[derive(Debug, thiserror::Error)]
 pub enum TwitterClientError {
@@ -154,9 +155,12 @@ impl TwitterClient {
             &self.api_base,
         );
 
-        request = request
-            .header("Authorization", auth_header)
-            .header("Content-Type", "application/json");
+        request = request.header("Authorization", auth_header);
+
+        // Set appropriate Content-Type header
+        if body.is_some() {
+            request = request.header("Content-Type", "application/json");
+        }
 
         if let Some(body) = body {
             request = request.json(&body);

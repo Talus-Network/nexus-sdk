@@ -132,3 +132,39 @@ pub enum ProcessingState {
 }
 
 impl_twitter_response_parser!(MediaUploadResponse, MediaUploadData);
+
+impl std::fmt::Display for MediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MediaType::ImageJpeg => write!(f, "image/jpeg"),
+            MediaType::ImageGif => write!(f, "image/gif"),
+            MediaType::ImagePng => write!(f, "image/png"),
+            MediaType::ImageWebp => write!(f, "image/webp"),
+            MediaType::ImagePjpeg => write!(f, "image/pjpeg"),
+            MediaType::ImageTiff => write!(f, "image/tiff"),
+            MediaType::ImageBmp => write!(f, "image/bmp"),
+            MediaType::VideoMp4 => write!(f, "video/mp4"),
+            MediaType::VideoWebm => write!(f, "video/webm"),
+            MediaType::VideoMp2t => write!(f, "video/mp2t"),
+            MediaType::TextSrt => write!(f, "text/srt"),
+            MediaType::TextVtt => write!(f, "text/vtt"),
+            MediaType::ModelGltfBinary => write!(f, "model/gltf-binary"),
+            MediaType::ModelUsdzZip => write!(f, "model/vnd.usdz+zip"),
+        }
+    }
+}
+
+impl std::fmt::Display for MediaCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MediaCategory::TweetImage => write!(f, "tweet_image"),
+            MediaCategory::TweetGif => write!(f, "tweet_gif"),
+            MediaCategory::TweetVideo => write!(f, "tweet_video"),
+            MediaCategory::DmImage => write!(f, "dm_image"),
+            MediaCategory::DmGif => write!(f, "dm_gif"),
+            MediaCategory::DmVideo => write!(f, "dm_video"),
+            MediaCategory::AmplifyVideo => write!(f, "amplify_video"),
+            MediaCategory::Subtitles => write!(f, "subtitles"),
+        }
+    }
+}

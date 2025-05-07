@@ -5,4 +5,4 @@
 pub(crate) mod models;
 pub(crate) mod upload_media;
 
-pub const MEDIA_UPLOAD_ENDPOINT: &str = "/media/upload";
+pub const MEDIA_UPLOAD_ENDPOINT: &str = "media/upload";

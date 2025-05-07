@@ -11,7 +11,7 @@ use {
             EmptyResponse, MediaCategory, MediaType, MediaUploadData, MediaUploadResponse,
             ProcessingInfo,
         },
-        twitter_client::{TwitterClient, TWITTER_API_BASE},
+        twitter_client::{TwitterClient, TWITTER_X_API_BASE},
     },
     base64,
     nexus_sdk::{fqn, ToolFqn},
@@ -22,7 +22,6 @@ use {
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json::json,
 };
 
 /// Input for media upload
@@ -92,7 +91,7 @@ impl NexusTool for UploadMedia {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string(),
+            api_base: TWITTER_X_API_BASE.to_string(),
         }
     }
 
@@ -110,7 +109,7 @@ impl NexusTool for UploadMedia {
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
         // Create a Twitter client with the mock server URL
-        let client = match TwitterClient::new(Some(MEDIA_UPLOAD_ENDPOINT), Some(TWITTER_API_BASE)) {
+        let client = match TwitterClient::new(Some(MEDIA_UPLOAD_ENDPOINT), Some(&self.api_base)) {
             Ok(client) => client,
             Err(e) => {
                 return Output::Err {
@@ -154,11 +153,14 @@ impl NexusTool for UploadMedia {
                 media_key: response.media_key,
                 processing_info: response.processing_info,
             },
-            Err(e) => Output::Err {
-                reason: format!("Failed to upload media: {}", e),
-                kind: TwitterErrorKind::Unknown,
-                status_code: None,
-            },
+            Err(e) => {
+                let error_response = e.to_error_response();
+                Output::Err {
+                    reason: error_response.reason,
+                    kind: error_response.kind,
+                    status_code: error_response.status_code,
+                }
+            }
         }
     }
 }
@@ -288,7 +290,6 @@ fn calculate_optimal_chunk_size(
 /// Initialize a media upload (INIT command)
 async fn init_upload(
     client: &TwitterClient,
-    // api_url: &str,
     auth: &TwitterAuth,
     total_bytes: u32,
     media_type: &MediaType,
@@ -299,11 +300,8 @@ async fn init_upload(
     let form = Form::new()
         .text("command", "INIT")
         .text("total_bytes", total_bytes.to_string())
-        .text("media_type", serde_json::to_string(media_type).unwrap())
-        .text(
-            "media_category",
-            serde_json::to_string(media_category).unwrap(),
-        )
+        .text("media_type", media_type.to_string())
+        .text("media_category", media_category.to_string())
         .text(
             "additional_owners",
             additional_owners
@@ -316,10 +314,13 @@ async fn init_upload(
         .await
     {
         Ok(response) => Ok(response),
-        Err(e) => Err(TwitterError::Other(format!(
-            "Failed to initialize media upload: {:?}",
-            e
-        ))),
+        Err(e) => Err(TwitterError::ApiError(
+            e.reason,
+            format!("{:?}", e.kind),
+            e.status_code
+                .map(|code| code.to_string())
+                .unwrap_or_default(),
+        )),
     }
 }
 
@@ -355,28 +356,19 @@ async fn append_chunk(
         .await
     {
         Ok(_) => Ok(()), // Success - empty response body with HTTP 2XX
-        Err(e) => {
-            // Check if we got a non-204 status code
-            if let Some(status_code) = e.status_code {
-                if status_code != 204 {
-                    return Err(TwitterError::Other(format!(
-                        "Failed to append media chunk: Unexpected status code {}",
-                        status_code
-                    )));
-                }
-            }
-            Err(TwitterError::Other(format!(
-                "Failed to append media chunk: {}",
-                e.reason
-            )))
-        }
+        Err(e) => Err(TwitterError::ApiError(
+            e.reason,
+            format!("{:?}", e.kind),
+            e.status_code
+                .map(|code| code.to_string())
+                .unwrap_or_default(),
+        )),
     }
 }
 
 /// Finalize the media upload (FINALIZE command)
 async fn finalize_upload(
     client: &TwitterClient,
-    // api_url: &str,
     auth: &TwitterAuth,
     media_id: &str,
 ) -> TwitterResult<MediaUploadData> {
@@ -390,10 +382,13 @@ async fn finalize_upload(
         .await
     {
         Ok(data) => Ok(data),
-        Err(e) => Err(TwitterError::Other(format!(
-            "Failed to finalize media upload: {:?}",
-            e
-        ))),
+        Err(e) => Err(TwitterError::ApiError(
+            e.reason,
+            format!("{:?}", e.kind),
+            e.status_code
+                .map(|code| code.to_string())
+                .unwrap_or_default(),
+        )),
     }
 }
 
@@ -403,7 +398,7 @@ async fn _check_media_status(
     auth: &TwitterAuth,
     media_id: &str,
 ) -> TwitterResult<MediaUploadResponse> {
-    let url = format!("{}/media/upload/status", TWITTER_API_BASE);
+    let url = format!("{}/media/upload/status", TWITTER_X_API_BASE);
 
     let auth_header = auth.generate_auth_header(&url);
 
@@ -524,7 +519,7 @@ mod tests {
         assert!(result.is_err(), "Expected error, got success: {:?}", result);
         if let Err(e) = result {
             assert!(
-                e.to_string().contains("Failed to initialize media upload"),
+                e.to_string().contains("Twitter API error"),
                 "Error message should indicate init failure, got: {}",
                 e
             );
