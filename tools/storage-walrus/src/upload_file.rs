@@ -94,7 +94,7 @@ impl NexusTool for UploadFile {
     }
 
     fn path() -> &'static str {
-        "/file/upload"
+        "/upload-file"
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
