@@ -1043,6 +1043,69 @@ The user could not be removed from the list.
 
 ---
 
+# `xyz.taluslabs.social.twitter.retweet-tweet@1`
+
+Standard Nexus Tool that retweets a specific tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-retweet-the-specified-post)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will retweet the tweet.
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to retweet.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully retweeted.
+
+- **`ok.tweet_id`: [`String`]** - The ID of the tweet that was retweeted
+- **`ok.retweeted`: [`bool`]** - Confirmation that the tweet was retweeted (true)
+
+**`err`**
+
+The retweet operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
+
+---
+
 # `xyz.taluslabs.social.twitter.upload-media@1`
 
 Standard Nexus Tool that uploads media to Twitter.
