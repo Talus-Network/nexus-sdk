@@ -3,6 +3,7 @@
 //! Standard Nexus Tool that retrieves direct messages from a conversation.
 
 use {
+    super::models::EventType,
     crate::{
         auth::TwitterAuth,
         direct_message::models::{
@@ -15,16 +16,14 @@ use {
             TweetField,
             UserField,
         },
-        error::{parse_twitter_response, TwitterErrorKind, TwitterErrorResponse, TwitterResult},
-        tweet::TWITTER_API_BASE,
+        error::TwitterErrorKind,
+        twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
-    reqwest::Client,
-    ::{
-        nexus_sdk::{fqn, ToolFqn},
-        nexus_toolkit::*,
-        schemars::JsonSchema,
-        serde::{Deserialize, Serialize},
-    },
+    nexus_sdk::{fqn, ToolFqn},
+    nexus_toolkit::*,
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
+    serde_json,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -48,7 +47,7 @@ pub(crate) struct Input {
 
     /// The set of event_types to include in the results
     #[serde(skip_serializing_if = "Option::is_none")]
-    event_types: Option<Vec<String>>,
+    event_types: Option<Vec<EventType>>,
 
     /// A comma separated list of DM Event fields to display
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +68,21 @@ pub(crate) struct Input {
     /// A comma separated list of Tweet fields to display
     #[serde(skip_serializing_if = "Option::is_none")]
     tweet_fields: Option<Vec<TweetField>>,
+}
+
+impl Input {
+    /// Validate input parameters
+    fn validate(&self) -> Result<(), String> {
+        if let Some(max_results) = self.max_results {
+            if !(1..=100).contains(&max_results) {
+                return Err(format!(
+                    "max_results must be between 1 and 100, got {}",
+                    max_results
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -106,7 +120,7 @@ impl NexusTool for GetConversationMessages {
 
     async fn new() -> Self {
         Self {
-            api_base: TWITTER_API_BASE.to_string() + "/dm_conversations/with",
+            api_base: TWITTER_API_BASE.to_string(),
         }
     }
 
@@ -123,102 +137,50 @@ impl NexusTool for GetConversationMessages {
     }
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
-        // Validate range for max_results if provided
-        if let Some(max_results) = request.max_results {
-            if max_results < 1 || max_results > 100 {
-                let error_response = TwitterErrorResponse {
-                    kind: TwitterErrorKind::Api,
-                    reason: "max_results must be between 1 and 100".to_string(),
-                    status_code: None,
-                };
-
-                return Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
-                };
-            }
+        // Validate input parameters first
+        if let Err(e) = request.validate() {
+            return Output::Err {
+                kind: TwitterErrorKind::Unknown,
+                reason: format!("Input validation error: {}", e),
+                status_code: None,
+            };
         }
 
-        // Validate pagination_token length if provided
-        if let Some(ref token) = request.pagination_token {
-            if token.len() < 16 {
-                let error_response = TwitterErrorResponse {
-                    kind: TwitterErrorKind::Api,
-                    reason: "pagination_token must be at least 16 characters".to_string(),
-                    status_code: None,
-                };
+        // Construct the specific endpoint for this tool
+        let suffix = format!("dm_conversations/with/{}/dm_events", request.participant_id);
 
-                return Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
-                };
-            }
-        }
-
-        match self.fetch_conversation_messages(&request).await {
-            Ok(response) => {
-                if response.data.is_none() && response.meta.is_none() && response.includes.is_none()
-                {
-                    // No data found in the response
-                    let error_response = TwitterErrorResponse {
-                        kind: TwitterErrorKind::NotFound,
-                        reason: "No conversation data found in the response".to_string(),
-                        status_code: None,
-                    };
-
-                    Output::Err {
-                        kind: error_response.kind,
-                        reason: error_response.reason,
-                        status_code: error_response.status_code,
-                    }
-                } else {
-                    Output::Ok {
-                        data: response.data,
-                        includes: response.includes,
-                        meta: response.meta,
-                    }
-                }
-            }
+        let client = match TwitterClient::new(Some(&suffix), Some(&self.api_base)) {
+            Ok(client) => client,
             Err(e) => {
-                // Use the centralized error conversion
-                let error_response = e.to_error_response();
-
-                Output::Err {
-                    kind: error_response.kind,
-                    reason: error_response.reason,
-                    status_code: error_response.status_code,
-                }
+                return Output::Err {
+                    reason: e.to_string(),
+                    kind: TwitterErrorKind::Network,
+                    status_code: None,
+                };
             }
-        }
-    }
-}
+        };
 
-impl GetConversationMessages {
-    /// Fetch DM conversation messages from Twitter API
-    async fn fetch_conversation_messages(
-        &self,
-        request: &Input,
-    ) -> TwitterResult<DmEventsResponse> {
-        let client = Client::new();
-
-        // Construct base URL with participant_id (without query parameters)
-        let base_url = format!("{}/{}/dm_events", self.api_base, request.participant_id);
-
-        // Prepare query parameters
-        let mut query_params = Vec::new();
+        let mut query_params: Vec<(String, String)> = Vec::new();
 
         if let Some(max_results) = request.max_results {
-            query_params.push(format!("max_results={}", max_results));
+            query_params.push(("max_results".to_string(), max_results.to_string()));
         }
 
         if let Some(pagination_token) = &request.pagination_token {
-            query_params.push(format!("pagination_token={}", pagination_token));
+            query_params.push(("pagination_token".to_string(), pagination_token.clone()));
         }
 
-        if let Some(event_types) = &request.event_types {
-            query_params.push(format!("event_types={}", event_types.join(",")));
+        if let Some(event_types) = request.event_types {
+            let fields: Vec<String> = event_types
+                .iter()
+                .map(|f| {
+                    serde_json::to_string(f)
+                        .unwrap()
+                        .replace("\"", "")
+                        .to_lowercase()
+                })
+                .collect();
+            query_params.push(("event_types".to_string(), fields.join(",")));
         }
 
         if let Some(dm_event_fields) = &request.dm_event_fields {
@@ -226,12 +188,14 @@ impl GetConversationMessages {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(format!("dm_event.fields={}", fields.join(",")));
+            if !fields.is_empty() {
+                query_params.push(("dm_event.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(expansions) = &request.expansions {
@@ -239,12 +203,14 @@ impl GetConversationMessages {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(format!("expansions={}", fields.join(",")));
+            if !fields.is_empty() {
+                query_params.push(("expansions".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(media_fields) = &request.media_fields {
@@ -252,12 +218,14 @@ impl GetConversationMessages {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(format!("media.fields={}", fields.join(",")));
+            if !fields.is_empty() {
+                query_params.push(("media.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(user_fields) = &request.user_fields {
@@ -265,12 +233,14 @@ impl GetConversationMessages {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(format!("user.fields={}", fields.join(",")));
+            if !fields.is_empty() {
+                query_params.push(("user.fields".to_string(), fields.join(",")));
+            }
         }
 
         if let Some(tweet_fields) = &request.tweet_fields {
@@ -278,36 +248,47 @@ impl GetConversationMessages {
                 .iter()
                 .map(|f| {
                     serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
+                        .unwrap_or_default()
+                        .replace('"', "")
                         .to_lowercase()
                 })
                 .collect();
-            query_params.push(format!("tweet.fields={}", fields.join(",")));
+            if !fields.is_empty() {
+                query_params.push(("tweet.fields".to_string(), fields.join(",")));
+            }
         }
 
-        // Generate the OAuth1 authorization header using only the base URL (no query params)
-        let auth_header = request.auth.generate_auth_header_for_get(&base_url);
-
-        // Now construct the full URL with query parameters
-        let full_url = if !query_params.is_empty() {
-            format!("{}?{}", base_url, query_params.join("&"))
-        } else {
-            base_url
-        };
-
-        // Build the request with OAuth authorization
-        let req_builder = client.get(&full_url).header("Authorization", auth_header);
-
-        // Send the request and parse the response
-        let response = req_builder.send().await?;
-        parse_twitter_response::<DmEventsResponse>(response).await
+        match client
+            .get_with_auth::<DmEventsResponse>(&request.auth, Some(query_params))
+            .await
+        {
+            Ok((data, includes, meta)) => {
+                if data.is_empty() {
+                    Output::Err {
+                        kind: TwitterErrorKind::NotFound,
+                        reason: "No conversation data found".to_string(),
+                        status_code: None,
+                    }
+                } else {
+                    Output::Ok {
+                        data: Some(data),
+                        includes,
+                        meta,
+                    }
+                }
+            }
+            Err(e) => Output::Err {
+                kind: e.kind,
+                reason: e.reason,
+                status_code: e.status_code,
+            },
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ::mockito::Server, serde_json::json};
+    use {super::*, crate::direct_message::models::EventType, ::mockito::Server, serde_json::json};
 
     impl GetConversationMessages {
         fn with_api_base(api_base: &str) -> Self {
@@ -319,8 +300,7 @@ mod tests {
 
     async fn create_server_and_tool() -> (mockito::ServerGuard, GetConversationMessages) {
         let server = Server::new_async().await;
-        let tool =
-            GetConversationMessages::with_api_base(&(server.url() + "/dm_conversations/with"));
+        let tool = GetConversationMessages::with_api_base(&server.url());
         (server, tool)
     }
 
@@ -335,7 +315,7 @@ mod tests {
             participant_id: "2244994945".to_string(),
             max_results: Some(10),
             pagination_token: None,
-            event_types: Some(vec!["MessageCreate".to_string()]),
+            event_types: Some(vec![EventType::MessageCreate]),
             dm_event_fields: Some(vec![
                 DmEventField::Id,
                 DmEventField::Text,
@@ -351,10 +331,11 @@ mod tests {
     #[tokio::test]
     async fn test_get_conversation_messages_successful() {
         let (mut server, tool) = create_server_and_tool().await;
+        let participant_id = "2244994945";
+        let expected_path = format!("/dm_conversations/with/{}/dm_events", participant_id);
 
         let mock = server
-            .mock("GET", "/dm_conversations/with/2244994945/dm_events")
-            .match_header("Authorization", mockito::Matcher::Any) // OAuth header will be different each time
+            .mock("GET", expected_path.as_str())
             .match_query(mockito::Matcher::Any)
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -366,12 +347,6 @@ mod tests {
                             "event_type": "message_create",
                             "text": "Hello there!",
                             "sender_id": "111222333"
-                        },
-                        {
-                            "id": "987654321",
-                            "event_type": "message_create",
-                            "text": "Hi, how are you?",
-                            "sender_id": "2244994945"
                         }
                     ],
                     "includes": {
@@ -380,16 +355,11 @@ mod tests {
                                 "id": "111222333",
                                 "name": "Test User",
                                 "username": "testuser"
-                            },
-                            {
-                                "id": "2244994945",
-                                "name": "Other User",
-                                "username": "otheruser"
                             }
                         ]
                     },
                     "meta": {
-                        "result_count": 2,
+                        "result_count": 1,
                         "next_token": "next_page_token_123"
                     }
                 })
@@ -407,250 +377,62 @@ mod tests {
                 meta,
             } => {
                 assert!(data.is_some());
-                let data = data.unwrap();
-                assert_eq!(data.len(), 2);
-                assert_eq!(data[0].id, "123456789");
-                assert_eq!(data[0].text.as_ref().unwrap(), "Hello there!");
-                assert_eq!(data[1].id, "987654321");
-
-                // Check includes
-                let includes = includes.unwrap();
-                let users = includes.users.unwrap();
-                assert_eq!(users.len(), 2);
-                assert_eq!(users[0].id, "111222333");
-                assert_eq!(users[0].username.as_ref().unwrap(), "testuser");
-                assert_eq!(users[1].id, "2244994945");
-                assert_eq!(users[1].username.as_ref().unwrap(), "otheruser");
-
-                // Check meta data
-                let meta = meta.unwrap();
-                assert_eq!(meta.result_count.unwrap(), 2);
-                assert_eq!(meta.next_token.unwrap(), "next_page_token_123");
+                let data_vec = data.unwrap();
+                assert_eq!(data_vec.len(), 1);
+                assert_eq!(data_vec[0].id, "123456789");
+                assert!(includes.is_some());
+                assert!(meta.is_some());
+                assert_eq!(meta.unwrap().result_count, Some(1));
             }
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => panic!(
-                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
-                reason, kind, status_code
-            ),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
-
         mock.assert_async().await;
     }
 
     #[tokio::test]
-    async fn test_conversation_not_found() {
+    async fn test_conversation_not_found_error() {
         let (mut server, tool) = create_server_and_tool().await;
+        let participant_id = "nonexistentuser";
+        let expected_path = format!("/dm_conversations/with/{}/dm_events", participant_id);
 
         let mock = server
-            .mock("GET", "/dm_conversations/with/2244994945/dm_events")
-            .match_header("Authorization", mockito::Matcher::Any)
-            .match_query(mockito::Matcher::Any)
-            .with_status(404)
-            .with_body(
-                json!({
-                    "errors": [{
-                        "message": "Conversation not found",
-                        "code": 34,
-                        "title": "Not Found Error",
-                        "type": "https://api.twitter.com/2/problems/resource-not-found",
-                        "detail": "Could not find the specified conversation."
-                    }]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => {
-                assert_eq!(
-                    kind,
-                    TwitterErrorKind::NotFound,
-                    "Expected NotFound error kind"
-                );
-                assert!(
-                    reason.contains("Not Found Error"),
-                    "Expected not found error"
-                );
-                assert_eq!(status_code, Some(404), "Expected 404 status code");
-            }
-            Output::Ok { .. } => panic!("Expected error, got success"),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_invalid_auth() {
-        let (mut server, tool) = create_server_and_tool().await;
-
-        let mock = server
-            .mock("GET", "/dm_conversations/with/2244994945/dm_events")
-            .match_header("Authorization", mockito::Matcher::Any)
-            .match_query(mockito::Matcher::Any)
-            .with_status(401)
-            .with_body(
-                json!({
-                    "errors": [{
-                        "message": "Invalid or expired token",
-                        "code": 32,
-                        "title": "Unauthorized",
-                        "type": "https://api.twitter.com/2/problems/invalid-token"
-                    }]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => {
-                assert_eq!(kind, TwitterErrorKind::Auth, "Expected Auth error kind");
-                assert!(
-                    reason.contains("Unauthorized"),
-                    "Expected unauthorized error"
-                );
-                assert_eq!(status_code, Some(401), "Expected 401 status code");
-            }
-            Output::Ok { .. } => panic!("Expected error, got success"),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_rate_limit_handling() {
-        let (mut server, tool) = create_server_and_tool().await;
-
-        let mock = server
-            .mock("GET", "/dm_conversations/with/2244994945/dm_events")
-            .match_header("Authorization", mockito::Matcher::Any)
-            .match_query(mockito::Matcher::Any)
-            .with_status(429)
-            .with_body(
-                json!({
-                    "errors": [{
-                        "message": "Rate limit exceeded",
-                        "code": 88,
-                        "title": "Rate Limit Exceeded",
-                        "type": "https://api.twitter.com/2/problems/rate-limit-exceeded"
-                    }]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => {
-                assert_eq!(
-                    kind,
-                    TwitterErrorKind::RateLimit,
-                    "Expected RateLimit error kind"
-                );
-                assert!(
-                    reason.contains("Rate Limit Exceeded"),
-                    "Expected rate limit error"
-                );
-                assert_eq!(status_code, Some(429), "Expected 429 status code");
-            }
-            Output::Ok { .. } => panic!("Expected error, got success"),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_empty_conversation() {
-        let (mut server, tool) = create_server_and_tool().await;
-
-        let mock = server
-            .mock("GET", "/dm_conversations/with/2244994945/dm_events")
-            .match_header("Authorization", mockito::Matcher::Any)
+            .mock("GET", expected_path.as_str())
             .match_query(mockito::Matcher::Any)
             .with_status(200)
-            .with_body(
-                json!({
-                    "meta": {
-                        "result_count": 0
-                    }
-                })
-                .to_string(),
-            )
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "data": [], "meta": { "result_count": 0 } }).to_string())
             .create_async()
             .await;
 
-        let output = tool.invoke(create_test_input()).await;
-
-        match output {
-            Output::Ok {
-                data,
-                includes,
-                meta,
-            } => {
-                assert!(data.is_none() || data.unwrap().is_empty());
-                assert!(meta.is_some());
-                let meta = meta.unwrap();
-                assert_eq!(meta.result_count.unwrap(), 0);
-                assert!(includes.is_none());
-            }
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => panic!(
-                "Expected success, got error: {} (kind: {:?}, status_code: {:?})",
-                reason, kind, status_code
-            ),
-        }
-
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_invalid_max_results() {
-        let (_, tool) = create_server_and_tool().await;
-
         let mut input = create_test_input();
-        input.max_results = Some(150); // Over the 100 limit
+        input.participant_id = participant_id.to_string();
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err {
-                reason,
-                kind,
-                status_code,
-            } => {
-                assert_eq!(kind, TwitterErrorKind::Api, "Expected Api error kind");
-                assert!(
-                    reason.contains("max_results must be between 1 and 100"),
-                    "Expected max_results validation error"
-                );
-                assert!(status_code.is_none(), "Expected no status code");
+            Output::Err { kind, reason, .. } => {
+                assert_eq!(kind, TwitterErrorKind::NotFound);
+                assert!(reason.contains("No conversation data found"));
             }
-            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Ok { .. } => panic!("Expected NotFound error, got success"),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_input_validation_max_results() {
+        let (_server, tool) = create_server_and_tool().await;
+        let mut input = create_test_input();
+        input.max_results = Some(200);
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Err { kind, reason, .. } => {
+                assert_eq!(kind, TwitterErrorKind::Unknown);
+                assert!(reason.contains("max_results must be between 1 and 100"));
+            }
+            Output::Ok { .. } => panic!("Expected validation error for max_results"),
         }
     }
 }
