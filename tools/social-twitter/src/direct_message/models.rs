@@ -1,5 +1,10 @@
 use {
-    crate::tweet::models::{ApiError, Entities, Meta, ReferencedTweet},
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        tweet::models::{Meta, ReferencedTweet},
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -9,7 +14,7 @@ pub struct DmEventsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<DmEvent>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -17,6 +22,7 @@ pub struct DmEventsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct DmEvent {
     pub id: String,
     pub event_type: EventType,
@@ -304,3 +310,10 @@ pub struct Message {
     /// The attachments for the message.
     pub attachments: Option<Vec<Attachment>>,
 }
+
+impl_twitter_response_parser!(
+    DmEventsResponse,
+    Vec<DmEvent>,
+    includes = Includes,
+    meta = Meta
+);
