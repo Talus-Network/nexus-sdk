@@ -98,7 +98,7 @@ impl NexusTool for ReadJson {
     }
 
     fn path() -> &'static str {
-        "/json/read"
+        "/read-json"
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
