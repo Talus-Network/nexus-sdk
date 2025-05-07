@@ -1128,9 +1128,17 @@ The following authentication parameters are provided as part of the TwitterAuth 
 
 The Base64 encoded media content to upload.
 
-**`media_type`: [`String`]**
+**`media_type`: [`MediaType`]**
 
-The MIME type of the media being uploaded. For example, `image/jpeg`, `image/png`, `video/mp4`, etc.
+The MIME type of the media being uploaded. This is an enum type that includes:
+
+- `ImageJpeg` - For JPEG images
+- `ImageGif` - For GIF images
+- `ImagePng` - For PNG images
+- `ImageWebp` - For WebP images
+- `VideoMp4` - For MP4 videos
+- `VideoWebm` - For WebM videos
+- `VideoMp2t` - For MPEG-2 Transport Stream videos
 
 **`media_category`: [`MediaCategory`]**
 
@@ -1176,13 +1184,27 @@ The media was uploaded successfully.
 
 The media upload failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - "Failed to decode media data" - If the base64 data is invalid
-  - Twitter API error with error details - If the upload process failed at any stage
-  - Network or connection errors
-  - Twitter API rate limit exceeded
-  - Invalid media type or format
-  - Media file too large
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested media or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
 
 ---
 
