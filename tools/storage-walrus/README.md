@@ -10,11 +10,11 @@ The JSON data to upload.
 
 _opt_ **`publisher_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus publisher URL.
+The walrus publisher URL. Must be a valid URL with http:// or https:// scheme.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to upload the JSON to.
+The walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`epochs`: [`u64`]** _default_: [`1`]
 
@@ -82,7 +82,7 @@ The file extension to use when saving the downloaded file. Supported extensions:
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus aggregator URL. If not provided, the default Walrus configuration will be used.
+The walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 ## Output Variants & Ports
 

@@ -5,6 +5,7 @@ use nexus_toolkit::bootstrap;
 mod client;
 mod download_file;
 mod upload_json;
+mod utils;
 
 #[tokio::main]
 async fn main() {

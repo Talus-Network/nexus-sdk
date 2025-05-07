@@ -68,8 +68,11 @@ pub(crate) struct Input {
     /// The path to save the file to
     #[serde(default = "default_output_path")]
     output_path: String,
-    /// The URL of the aggregator to upload the JSON to
-    #[serde(default)]
+    /// The URL of the aggregator to download the file from
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     aggregator_url: Option<String>,
     /// The file extension to save the file as
     #[serde(default = "default_file_extension")]

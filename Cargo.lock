@@ -8774,6 +8774,7 @@ dependencies = [
  "mockito",
  "nexus-sdk",
  "nexus-toolkit",
+ "reqwest",
  "schemars 1.0.0-alpha.17",
  "serde",
  "serde_json",
