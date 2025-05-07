@@ -1106,10 +1106,6 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
-# Error Handling
-
-The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
-
 # `xyz.taluslabs.social.twitter.send-message-to-group-conversation@1`
 
 Standard Nexus Tool that sends a message to a group conversation on Twitter.
@@ -1153,14 +1149,42 @@ The message was sent successfully.
 
 The message sending failed.
 
-- **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error with code/message format
-  - Twitter API error with detail/status/title format
-  - Twitter API errors array
-  - Failed to send direct message
-  - Failed to read Twitter API response
-  - Invalid JSON response
-  - Unexpected response format from Twitter API
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested conversation was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `validation` - Input validation error (e.g., empty text or attachments)
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+## Validation Rules
+
+The message must follow these validation rules:
+
+1. Either `text` or `attachments` must be provided (both cannot be empty)
+2. If `text` is provided, it must not be empty
+3. If `attachments` is provided, the list must not be empty
+
+## Example Error Messages
+
+- "Either text or attachments must be provided"
+- "Text must not be empty"
+- "Attachments must not be empty"
+- "Unauthorized" (when authentication fails)
+- "Response parsing error" (when Twitter's response cannot be parsed)
 
 ---
 
