@@ -1,5 +1,9 @@
 use {
-    crate::tweet::models::{ApiError, Entities, Meta, ReferencedTweet},
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        tweet::models::{ApiError, Entities, Meta, ReferencedTweet},
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -300,3 +304,36 @@ pub struct Message {
     /// The attachments for the message.
     pub attachments: Option<Vec<Attachment>>,
 }
+
+// #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+// pub enum ReplySettings {
+//     #[serde(rename = "following")]
+//     Following,
+//     #[serde(rename = "mentionedUsers")]
+//     MentionedUsers,
+//     #[serde(rename = "subscribers")]
+//     Subscribers,
+// }
+
+/// Data structure for a successful direct message response
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct DirectMessageResponseData {
+    /// Unique identifier of a DM conversation
+    pub dm_conversation_id: String,
+    /// Unique identifier of a DM Event
+    pub dm_event_id: String,
+}
+
+/// Twitter API response for a direct message request
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct DirectMessageResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<DirectMessageResponseData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+// Implement the TwitterApiParsedResponse trait for DirectMessageResponse
+crate::impl_twitter_response_parser!(DirectMessageResponse, DirectMessageResponseData);
