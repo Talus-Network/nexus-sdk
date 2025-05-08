@@ -305,15 +305,15 @@ pub struct Message {
     pub attachments: Option<Vec<Attachment>>,
 }
 
-// #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-// pub enum ReplySettings {
-//     #[serde(rename = "following")]
-//     Following,
-//     #[serde(rename = "mentionedUsers")]
-//     MentionedUsers,
-//     #[serde(rename = "subscribers")]
-//     Subscribers,
-// }
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub enum ReplySettings {
+    #[serde(rename = "following")]
+    Following,
+    #[serde(rename = "mentionedUsers")]
+    MentionedUsers,
+    #[serde(rename = "subscribers")]
+    Subscribers,
+}
 
 /// Data structure for a successful direct message response
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
