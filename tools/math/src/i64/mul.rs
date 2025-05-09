@@ -41,6 +41,10 @@ impl NexusTool for I64Mul {
         "/i64/mul"
     }
 
+    fn description() -> &'static str {
+        "Multiply two i64 numbers and return the result."
+    }
+
     async fn health(&self) -> AnyResult<StatusCode> {
         // This tool has no external dependencies and as such, it is always
         // healthy if the endpoint is reachable.

@@ -76,6 +76,7 @@ full = [
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 serde.workspace = true
 
 # === Optional deps ===
