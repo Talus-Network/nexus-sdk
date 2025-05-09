@@ -602,8 +602,87 @@ The user was retrieved successfully.
 
 The user was not retrieved due to an error.
 
-- **`err.reason`: [`String`]** - Detailed error message describing what went wrong
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
+  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found) - User not found")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - User not found error (e.g., "Twitter API error: User not found (code: 50)")
+  - Invalid token error (e.g., "Twitter API error: Invalid token (code: 89)")
+  - Rate limit exceeded error (e.g., "Twitter API error: Rate limit exceeded (code: 88)")
+  - No user data found in the response
+
+---
+
+# `xyz.taluslabs.social.twitter.get-users-by-username@1`
+
+Standard Nexus Tool that retrieves multiple users from the Twitter API by their usernames. Twitter api [reference](https://docs.x.com/x-api/users/user-lookup-by-usernames)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`usernames`: [`Vec<String>`]**
+
+A list of usernames to retrieve (without the @ symbol).
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`expansions_fields`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A list of Tweet fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The users were retrieved successfully.
+
+- **`ok.users`: [`Vec<UserData>`]** - Array of user data objects with the following fields:
+  - `id`: The user's unique identifier
+  - `name`: The user's display name
+  - `username`: The user's @username
+  - `protected`: Whether the user's account is protected
+  - `affiliation`: The user's affiliation information
+  - `connection_status`: The user's connection status
+  - `created_at`: When the user's account was created
+  - `description`: The user's profile description/bio
+  - `entities`: Entities found in the user's description
+  - `location`: The user's location
+  - `most_recent_tweet_id`: ID of the user's most recent tweet
+  - `pinned_tweet_id`: ID of the user's pinned tweet
+  - `profile_banner_url`: URL of the user's profile banner image
+  - `profile_image_url`: URL of the user's profile image
+  - `public_metrics`: Public metrics about the user
+  - `receives_your_dm`: Whether the user accepts direct messages
+  - `subscription_type`: The user's subscription type
+  - `url`: The user's website URL
+  - `verified`: Whether the user is verified
+  - `verified_type`: The user's verification type
+  - `withheld`: Withholding information for the user
+- **`ok.includes`: [`Option<Includes>`]** - Additional entities related to the users:
+  - `users`: Other users referenced by these users
+  - `tweets`: Tweets referenced by these users (e.g., pinned tweets)
+  - `media`: Media items referenced by these users
+  - `places`: Geographic places referenced by these users
+  - `polls`: Polls referenced by these users
+
+**`err`**
+
+The users were not retrieved due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
   - `network` - A network-related error occurred when connecting to Twitter
   - `connection` - Could not establish a connection to Twitter
   - `timeout` - The request to Twitter timed out
@@ -615,6 +694,7 @@ The user was not retrieved due to an error.
   - `forbidden` - The request was forbidden
   - `api` - An API-specific error occurred
   - `unknown` - An unexpected error occurred
+
 - **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
   - `401` - Unauthorized (authentication error)
   - `403` - Forbidden
