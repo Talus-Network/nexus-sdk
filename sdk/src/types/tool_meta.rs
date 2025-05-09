@@ -8,6 +8,7 @@ use {
 pub struct ToolMeta {
     pub fqn: ToolFqn,
     pub url: reqwest::Url,
+    pub description: String,
     pub input_schema: serde_json::Value,
     pub output_schema: serde_json::Value,
 }

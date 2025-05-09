@@ -4713,7 +4713,7 @@ dependencies = [
  "anyhow",
  "assert_fs",
  "assert_matches",
- "bip32",
+ "chrono",
  "clap",
  "clap_complete",
  "colored 3.0.0",
@@ -4743,6 +4743,7 @@ version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "chrono",
  "futures-util",
  "lazy-regex",
  "mockito",
@@ -8771,6 +8772,7 @@ version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
+ "jsonschema",
  "mockito",
  "nexus-sdk",
  "nexus-toolkit",

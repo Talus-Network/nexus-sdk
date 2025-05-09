@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON DAG definition no longer specifies entry input ports
 - renamed JSON DAG `vertices.input_ports` to `vertices.entry_ports`
+- `nexus tool list` supports the new `description` and `registered_at_ms` attributes.
 
 ### `nexus-sdk`
 

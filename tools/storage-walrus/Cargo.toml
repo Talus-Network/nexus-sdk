@@ -23,6 +23,7 @@ tempfile.workspace = true
 reqwest.workspace = true
 
 dirs = "5.0.1"
+jsonschema.workspace = true
 
 # === Nexus deps ===
 nexus-toolkit.workspace = true
