@@ -3,23 +3,21 @@ use {
     nexus_sdk::transactions::gas,
 };
 
-/// Upload `coin` as a gas budget for the Nexus workflow.
-pub(crate) async fn add_gas_budget(
-    coin: sui::ObjectID,
+/// Enable the expiry gas extension for the specified tool.
+pub(crate) async fn enable_expiry_extension(
+    tool_fqn: ToolFqn,
+    owner_cap: sui::ObjectID,
+    cost_per_minute: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Adding '{coin}' as gas budget for Nexus");
+    command_title!("Enabling the expiry gas extension for tool '{tool_fqn}' with cost '{cost_per_minute}' MIST per minute");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -35,14 +33,8 @@ pub(crate) async fn add_gas_budget(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
-    // Fetch budget coin.
-    let coin = fetch_object_by_id(&sui, coin).await?;
-
-    if coin.object_id == gas_coin.coin_object_id {
-        return Err(NexusCliError::Any(anyhow!(
-            "Gas and budget coins must be different."
-        )));
-    }
+    // Fetch the OwnerCap<OverGas> object.
+    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
@@ -52,13 +44,7 @@ pub(crate) async fn add_gas_budget(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match gas::add_budget(
-        &mut tx,
-        *workflow_pkg_id,
-        gas_service,
-        address.into(),
-        &coin,
-    ) {
+    match gas::enable_expiry(&mut tx, objects, &tool_fqn, &owner_cap, cost_per_minute) {
         Ok(tx) => tx,
         Err(e) => {
             tx_handle.error();

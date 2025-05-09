@@ -501,6 +501,37 @@ impl Gas {
     }
 }
 
+// == `nexus_workflow::default_gas_extension` ==
+
+pub struct DefaultGasExtension;
+
+const DEFAULT_GAS_EXTENSION_MODULE: &sui::MoveIdentStr =
+    sui::move_ident_str!("default_gas_extension");
+
+impl DefaultGasExtension {
+    /// Buy an expiry gas extension ticket.
+    ///
+    /// `nexus_workflow::default_gas_extension::buy_expiry_gas_ticket`
+    pub const BUY_EXPIRY_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("buy_expiry_gas_ticket"),
+    };
+    /// Disable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::default_gas_extension::disable_expiry`
+    pub const DISABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_expiry"),
+    };
+    /// Enable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::default_gas_extension::enable_expiry`
+    pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_expiry"),
+    };
+}
+
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
 /// creating generic types.
 pub fn into_type_tag(

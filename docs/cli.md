@@ -92,6 +92,18 @@ Owned OwnerCap object must be passed to this command for authorization.
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
+---
+
+**`nexus tool set-invocation-cost --tool-fqn <fqn> --owner-cap <object_id> --invocation-cost <mist>`**
+
+Tool owners can change the invocation cost of their Tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
 **`nexus tool list`**
 
 List all Nexus Tools available in the Tool Registry. This reads the dynamic object directly from Sui.
@@ -171,6 +183,40 @@ Set of commands to manage Nexus gas budgets and tickets.
 **`nexus gas add-budget --coin <object_id>`**
 
 Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry enable --tool-fqn <fqn> --owner-cap <object_id> --cost-per-minute <mist>`**
+
+The tool owners can enable the expiry gas extension for their tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender. This allows users to buy expiry gas tickets that can be used to pay for the tool usage for a limited amount of time.
+
+Calling this command again with a different `cost-per-minute` value will update the cost of the tickets.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry disable --tool-fqn <fqn> --owner-cap <object_id>`**
+
+Disables the expiry gas extension for the tool specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry buy-ticket --tool-fqn <fqn> --minutes <minutes> --coin <object_id>`**
+
+Buy an expiry gas ticket for the tool specified by the FQN. This ticket can then be used to pay for the tool usage for the specified amount of `minutes` if a DAG is executed from the same address that was used to buy this ticket. The ticket is paid for with the provided `coin` object.
+
+This transaction fails if the tool does not have the expiry gas extension enabled.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
