@@ -39,7 +39,7 @@ pub(crate) async fn enable_expiry_extension(
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Craft a TX to publish the DAG.
+    // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();

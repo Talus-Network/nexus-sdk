@@ -39,7 +39,7 @@ pub(crate) async fn set_tool_invocation_cost(
     // Fetch the OwnerCap object.
     let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
-    // Craft a TX to claim the collaters for a Tool.
+    // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
