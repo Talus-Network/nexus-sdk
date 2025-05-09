@@ -55,9 +55,11 @@ pub struct WalrusJsonSchema {
 pub(crate) struct Input {
     /// The blob ID of the JSON file to read
     blob_id: String,
-
     /// The URL of the Walrus aggregator to read the JSON from
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     aggregator_url: Option<String>,
 
     /// Optional JSON schema to validate the data against

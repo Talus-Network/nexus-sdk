@@ -30,10 +30,16 @@ pub(crate) struct Input {
     /// The JSON data to upload
     json: String,
     /// The walrus publisher URL
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     publisher_url: Option<String>,
     /// The URL of the aggregator to upload the JSON to
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     aggregator_url: Option<String>,
     /// Number of epochs to store the data
     #[serde(default = "default_epochs")]
