@@ -7,6 +7,7 @@ mod download_file;
 mod read_json;
 mod upload_file;
 mod upload_json;
+mod utils;
 mod verify_blob;
 
 #[tokio::main]
