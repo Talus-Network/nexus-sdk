@@ -34,14 +34,12 @@ pub(crate) struct Input {
         default,
         deserialize_with = "crate::utils::validation::deserialize_url_opt"
     )]
-    #[schemars(regex(pattern = r#"^https?://[^\s/$.?#].[^\s]*$"#))]
     publisher_url: Option<String>,
     /// The URL of the aggregator to upload the JSON to
     #[serde(
         default,
         deserialize_with = "crate::utils::validation::deserialize_url_opt"
     )]
-    #[schemars(regex(pattern = r#"^https?://[^\s/$.?#].[^\s]*$"#))]
     aggregator_url: Option<String>,
     /// Number of epochs to store the data
     #[serde(default = "default_epochs")]

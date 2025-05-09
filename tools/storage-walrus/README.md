@@ -10,11 +10,11 @@ The JSON data to upload.
 
 _opt_ **`publisher_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus publisher URL. Must be a valid URL with http:// or https:// scheme.
+The Walrus publisher URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`epochs`: [`u64`]** _default_: [`1`]
 
@@ -67,7 +67,7 @@ The path to the file to upload.
 
 _opt_ **`publisher_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus publisher URL.
+The Walrus publisher URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`epochs`: [`u64`]** _default_: [`1`]
 
@@ -117,7 +117,7 @@ The blob ID of the JSON file to read.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to read the JSON from.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`json_schema`: [`Option<WalrusJsonSchema>`]** _default_: [`None`]
 
@@ -164,7 +164,7 @@ The ID of the blob to verify.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to verify the blob against.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 ## Output Variants & Ports
 
@@ -219,7 +219,7 @@ The file extension to use when saving the downloaded file. Supported extensions:
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 ## Output Variants & Ports
 
