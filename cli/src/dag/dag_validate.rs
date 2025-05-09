@@ -10,6 +10,8 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
 
     let parsing_handle = loading!("Parsing JSON file...");
 
+    tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+
     // Read file.
     let file = match tokio::fs::read_to_string(path).await {
         Ok(file) => file,

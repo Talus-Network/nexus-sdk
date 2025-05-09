@@ -1,11 +1,4 @@
-use {
-    crate::prelude::*,
-    colored::ColoredString,
-    std::{
-        sync::{Arc, Mutex},
-        thread,
-    },
-};
+use {crate::prelude::*, colored::ColoredString, indicatif::ProgressBar};
 
 /// Print a grey colored line to separate sections
 pub(crate) fn separator() -> ColoredString {
@@ -58,7 +51,7 @@ macro_rules! notify_success {
         if !JSON_MODE.load(Ordering::Relaxed) {
             println!(
                 "[{check}] {msg}",
-                check = "✔".green().bold(),
+                check = "✓".green().bold(),
                 msg = format!($($args)*)
             );
         }
@@ -72,7 +65,7 @@ macro_rules! notify_error {
         if !JSON_MODE.load(Ordering::Relaxed) {
             eprintln!(
                 "[{ballot}] {msg}",
-                ballot = "✘".red().bold(),
+                ballot = "✖".red().bold(),
                 msg = format!($($args)*)
             );
         }
@@ -98,95 +91,56 @@ macro_rules! item {
 #[macro_export]
 macro_rules! loading {
     ($fmt:expr) => {{
-        use std::{
-            io::Write,
-            sync::{Arc, Mutex},
-            thread,
+        use {
+            indicatif::{ProgressBar, ProgressStyle},
+            std::time::Duration,
         };
 
-        let success = Arc::new(Mutex::new(false));
-        let error = Arc::new(Mutex::new(false));
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("[{spinner}] {msg}")
+                .unwrap(),
+        );
+        pb.set_message(format!($fmt));
+        pb.enable_steady_tick(Duration::from_millis(100));
 
-        let thread = {
-            let success = success.clone();
-            let error = error.clone();
-
-            thread::spawn(move || {
-                let frames = ["/", "-", "\\", "|"];
-
-                let mut i = 0;
-
-                while !JSON_MODE.load(Ordering::Relaxed) {
-                    print!("\r[{}] {msg} ", frames[i].purple(), msg = format!($fmt));
-
-                    if *success.lock().unwrap() {
-                        println!(
-                            "\r[{check}] {msg}",
-                            check = "✔".green().bold(),
-                            msg = format!($fmt)
-                        );
-
-                        break;
-                    }
-
-                    if *error.lock().unwrap() {
-                        println!(
-                            "\r[{ballot}] {msg}",
-                            ballot = "✘".red().bold(),
-                            msg = format!($fmt)
-                        );
-
-                        break;
-                    }
-
-                    i = (i + 1) % frames.len();
-
-                    std::io::stdout().flush().unwrap();
-
-                    thread::sleep(std::time::Duration::from_millis(100));
-                }
-            })
-        };
-
-        $crate::display::LoadingHandle::new(success, error, thread)
+        $crate::display::LoadingHandle::new(pb, format!($fmt))
     }};
 }
 
 /// Struct helping with handling loading state.
 pub(crate) struct LoadingHandle {
-    success: Arc<Mutex<bool>>,
-    error: Arc<Mutex<bool>>,
-    thread: thread::JoinHandle<()>,
+    pb: ProgressBar,
+    msg: String,
 }
 
 impl LoadingHandle {
-    pub(super) fn new(
-        success: Arc<Mutex<bool>>,
-        error: Arc<Mutex<bool>>,
-        thread: thread::JoinHandle<()>,
-    ) -> Self {
-        Self {
-            success,
-            error,
-            thread,
-        }
+    pub(super) fn new(pb: ProgressBar, msg: String) -> Self {
+        Self { pb, msg }
     }
 
-    /// Mark the loading as successful.
     pub(crate) fn success(self) {
-        if !JSON_MODE.load(Ordering::Relaxed) {
-            *self.success.lock().unwrap() = true;
+        if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            self.pb.finish_and_clear();
 
-            self.thread.join().unwrap();
+            println!(
+                "[{tick}] {message}",
+                tick = "✓".green().bold(),
+                message = self.msg
+            );
         }
     }
 
-    /// Mark the loading as errored.
     pub(crate) fn error(self) {
-        if !JSON_MODE.load(Ordering::Relaxed) {
-            *self.error.lock().unwrap() = true;
+        if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            self.pb.finish_and_clear();
 
-            self.thread.join().unwrap();
+            eprintln!(
+                "[{ballot}] {message}",
+                ballot = "✖".red().bold(),
+                message = self.msg
+            );
         }
     }
 }
