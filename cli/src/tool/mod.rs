@@ -71,6 +71,12 @@ pub(crate) enum ToolCommand {
             value_name = "MIST"
         )]
         invocation_cost: u64,
+        #[arg(
+            long = "batch",
+            short = 'b',
+            help = "Should all tools on a webserver be registered at once?"
+        )]
+        batch: bool,
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
@@ -196,12 +202,14 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             ident,
             collateral_coin,
             invocation_cost,
+            batch,
             gas,
         } => {
             register_tool(
                 ident,
                 collateral_coin,
                 invocation_cost,
+                batch,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )

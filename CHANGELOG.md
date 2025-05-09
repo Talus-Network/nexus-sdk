@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus gas expiry disable` to disable the expiry gas extension for a tool
 - `nexus gas expiry buy-ticket` to buy an expiry gas ticket for a tool
 - `nexus tool set-invocation-cost` to set the invocation cost for a tool
+- `indicatif` crate to handle progress spinners
 
 #### Changed
 
@@ -54,7 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to create a new Nexus network
 - release workflow
 - added dev guides that showcase how to use CLI to publish and register tools, and publish and execute DAGs
-- `indicatif` crate to handle progress spinners
 
 #### Changed
 
