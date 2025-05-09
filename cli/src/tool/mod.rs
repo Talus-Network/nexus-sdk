@@ -55,12 +55,20 @@ pub(crate) enum ToolCommand {
         /// The collateral coin object ID. Second coin object is chosen if not
         /// present.
         #[arg(
-            long = "sui-collateral-coin",
+            long = "collateral-coin",
             short = 'c',
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        sui_collateral_coin: Option<sui::ObjectID>,
+        collateral_coin: Option<sui::ObjectID>,
+        #[arg(
+            long = "invocation-cost",
+            short = 'i',
+            help = "What is the cost of invoking this tool in MIST.",
+            default_value = "0",
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
@@ -156,13 +164,15 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool register` ==
         ToolCommand::Register {
             ident,
+            collateral_coin,
+            invocation_cost,
             gas,
-            sui_collateral_coin,
         } => {
             register_tool(
                 ident,
+                collateral_coin,
+                invocation_cost,
                 gas.sui_gas_coin,
-                sui_collateral_coin,
                 gas.sui_gas_budget,
             )
             .await

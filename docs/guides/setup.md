@@ -87,6 +87,18 @@ source .envrc
 To automatically load these variables every time you navigate to the project directory, consider using [direnv](https://direnv.net/). After installing it, run `direnv allow` within your project directory.
 {% endhint %}
 
+### Upload some gas budget to Nexus
+
+In order to pay for the network transaction fees and the tool invocations, you need to upload some gas budget to Nexus. You can do this by running the following command:
+
+```bash
+nexus gas add-budget --coin <object_id>
+```
+
+{% hint style="info" %}
+Note that this coin can only be used to pay for Nexus and tool invocation fees only if the DAG is executed from the **same address**.
+{% endhint %}
+
 ### Configure the Sui client
 
 After installing the Sui binaries, configure and activate your Talus `devnet` environment:

@@ -3,6 +3,7 @@ mod conf;
 mod dag;
 mod display;
 mod error;
+mod gas;
 mod network;
 mod prelude;
 mod sui;
@@ -32,7 +33,9 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
-    #[command(subcommand, about = "Mange Nexus networks and leader caps")]
+    #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
+    Gas(gas::GasCommand),
+    #[command(subcommand, about = "Manage Nexus networks and leader caps")]
     Network(network::NetworkCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),
@@ -73,6 +76,7 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
+        Command::Gas(gas) => gas::handle(gas).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 
