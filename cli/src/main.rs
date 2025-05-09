@@ -60,7 +60,7 @@ async fn main() {
 
             eprintln!(
                 "{ballot} {error}",
-                ballot = "✘".red().bold(),
+                ballot = "✖".red().bold(),
                 error = NexusCliError::Syntax(e)
             );
 
@@ -82,7 +82,7 @@ async fn main() {
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
-        eprintln!("\n{ballot} {e}", ballot = "✘".red().bold());
+        eprintln!("\n{ballot} {e}", ballot = "✖".red().bold());
 
         std::process::exit(1);
     }
