@@ -49,7 +49,7 @@ pub(crate) async fn register_tool(
                     off_chain: Some(url),
                     on_chain: None,
                 }),
-                Err(e) => None,
+                Err(_) => None,
             })
             .collect::<Vec<_>>()
     } else {
@@ -225,6 +225,7 @@ pub(crate) async fn register_tool(
 
         registration_results.push(json!({
             "digest": response.digest,
+            "tool_fqn": meta.fqn,
             "owner_cap_over_tool_id": over_tool_id,
             "owner_cap_over_gas_id": over_gas_id,
         }))

@@ -73,7 +73,7 @@ pub(crate) enum ToolCommand {
         invocation_cost: u64,
         #[arg(
             long = "batch",
-            short = 'b',
+            short = 'a',
             help = "Should all tools on a webserver be registered at once?"
         )]
         batch: bool,

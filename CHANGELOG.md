@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus gas expiry buy-ticket` to buy an expiry gas ticket for a tool
 - `nexus tool set-invocation-cost` to set the invocation cost for a tool
 - `indicatif` crate to handle progress spinners
+- `--batch` flag to `nexus tool register` command to allow registering multiple tools at once
 
 #### Changed
 
@@ -41,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
+
+### `nexus-toolkit-rust`
+
+#### Added
+
+- `/tools` endpoint to the `boostrap!` macro that returns a list of all tools registered on the webserver
 
 ## [`0.1.0`] - 2025-04-14
 
