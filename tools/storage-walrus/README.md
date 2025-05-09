@@ -1,4 +1,4 @@
-# `xyz.taluslabs.storage.walrus.upload-json`
+# `xyz.taluslabs.storage.walrus.upload-json@1`
 
 Standard Nexus Tool that uploads a JSON file to Walrus and returns the blob ID.
 
@@ -51,6 +51,53 @@ The blob upload failed.
   - Possible kinds:
     - `network` - Error during HTTP requests or network connectivity issues
     - `validation` - Invalid JSON input or data validation failures
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
+
+---
+
+# `xyz.taluslabs.storage.walrus.read-json@1`
+
+Standard Nexus Tool that reads a JSON file from Walrus and returns the JSON data. The tool can also validate the JSON data against a provided schema.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The blob ID of the JSON file to read.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The URL of the Walrus aggregator to read the JSON from.
+
+_opt_ **`json_schema`: [`Option<WalrusJsonSchema>`]** _default_: [`None`]
+
+Optional JSON schema to validate the data against.
+
+### WalrusJsonSchema Structure
+
+- **`name`: [`String`]** - The name of the schema. Must match `[a-zA-Z0-9-_]`, with a maximum length of 64.
+- **`schema`: [`schemars::Schema`]** - The JSON schema for the expected output.
+- **`description`: [`Option<String>`]** - A description of the expected format.
+- **`strict`: [`Option<bool>`]** - Whether to enable strict schema adherence when validating the output.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The JSON data was read successfully.
+
+- **`ok.json`: [`Value`]** - The JSON data as a structured value
+
+**`err`**
+
+The JSON read operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`ReadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `network` - Error during HTTP requests or network connectivity issues
+    - `validation` - Invalid JSON data format or parsing failures
+    - `schema` - Error validating the JSON against the provided schema
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
 
 ---

@@ -30,6 +30,9 @@ pub fn register_off_chain_for_self(
     // `url: vector<u8>`
     let url = tx.pure(meta.url.to_string().as_bytes())?;
 
+    // `description: vector<u8>`
+    let description = tx.pure(meta.description.as_bytes())?;
+
     // `input_schema: vector<u8>`
     let input_schema = tx.pure(meta.input_schema.to_string().as_bytes())?;
 
@@ -40,6 +43,9 @@ pub fn register_off_chain_for_self(
     let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
         collateral_coin.object_ref(),
     ))?;
+
+    // `clock: &Clock`
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus_workflow::tool_registry::register_off_chain_tool()`
     let owner_cap_over_tool = tx.programmable_move_call(
@@ -53,9 +59,11 @@ pub fn register_off_chain_for_self(
             tool_registry,
             fqn,
             url,
+            description,
             input_schema,
             output_schema,
             pay_with,
+            clock,
         ],
     );
 
@@ -165,11 +173,7 @@ pub fn unregister(
     let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus::tool_registry::unregister_tool()`
     Ok(tx.programmable_move_call(
@@ -204,11 +208,7 @@ pub fn claim_collateral_for_self(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus::tool_registry::claim_collateral_for_tool()`
     Ok(tx.programmable_move_call(
@@ -237,6 +237,7 @@ mod tests {
         let meta = ToolMeta {
             fqn: fqn!("xyz.dummy.tool@1"),
             url: "https://example.com".parse().unwrap(),
+            description: "a dummy tool".to_string(),
             input_schema: json!({}),
             output_schema: json!({}),
         };
@@ -284,7 +285,7 @@ mod tests {
                 .to_string()
         );
 
-        assert_eq!(call.arguments.len(), 6);
+        assert_eq!(call.arguments.len(), 8);
     }
 
     #[test]
