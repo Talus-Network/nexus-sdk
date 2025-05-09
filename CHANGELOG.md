@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - commands to create a new Nexus network
 - release workflow
 - added dev guides that showcase how to use CLI to publish and register tools, and publish and execute DAGs
+- `indicatif` crate to handle progress spinners
 
 #### Changed
 
