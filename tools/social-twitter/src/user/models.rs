@@ -1,7 +1,10 @@
 use {
     crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
         list::models::{Includes, Meta},
         tweet::models::ApiError,
+        twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -218,3 +221,21 @@ pub struct UrlImage {
     pub width: i32,
     pub height: i32,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct FollowUserResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<FollowResponse>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FollowResponse {
+    pub following: bool,
+    pub pending_follow: bool,
+}
+
+impl_twitter_response_parser!(FollowUserResponse, FollowResponse);
