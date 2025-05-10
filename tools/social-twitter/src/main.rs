@@ -22,6 +22,7 @@ async fn main() {
         tweet::get_user_tweets::GetUserTweets,
         tweet::retweet_tweet::RetweetTweet,
         list::create_list::CreateList,
+        list::delete_list::DeleteList,
         list::get_list::GetList,
         list::get_list_tweets::GetListTweets,
         list::get_list_members::GetListMembers,

@@ -81,12 +81,18 @@ impl TwitterClient {
     }
 
     /// Makes a GET request to the Twitter API with a bearer token
-    pub async fn get<T>(&self, bearer_token: String) -> Result<T, TwitterErrorResponse>
+    pub async fn get<T>(
+        &self,
+        bearer_token: String,
+        query_params: Option<Vec<(String, String)>>,
+    ) -> Result<T::Output, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request_with_bearer_token::<T>("GET", bearer_token)
-            .await
+        let raw_response = self
+            .make_request_with_bearer_token::<T>("GET", bearer_token, query_params)
+            .await?;
+        raw_response.parse_twitter_response()
     }
 
     /// Makes a GET request to the Twitter API with auth
@@ -107,11 +113,14 @@ impl TwitterClient {
     }
 
     /// Makes a DELETE request to the Twitter API
-    pub async fn delete<T>(&self, auth: &TwitterAuth) -> Result<T, TwitterErrorResponse>
+    pub async fn delete<T>(&self, auth: &TwitterAuth) -> Result<T::Output, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request::<T, Value>("DELETE", auth, None).await
+        let raw_response: T = self
+            .make_request::<T, serde_json::Value>("DELETE", auth, None)
+            .await?;
+        raw_response.parse_twitter_response()
     }
 
     /// Makes an authenticated request to the Twitter API with auth
@@ -173,6 +182,7 @@ impl TwitterClient {
         &self,
         method: &str,
         bearer_token: String,
+        query_params: Option<Vec<(String, String)>>,
     ) -> Result<T, TwitterErrorResponse>
     where
         T: DeserializeOwned + std::fmt::Debug,
@@ -185,6 +195,11 @@ impl TwitterClient {
         request = request
             .header("Authorization", format!("Bearer {}", bearer_token))
             .header("Content-Type", "application/json");
+
+        // Add query parameters if provided
+        if let Some(params) = query_params {
+            request = request.query(&params);
+        }
 
         // Network/connection errors
         let response = match request.send().await {
@@ -202,20 +217,24 @@ impl TwitterClient {
     }
 }
 
-/// Trait to implement `TwitterApiParsedResponse` for a given response type and data type
+/// Trait for parsing Twitter API responses into a specific output type.
 ///
-/// This trait implements the `TwitterApiParsedResponse` trait for a given response type and data type.
+/// Types that implement this trait can transform Twitter API responses
+/// into usable Rust types, or return a standardized error when parsing fails.
 pub trait TwitterApiParsedResponse {
     type Output;
 
+    /// Parses the Twitter API response into the associated `Output` type.
     fn parse_twitter_response(self) -> Result<Self::Output, TwitterErrorResponse>;
 }
 
 /// Macro to implement `TwitterApiParsedResponse` for a given response type and data type
 ///
 /// This macro implements the `TwitterApiParsedResponse` trait for a given response type and data type.
+/// It handles both simple responses (just data) and complex responses (data + includes + meta).
 #[macro_export]
 macro_rules! impl_twitter_response_parser {
+    // Simple case - just data
     ($response_ty:ty, $data_ty:ty) => {
         impl TwitterApiParsedResponse for $response_ty {
             type Output = $data_ty;
@@ -232,12 +251,105 @@ macro_rules! impl_twitter_response_parser {
                     }
                 }
 
-                // If we have data, check if we need to include meta and includes
+                // If we have data, return it
                 if let Some(data) = self.data {
                     return Ok(data);
                 }
 
                 // If we have neither data nor errors, it's an unknown error
+                Err(TwitterError::ParseError(
+                    serde_json::from_str::<serde_json::Value>(
+                        "Twitter API response validation failed - no data or errors found in response",
+                    )
+                    .unwrap_err(),
+                )
+                .to_error_response())
+            }
+        }
+    };
+
+    // Extended case - data + includes + meta
+    ($response_ty:ty, $data_ty:ty, includes = $includes_ty:ty, meta = $meta_ty:ty) => {
+        impl TwitterApiParsedResponse for $response_ty {
+            type Output = ($data_ty, Option<$includes_ty>, Option<$meta_ty>);
+
+            fn parse_twitter_response(self) -> Result<Self::Output, TwitterErrorResponse> {
+                if let Some(errors) = self.errors {
+                    if let Some(first_error) = errors.first() {
+                        return Err(TwitterErrorResponse {
+                            reason: first_error.detail.clone().unwrap_or_default(),
+                            kind: TwitterErrorKind::Api,
+                            status_code: None,
+                        });
+                    }
+                }
+
+                if let Some(data) = self.data {
+                    return Ok((data, self.includes, self.meta));
+                }
+
+                Err(TwitterError::ParseError(
+                    serde_json::from_str::<serde_json::Value>(
+                        "Twitter API response validation failed - no data or errors found in response",
+                    )
+                    .unwrap_err(),
+                )
+                .to_error_response())
+            }
+        }
+    };
+
+    // Extended case - data + includes
+    ($response_ty:ty, $data_ty:ty,  includes = $includes_ty:ty) => {
+        impl TwitterApiParsedResponse for $response_ty {
+            type Output = ($data_ty, Option<$includes_ty>);
+
+            fn parse_twitter_response(self) -> Result<Self::Output, TwitterErrorResponse> {
+                if let Some(errors) = self.errors {
+                    if let Some(first_error) = errors.first() {
+                        return Err(TwitterErrorResponse {
+                            reason: first_error.detail.clone().unwrap_or_default(),
+                            kind: TwitterErrorKind::Api,
+                            status_code: None,
+                        });
+                    }
+                }
+
+                if let Some(data) = self.data {
+                    return Ok((data, self.includes));
+                }
+
+                Err(TwitterError::ParseError(
+                    serde_json::from_str::<serde_json::Value>(
+                        "Twitter API response validation failed - no data or errors found in response",
+                    )
+                    .unwrap_err(),
+                )
+                .to_error_response())
+            }
+        }
+    };
+
+    // Extended case - data + meta
+    ($response_ty:ty, $data_ty:ty, meta = $meta_ty:ty) => {
+        impl TwitterApiParsedResponse for $response_ty {
+            type Output = ($data_ty, Option<$meta_ty>);
+
+            fn parse_twitter_response(self) -> Result<Self::Output, TwitterErrorResponse> {
+                if let Some(errors) = self.errors {
+                    if let Some(first_error) = errors.first() {
+                        return Err(TwitterErrorResponse {
+                            reason: first_error.detail.clone().unwrap_or_default(),
+                            kind: TwitterErrorKind::Api,
+                            status_code: None,
+                        });
+                    }
+                }
+
+                if let Some(data) = self.data {
+                    return Ok((data, self.meta));
+                }
+
                 Err(TwitterError::ParseError(
                     serde_json::from_str::<serde_json::Value>(
                         "Twitter API response validation failed - no data or errors found in response",
