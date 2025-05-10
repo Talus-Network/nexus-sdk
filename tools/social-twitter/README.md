@@ -1106,6 +1106,108 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
+# `xyz.taluslabs.social.twitter.upload-media@1`
+
+Standard Nexus Tool that uploads media to Twitter.
+Twitter api [reference](https://docs.x.com/x-api/media/media-upload)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`media_data`: [`String`]**
+
+The Base64 encoded media content to upload.
+
+**`media_type`: [`MediaType`]**
+
+The MIME type of the media being uploaded. This is an enum type that includes:
+
+- `ImageJpeg` - For JPEG images
+- `ImageGif` - For GIF images
+- `ImagePng` - For PNG images
+- `ImageWebp` - For WebP images
+- `VideoMp4` - For MP4 videos
+- `VideoWebm` - For WebM videos
+- `VideoMp2t` - For MPEG-2 Transport Stream videos
+
+**`media_category`: [`MediaCategory`]**
+
+A string enum value which identifies a media use-case. Options include:
+
+- `AmplifyVideo` - For amplify video
+- `TweetGif` - For GIFs in tweets
+- `TweetImage` - For images in tweets
+- `TweetVideo` - For videos in tweets
+- `DmVideo` - For videos in direct messages
+- `Subtitles` - For subtitles
+
+_opt_ **`additional_owners`: [`Vec<String>`]** _default_: [`Empty Vec`]
+
+A comma-separated list of user IDs to set as additional owners allowed to use the returned media_id in tweets. Up to a maximum of 100 additional owners can be specified.
+
+_opt_ **`chunk_size`: [`usize`]** _default_: [`0`] (Auto-calculated)
+
+Chunk size in bytes for uploading media. When set to 0 (default), the chunk size is automatically calculated based on media type and size:
+
+- For files smaller than 5MB: Uses a single chunk (the full file)
+- For images: Calculated as 1/4 of the file size, up to 2MB maximum
+- For GIFs: Uses 3MB chunks
+- For videos: Uses 4MB chunks for smaller videos, 5MB (maximum) for large videos
+- For other media types: Dynamically calculated based on file size
+
+Setting a specific value will override the automatic calculation. Maximum allowed chunk size is 5MB as per Twitter API limits.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The media was uploaded successfully.
+
+- **`ok.media_id`: [`String`]** - The unique identifier for the uploaded media. Use this when attaching media to tweets.
+- **`ok.media_key`: [`String`]** - The media key identifier for this media attachment.
+- **`ok.processing_info`: [`Option<ProcessingInfo>`]** - Information about the processing state of the media (if applicable):
+  - `state`: Current state of processing
+  - `progress_percent`: Percentage of processing completed
+  - `check_after_secs`: Number of seconds to wait before checking status again
+
+**`err`**
+
+The media upload failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested media or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
