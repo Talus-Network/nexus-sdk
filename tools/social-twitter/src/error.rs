@@ -35,7 +35,7 @@ pub enum TwitterErrorKind {
 }
 
 /// A Twitter API error returned by the API
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct TwitterApiError {
     pub title: String,
     #[serde(rename = "type")]
