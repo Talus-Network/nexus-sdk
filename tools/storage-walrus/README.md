@@ -152,46 +152,6 @@ The JSON read operation failed.
 
 ---
 
-# `xyz.taluslabs.storage.walrus.verify-blob@1`
-
-Standard Nexus Tool that verifies a blob in Walrus.
-
-## Input
-
-**`blob_id`: [`String`]**
-
-The ID of the blob to verify.
-
-_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
-
-The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
-
-## Output Variants & Ports
-
-**`verified`**
-
-The blob exists and is verified.
-
-- **`verified.blob_id`: [`String`]** - The ID of the verified blob
-
-**`unverified`**
-
-The blob does not exist or could not be verified.
-
-- **`unverified.blob_id`: [`String`]** - The ID of the unverified blob
-
-**`err`**
-
-An error occurred during verification.
-
-- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-- **`err.kind`: [`UploadErrorKind`]** - Type of error that occurred
-  - Possible kinds:
-    - `server` - Server-side errors during verification
-- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for API errors)
-
----
-
 # `xyz.taluslabs.storage.walrus.download-file@1`
 
 Standard Nexus Tool that downloads a file from Walrus and saves it to a local path.
@@ -202,7 +162,7 @@ Standard Nexus Tool that downloads a file from Walrus and saves it to a local pa
 
 The unique identifier of the blob to download.
 
-_opt_ **`output_path`: [`String`]** _default_: [`"$HOME/Downloads"`]
+_opt_ **`output_path`: [`String`]** _default_: [System temporary directory]
 
 The local directory path where the downloaded file will be saved. The actual file will be saved as `downloaded_file.{extension}` in this directory. If a file with the same name already exists, it will automatically append a number in parentheses (e.g., `downloaded_file(1).{extension}`).
 
@@ -241,3 +201,43 @@ The file download failed.
     - `validation` - Path validation errors (e.g., directory does not exist)
     - `file_system` - File system errors (e.g., directory exists but is not writable)
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
+
+---
+
+# `xyz.taluslabs.storage.walrus.verify-blob@1`
+
+Standard Nexus Tool that verifies a blob in Walrus.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The ID of the blob to verify.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
+
+## Output Variants & Ports
+
+**`verified`**
+
+The blob exists and is verified.
+
+- **`verified.blob_id`: [`String`]** - The ID of the verified blob
+
+**`unverified`**
+
+The blob does not exist or could not be verified.
+
+- **`unverified.blob_id`: [`String`]** - The ID of the unverified blob
+
+**`err`**
+
+An error occurred during verification.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`UploadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `server` - Server-side errors during verification
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for API errors)
