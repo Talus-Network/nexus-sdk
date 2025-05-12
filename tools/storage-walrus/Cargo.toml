@@ -23,8 +23,6 @@ tempfile.workspace = true
 reqwest.workspace = true
 jsonschema.workspace = true
 
-dirs = "5.0.1"
-
 # === Nexus deps ===
 nexus-toolkit.workspace = true
 nexus-sdk = { workspace = true, features = ["walrus"] }
