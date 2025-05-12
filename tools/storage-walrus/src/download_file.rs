@@ -4,12 +4,12 @@
 
 use {
     crate::client::WalrusConfig,
-    dirs,
     nexus_sdk::{fqn, walrus::WalrusError, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
+    tempfile::TempDir,
     thiserror::Error,
 };
 
@@ -66,7 +66,7 @@ pub(crate) struct Input {
     /// The blob ID of the file to download
     blob_id: String,
     /// The path to save the file to
-    #[serde(default = "default_output_path")]
+    #[serde(default)]
     output_path: String,
     /// The URL of the aggregator to download the file from
     #[serde(
@@ -77,13 +77,6 @@ pub(crate) struct Input {
     /// The file extension to save the file as
     #[serde(default = "default_file_extension")]
     file_extension: FileExtension,
-}
-
-fn default_output_path() -> String {
-    dirs::download_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .to_string_lossy()
-        .to_string()
 }
 
 fn default_file_extension() -> FileExtension {
@@ -132,12 +125,11 @@ impl NexusTool for DownloadFile {
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         let blob_id = input.blob_id.clone();
-        let output_path = input.output_path.clone();
 
         match self.download_file(input).await {
-            Ok(_) => Output::Ok {
+            Ok(final_path) => Output::Ok {
                 blob_id,
-                contents: format!("File downloaded to {} successfully.", output_path),
+                contents: format!("File downloaded to {} successfully.", final_path),
             },
             Err(e) => {
                 let (kind, status_code) = match &e {
@@ -164,31 +156,38 @@ impl NexusTool for DownloadFile {
 }
 
 impl DownloadFile {
-    async fn download_file(&self, input: Input) -> Result<(), DownloadFileError> {
-        // Create a unique output path
-        let output_path = input.output_path.clone();
+    async fn download_file(&self, input: Input) -> Result<String, DownloadFileError> {
         let extension = input.file_extension.to_string();
-        let mut final_path = output_path.clone() + "/downloaded_file" + &extension;
-
-        // If the specified path exists, find the next available number
-        let mut counter = 1;
-        while PathBuf::from(&final_path).exists() {
-            final_path = format!("{}/downloaded_file({}){}", output_path, counter, extension);
-            counter += 1;
-        }
-
-        // Validate output path
-        validate_output_path(&final_path)?;
+        let (final_path, _temp_dir): (String, Option<TempDir>) = if input.output_path.is_empty() {
+            // Use a tempdir for output
+            let temp_dir =
+                TempDir::new().map_err(|e| DownloadFileError::WriteError(e.to_string()))?;
+            let file_path = temp_dir
+                .path()
+                .join(format!("downloaded_file{}", extension));
+            (file_path.to_string_lossy().to_string(), Some(temp_dir))
+        } else {
+            let output_path = input.output_path.clone();
+            let mut final_path = output_path.clone() + "/downloaded_file" + &extension;
+            let mut counter = 1;
+            while PathBuf::from(&final_path).exists() {
+                final_path = format!("{}/downloaded_file({}){}", output_path, counter, extension);
+                counter += 1;
+            }
+            // Validate output path
+            validate_output_path(&final_path)?;
+            (final_path, None)
+        };
 
         let walrus_client = WalrusConfig::new()
             .with_aggregator_url(input.aggregator_url)
             .build();
 
-        let contents = walrus_client
+        let _contents = walrus_client
             .download_file(&input.blob_id, &PathBuf::from(&final_path))
             .await?;
 
-        Ok(contents)
+        Ok(final_path)
     }
 }
 
