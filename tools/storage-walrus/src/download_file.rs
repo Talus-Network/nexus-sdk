@@ -281,7 +281,14 @@ mod tests {
             // Create a temporary directory for testing
             let temp_dir;
             if output_path.is_none() {
-                temp_dir = std::env::temp_dir()
+                // Create a temp dir or use system temp dir as fallback
+                let temp_dir_result = TempDir::new();
+                let temp_dir_path = match temp_dir_result {
+                    Ok(dir) => dir.path().to_path_buf(),
+                    Err(_) => std::env::temp_dir(),
+                };
+
+                temp_dir = temp_dir_path
                     .join(format!("walrus_test{}", FileExtension::Txt.to_string()))
                     .to_string_lossy()
                     .to_string();
