@@ -4,14 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-schemars = "0.8.21"
-serde = { version = "1.0.217", features = ["derive"] }
-tokio = { version = "1.43.0", features = ["full"] }
+schemars = "1.0.0-alpha.17"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
 
 [dependencies.nexus-sdk]
-git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v0.2.0"
+git = "https://github.com/Talus-Network/nexus-sdk.git"
+branch = "main"
+package = "nexus-sdk"
 
 [dependencies.nexus-toolkit]
-git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v0.2.0"
+git = "https://github.com/Talus-Network/nexus-sdk.git"
+branch = "main"
+package = "nexus-toolkit"

@@ -48,7 +48,7 @@ transactions = ["sui_idents"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
-walrus = ["reqwest", "futures-util", "tokio", "serde_json"]
+walrus = ["reqwest", "futures-util", "tokio", "serde_json" , "thiserror"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -76,6 +76,7 @@ full = [
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 serde.workspace = true
 
 # === Optional deps ===
@@ -101,6 +102,10 @@ workspace = true
 optional = true
 
 [dependencies.tempfile]
+workspace = true
+optional = true
+
+[dependencies.thiserror]
 workspace = true
 optional = true
 

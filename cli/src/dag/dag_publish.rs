@@ -81,7 +81,7 @@ pub(crate) async fn publish_dag(
     );
 
     // Sign the transaction and send it to the network.
-    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     // We need to parse the DAG object ID from the response.
     let dag = response

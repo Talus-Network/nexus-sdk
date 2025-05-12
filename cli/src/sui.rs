@@ -235,8 +235,11 @@ pub(crate) async fn fetch_reference_gas_price(sui: &sui::Client) -> AnyResult<u6
     Ok(response)
 }
 
-/// Sign a transaction with the provided wallet.
-pub(crate) async fn sign_transaction(
+/// Sign a transaction with the provided wallet and execute it.
+///
+/// Returns `Ok` with the transaction block response if successful, or `Err` if
+/// the signing or the execution fails, or if the response contains errors.
+pub(crate) async fn sign_and_execute_transaction(
     sui: &sui::Client,
     wallet: &sui::WalletContext,
     tx_data: sui::TransactionData,

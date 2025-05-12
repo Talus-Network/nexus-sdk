@@ -174,7 +174,7 @@ mod tests {
 
         assert_matches!(result, Ok(()));
 
-        // Check that file was writte with the correct contents.
+        // Check that file was written with the correct contents.
         let contents = tokio::fs::read_to_string(&path).await.unwrap();
         let conf = toml::from_str::<CliConf>(&contents).unwrap();
         let objects = conf.nexus.unwrap();
