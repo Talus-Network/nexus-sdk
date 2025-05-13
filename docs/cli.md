@@ -100,6 +100,8 @@ This command requires that a wallet is connected to the CLI...
 
 Tool owners can change the invocation cost of their Tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
 
+<!-- TODO: <https://github.com/Talus-Network/nexus-next/issues/283> -->
+
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}

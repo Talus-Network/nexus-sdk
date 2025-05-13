@@ -64,7 +64,7 @@ pub(crate) async fn enable_expiry_extension(
     );
 
     // Sign and send the TX.
-    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     json_output(&json!({ "digest": response.digest }))?;
 

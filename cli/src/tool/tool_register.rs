@@ -151,7 +151,7 @@ pub(crate) async fn register_tool(
         );
 
         // Sign and submit the TX.
-        let response = sign_transaction(&sui, &wallet, tx_data).await?;
+        let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
         // Parse the owner cap object IDs from the response.
         let owner_caps = response

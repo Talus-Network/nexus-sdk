@@ -144,8 +144,10 @@ mod tests {
         let path = tempdir.join("test/src/main.rs");
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
-        assert!(contents.contains("domain.author.test@1"));
-        assert!(contents.contains("http://localhost:8080"));
+        assert!(contents.contains("enum Output {\n    Ok {\n        // Add output ports for the `Ok` variant\n    },\n    Err {\n        reason: String,\n        code: Option<u16>\n    },\n}"));
+        assert!(contents.contains("    async fn new() -> Self {\n        Self\n    }"));
+        assert!(contents.contains("    fn fqn() -> ToolFqn {\n        // The fully qualified name of the tool.\n\n        fqn!(\"domain.author.test@1\")\n    }"));
+        assert!(contents.contains("    fn path() -> &'static str {\n        \"\"\n    }"));
         assert!(contents.contains("struct Test;"));
         assert!(contents.contains("impl NexusTool for Test {"));
 

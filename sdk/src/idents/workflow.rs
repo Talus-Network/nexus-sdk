@@ -482,7 +482,7 @@ impl Gas {
         name: sui::move_ident_str!("sync_gas_state"),
     };
 
-    /// Convert an object ID an InvokerAddress scope.
+    /// Convert an object ID to an InvokerAddress scope.
     pub fn scope_invoker_address_from_object_id(
         tx: &mut sui::ProgrammableTransactionBuilder,
         workflow_pkg_id: sui::ObjectID,
