@@ -56,7 +56,7 @@ Command that makes a request to `GET <url>/meta` to fetch the Tool definition an
 
 This returns 2 OwnerCap object IDs that can be used to manage the Tool and its Gas settlement methods.
 
-If the `--batch` flag is passed, the command will accept a URL of a webserver hosting mutliple tools and register all of them at once.
+If the `--batch` flag is passed, the command will accept a URL of a webserver hosting mutliple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoints that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
