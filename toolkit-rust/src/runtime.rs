@@ -1,4 +1,4 @@
-//! See <https://github.com/Talus-Network/gitbook-docs/nexus-sdk/toolkit-rust.md>
+//! See <https://github.com/Talus-Network/gitbook-docs/blob/staging/nexus-sdk/toolkit-rust.md>
 
 use {
     crate::NexusTool,
