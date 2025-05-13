@@ -53,7 +53,6 @@ where
 ///
 /// If the outer `Vec` is len 1, it will be deserialized as a single JSON value.
 /// Otherwise it will be deserialized as a JSON array.
-#[allow(dead_code)]
 pub fn deserialize_array_of_bytes_to_json_value<'de, D>(
     deserializer: D,
 ) -> Result<serde_json::Value, D::Error>
@@ -86,7 +85,6 @@ where
 }
 
 /// Inverse of [deserialize_array_of_bytes_to_json_value].
-#[allow(dead_code)]
 pub fn serialize_json_value_to_array_of_bytes<S>(
     value: &serde_json::Value,
     serializer: S,
