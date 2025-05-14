@@ -12,6 +12,7 @@ pub(crate) async fn print_nexus_conf(conf_path: PathBuf) -> AnyResult<String, Ne
         NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
     })
 }
+
 #[cfg(test)]
 mod tests {
     use {super::*, nexus_sdk::test_utils::sui_mocks};
