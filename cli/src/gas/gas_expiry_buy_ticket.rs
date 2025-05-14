@@ -14,7 +14,7 @@ pub(crate) async fn buy_expiry_gas_ticket(
     command_title!("Buying an expiry gas ticket for '{minutes}' minuites for tool '{tool_fqn}'");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let objects = get_nexus_objects(&conf)?;
@@ -22,21 +22,15 @@ pub(crate) async fn buy_expiry_gas_ticket(
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
-
-    let address = match wallet.active_address() {
-        Ok(address) => address,
-        Err(e) => {
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
     // Fetch the coin to pay for the ticket with.
-    let coin = fetch_object_by_id(&sui, coin).await?;
+    let pay_with_coin = fetch_object_by_id(&sui, coin).await?;
 
-    if coin.object_id == gas_coin.coin_object_id {
+    if pay_with_coin.object_id == gas_coin.coin_object_id {
         return Err(NexusCliError::Any(anyhow!(
             "Gas and payment coins must be different."
         )));
@@ -50,13 +44,11 @@ pub(crate) async fn buy_expiry_gas_ticket(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match gas::buy_expiry_gas_ticket(&mut tx, objects, &tool_fqn, &coin, minutes) {
-        Ok(tx) => tx,
-        Err(e) => {
-            tx_handle.error();
+    if let Err(e) = gas::buy_expiry_gas_ticket(&mut tx, objects, &tool_fqn, &pay_with_coin, minutes)
+    {
+        tx_handle.error();
 
-            return Err(NexusCliError::Any(e));
-        }
+        return Err(NexusCliError::Any(e));
     };
 
     tx_handle.success();
