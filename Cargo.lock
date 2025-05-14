@@ -3891,7 +3891,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -3978,7 +3978,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -4687,7 +4687,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -4718,7 +4718,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4747,7 +4747,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -8741,7 +8741,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "anyhow",
  "jsonschema",
