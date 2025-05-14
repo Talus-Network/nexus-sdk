@@ -38,33 +38,23 @@ Examples of unacceptable behavior include:
 
 ## Enforcement Responsibilities
 
-Community leaders are responsible for clarifying and enforcing our standards of
-acceptable behavior and will take appropriate and fair corrective action in
-response to any behavior that they deem inappropriate, threatening, offensive,
-or harmful.
+Designated project maintainers and a moderation team (collectively "the enforcers") are responsible for clarifying and enforcing our standards of acceptable behavior. They will take appropriate and fair corrective action in response to any behavior that they deem inappropriate, threatening, offensive, or harmful within the community spaces defined in this Code of Conduct.
 
-Community leaders have the right and responsibility to remove, edit, or reject
-comments, commits, code, wiki edits, issues, and other contributions that are
-not aligned to this Code of Conduct, and will communicate reasons for moderation
-decisions when appropriate.
+The enforcers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions on project-managed platforms that are not aligned to this Code of Conduct. They will communicate reasons for moderation decisions when appropriate. This Code of Conduct governs behavior within our community spaces; it does not extend to governing on-chain interactions which are subject to the rules of the protocol itself.
 
 ## Scope
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
-Examples of representing our community include using an official email address,
-posting via an official social media account, or acting as an appointed
-representative at an online or offline event.
+This Code of Conduct applies within all project-managed community spaces, including but not limited to our GitHub repositories, official Discord server, community forums, Telegram groups, and during project-related events. It also applies when an individual is officially representing the community in public spaces. Examples of representing our community include using an official project email address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
 
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-[INSERT CONTACT METHOD].
+reported to the enforcers (as defined in "Enforcement Responsibilities") at
+[TODO: insert contact].
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
-reporter of any incident.
+reporter of any incident. We strive to apply this Code of Conduct consistently, but acknowledge that the permissionless and pseudonymous nature of some blockchain interactions may present challenges to enforcement beyond project-controlled platforms. Our focus is on maintaining a healthy environment within the community spaces we manage.
 
 ## Enforcement Guidelines
 
@@ -98,10 +88,10 @@ ban.
 sustained inappropriate behavior.
 
 **Consequence**: A temporary ban from any sort of interaction or public
-communication with the community for a specified period of time. No public or
+communication with the community on project-managed platforms (e.g., GitHub, Discord) for a specified period of time. No public or
 private interaction with the people involved, including unsolicited interaction
-with those enforcing the Code of Conduct, is allowed during this period.
-Violating these terms may lead to a permanent ban.
+with those enforcing the Code of Conduct, is allowed during this period on these platforms.
+Violating these terms may lead to a permanent ban. We acknowledge that individuals may attempt to evade such bans using new pseudonymous identities in a permissionless ecosystem; however, we will enforce these consequences to the best of our ability on the platforms we control.
 
 ### 4. Permanent Ban
 
@@ -110,7 +100,7 @@ standards, including sustained inappropriate behavior, harassment of an
 individual, or aggression toward or disparagement of classes of individuals.
 
 **Consequence**: A permanent ban from any sort of public interaction within the
-community.
+community on project-managed platforms (e.g., GitHub, Discord). We acknowledge that individuals may attempt to evade such bans using new pseudonymous identities in a permissionless ecosystem; however, we will enforce these consequences to the best of our ability on the platforms we control.
 
 ## Attribution
 
