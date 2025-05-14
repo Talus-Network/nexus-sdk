@@ -55,10 +55,10 @@ pub(crate) async fn publish_dag(
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
     // Create an empty DAG.
-    let mut dag_arg = dag::empty(&mut tx, workflow_pkg_id);
+    let mut dag_arg = dag::empty(&mut tx, *workflow_pkg_id);
 
     // Create DAG PTB from Dag struct.
-    dag_arg = match dag::create(&mut tx, workflow_pkg_id, primitives_pkg_id, dag_arg, dag) {
+    dag_arg = match dag::create(&mut tx, *workflow_pkg_id, *primitives_pkg_id, dag_arg, dag) {
         Ok(dag_arg) => dag_arg,
         Err(e) => {
             tx_handle.error();
@@ -68,7 +68,7 @@ pub(crate) async fn publish_dag(
     };
 
     // Public share the DAG, locking it.
-    dag::publish(&mut tx, workflow_pkg_id, dag_arg);
+    dag::publish(&mut tx, *workflow_pkg_id, dag_arg);
 
     tx_handle.success();
 
@@ -81,7 +81,7 @@ pub(crate) async fn publish_dag(
     );
 
     // Sign the transaction and send it to the network.
-    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     // We need to parse the DAG object ID from the response.
     let dag = response
@@ -93,7 +93,7 @@ pub(crate) async fn publish_dag(
                 object_type,
                 object_id,
                 ..
-            } if object_type.address == *workflow_pkg_id
+            } if object_type.address == **workflow_pkg_id
                 && object_type.module == workflow::Dag::DAG.module.into()
                 && object_type.name == workflow::Dag::DAG.name.into() =>
             {
