@@ -156,11 +156,7 @@ pub fn buy_expiry_gas_ticket(
     let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(pay_with.to_object_ref()))?;
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `nexus_workflow::default_gas_extension::buy_expiry_gas_ticket`
     Ok(tx.programmable_move_call(
