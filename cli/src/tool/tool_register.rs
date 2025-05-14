@@ -37,7 +37,7 @@ pub(crate) async fn register_tool(
             .get(url.join("/tools").expect("Joining URL must be valid"))
             .send()
             .await
-            .map_err(|e| NexusCliError::Http(e))?
+            .map_err(NexusCliError::Http)?
             .json::<Vec<String>>()
             .await
             .map_err(|e| NexusCliError::Http(e))?;
