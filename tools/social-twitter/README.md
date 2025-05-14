@@ -331,7 +331,7 @@ The tweet was successfully deleted.
 
 **`err`**
 
-The tweets could not be retrieved due to an error.
+The tweets could not be deleted due to an error.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible
