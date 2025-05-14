@@ -13,7 +13,7 @@ pub(crate) async fn disable_expiry_extension(
     command_title!("Disabling the expiry gas extension for tool '{tool_fqn}'");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let objects = get_nexus_objects(&conf)?;
@@ -21,13 +21,7 @@ pub(crate) async fn disable_expiry_extension(
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
-
-    let address = match wallet.active_address() {
-        Ok(address) => address,
-        Err(e) => {
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
@@ -43,14 +37,11 @@ pub(crate) async fn disable_expiry_extension(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match gas::disable_expiry(&mut tx, objects, &tool_fqn, &owner_cap) {
-        Ok(tx) => tx,
-        Err(e) => {
-            tx_handle.error();
+    if let Err(e) = gas::disable_expiry(&mut tx, objects, &tool_fqn, &owner_cap) {
+        tx_handle.error();
 
-            return Err(NexusCliError::Any(e));
-        }
-    };
+        return Err(NexusCliError::Any(e));
+    }
 
     tx_handle.success();
 
