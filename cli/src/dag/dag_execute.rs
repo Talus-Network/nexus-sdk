@@ -26,14 +26,7 @@ pub(crate) async fn execute_dag(
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        primitives_pkg_id,
-        network_id,
-        default_sap,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -54,17 +47,7 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(
-        &mut tx,
-        default_sap,
-        &dag,
-        gas_service,
-        &entry_group,
-        input_json,
-        *workflow_pkg_id,
-        *primitives_pkg_id,
-        *network_id,
-    ) {
+    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
@@ -93,7 +76,7 @@ pub(crate) async fn execute_dag(
                 object_type,
                 object_id,
                 ..
-            } if object_type.address == **workflow_pkg_id
+            } if object_type.address == *objects.workflow_pkg_id
                 && object_type.module == workflow::Dag::DAG_EXECUTION.module.into()
                 && object_type.name == workflow::Dag::DAG_EXECUTION.name.into() =>
             {

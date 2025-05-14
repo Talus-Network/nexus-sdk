@@ -16,11 +16,7 @@ pub(crate) async fn claim_collateral(
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        tool_registry,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -41,13 +37,7 @@ pub(crate) async fn claim_collateral(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = tool::claim_collateral_for_self(
-        &mut tx,
-        &tool_fqn,
-        &owner_cap,
-        tool_registry,
-        *workflow_pkg_id,
-    ) {
+    if let Err(e) = tool::claim_collateral_for_self(&mut tx, objects, &tool_fqn, &owner_cap) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
