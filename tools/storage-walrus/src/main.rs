@@ -3,7 +3,7 @@
 use nexus_toolkit::bootstrap;
 
 mod client;
-mod download_file;
+mod read_file;
 mod read_json;
 mod upload_file;
 mod upload_json;
@@ -17,6 +17,6 @@ async fn main() {
         upload_json::UploadJson,
         read_json::ReadJson,
         verify_blob::VerifyBlob,
-        download_file::DownloadFile,
+        read_file::ReadFile,
     ])
 }

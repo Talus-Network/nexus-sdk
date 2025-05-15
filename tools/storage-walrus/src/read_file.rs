@@ -1,6 +1,6 @@
-//! # `xyz.taluslabs.storage.walrus.download-file@1`
+//! # `xyz.taluslabs.storage.walrus.read-file@1`
 //!
-//! Standard Nexus Tool that downloads a file from Walrus and saves it to a local path.
+//! Standard Nexus Tool that reads a file from Walrus and returns the contents.
 
 use {
     crate::client::WalrusConfig,
@@ -15,7 +15,7 @@ use {
 
 /// Errors that can occur during file download
 #[derive(Error, Debug)]
-pub enum DownloadFileError {
+pub enum ReadFileError {
     #[error("Failed to download file: {0}")]
     DownloadError(#[from] WalrusError),
     #[error("Invalid folder path: {0}")]
@@ -27,7 +27,7 @@ pub enum DownloadFileError {
 /// Types of errors that can occur during file download
 #[derive(Serialize, JsonSchema, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum DownloadErrorKind {
+pub enum ReadErrorKind {
     /// Error during network request
     Network,
     /// Error validating file paths or permissions
@@ -94,16 +94,16 @@ pub(crate) enum Output {
         /// Detailed error message
         reason: String,
         /// Type of error (network, validation, etc.)
-        kind: DownloadErrorKind,
+        kind: ReadErrorKind,
         /// HTTP status code if available
         #[serde(skip_serializing_if = "Option::is_none")]
         status_code: Option<u16>,
     },
 }
 
-pub(crate) struct DownloadFile;
+pub(crate) struct ReadFile;
 
-impl NexusTool for DownloadFile {
+impl NexusTool for ReadFile {
     type Input = Input;
     type Output = Output;
 
@@ -112,11 +112,11 @@ impl NexusTool for DownloadFile {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.storage.walrus.download-file@1")
+        fqn!("xyz.taluslabs.storage.walrus.read-file@1")
     }
 
     fn path() -> &'static str {
-        "/download-file"
+        "/read-file"
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
@@ -126,22 +126,22 @@ impl NexusTool for DownloadFile {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         let blob_id = input.blob_id.clone();
 
-        match self.download_file(input).await {
+        match self.read_file(input).await {
             Ok(final_path) => Output::Ok {
                 blob_id,
-                contents: format!("File downloaded to {} successfully.", final_path),
+                contents: format!("File readed to {} successfully.", final_path),
             },
             Err(e) => {
                 let (kind, status_code) = match &e {
-                    DownloadFileError::InvalidFolder(_) => (DownloadErrorKind::Validation, None),
-                    DownloadFileError::WriteError(_) => (DownloadErrorKind::FileSystem, None),
-                    DownloadFileError::DownloadError(err) => {
+                    ReadFileError::InvalidFolder(_) => (ReadErrorKind::Validation, None),
+                    ReadFileError::WriteError(_) => (ReadErrorKind::FileSystem, None),
+                    ReadFileError::DownloadError(err) => {
                         let status_code = match err {
                             WalrusError::ApiError { status_code, .. } => Some(*status_code),
                             _ => None,
                         };
 
-                        (DownloadErrorKind::Network, status_code)
+                        (ReadErrorKind::Network, status_code)
                     }
                 };
 
@@ -155,13 +155,12 @@ impl NexusTool for DownloadFile {
     }
 }
 
-impl DownloadFile {
-    async fn download_file(&self, input: Input) -> Result<String, DownloadFileError> {
+impl ReadFile {
+    async fn read_file(&self, input: Input) -> Result<String, ReadFileError> {
         let extension = input.file_extension.to_string();
         let (final_path, _temp_dir): (String, Option<TempDir>) = if input.output_path.is_empty() {
             // Use a tempdir for output
-            let temp_dir =
-                TempDir::new().map_err(|e| DownloadFileError::WriteError(e.to_string()))?;
+            let temp_dir = TempDir::new().map_err(|e| ReadFileError::WriteError(e.to_string()))?;
             let file_path = temp_dir
                 .path()
                 .join(format!("downloaded_file{}", extension));
@@ -192,11 +191,11 @@ impl DownloadFile {
 }
 
 /// Validates the output path for writing
-fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
+fn validate_output_path(output_path: &String) -> Result<(), ReadFileError> {
     // Check if the directory exists
     if let Some(parent) = PathBuf::from(output_path).parent() {
         if !parent.exists() {
-            return Err(DownloadFileError::InvalidFolder(format!(
+            return Err(ReadFileError::InvalidFolder(format!(
                 "Directory does not exist: {}",
                 parent.display()
             )));
@@ -204,7 +203,7 @@ fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
 
         // Check if the directory is writable
         if !is_directory_writable(parent) {
-            return Err(DownloadFileError::WriteError(format!(
+            return Err(ReadFileError::WriteError(format!(
                 "Directory is not writable: {}",
                 parent.display()
             )));
@@ -213,7 +212,7 @@ fn validate_output_path(output_path: &String) -> Result<(), DownloadFileError> {
 
     // Check if the file already exists and is not writable
     if PathBuf::from(output_path).exists() && !is_file_writable(&PathBuf::from(output_path)) {
-        return Err(DownloadFileError::WriteError(format!(
+        return Err(ReadFileError::WriteError(format!(
             "File exists but is not writable: {}",
             PathBuf::from(output_path).display()
         )));
@@ -242,7 +241,7 @@ fn is_file_writable(path: &std::path::Path) -> bool {
 mod tests {
     use {super::*, mockito::Server, nexus_sdk::walrus::WalrusClient, std::fs};
 
-    impl DownloadFile {
+    impl ReadFile {
         // Helper method for testing
         fn with_custom_client() -> Self {
             Self {}
@@ -252,7 +251,7 @@ mod tests {
             &self,
             input: &Input,
             client: WalrusClient,
-        ) -> Result<(), DownloadFileError> {
+        ) -> Result<(), ReadFileError> {
             let output_path = input.output_path.clone();
             let extension = input.file_extension.to_string();
             let final_path = output_path + "/downloaded_file" + &extension;
@@ -261,7 +260,7 @@ mod tests {
             if let Some(parent) = PathBuf::from(&final_path).parent() {
                 if !parent.exists() {
                     fs::create_dir_all(parent)
-                        .map_err(|e| DownloadFileError::WriteError(e.to_string()))?;
+                        .map_err(|e| ReadFileError::WriteError(e.to_string()))?;
                 }
             }
 
@@ -321,7 +320,7 @@ mod tests {
     #[tokio::test]
     async fn test_download_file_success() {
         // Create server and input
-        let (mut server, input, file_content) = DownloadFile::create_server_and_input(None).await;
+        let (mut server, input, file_content) = ReadFile::create_server_and_input(None).await;
 
         // Set up mock response
         let mock = server
@@ -339,7 +338,7 @@ mod tests {
 
         // Skip validation for test purposes
         // Call the tool with our test client but bypass validation
-        let tool = DownloadFile::with_custom_client();
+        let tool = ReadFile::with_custom_client();
         let result = tool.download_for_test(&input, walrus_client).await;
         println!("result: {:?}", result);
         // Verify the result
@@ -365,13 +364,13 @@ mod tests {
         mock.assert_async().await;
 
         // Clean up test file
-        DownloadFile::cleanup_test_file(&final_path).await;
+        ReadFile::cleanup_test_file(&final_path).await;
     }
 
     #[tokio::test]
     async fn test_download_file_error() {
         // Create server and input
-        let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
+        let (mut server, input, _) = ReadFile::create_server_and_input(None).await;
 
         // Ensure the directory exists to avoid validation errors
         if let Some(parent) = PathBuf::from(&input.output_path).parent() {
@@ -392,7 +391,7 @@ mod tests {
             .build();
 
         // Use download_for_test which creates directories
-        let tool = DownloadFile::with_custom_client();
+        let tool = ReadFile::with_custom_client();
         let result = tool.download_for_test(&input, walrus_client).await;
 
         assert!(result.is_err(), "Expected error result");
@@ -410,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn test_download_nonexistent_blob() {
         // Create server and input
-        let (mut server, input, _) = DownloadFile::create_server_and_input(None).await;
+        let (mut server, input, _) = ReadFile::create_server_and_input(None).await;
 
         // Ensure the directory exists to avoid validation errors
         if let Some(parent) = PathBuf::from(&input.output_path).parent() {
@@ -431,7 +430,7 @@ mod tests {
             .build();
 
         // Use download_for_test which creates directories
-        let tool = DownloadFile::with_custom_client();
+        let tool = ReadFile::with_custom_client();
         let result = tool.download_for_test(&input, walrus_client).await;
 
         assert!(result.is_err(), "Expected error result");
@@ -449,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_formatting() {
         // Set up test parameters
-        let (_, input, _) = DownloadFile::create_server_and_input(None).await;
+        let (_, input, _) = ReadFile::create_server_and_input(None).await;
 
         // Test the output formatting by directly calling the invoke method
         // and checking the format of the success output
@@ -485,9 +484,9 @@ mod tests {
     async fn test_invalid_output_path() {
         // Create an input with an invalid path
         let (_, input, _) =
-            DownloadFile::create_server_and_input(Some("nonexistent/directory".to_string())).await;
+            ReadFile::create_server_and_input(Some("nonexistent/directory".to_string())).await;
 
-        let tool = DownloadFile::with_custom_client();
+        let tool = ReadFile::with_custom_client();
         let output = tool.invoke(input).await;
 
         // Print the actual reason for debugging
@@ -511,7 +510,7 @@ mod tests {
                 kind,
                 status_code,
             } => {
-                assert_eq!(kind, DownloadErrorKind::Validation);
+                assert_eq!(kind, ReadErrorKind::Validation);
                 assert_eq!(status_code, None);
             }
         }
