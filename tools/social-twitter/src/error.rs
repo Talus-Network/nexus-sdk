@@ -284,7 +284,8 @@ where
             if std::any::type_name::<T>()
                 == std::any::type_name::<crate::media::models::EmptyResponse>()
             {
-                return Ok(serde_json::from_str("{}").unwrap());
+                return serde_json::from_value(serde_json::json!({}))
+                    .map_err(TwitterError::ParseError);
             }
         }
     }
