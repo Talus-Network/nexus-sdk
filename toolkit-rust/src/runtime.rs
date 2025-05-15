@@ -70,7 +70,6 @@ macro_rules! bootstrap {
             .parse::<std::net::SocketAddr>()
             .expect("Invalid socket address in BIND_ADDR")
     }};
-
     ($addr:expr, [$tool:ty $(, $next_tool:ty)* $(,)?]) => {{
         let _ = $crate::env_logger::try_init();
         use {
@@ -81,25 +80,36 @@ macro_rules! bootstrap {
         let routes = $crate::routes_for_::<$tool>();
         $(let routes = routes.or($crate::routes_for_::<$next_tool>());)*
 
+        // Collect paths of all tools.
+        let mut paths = vec![<$tool as $crate::NexusTool>::path()];
+        $(
+            paths.push(<$next_tool as $crate::NexusTool>::path());
+        )*
+
         // Add a default health route in case there is none in the root.
         let default_health_route = $crate::warp::get()
             .and($crate::warp::path("health"))
             .map(|| $crate::warp::reply::with_status("", StatusCode::OK));
 
-        let routes = routes.or(default_health_route);
+        // Add a default tools route to list all tools available at that webserver.
+        let default_tools_route = $crate::warp::get()
+            .and($crate::warp::path("tools"))
+            .map(move || $crate::warp::reply::json(&paths));
+
+        let routes = routes.or(default_health_route).or(default_tools_route);
         // Serve the routes.
         $crate::warp::serve(routes).run($addr).await
     }};
-        // Default address.
+    // Default address.
     ([$($tool:ty),+ $(,)?]) => {{
         let addr = bootstrap!(@get_addr);
         bootstrap!(addr, [$($tool,)*])
     }};
-        // Only 1 tool.
+    // Only 1 tool.
     ($addr:expr, $tool:ty) => {{
         bootstrap!($addr, [$tool])
     }};
-        // Only 1 tool with default address.
+    // Only 1 tool with default address.
     ($tool:ty) => {{
         let addr = bootstrap!(@get_addr);
         bootstrap!(addr, [$tool])
