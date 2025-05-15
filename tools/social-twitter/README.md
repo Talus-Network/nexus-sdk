@@ -1138,7 +1138,7 @@ The ID of the user to unfollow.
 
 The user was successfully unfollowed.
 
-- **`ok.following`: [`bool`]** - Confirmation that the user is no longer being followed (false)
+- **`ok.unfollowed`: [`bool`]** - Confirmation that the user is no longer being followed
 
 **`err`**
 

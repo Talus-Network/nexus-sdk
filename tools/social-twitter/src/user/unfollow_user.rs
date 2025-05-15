@@ -32,7 +32,7 @@ pub(crate) struct Input {
 pub(crate) enum Output {
     Ok {
         /// Whether the user was unfollowed
-        following: bool,
+        unfollowed: bool,
     },
     Err {
         /// Detailed error message
@@ -92,7 +92,7 @@ impl NexusTool for UnfollowUser {
 
         match client.delete::<UnfollowResponse>(&request.auth).await {
             Ok(data) => Output::Ok {
-                following: data.following,
+                unfollowed: !data.following,
             },
             Err(e) => Output::Err {
                 reason: e.reason,
@@ -163,8 +163,8 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok { following } => {
-                assert_eq!(following, false);
+            Output::Ok { unfollowed } => {
+                assert_eq!(unfollowed, true);
             }
             Output::Err {
                 reason,
@@ -378,8 +378,8 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok { following } => {
-                assert_eq!(following, true);
+            Output::Ok { unfollowed } => {
+                assert_eq!(unfollowed, false);
             }
             Output::Err {
                 reason,
