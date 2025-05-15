@@ -152,30 +152,15 @@ The JSON read operation failed.
 
 ---
 
-# `xyz.taluslabs.storage.walrus.download-file@1`
+# `xyz.taluslabs.storage.walrus.read-file@1`
 
-Standard Nexus Tool that downloads a file from Walrus and saves it to a local path.
+Standard Nexus Tool that reads a file from Walrus and returns its content as bytes.
 
 ## Input
 
 **`blob_id`: [`String`]**
 
-The unique identifier of the blob to download.
-
-_opt_ **`output_path`: [`String`]** _default_: [System temporary directory]
-
-The local directory path where the downloaded file will be saved. The actual file will be saved as `downloaded_file.{extension}` in this directory. If a file with the same name already exists, it will automatically append a number in parentheses (e.g., `downloaded_file(1).{extension}`).
-
-_opt_ **`file_extension`: [`FileExtension`]** _default_: [`"txt"`]
-
-The file extension to use when saving the downloaded file. Supported extensions:
-
-- `txt` - Text file
-- `json` - JSON file
-- `bin` - Binary file
-- `png` - PNG image
-- `jpg` - JPG image
-- `jpeg` - JPEG image
+The unique identifier of the blob to read.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
@@ -185,21 +170,18 @@ The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. 
 
 **`ok`**
 
-The file was downloaded successfully.
+The file was read successfully.
 
-- **`ok.blob_id`: [`String`]** - The unique identifier of the downloaded blob
-- **`ok.contents`: [`String`]** - A success message indicating where the file was saved
+- **`ok.bytes`: [`Vec<u8>`]** - The file content as a byte array
 
 **`err`**
 
-The file download failed.
+The file read operation failed.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
-- **`err.kind`: [`DownloadErrorKind`]** - Type of error that occurred
+- **`err.kind`: [`ReadErrorKind`]** - Type of error that occurred
   - Possible kinds:
     - `network` - Error during HTTP requests or network connectivity issues
-    - `validation` - Path validation errors (e.g., directory does not exist)
-    - `file_system` - File system errors (e.g., directory exists but is not writable)
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
 
 ---
