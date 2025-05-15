@@ -8752,7 +8752,6 @@ dependencies = [
  "schemars 1.0.0-alpha.17",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.12",
  "tokio",
 ]
