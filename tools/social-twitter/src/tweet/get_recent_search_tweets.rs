@@ -204,6 +204,41 @@ pub(crate) enum Output {
     },
 }
 
+impl GetRecentSearchTweets {
+    fn add_fields_param<T: Serialize>(
+        &self,
+        params: &mut Vec<(String, String)>,
+        param_name: &str,
+        fields: &Option<Vec<T>>,
+    ) {
+        if let Some(field_values) = fields {
+            if !field_values.is_empty() {
+                let formatted_fields: Vec<String> = field_values
+                    .iter()
+                    .map(|f| {
+                        serde_json::to_string(f)
+                            .unwrap_or_default()
+                            .replace("\"", "")
+                            .to_lowercase()
+                    })
+                    .collect();
+
+                params.push((param_name.to_string(), formatted_fields.join(",")));
+            }
+        }
+    }
+
+    fn add_param<T: ToString + Clone>(
+        params: &mut Vec<(String, String)>,
+        name: &str,
+        value: &Option<T>,
+    ) {
+        if let Some(val) = value {
+            params.push((name.to_string(), val.clone().to_string()));
+        }
+    }
+}
+
 pub(crate) struct GetRecentSearchTweets {
     api_base: String,
 }
@@ -255,26 +290,15 @@ impl NexusTool for GetRecentSearchTweets {
 
         query_params.push(("query".to_string(), request.query.clone()));
 
-        if let Some(start_time) = &request.start_time {
-            query_params.push(("start_time".to_string(), start_time.clone()));
-        }
+        // Add optional string parameters
+        Self::add_param(&mut query_params, "start_time", &request.start_time);
+        Self::add_param(&mut query_params, "end_time", &request.end_time);
+        Self::add_param(&mut query_params, "since_id", &request.since_id);
+        Self::add_param(&mut query_params, "until_id", &request.until_id);
+        Self::add_param(&mut query_params, "max_results", &request.max_results);
+        Self::add_param(&mut query_params, "sort_order", &request.sort_order);
 
-        if let Some(end_time) = &request.end_time {
-            query_params.push(("end_time".to_string(), end_time.clone()));
-        }
-
-        if let Some(since_id) = &request.since_id {
-            query_params.push(("since_id".to_string(), since_id.clone()));
-        }
-
-        if let Some(until_id) = &request.until_id {
-            query_params.push(("until_id".to_string(), until_id.clone()));
-        }
-
-        if let Some(max_results) = request.max_results {
-            query_params.push(("max_results".to_string(), max_results.to_string()));
-        }
-
+        // Handle pagination token (next_token or pagination_token)
         if let Some(token) = request
             .next_token
             .as_ref()
@@ -283,99 +307,13 @@ impl NexusTool for GetRecentSearchTweets {
             query_params.push(("next_token".to_string(), token.clone()));
         }
 
-        if let Some(sort_order) = &request.sort_order {
-            query_params.push(("sort_order".to_string(), sort_order.clone()));
-        }
-
-        if let Some(tweet_fields) = &request.tweet_fields {
-            let fields: Vec<String> = tweet_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("tweet.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(expansions) = &request.expansions {
-            let fields: Vec<String> = expansions
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("expansions".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(media_fields) = &request.media_fields {
-            let fields: Vec<String> = media_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("media.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(poll_fields) = &request.poll_fields {
-            let fields: Vec<String> = poll_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("poll.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(user_fields) = &request.user_fields {
-            let fields: Vec<String> = user_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("user.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(place_fields) = &request.place_fields {
-            let fields: Vec<String> = place_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("place.fields".to_string(), fields.join(",")));
-            }
-        }
+        // Use add_fields_param for all field parameters
+        self.add_fields_param(&mut query_params, "tweet.fields", &request.tweet_fields);
+        self.add_fields_param(&mut query_params, "expansions", &request.expansions);
+        self.add_fields_param(&mut query_params, "media.fields", &request.media_fields);
+        self.add_fields_param(&mut query_params, "poll.fields", &request.poll_fields);
+        self.add_fields_param(&mut query_params, "user.fields", &request.user_fields);
+        self.add_fields_param(&mut query_params, "place.fields", &request.place_fields);
 
         match client
             .get::<TweetsResponse>(request.bearer_token, Some(query_params))
