@@ -1132,24 +1132,32 @@ The Base64 encoded media content to upload.
 
 The MIME type of the media being uploaded. This is an enum type that includes:
 
-- `ImageJpeg` - For JPEG images
-- `ImageGif` - For GIF images
-- `ImagePng` - For PNG images
-- `ImageWebp` - For WebP images
-- `VideoMp4` - For MP4 videos
-- `VideoWebm` - For WebM videos
-- `VideoMp2t` - For MPEG-2 Transport Stream videos
+- `image/jpeg` - For JPEG images
+- `image/gif` - For GIF images
+- `image/png` - For PNG images
+- `image/webp` - For WebP images
+- `image/pjpeg` - For Progressive JPEG images
+- `image/tiff` - For TIFF images
+- `image/bmp` - For BMP images
+- `video/mp4` - For MP4 videos
+- `video/webm` - For WebM videos
+- `video/mp2t` - For MPEG-2 Transport Stream videos
+- `text/srt` - For SRT subtitle files
+- `text/vtt` - For VTT subtitle files
+- `model/gltf-binary` - For 3D model files (glTF binary format)
 
 **`media_category`: [`MediaCategory`]**
 
 A string enum value which identifies a media use-case. Options include:
 
-- `AmplifyVideo` - For amplify video
-- `TweetGif` - For GIFs in tweets
-- `TweetImage` - For images in tweets
-- `TweetVideo` - For videos in tweets
-- `DmVideo` - For videos in direct messages
-- `Subtitles` - For subtitles
+- `tweet_image` - For images in tweets
+- `tweet_gif` - For GIFs in tweets
+- `tweet_video` - For videos in tweets
+- `dm_image` - For images in direct messages
+- `dm_gif` - For GIFs in direct messages
+- `dm_video` - For videos in direct messages
+- `amplify_video` - For amplify video
+- `subtitles` - For subtitles
 
 _opt_ **`additional_owners`: [`Vec<String>`]** _default_: [`Empty Vec`]
 
