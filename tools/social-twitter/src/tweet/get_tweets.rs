@@ -4,7 +4,7 @@
 
 use {
     crate::{
-        error::{TwitterErrorKind, TwitterErrorResponse},
+        error::TwitterErrorKind,
         list::models::Expansion,
         tweet::models::{
             Includes,
@@ -80,6 +80,31 @@ pub(crate) struct GetTweets {
     api_base: String,
 }
 
+impl GetTweets {
+    fn add_fields_param<T: Serialize>(
+        &self,
+        params: &mut Vec<(String, String)>,
+        param_name: &str,
+        fields: &Option<Vec<T>>,
+    ) {
+        if let Some(field_values) = fields {
+            if !field_values.is_empty() {
+                let formatted_fields: Vec<String> = field_values
+                    .iter()
+                    .map(|f| {
+                        serde_json::to_string(f)
+                            .unwrap_or_default()
+                            .replace("\"", "")
+                            .to_lowercase()
+                    })
+                    .collect();
+
+                params.push((param_name.to_string(), formatted_fields.join(",")));
+            }
+        }
+    }
+}
+
 impl NexusTool for GetTweets {
     type Input = Input;
     type Output = Output;
@@ -121,89 +146,13 @@ impl NexusTool for GetTweets {
         // Add tweet IDs
         query_params.push(("ids".to_string(), request.ids.join(",")));
 
-        // Add tweet fields if provided
-        if let Some(tweet_fields) = request.tweet_fields {
-            let fields: Vec<String> = tweet_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("tweet.fields".to_string(), fields.join(",")));
-        }
-
-        // Add expansions if provided
-        if let Some(expansions) = request.expansions {
-            let fields: Vec<String> = expansions
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("expansions".to_string(), fields.join(",")));
-        }
-
-        // Add media fields if provided
-        if let Some(media_fields) = request.media_fields {
-            let fields: Vec<String> = media_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("media.fields".to_string(), fields.join(",")));
-        }
-
-        // Add poll fields if provided
-        if let Some(poll_fields) = request.poll_fields {
-            let fields: Vec<String> = poll_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("poll.fields".to_string(), fields.join(",")));
-        }
-
-        // Add user fields if provided
-        if let Some(user_fields) = request.user_fields {
-            let fields: Vec<String> = user_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("user.fields".to_string(), fields.join(",")));
-        }
-
-        // Add place fields if provided
-        if let Some(place_fields) = request.place_fields {
-            let fields: Vec<String> = place_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("place.fields".to_string(), fields.join(",")));
-        }
+        // Add fields if provided
+        self.add_fields_param(&mut query_params, "tweet.fields", &request.tweet_fields);
+        self.add_fields_param(&mut query_params, "expansions", &request.expansions);
+        self.add_fields_param(&mut query_params, "media.fields", &request.media_fields);
+        self.add_fields_param(&mut query_params, "poll.fields", &request.poll_fields);
+        self.add_fields_param(&mut query_params, "user.fields", &request.user_fields);
+        self.add_fields_param(&mut query_params, "place.fields", &request.place_fields);
 
         // Make the request with the client
         match client
