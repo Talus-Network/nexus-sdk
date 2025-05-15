@@ -1132,9 +1132,8 @@ The DM Conversation ID to send the message to.
 
 The message to send, containing:
 
-- `text`: Optional text content of the message
-- `attachments`: Optional list of media attachments, each containing:
-  - `media_id`: The ID of the media to attach
+- **`text`: [`Option<String>`]** - The text content of the message
+- **`media_ids`: [`Option<Vec<String>>`]** - List of media IDs to attach to the message
 
 ## Output Variants & Ports
 
@@ -1161,7 +1160,7 @@ The message sending failed.
   - `server` - An error occurred on Twitter's servers
   - `forbidden` - The request was forbidden
   - `api` - An API-specific error occurred
-  - `validation` - Input validation error (e.g., empty text or attachments)
+  - `validation` - Input validation error (e.g., empty text or media_ids)
   - `unknown` - An unexpected error occurred
 - **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
   - `401` - Unauthorized (authentication error)
@@ -1174,15 +1173,15 @@ The message sending failed.
 
 The message must follow these validation rules:
 
-1. Either `text` or `attachments` must be provided (both cannot be empty)
+1. Either `text` or `media_ids` must be provided (both cannot be empty)
 2. If `text` is provided, it must not be empty
-3. If `attachments` is provided, the list must not be empty
+3. If `media_ids` is provided, the list must not be empty
 
 ## Example Error Messages
 
-- "Either text or attachments must be provided"
+- "Either text or media_ids must be provided"
 - "Text must not be empty"
-- "Attachments must not be empty"
+- "Media IDs must not be empty"
 - "Unauthorized" (when authentication fails)
 - "Response parsing error" (when Twitter's response cannot be parsed)
 
