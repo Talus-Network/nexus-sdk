@@ -62,6 +62,31 @@ pub(crate) enum Output {
     },
 }
 
+impl GetUsersById {
+    fn add_fields_param<T: Serialize>(
+        &self,
+        params: &mut Vec<(String, String)>,
+        param_name: &str,
+        fields: &Option<Vec<T>>,
+    ) {
+        if let Some(field_values) = fields {
+            if !field_values.is_empty() {
+                let formatted_fields: Vec<String> = field_values
+                    .iter()
+                    .map(|f| {
+                        serde_json::to_string(f)
+                            .unwrap_or_default()
+                            .replace("\"", "")
+                            .to_lowercase()
+                    })
+                    .collect();
+
+                params.push((param_name.to_string(), formatted_fields.join(",")));
+            }
+        }
+    }
+}
+
 pub(crate) struct GetUsersById {
     api_base: String,
 }
@@ -107,47 +132,10 @@ impl NexusTool for GetUsersById {
         // Add users id
         query_params.push(("ids".to_string(), request.ids.join(",")));
 
-        // Add user fields if provided
-        if let Some(user_fields) = request.user_fields {
-            let fields: Vec<String> = user_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("user.fields".to_string(), fields.join(",")));
-        }
-
-        // Add expansions if provided
-        if let Some(expansions) = request.expansions {
-            let fields: Vec<String> = expansions
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("expansions".to_string(), fields.join(",")));
-        }
-
-        // Add tweet fields if provided
-        if let Some(tweet_fields) = request.tweet_fields {
-            let fields: Vec<String> = tweet_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("tweet.fields".to_string(), fields.join(",")));
-        }
+        // Use the add_fields_param method for all field parameters
+        self.add_fields_param(&mut query_params, "user.fields", &request.user_fields);
+        self.add_fields_param(&mut query_params, "expansions", &request.expansions);
+        self.add_fields_param(&mut query_params, "tweet.fields", &request.tweet_fields);
 
         match client
             .get::<UsersResponse>(request.bearer_token, Some(query_params))
