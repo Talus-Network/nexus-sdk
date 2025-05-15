@@ -235,8 +235,11 @@ pub(crate) async fn fetch_reference_gas_price(sui: &sui::Client) -> AnyResult<u6
     Ok(response)
 }
 
-/// Sign a transaction with the provided wallet.
-pub(crate) async fn sign_transaction(
+/// Sign a transaction with the provided wallet and execute it.
+///
+/// Returns `Ok` with the transaction block response if successful, or `Err` if
+/// the signing or the execution fails, or if the response contains errors.
+pub(crate) async fn sign_and_execute_transaction(
     sui: &sui::Client,
     wallet: &sui::WalletContext,
     tx_data: sui::TransactionData,
@@ -319,41 +322,22 @@ pub(crate) async fn fetch_object_by_id(
 
 /// Wrapping some conf parsing functionality used around the CLI.
 // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
-pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<NexusObjects, NexusCliError> {
+pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, NexusCliError> {
     let objects_handle = loading!("Loading Nexus object IDs configuration...");
 
-    match (
-        conf.nexus.workflow_pkg_id,
-        conf.nexus.primitives_pkg_id,
-        conf.nexus.tool_registry_object_id,
-        conf.nexus.default_sap_object_id,
-        conf.nexus.network_id,
-    ) {
-        (Some(wid), Some(pid), Some(trid), Some(dsid), Some(nid)) => {
-            objects_handle.success();
+    if let Some(objects) = &conf.nexus {
+        objects_handle.success();
 
-            Ok(NexusObjects {
-                workflow_pkg_id: wid,
-                primitives_pkg_id: pid,
-                tool_registry_object_id: trid,
-                default_sap_object_id: dsid,
-                network_id: nid,
-            })
-        }
-        _ => {
-            objects_handle.error();
-
-            Err(NexusCliError::Any(anyhow!(
-                "{message}\n\n{workflow_command}\n{primitives_command}\n{tool_registry_command}\n{default_sap_command}\n{network_command}",
-                message = "References to Nexus objects are missing in the CLI configuration. Use the following commands to update it:",
-                workflow_command = "$ nexus conf --nexus.workflow-pkg-id <ID>".bold(),
-                primitives_command = "$ nexus conf --nexus.primitives-pkg-id <ID>".bold(),
-                tool_registry_command = "$ nexus conf --nexus.tool-registry-object-id <ID>".bold(),
-                default_sap_command = "$ nexus conf --nexus.default-sap-object-id <ID>".bold(),
-                network_command = "$ nexus conf --nexus.network-id <ID>".bold()
-            )))
-        }
+        return Ok(objects);
     }
+
+    objects_handle.error();
+
+    Err(NexusCliError::Any(anyhow!(
+        "{message}\n\n{command}",
+        message = "References to Nexus objects are missing in the CLI configuration. Use the following command to update it:",
+        command = "$ nexus conf --nexus.objects <PATH_TO_OBJECTS_TOML>".bold(),
+    )))
 }
 
 /// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
