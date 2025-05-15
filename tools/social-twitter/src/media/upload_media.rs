@@ -201,6 +201,15 @@ async fn upload_media(
         calculate_optimal_chunk_size(media_data.len(), media_type, media_category)
     };
 
+    // Validate number of chunks doesn't exceed Twitter's API limit of 999
+    let total_chunks = (media_data.len() + optimal_chunk_size - 1) / optimal_chunk_size;
+    if total_chunks > 999 {
+        return Err(TwitterError::Other(format!(
+            "Media would require {} chunks, which exceeds Twitter's limit of 999.",
+            total_chunks
+        )));
+    }
+
     // 1. INIT phase - Initialize upload
     let init_response = init_upload(
         &client,
