@@ -122,3 +122,57 @@ impl Transfer {
         name: sui::move_ident_str!("public_transfer"),
     };
 }
+
+// == `sui::coin` ==
+
+pub struct Coin;
+
+const COIN_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("coin");
+
+impl Coin {
+    /// `sui::coin::Coin`
+    pub const COIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("Coin"),
+    };
+    /// `sui::coin::from_balance`
+    pub const FROM_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("from_balance"),
+    };
+    /// `sui::coin::into_balance`
+    pub const INTO_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("into_balance"),
+    };
+    /// `sui::coin::join`
+    pub const JOIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::move_ident_str!("join"),
+    };
+}
+
+// == `sui::sui` ==
+
+pub struct Sui;
+
+const SUI_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("sui");
+
+impl Sui {
+    /// `sui::sui::SUI`
+    pub const SUI: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SUI_MODULE,
+        name: sui::move_ident_str!("SUI"),
+    };
+}
+
+/// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
+/// creating generic types.
+pub fn into_type_tag(ident: ModuleAndNameIdent) -> sui::MoveTypeTag {
+    sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+        address: *sui::FRAMEWORK_PACKAGE_ID,
+        module: ident.module.into(),
+        name: ident.name.into(),
+        type_params: vec![],
+    }))
+}

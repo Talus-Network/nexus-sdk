@@ -69,7 +69,7 @@ pub(crate) async fn create_network(
         .transaction_builder()
         .move_call(
             address,
-            workflow_pkg_id,
+            *workflow_pkg_id,
             workflow::LeaderCap::CREATE_FOR_SELF_AND_ADDRESSES
                 .module
                 .as_str(),
@@ -95,7 +95,7 @@ pub(crate) async fn create_network(
     tx_handle.success();
 
     // Sign the transaction and send it to the network.
-    let response = sign_transaction(&sui, &wallet, tx_data).await?;
+    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     // Parse network ID from the response.
     let Some(events) = response.events else {
