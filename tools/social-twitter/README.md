@@ -381,7 +381,7 @@ The ID of the tweet to unlike.
 
 The tweet was successfully unliked.
 
-- **`ok.liked`: [`bool`]** - Confirmation that the tweet was unliked (false)
+- **`ok.unliked`: [`bool`]** - Confirmation that the tweet was unliked
 
 **`err`**
 

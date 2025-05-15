@@ -32,7 +32,7 @@ pub(crate) struct Input {
 pub(crate) enum Output {
     Ok {
         /// Whether the tweet was unliked
-        liked: bool,
+        unliked: bool,
     },
     Err {
         /// Error message
@@ -87,7 +87,9 @@ impl NexusTool for UnlikeTweet {
         };
 
         match client.delete::<UnlikeResponse>(&request.auth).await {
-            Ok(data) => Output::Ok { liked: data.liked },
+            Ok(data) => Output::Ok {
+                unliked: !data.liked,
+            },
             Err(e) => Output::Err {
                 reason: e.reason,
                 kind: e.kind,
@@ -157,8 +159,8 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok { liked } => {
-                assert_eq!(liked, false);
+            Output::Ok { unliked } => {
+                assert_eq!(unliked, true);
             }
             Output::Err {
                 reason,
@@ -357,14 +359,14 @@ mod tests {
         // Test the unlike request
         let result = tool.invoke(create_test_input()).await;
 
-        // Verify the response - Expect Ok with liked: true
+        // Verify the response - Expect Ok with unliked: true
         match result {
-            Output::Ok { liked } => {
-                assert_eq!(liked, true); // Verify the API response is correctly passed through
+            Output::Ok { unliked } => {
+                assert_eq!(unliked, false); // Verify the API response is correctly passed through
             }
             Output::Err { reason, .. } => {
                 panic!(
-                    "Expected success (Ok with liked: true), got error: {}",
+                    "Expected success (Ok with unliked: true), got error: {}",
                     reason
                 );
             }
