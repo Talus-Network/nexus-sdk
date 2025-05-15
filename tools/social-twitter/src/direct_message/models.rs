@@ -309,40 +309,36 @@ pub enum ConversationType {
     Group,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct Attachment {
-    /// The media id of the attachment.
-    pub media_id: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     /// The text of the message.
-    /// Required if attachments is not provided.
+    /// Required if media_ids is not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    /// The attachments for the message.
+    /// The media IDs for the message.
     /// Required if text is not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub attachments: Option<Vec<Attachment>>,
+    pub media_ids: Option<Vec<String>>,
 }
 
 impl Message {
-    /// Validates that either text or attachments is provided
     pub fn validate(&self) -> Result<(), String> {
-        if self.text.is_none() && self.attachments.is_none() {
-            return Err("Either text or attachments must be provided".to_string());
+        if self.text.is_none() && self.media_ids.is_none() {
+            return Err("Either text or media_ids must be provided".to_string());
         }
+
         if let Some(text) = &self.text {
             if text.is_empty() {
                 return Err("Text must not be empty".to_string());
             }
         }
-        if let Some(attachments) = &self.attachments {
-            if attachments.is_empty() {
-                return Err("Attachments must not be empty".to_string());
+
+        if let Some(media_ids) = &self.media_ids {
+            if media_ids.is_empty() {
+                return Err("Media IDs must not be empty".to_string());
             }
         }
+
         Ok(())
     }
 }
