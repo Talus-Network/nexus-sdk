@@ -56,3 +56,4 @@ jobs:
       - run: just cli fmt-check
       - run: just cli clippy
       - run: just cli test
+      - run: just cli test-completions
