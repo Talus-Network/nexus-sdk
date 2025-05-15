@@ -3,9 +3,9 @@
 //! Standard Nexus Tool that creates a group DM conversation.
 
 use {
-    super::models::{ConversationType, DmConversationResponse, Message},
     crate::{
         auth::TwitterAuth,
+        direct_message::models::{ConversationType, DmConversationResponse, Message},
         error::TwitterErrorKind,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
