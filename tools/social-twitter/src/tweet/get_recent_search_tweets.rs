@@ -26,6 +26,25 @@ use {
     serde_json,
 };
 
+/// Sort order for tweet results
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Clone)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SortOrder {
+    /// Return results in order of recency
+    Recency,
+    /// Return results in order of relevancy
+    Relevancy,
+}
+
+impl ToString for SortOrder {
+    fn to_string(&self) -> String {
+        match self {
+            SortOrder::Recency => "recency".to_string(),
+            SortOrder::Relevancy => "relevancy".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
@@ -65,7 +84,7 @@ pub(crate) struct Input {
 
     /// Order in which to return results (recency or relevancy)
     #[serde(skip_serializing_if = "Option::is_none")]
-    sort_order: Option<String>,
+    sort_order: Option<SortOrder>,
 
     /// A comma separated list of Tweet fields to display
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,16 +139,6 @@ impl Input {
                 return Err(format!(
                     "Invalid end_time format: {}. Expected format: YYYY-MM-DDTHH:mm:ssZ",
                     ts
-                ));
-            }
-        }
-
-        // Validate sort_order
-        if let Some(order) = &self.sort_order {
-            if order != "recency" && order != "relevancy" {
-                return Err(format!(
-                    "sort_order must be either 'recency' or 'relevancy', got '{}'",
-                    order
                 ));
             }
         }
@@ -855,24 +864,45 @@ mod tests {
 
     #[tokio::test]
     async fn test_sort_order_validation() {
-        let (mut _server, tool) = create_server_and_tool().await;
+        let (mut server, tool) = create_server_and_tool().await;
+
+        let mock = server
+            .mock("GET", "/tweets/search/recent")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "from:TwitterDev".into()),
+                mockito::Matcher::UrlEncoded("sort_order".into(), "relevancy".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": [
+                        {
+                            "id": "123456789",
+                            "text": "Test tweet"
+                        }
+                    ],
+                    "meta": {
+                        "result_count": 1
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
         let mut input = create_test_input();
-        // Invalid sort order
-        input.sort_order = Some("invalid".to_string());
+        input.sort_order = Some(SortOrder::Relevancy);
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Err { reason, kind, .. } => {
-                assert_eq!(kind, TwitterErrorKind::Validation);
-                assert!(
-                    reason.contains("Input validation error: sort_order must be either 'recency' or 'relevancy'"),
-                    "Expected validation error message, got: {}",
-                    reason
-                );
+            Output::Ok { data, .. } => {
+                assert_eq!(data.len(), 1);
             }
-            Output::Ok { .. } => panic!("Expected error due to invalid sort order, got success"),
+            Output::Err { reason, .. } => panic!("Expected success, got error: {}", reason),
         }
+
+        mock.assert_async().await;
     }
 }

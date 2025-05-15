@@ -228,9 +228,12 @@ _opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
 
 Alternative parameter for pagination (same as next_token).
 
-_opt_ **`sort_order`: [`Option<String>`]** _default_: [`None`]
+_opt_ **`sort_order`: [`Option<SortOrder>`]** _default_: [`None`]
 
-Order in which to return results (recency or relevancy).
+Order in which to return results. Available values:
+
+- `Recency`: Return results in order of newest to oldest
+- `Relevancy`: Return results in order of relevance score
 
 _opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
 
