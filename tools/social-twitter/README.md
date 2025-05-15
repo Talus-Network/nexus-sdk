@@ -188,7 +188,7 @@ The tweets could not be retrieved due to an error.
 
 # `xyz.taluslabs.social.twitter.get-recent-search-tweets@1`
 
-Standard Nexus Tool that retrieves tweets from the recent search API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/search/api-reference/get-tweets-search-recent)
+Standard Nexus Tool that retrieves tweets from the recent search query. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/search/api-reference/get-tweets-search-recent)
 
 ## Input
 
