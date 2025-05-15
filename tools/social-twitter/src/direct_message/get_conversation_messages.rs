@@ -110,6 +110,41 @@ pub(crate) enum Output {
     },
 }
 
+impl GetConversationMessages {
+    fn add_fields_param<T: Serialize>(
+        &self,
+        params: &mut Vec<(String, String)>,
+        param_name: &str,
+        fields: &Option<Vec<T>>,
+    ) {
+        if let Some(field_values) = fields {
+            if !field_values.is_empty() {
+                let formatted_fields: Vec<String> = field_values
+                    .iter()
+                    .map(|f| {
+                        serde_json::to_string(f)
+                            .unwrap_or_default()
+                            .replace("\"", "")
+                            .to_lowercase()
+                    })
+                    .collect();
+
+                params.push((param_name.to_string(), formatted_fields.join(",")));
+            }
+        }
+    }
+
+    fn add_param<T: ToString + Clone>(
+        params: &mut Vec<(String, String)>,
+        name: &str,
+        value: &Option<T>,
+    ) {
+        if let Some(val) = value {
+            params.push((name.to_string(), val.clone().to_string()));
+        }
+    }
+}
+
 pub(crate) struct GetConversationMessages {
     api_base: String,
 }
@@ -162,101 +197,23 @@ impl NexusTool for GetConversationMessages {
 
         let mut query_params: Vec<(String, String)> = Vec::new();
 
-        if let Some(max_results) = request.max_results {
-            query_params.push(("max_results".to_string(), max_results.to_string()));
-        }
+        Self::add_param(&mut query_params, "max_results", &request.max_results);
+        Self::add_param(
+            &mut query_params,
+            "pagination_token",
+            &request.pagination_token,
+        );
 
-        if let Some(pagination_token) = &request.pagination_token {
-            query_params.push(("pagination_token".to_string(), pagination_token.clone()));
-        }
-
-        if let Some(event_types) = request.event_types {
-            let fields: Vec<String> = event_types
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap()
-                        .replace("\"", "")
-                        .to_lowercase()
-                })
-                .collect();
-            query_params.push(("event_types".to_string(), fields.join(",")));
-        }
-
-        if let Some(dm_event_fields) = &request.dm_event_fields {
-            let fields: Vec<String> = dm_event_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("dm_event.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(expansions) = &request.expansions {
-            let fields: Vec<String> = expansions
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("expansions".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(media_fields) = &request.media_fields {
-            let fields: Vec<String> = media_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("media.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(user_fields) = &request.user_fields {
-            let fields: Vec<String> = user_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("user.fields".to_string(), fields.join(",")));
-            }
-        }
-
-        if let Some(tweet_fields) = &request.tweet_fields {
-            let fields: Vec<String> = tweet_fields
-                .iter()
-                .map(|f| {
-                    serde_json::to_string(f)
-                        .unwrap_or_default()
-                        .replace('"', "")
-                        .to_lowercase()
-                })
-                .collect();
-            if !fields.is_empty() {
-                query_params.push(("tweet.fields".to_string(), fields.join(",")));
-            }
-        }
+        self.add_fields_param(&mut query_params, "event_types", &request.event_types);
+        self.add_fields_param(
+            &mut query_params,
+            "dm_event.fields",
+            &request.dm_event_fields,
+        );
+        self.add_fields_param(&mut query_params, "expansions", &request.expansions);
+        self.add_fields_param(&mut query_params, "media.fields", &request.media_fields);
+        self.add_fields_param(&mut query_params, "user.fields", &request.user_fields);
+        self.add_fields_param(&mut query_params, "tweet.fields", &request.tweet_fields);
 
         match client
             .get_with_auth::<DmEventsResponse>(&request.auth, Some(query_params))
