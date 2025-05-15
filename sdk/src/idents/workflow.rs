@@ -1,4 +1,8 @@
-use crate::{idents::ModuleAndNameIdent, sui, ToolFqn};
+use crate::{
+    idents::{sui_framework::Address, ModuleAndNameIdent},
+    sui,
+    ToolFqn,
+};
 
 // == `nexus_workflow::default_sap` ==
 
@@ -398,6 +402,103 @@ impl LeaderCap {
         module: LEADER_CAP_MODULE,
         name: sui::move_ident_str!("OverNetwork"),
     };
+}
+
+// == `nexus_workflow::gas` ==
+
+pub struct Gas;
+
+const GAS_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas");
+
+impl Gas {
+    /// Add Balance<SUI> to the tx sender's gas budget.
+    ///
+    /// `nexus_workflow::gas::add_gas_budget`
+    pub const ADD_GAS_BUDGET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("add_gas_budget"),
+    };
+    /// Claim leader gas for this evaluation.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas`
+    pub const CLAIM_LEADER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas"),
+    };
+    /// De-escalate an OverTool owner cap into OverGas.
+    ///
+    /// `nexus_workflow::gas::deescalate`
+    pub const DEESCALATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("deescalate"),
+    };
+    /// GasService type for lookups.
+    ///
+    /// `nexus_workflow::gas::GasService`
+    pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("GasService"),
+    };
+    /// OverGas owner cap generic.
+    ///
+    /// `nexus_workflow::gas::OverGas`
+    pub const OVER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("OverGas"),
+    };
+    /// Create an Execution scope.
+    ///
+    /// `nexus_workflow::gas::scope_execution`
+    pub const SCOPE_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("scope_execution"),
+    };
+    /// Create an InvokerAddress scope.
+    ///
+    /// `nexus_workflow::gas::scope_invoker_address`
+    pub const SCOPE_INVOKER_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("scope_invoker_address"),
+    };
+    /// Create a WorksheetType scope.
+    ///
+    /// `nexus_workflow::gas::scope_worksheet_type`
+    pub const SCOPE_WORKSHEET_TYPE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("scope_worksheet_type"),
+    };
+    /// Set a tool invocation cost in MIST.
+    ///
+    /// `nexus_workflow::gas::set_single_invocation_cost_mist`
+    pub const SET_SINGLE_INVOCATION_COST_MIST: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("set_single_invocation_cost_mist"),
+    };
+    /// Sync gas for the vertices in the current execution object.
+    ///
+    /// `nexus_workflow::gas::sync_gas_state`
+    pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("sync_gas_state"),
+    };
+
+    /// Convert an object ID to an InvokerAddress scope.
+    pub fn scope_invoker_address_from_object_id(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        object_id: sui::ObjectID,
+    ) -> anyhow::Result<sui::Argument> {
+        let with_prefix = false;
+        let address = Address::address_from_str(tx, object_id.to_canonical_string(with_prefix))?;
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::SCOPE_INVOKER_ADDRESS.module.into(),
+            Self::SCOPE_INVOKER_ADDRESS.name.into(),
+            vec![],
+            vec![address],
+        ))
+    }
 }
 
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
