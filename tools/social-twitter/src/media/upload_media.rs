@@ -87,6 +87,37 @@ pub(crate) enum Output {
     },
 }
 
+impl From<TwitterError> for Output {
+    fn from(e: TwitterError) -> Self {
+        let error_response = e.to_error_response();
+        Output::Err {
+            reason: error_response.reason,
+            kind: error_response.kind,
+            status_code: error_response.status_code,
+        }
+    }
+}
+
+impl From<base64::DecodeError> for Output {
+    fn from(e: base64::DecodeError) -> Self {
+        Output::Err {
+            reason: format!("Failed to decode media data: {}", e),
+            kind: TwitterErrorKind::Unknown,
+            status_code: None,
+        }
+    }
+}
+
+impl From<crate::twitter_client::TwitterClientError> for Output {
+    fn from(e: crate::twitter_client::TwitterClientError) -> Self {
+        Output::Err {
+            reason: e.to_string(),
+            kind: TwitterErrorKind::Network,
+            status_code: None,
+        }
+    }
+}
+
 pub(crate) struct UploadMedia {
     api_base: String,
 }
@@ -117,25 +148,13 @@ impl NexusTool for UploadMedia {
         // Create a Twitter client with the mock server URL
         let client = match TwitterClient::new(Some(MEDIA_UPLOAD_ENDPOINT), Some(&self.api_base)) {
             Ok(client) => client,
-            Err(e) => {
-                return Output::Err {
-                    reason: e.to_string(),
-                    kind: TwitterErrorKind::Network,
-                    status_code: None,
-                };
-            }
+            Err(e) => return e.into(),
         };
 
         // Decode base64 media data
         let media_data = match base64::decode(&request.media_data) {
             Ok(data) => data,
-            Err(e) => {
-                return Output::Err {
-                    reason: format!("Failed to decode media data: {}", e),
-                    kind: TwitterErrorKind::Unknown,
-                    status_code: None,
-                };
-            }
+            Err(e) => return e.into(),
         };
 
         // Upload media using chunking process
@@ -159,14 +178,7 @@ impl NexusTool for UploadMedia {
                 media_id: response.id,
                 media_key: response.media_key,
             },
-            Err(e) => {
-                let error_response = e.to_error_response();
-                Output::Err {
-                    reason: error_response.reason,
-                    kind: error_response.kind,
-                    status_code: error_response.status_code,
-                }
-            }
+            Err(e) => e.into(),
         }
     }
 }
@@ -329,19 +341,18 @@ async fn init_upload(
                 .unwrap_or_default(),
         );
 
-    match client
+    client
         .post::<MediaUploadResponse, ()>(auth, None, Some(form))
         .await
-    {
-        Ok(response) => Ok(response),
-        Err(e) => Err(TwitterError::ApiError(
-            e.reason,
-            format!("{:?}", e.kind),
-            e.status_code
-                .map(|code| code.to_string())
-                .unwrap_or_default(),
-        )),
-    }
+        .map_err(|e| {
+            TwitterError::ApiError(
+                e.reason,
+                format!("{:?}", e.kind),
+                e.status_code
+                    .map(|code| code.to_string())
+                    .unwrap_or_default(),
+            )
+        })
 }
 
 /// Append a chunk to the upload (APPEND command)
@@ -371,19 +382,18 @@ async fn append_chunk(
         .part("media", part);
 
     // Send request and handle empty response (HTTP 2XX)
-    match client
+    client
         .post::<EmptyResponse, ()>(auth, None, Some(form))
         .await
-    {
-        Ok(_) => Ok(()), // Success - empty response body with HTTP 2XX
-        Err(e) => Err(TwitterError::ApiError(
-            e.reason,
-            format!("{:?}", e.kind),
-            e.status_code
-                .map(|code| code.to_string())
-                .unwrap_or_default(),
-        )),
-    }
+        .map_err(|e| {
+            TwitterError::ApiError(
+                e.reason,
+                format!("{:?}", e.kind),
+                e.status_code
+                    .map(|code| code.to_string())
+                    .unwrap_or_default(),
+            )
+        })
 }
 
 /// Finalize the media upload (FINALIZE command)
@@ -397,19 +407,18 @@ async fn finalize_upload(
         .text("command", "FINALIZE")
         .text("media_id", media_id.to_string());
 
-    match client
+    client
         .post::<MediaUploadResponse, ()>(auth, None, Some(form))
         .await
-    {
-        Ok(data) => Ok(data),
-        Err(e) => Err(TwitterError::ApiError(
-            e.reason,
-            format!("{:?}", e.kind),
-            e.status_code
-                .map(|code| code.to_string())
-                .unwrap_or_default(),
-        )),
-    }
+        .map_err(|e| {
+            TwitterError::ApiError(
+                e.reason,
+                format!("{:?}", e.kind),
+                e.status_code
+                    .map(|code| code.to_string())
+                    .unwrap_or_default(),
+            )
+        })
 }
 
 /// Wait for media processing to complete
@@ -468,19 +477,18 @@ async fn check_media_status(
         .text("command", "STATUS")
         .text("media_id", media_id.to_string());
 
-    match client
+    client
         .post::<MediaUploadResponse, ()>(auth, None, Some(form))
         .await
-    {
-        Ok(response) => Ok(response),
-        Err(e) => Err(TwitterError::ApiError(
-            e.reason,
-            format!("{:?}", e.kind),
-            e.status_code
-                .map(|code| code.to_string())
-                .unwrap_or_default(),
-        )),
-    }
+        .map_err(|e| {
+            TwitterError::ApiError(
+                e.reason,
+                format!("{:?}", e.kind),
+                e.status_code
+                    .map(|code| code.to_string())
+                    .unwrap_or_default(),
+            )
+        })
 }
 
 #[cfg(test)]
