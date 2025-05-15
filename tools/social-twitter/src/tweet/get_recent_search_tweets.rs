@@ -19,6 +19,7 @@ use {
         },
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
+    chrono::DateTime,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     schemars::JsonSchema,
@@ -149,44 +150,7 @@ impl Input {
 
 /// Check if a string is a valid ISO 8601 timestamp (YYYY-MM-DDTHH:mm:ssZ)
 fn is_valid_timestamp_format(timestamp: &str) -> bool {
-    // Basic validation without regex - expecting exact format: YYYY-MM-DDTHH:mm:ssZ
-
-    // Check length
-    if timestamp.len() != 20 {
-        return false;
-    }
-
-    // Check structure
-    if !timestamp.chars().nth(4).map_or(false, |c| c == '-')
-        || !timestamp.chars().nth(7).map_or(false, |c| c == '-')
-        || !timestamp.chars().nth(10).map_or(false, |c| c == 'T')
-        || !timestamp.chars().nth(13).map_or(false, |c| c == ':')
-        || !timestamp.chars().nth(16).map_or(false, |c| c == ':')
-        || !timestamp.chars().nth(19).map_or(false, |c| c == 'Z')
-    {
-        return false;
-    }
-
-    // Check digits
-    let parts = &[
-        &timestamp[0..4],   // Year
-        &timestamp[5..7],   // Month
-        &timestamp[8..10],  // Day
-        &timestamp[11..13], // Hour
-        &timestamp[14..16], // Minute
-        &timestamp[17..19], // Second
-    ];
-
-    for part in parts {
-        if !part.chars().all(|c| c.is_ascii_digit()) {
-            return false;
-        }
-    }
-
-    // Could add further validation for range values (month 1-12, day 1-31, etc.)
-    // but keeping it simple for this implementation
-
-    true
+    DateTime::parse_from_rfc3339(timestamp).is_ok()
 }
 
 #[derive(Serialize, JsonSchema)]
