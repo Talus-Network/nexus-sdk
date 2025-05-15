@@ -1133,8 +1133,7 @@ The type of conversation to create. Currently only supports `Group`.
 The initial message to send in the conversation, containing:
 
 - **`text`: [`Option<String>`]** - The text content of the message
-- **`attachments`: [`Option<Vec<Attachment>>`]** - Media attachments for the message
-  - **`media_id`: [`String`]** - The unique identifier of the media to attach
+- **`media_ids`: [`Option<Vec<String>>`]** - List of media IDs to attach to the message
 
 **`participant_ids`: [`Vec<String>`]**
 
@@ -1165,7 +1164,7 @@ The group conversation creation failed.
   - `server` - An error occurred on Twitter's servers
   - `forbidden` - The request was forbidden
   - `api` - An API-specific error occurred
-  - `validation` - Input validation error (e.g., empty message text or attachments)
+  - `validation` - Input validation error (e.g., empty message text or media_ids)
   - `unknown` - An unexpected error occurred
 - **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
   - `401` - Unauthorized (authentication error)
