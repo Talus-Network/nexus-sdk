@@ -118,12 +118,7 @@ impl NexusTool for SendMessageToGroupConversation {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::direct_message::models::{Attachment, Message},
-        ::mockito::Server,
-        serde_json::json,
-    };
+    use {super::*, crate::direct_message::models::Message, ::mockito::Server, serde_json::json};
 
     impl SendMessageToGroupConversation {
         fn with_api_base(api_base: &str) -> Self {
@@ -144,7 +139,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: Some("Hello, group!".to_string()),
-                attachments: None,
+                media_ids: None,
             },
         }
     }
@@ -160,14 +155,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: Some("Test group message".to_string()),
-                attachments: Some(vec![
-                    Attachment {
-                        media_id: "12345".to_string(),
-                    },
-                    Attachment {
-                        media_id: "67890".to_string(),
-                    },
-                ]),
+                media_ids: Some(vec!["12345".to_string(), "67890".to_string()]),
             },
         }
     }
@@ -183,7 +171,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: Some("Test group message".to_string()),
-                attachments: None,
+                media_ids: None,
             },
         }
     }
@@ -199,14 +187,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: None,
-                attachments: Some(vec![
-                    Attachment {
-                        media_id: "12345".to_string(),
-                    },
-                    Attachment {
-                        media_id: "67890".to_string(),
-                    },
-                ]),
+                media_ids: Some(vec!["12345".to_string(), "67890".to_string()]),
             },
         }
     }
@@ -222,7 +203,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: Some("".to_string()),
-                attachments: None,
+                media_ids: None,
             },
         }
     }
@@ -238,7 +219,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: None,
-                attachments: Some(vec![]),
+                media_ids: Some(vec![]),
             },
         }
     }
@@ -254,7 +235,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: None,
-                attachments: None,
+                media_ids: None,
             },
         }
     }
@@ -472,7 +453,7 @@ mod tests {
                 status_code,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Validation);
-                assert!(reason.contains("Attachments must not be empty"));
+                assert!(reason.contains("Media IDs must not be empty"));
                 assert_eq!(status_code, None);
             }
         }
@@ -491,7 +472,7 @@ mod tests {
                 status_code,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Validation);
-                assert!(reason.contains("Either text or attachments must be provided"));
+                assert!(reason.contains("Either text or media_ids must be provided"));
                 assert_eq!(status_code, None);
             }
         }
