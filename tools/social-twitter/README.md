@@ -1167,6 +1167,15 @@ Chunk size in bytes for uploading media. When set to 0 (default), the chunk size
 
 Setting a specific value will override the automatic calculation. Maximum allowed chunk size is 5MB as per Twitter API limits.
 
+_opt_ **`optimistic_upload`: [`bool`]** _default_: [`true`]
+
+Controls when the tool returns after media upload:
+
+- When `true` (default): Returns immediately after upload is complete, without waiting for processing
+- When `false`: Waits for media processing to fully complete before returning
+
+Setting to `false` is useful when you need to ensure the media is fully processed (especially for videos) before attempting to use it in a tweet.
+
 ## Output Variants & Ports
 
 **`ok`**
@@ -1175,12 +1184,8 @@ The media was uploaded successfully.
 
 - **`ok.media_id`: [`String`]** - The unique identifier for the uploaded media. Use this when attaching media to tweets.
 - **`ok.media_key`: [`String`]** - The media key identifier for this media attachment.
-- **`ok.processing_info`: [`Option<ProcessingInfo>`]** - Information about the processing state of the media (if applicable):
-  - `state`: Current state of processing
-  - `progress_percent`: Percentage of processing completed
-  - `check_after_secs`: Number of seconds to wait before checking status again
 
-**`err`**
+  **`err`**
 
 The media upload failed.
 

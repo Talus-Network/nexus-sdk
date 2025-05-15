@@ -6,20 +6,20 @@ use {
     super::MEDIA_UPLOAD_ENDPOINT,
     crate::{
         auth::TwitterAuth,
-        error::{parse_twitter_response, TwitterError, TwitterErrorKind, TwitterResult},
+        error::{TwitterError, TwitterErrorKind, TwitterResult},
         media::models::{
-            EmptyResponse, MediaCategory, MediaType, MediaUploadData, MediaUploadResponse,
-            ProcessingInfo,
+            EmptyResponse,
+            MediaCategory,
+            MediaType,
+            MediaUploadData,
+            MediaUploadResponse,
         },
         twitter_client::{TwitterClient, TWITTER_X_API_BASE},
     },
     base64,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::{
-        multipart::{Form, Part},
-        Client,
-    },
+    reqwest::multipart::{Form, Part},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
@@ -49,10 +49,19 @@ pub(crate) struct Input {
     /// Set to 0 to use automatic calculation
     #[serde(default = "default_chunk_size")]
     chunk_size: usize,
+
+    /// If false, waits for media processing to complete before returning
+    /// If true, returns immediately after upload (default: true)
+    #[serde(default = "default_optimistic_upload")]
+    optimistic_upload: bool,
 }
 
 fn default_chunk_size() -> usize {
     0 // 0 means auto-calculate based on media size and type
+}
+
+fn default_optimistic_upload() -> bool {
+    true // By default, return immediately after upload
 }
 
 /// Output for media upload
@@ -65,9 +74,6 @@ pub(crate) enum Output {
         media_id: String,
         /// Media key
         media_key: String,
-        /// Processing information if available
-        #[serde(skip_serializing_if = "Option::is_none")]
-        processing_info: Option<ProcessingInfo>,
     },
     /// Upload error
     Err {
@@ -145,13 +151,13 @@ impl NexusTool for UploadMedia {
             } else {
                 Some(&request.additional_owners)
             },
+            request.optimistic_upload,
         )
         .await
         {
             Ok(response) => Output::Ok {
                 media_id: response.id,
                 media_key: response.media_key,
-                processing_info: response.processing_info,
             },
             Err(e) => {
                 let error_response = e.to_error_response();
@@ -174,6 +180,7 @@ async fn upload_media(
     media_category: &MediaCategory,
     chunk_size: usize,
     additional_owners: Option<&Vec<String>>,
+    optimistic_upload: bool,
 ) -> TwitterResult<MediaUploadData> {
     // Calculate optimal chunk size if not specified
     let optimal_chunk_size = if chunk_size > 0 {
@@ -203,7 +210,20 @@ async fn upload_media(
     }
 
     // 3. FINALIZE phase - Complete the upload
-    finalize_upload(&client, auth, &media_id).await
+    let mut finalize_result = finalize_upload(&client, auth, &media_id).await?;
+
+    // 4. STATUS phase - Wait for processing to complete if not optimistic
+    if !optimistic_upload {
+        // Check if media requires processing and is not already completed
+        if let Some(processing_info) = &finalize_result.processing_info {
+            if processing_info.state != super::models::ProcessingState::Succeeded {
+                // Wait for processing to complete
+                finalize_result = wait_for_processing_completion(client, auth, &media_id).await?;
+            }
+        }
+    }
+
+    Ok(finalize_result)
 }
 
 /// Calculate optimal chunk size based on media size and type
@@ -392,24 +412,75 @@ async fn finalize_upload(
     }
 }
 
-/// Check media upload status
-async fn _check_media_status(
-    client: &Client,
+/// Wait for media processing to complete
+async fn wait_for_processing_completion(
+    client: &TwitterClient,
     auth: &TwitterAuth,
     media_id: &str,
-) -> TwitterResult<MediaUploadResponse> {
-    let url = format!("{}/media/upload/status", TWITTER_X_API_BASE);
+) -> TwitterResult<MediaUploadData> {
+    // Maximum number of attempts
+    const MAX_ATTEMPTS: u32 = 20;
+    let mut attempts = 0;
 
-    let auth_header = auth.generate_auth_header(&url);
+    loop {
+        // Check status
+        let status = check_media_status(client, auth, media_id).await?;
 
-    let response = client
-        .get(&url)
-        .header("Authorization", auth_header)
-        .query(&[("media_id", media_id)])
-        .send()
-        .await?;
+        if let Some(processing_info) = &status.processing_info {
+            match processing_info.state {
+                super::models::ProcessingState::Succeeded => {
+                    // Processing completed successfully
+                    return Ok(status);
+                }
+                super::models::ProcessingState::Failed => {
+                    // Processing failed
+                    return Err(TwitterError::Other("Media processing failed".to_string()));
+                }
+                _ => {
+                    // Still processing
+                    attempts += 1;
+                    if attempts >= MAX_ATTEMPTS {
+                        return Err(TwitterError::Other(
+                            "Media processing timed out".to_string(),
+                        ));
+                    }
 
-    parse_twitter_response::<MediaUploadResponse>(response).await
+                    // Wait for the recommended time or default to 2 seconds
+                    let wait_secs = processing_info.check_after_secs.unwrap_or(2);
+                    tokio::time::sleep(std::time::Duration::from_secs(wait_secs as u64)).await;
+                }
+            }
+        } else {
+            // No processing info means it's ready
+            return Ok(status);
+        }
+    }
+}
+
+/// Check media upload status
+async fn check_media_status(
+    client: &TwitterClient,
+    auth: &TwitterAuth,
+    media_id: &str,
+) -> TwitterResult<MediaUploadData> {
+    // Create form for STATUS command
+    let form = Form::new()
+        .text("command", "STATUS")
+        .text("media_id", media_id.to_string());
+
+    match client
+        .post::<MediaUploadResponse, ()>(auth, None, Some(form))
+        .await
+    {
+        Ok(response) => Ok(response),
+        Err(e) => Err(TwitterError::ApiError(
+            e.reason,
+            format!("{:?}", e.kind),
+            e.status_code
+                .map(|code| code.to_string())
+                .unwrap_or_default(),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -445,6 +516,7 @@ mod tests {
             media_category: MediaCategory::TweetImage,
             additional_owners: vec![],
             chunk_size: 1024,
+            optimistic_upload: true,
         }
     }
 
