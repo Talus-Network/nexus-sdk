@@ -1138,8 +1138,8 @@ The ID of the user to follow.
 
 The follow operation was successful.
 
-- **`ok.following`: [`bool`]** - Whether the user is now following the target user
-- **`ok.pending_follow`: [`bool`]** - Whether the follow request is pending (e.g., when following a protected account)
+- **`ok.followed`: [`bool`]** - Whether the user is now following the target user
+- **`ok.pending`: [`bool`]** - Whether the follow request is pending (e.g., when following a protected account)
 
 **`err`**
 

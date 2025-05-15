@@ -31,9 +31,9 @@ pub(crate) struct Input {
 pub(crate) enum Output {
     Ok {
         /// Whether the user was followed
-        following: bool,
+        followed: bool,
         /// Whether the follow request is pending
-        pending_follow: bool,
+        pending: bool,
     },
     Err {
         /// Detailed error message
@@ -96,8 +96,8 @@ impl NexusTool for FollowUser {
             .await
         {
             Ok(data) => Output::Ok {
-                following: data.following,
-                pending_follow: data.pending_follow,
+                followed: data.following,
+                pending: data.pending_follow,
             },
             Err(e) => Output::Err {
                 reason: e.reason,
@@ -169,12 +169,9 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok {
-                following,
-                pending_follow,
-            } => {
-                assert_eq!(following, true);
-                assert_eq!(pending_follow, false);
+            Output::Ok { followed, pending } => {
+                assert_eq!(followed, true);
+                assert_eq!(pending, false);
             }
             Output::Err {
                 reason,
@@ -390,12 +387,9 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok {
-                following,
-                pending_follow,
-            } => {
-                assert_eq!(following, false);
-                assert_eq!(pending_follow, true);
+            Output::Ok { followed, pending } => {
+                assert_eq!(followed, false);
+                assert_eq!(pending, true);
             }
             Output::Err {
                 reason,
