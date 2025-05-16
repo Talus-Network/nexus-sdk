@@ -1,4 +1,4 @@
-use crate::{command_title, loading, prelude::*, sui::resolve_wallet_path};
+use crate::{command_title, display::json_output, loading, prelude::*, sui::resolve_wallet_path};
 
 /// Set the Nexus CLI configuration from the provided arguments.
 pub(crate) async fn set_nexus_conf(
@@ -48,6 +48,8 @@ pub(crate) async fn set_nexus_conf(
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
     conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
     conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
+
+    json_output(&serde_json::to_value(&conf).unwrap())?;
 
     match conf.save(&conf_path).await {
         Ok(()) => {

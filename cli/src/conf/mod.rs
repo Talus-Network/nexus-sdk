@@ -1,7 +1,11 @@
 mod conf_get;
 mod conf_set;
 
-use {crate::prelude::*, conf_get::*, conf_set::*};
+use {
+    crate::{display::json_output, prelude::*},
+    conf_get::*,
+    conf_set::*,
+};
 
 #[derive(Subcommand, Clone, Debug)]
 pub(crate) enum ConfCommand {
@@ -70,9 +74,17 @@ pub(crate) enum ConfCommand {
 pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError> {
     match command {
         ConfCommand::Get { conf_path } => {
-            let conf = print_nexus_conf(conf_path).await?;
+            let conf = get_nexus_conf(conf_path).await?;
 
-            println!("{}", conf);
+            json_output(&conf)?;
+
+            if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+                let conf = toml::to_string_pretty(&conf).map_err(|e| {
+                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
+                })?;
+
+                println!("{conf}");
+            }
 
             Ok(())
         }

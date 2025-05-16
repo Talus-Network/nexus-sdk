@@ -1,16 +1,14 @@
 use crate::{command_title, prelude::*};
 
 /// Print the current Nexus CLI configuration.
-pub(crate) async fn print_nexus_conf(conf_path: PathBuf) -> AnyResult<String, NexusCliError> {
+pub(crate) async fn get_nexus_conf(conf_path: PathBuf) -> AnyResult<CliConf, NexusCliError> {
     let conf = CliConf::load_from_path(&conf_path)
         .await
         .unwrap_or_default();
 
     command_title!("Current Nexus CLI Configuration");
 
-    toml::to_string_pretty(&conf).map_err(|e| {
-        NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
-    })
+    Ok(conf)
 }
 
 #[cfg(test)]
@@ -18,7 +16,7 @@ mod tests {
     use {super::*, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
-    async fn test_print_nexus_conf() {
+    async fn test_get_nexus_conf() {
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
 
@@ -54,11 +52,8 @@ mod tests {
             .expect("Failed to write conf.toml");
 
         // Ensure the command returns the correct string.
-        let result = print_nexus_conf(path)
-            .await
-            .expect("Failed to print config");
-        let actual = toml::to_string_pretty(&conf).expect("Failed to serialize config");
+        let result = get_nexus_conf(path).await.expect("Failed to print config");
 
-        assert_eq!(result, actual);
+        assert_eq!(result, conf);
     }
 }

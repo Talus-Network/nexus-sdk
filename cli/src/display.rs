@@ -97,13 +97,16 @@ macro_rules! loading {
         };
 
         let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("[{spinner}] {msg}")
-                .unwrap(),
-        );
-        pb.set_message(format!($fmt));
-        pb.enable_steady_tick(Duration::from_millis(100));
+
+        if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("[{spinner}] {msg}")
+                    .unwrap(),
+            );
+            pb.set_message(format!($fmt));
+            pb.enable_steady_tick(Duration::from_millis(100));
+        }
 
         $crate::display::LoadingHandle::new(pb, format!($fmt))
     }};
