@@ -317,6 +317,49 @@ impl WalrusClient {
         Ok(())
     }
 
+    /// Download a file from Walrus and return its contents as bytes
+    ///
+    /// # Arguments
+    /// * `blob_id` - The blob ID of the file to download
+    ///
+    /// # Returns
+    /// * `Result<Vec<u8>>` - The file content as bytes
+    pub async fn read_file(&self, blob_id: &str) -> Result<Vec<u8>> {
+        // Construct download URL
+        let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
+
+        // Send GET request
+        let response =
+            self.client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| WalrusError::RequestError {
+                    message: "Failed to download blob".to_string(),
+                    source: e,
+                })?;
+
+        if !response.status().is_success() {
+            let status_code = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(WalrusError::ApiError {
+                status_code,
+                message: error_text,
+            });
+        }
+
+        // Get the bytes directly from the response
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| WalrusError::RequestError {
+                message: "Failed to read response bytes".to_string(),
+                source: e,
+            })?;
+
+        Ok(bytes.to_vec())
+    }
+
     /// Download and parse JSON data from Walrus
     ///
     /// # Arguments
