@@ -299,6 +299,63 @@ The tweet posting failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.delete-tweet@1`
+
+Standard Nexus Tool that deletes a tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/post-delete-by-post-id#post-delete-by-post-id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully deleted.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the tweet was deleted (true)
+
+**`err`**
+
+The tweets could not be deleted due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible
+  values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # `xyz.taluslabs.social.twitter.like-tweet@1`
 
 Standard Nexus Tool that allows a user to like a specific tweet.
