@@ -253,12 +253,34 @@ fn calculate_optimal_chunk_size(
     media_type: &MediaType,
     media_category: &MediaCategory,
 ) -> usize {
+    // Size units
+    const KB: usize = 1024;
+    const MB: usize = 1024 * 1024;
+
     // Twitter API's maximum chunk size is 5MB as per documentation
     // https://developer.x.com/en/docs/x-api/v1/media/upload-media/api-reference/post-media-upload-append
-    const MAX_CHUNK_SIZE: usize = 5 * 1024 * 1024; // 5MB
+    const MAX_CHUNK_SIZE: usize = 5 * MB; // 5MB
 
     // Minimum chunk size to avoid too many requests
-    const MIN_CHUNK_SIZE: usize = 128 * 1024; // 128KB
+    const MIN_CHUNK_SIZE: usize = 128 * KB; // 128KB
+
+    // Size thresholds
+    const LARGE_VIDEO_THRESHOLD: usize = 20 * MB; // 20MB
+    const SMALL_FILE_THRESHOLD: usize = 10 * MB; // 10MB
+    const MEDIUM_FILE_THRESHOLD: usize = 50 * MB; // 50MB
+
+    // Chunk sizes
+    const SMALLER_VIDEO_CHUNK_SIZE: usize = 4 * MB; // 4MB
+    const GIF_CHUNK_SIZE: usize = 3 * MB; // 3MB
+    const MAX_IMAGE_CHUNK_SIZE: usize = 2 * MB; // 2MB
+
+    // Ideal chunk counts
+    const SMALL_FILE_CHUNK_COUNT: usize = 8;
+    const MEDIUM_FILE_CHUNK_COUNT: usize = 15;
+    const LARGE_FILE_CHUNK_COUNT: usize = 25;
+
+    // Rounding unit
+    const CHUNK_SIZE_ALIGNMENT: usize = 128 * KB; // 128KB
 
     // For very small files, use a single chunk if possible
     if media_size <= MAX_CHUNK_SIZE {
@@ -275,13 +297,13 @@ fn calculate_optimal_chunk_size(
         || *media_type == MediaType::ImageWebp
     {
         // For larger images, still keep chunks reasonably sized
-        return std::cmp::min(media_size / 4, 2 * 1024 * 1024); // Max 2MB chunks for images
+        return std::cmp::min(media_size / 4, MAX_IMAGE_CHUNK_SIZE); // Max 2MB chunks for images
     }
 
     // For GIFs, which can be larger but still image-based
     if *media_type == MediaType::ImageGif || matches!(media_category, MediaCategory::TweetGif) {
         // Balance between speed and reliability
-        return 3 * 1024 * 1024; // 3MB for GIFs
+        return GIF_CHUNK_SIZE; // 3MB for GIFs
     }
 
     // For videos, which are usually much larger files
@@ -295,24 +317,24 @@ fn calculate_optimal_chunk_size(
     {
         // For large videos, use max chunk size for better upload efficiency
         // The docs mention that larger chunks are better for stable connections
-        if media_size > 20 * 1024 * 1024 {
+        if media_size > LARGE_VIDEO_THRESHOLD {
             return MAX_CHUNK_SIZE; // 5MB for large videos
         } else {
-            return 4 * 1024 * 1024; // 4MB for smaller videos
+            return SMALLER_VIDEO_CHUNK_SIZE; // 4MB for smaller videos
         }
     }
 
     // Calculate optimal number of chunks based on file size
     // Aim for a reasonable number of chunks to balance reliability and performance
-    let ideal_chunk_count = if media_size < 10 * 1024 * 1024 {
+    let ideal_chunk_count = if media_size < SMALL_FILE_THRESHOLD {
         // For files < 10MB, aim for ~8 chunks
-        8
-    } else if media_size < 50 * 1024 * 1024 {
+        SMALL_FILE_CHUNK_COUNT
+    } else if media_size < MEDIUM_FILE_THRESHOLD {
         // For files between 10MB and 50MB, aim for ~15 chunks
-        15
+        MEDIUM_FILE_CHUNK_COUNT
     } else {
         // For larger files, aim for ~25 chunks
-        25
+        LARGE_FILE_CHUNK_COUNT
     };
 
     // Calculate chunk size based on ideal chunk count
@@ -325,7 +347,7 @@ fn calculate_optimal_chunk_size(
     );
 
     // Round to nearest 128KB for efficiency
-    (chunk_size / (128 * 1024)) * (128 * 1024)
+    (chunk_size / CHUNK_SIZE_ALIGNMENT) * CHUNK_SIZE_ALIGNMENT
 }
 
 /// Initialize a media upload (INIT command)
