@@ -14,7 +14,7 @@ pub struct TweetsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<Tweet>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -571,6 +571,25 @@ pub enum PlaceField {
     PlaceType,
 }
 
+/// Sort order for tweet results
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SortOrder {
+    /// Return results in order of recency
+    Recency,
+    /// Return results in order of relevancy
+    Relevancy,
+}
+
+impl ToString for SortOrder {
+    fn to_string(&self) -> String {
+        match self {
+            SortOrder::Recency => "recency".to_string(),
+            SortOrder::Relevancy => "relevancy".to_string(),
+        }
+    }
+}
+
 /// Available Exclude fields
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -656,3 +675,4 @@ pub struct RetweetData {
 }
 
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
+impl_twitter_response_parser!(TweetsResponse, Vec<Tweet>, includes = Includes, meta = Meta);
