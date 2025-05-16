@@ -6,16 +6,8 @@ use {
     crate::{
         error::TwitterErrorKind,
         tweet::models::{
-            ExpansionField,
-            Includes,
-            MediaField,
-            Meta,
-            PlaceField,
-            PollField,
-            Tweet,
-            TweetField,
-            TweetsResponse,
-            UserField,
+            ExpansionField, Includes, MediaField, Meta, PlaceField, PollField, SortOrder, Tweet,
+            TweetField, TweetsResponse, UserField,
         },
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
@@ -26,25 +18,6 @@ use {
     serde::{Deserialize, Serialize},
     serde_json,
 };
-
-/// Sort order for tweet results
-#[derive(Debug, Deserialize, Serialize, JsonSchema, Clone)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum SortOrder {
-    /// Return results in order of recency
-    Recency,
-    /// Return results in order of relevancy
-    Relevancy,
-}
-
-impl ToString for SortOrder {
-    fn to_string(&self) -> String {
-        match self {
-            SortOrder::Recency => "recency".to_string(),
-            SortOrder::Relevancy => "relevancy".to_string(),
-        }
-    }
-}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

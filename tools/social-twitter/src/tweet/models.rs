@@ -571,6 +571,25 @@ pub enum PlaceField {
     PlaceType,
 }
 
+/// Sort order for tweet results
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SortOrder {
+    /// Return results in order of recency
+    Recency,
+    /// Return results in order of relevancy
+    Relevancy,
+}
+
+impl ToString for SortOrder {
+    fn to_string(&self) -> String {
+        match self {
+            SortOrder::Recency => "recency".to_string(),
+            SortOrder::Relevancy => "relevancy".to_string(),
+        }
+    }
+}
+
 /// Available Exclude fields
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
