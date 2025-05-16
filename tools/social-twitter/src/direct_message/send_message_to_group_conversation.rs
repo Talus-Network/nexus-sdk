@@ -434,7 +434,7 @@ mod tests {
                 status_code,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Validation);
-                assert!(reason.contains("Text must not be empty"));
+                assert!(reason.contains("Either text or media_ids must be provided"));
                 assert_eq!(status_code, None);
             }
         }
@@ -453,7 +453,7 @@ mod tests {
                 status_code,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Validation);
-                assert!(reason.contains("Media IDs must not be empty"));
+                assert!(reason.contains("Either text or media_ids must be provided"));
                 assert_eq!(status_code, None);
             }
         }

@@ -323,22 +323,11 @@ pub struct Message {
 
 impl Message {
     pub fn validate(&self) -> Result<(), String> {
-        if self.text.is_none() && self.media_ids.is_none() {
-            return Err("Either text or media_ids must be provided".to_string());
+        if self.text.as_ref().map_or(true, |t| t.is_empty())
+            && self.media_ids.as_ref().map_or(true, |m| m.is_empty())
+        {
+            return Err("Either text or media_ids must be provided and non-empty".to_string());
         }
-
-        if let Some(text) = &self.text {
-            if text.is_empty() {
-                return Err("Text must not be empty".to_string());
-            }
-        }
-
-        if let Some(media_ids) = &self.media_ids {
-            if media_ids.is_empty() {
-                return Err("Media IDs must not be empty".to_string());
-            }
-        }
-
         Ok(())
     }
 }
