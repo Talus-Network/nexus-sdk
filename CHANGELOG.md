@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus tool list` supports the new `description` and `registered_at_ms` attributes
 - tool registration now takes `invocation_cost` parameter and returns 2 owner caps `OverTool` and `OverGas`
 - `nexus conf --nexus.objects` is now the only way to populate the `nexus.objects` field in the config
+- `nexus conf` changed to have `set` and `get` subcommands
 
 ### `nexus-sdk`
 
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Changed
 
 - `transactions::tool` register PTB template now accepts invocation cost
+- all transaction templates now accept an `objects` argument instead of accepting objects one by one
 
 #### Fixed
 

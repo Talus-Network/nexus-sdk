@@ -36,7 +36,7 @@ impl std::fmt::Display for SuiNet {
 }
 
 /// Struct holding the config structure.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
@@ -66,7 +66,7 @@ impl CliConf {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SuiConf {
     #[serde(default)]
     pub(crate) net: SuiNet,

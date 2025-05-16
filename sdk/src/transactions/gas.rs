@@ -8,21 +8,23 @@ use crate::{
 /// PTB template to add gas budget to a transaction.
 pub fn add_budget(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
-    gas_service: &sui::ObjectRef,
+    objects: &NexusObjects,
     invoker_address: sui::ObjectID,
     coin: &sui::ObjectRef,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut GasService`
     let gas_service = tx.obj(sui::ObjectArg::SharedObject {
-        id: gas_service.object_id,
-        initial_shared_version: gas_service.version,
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
         mutable: true,
     })?;
 
     // `scope: Scope`
-    let scope =
-        workflow::Gas::scope_invoker_address_from_object_id(tx, workflow_pkg_id, invoker_address)?;
+    let scope = workflow::Gas::scope_invoker_address_from_object_id(
+        tx,
+        objects.workflow_pkg_id,
+        invoker_address,
+    )?;
 
     // `balance: Balance<SUI>`
     let coin = tx.obj(sui::ObjectArg::ImmOrOwnedObject(coin.to_object_ref()))?;
@@ -38,7 +40,7 @@ pub fn add_budget(
 
     // `nexus_workflow::gas::add_gas_budget`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Gas::ADD_GAS_BUDGET.module.into(),
         workflow::Gas::ADD_GAS_BUDGET.name.into(),
         vec![],
@@ -178,29 +180,22 @@ mod tests {
         super::*,
         crate::{fqn, test_utils::sui_mocks},
     };
+
     #[test]
     fn test_add_budget() {
-        let workflow_pkg_id = sui::ObjectID::random();
-        let gas_service = sui_mocks::mock_sui_object_ref();
+        let objects = sui_mocks::mock_nexus_objects();
         let invoker_address = sui::ObjectID::random();
         let coin = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        add_budget(
-            &mut tx,
-            workflow_pkg_id,
-            &gas_service,
-            invoker_address,
-            &coin,
-        )
-        .unwrap();
+        add_budget(&mut tx, &objects, invoker_address, &coin).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to add gas budget");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::Gas::ADD_GAS_BUDGET.module.to_string(),

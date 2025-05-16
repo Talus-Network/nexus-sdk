@@ -15,11 +15,7 @@ pub(crate) async fn add_gas_budget(
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -46,13 +42,7 @@ pub(crate) async fn add_gas_budget(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::add_budget(
-        &mut tx,
-        *workflow_pkg_id,
-        gas_service,
-        address.into(),
-        &budget_coin,
-    ) {
+    if let Err(e) = gas::add_budget(&mut tx, objects, address.into(), &budget_coin) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

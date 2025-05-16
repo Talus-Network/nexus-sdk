@@ -29,7 +29,7 @@ struct Cli {
 enum Command {
     #[command(subcommand, about = "Manage Nexus Tools")]
     Tool(tool::ToolCommand),
-    #[command(about = "Manage Nexus Configuration")]
+    #[command(subcommand, about = "Manage Nexus Configuration")]
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),

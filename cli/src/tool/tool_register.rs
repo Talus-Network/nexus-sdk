@@ -71,13 +71,7 @@ pub(crate) async fn register_tool(
         let conf = CliConf::load().await.unwrap_or_default();
 
         // Nexus objects must be present in the configuration.
-        let NexusObjects {
-            workflow_pkg_id,
-            primitives_pkg_id,
-            tool_registry,
-            gas_service,
-            ..
-        } = get_nexus_objects(&conf)?;
+        let objects = get_nexus_objects(&conf)?;
 
         // Create wallet context, Sui client and find the active address.
         let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -117,14 +111,11 @@ pub(crate) async fn register_tool(
 
         if let Err(e) = tool::register_off_chain_for_self(
             &mut tx,
+            objects,
             &meta,
             address.into(),
             &collateral_coin,
             invocation_cost,
-            tool_registry,
-            gas_service,
-            *workflow_pkg_id,
-            *primitives_pkg_id,
         ) {
             tx_handle.error();
 
@@ -154,7 +145,7 @@ pub(crate) async fn register_tool(
                     object_type,
                     object_id,
                     ..
-                } if object_type.address == **primitives_pkg_id
+                } if object_type.address == *objects.primitives_pkg_id
                     && object_type.module
                         == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
                     && object_type.name
