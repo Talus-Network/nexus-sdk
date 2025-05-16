@@ -242,6 +242,31 @@ async fn test_verify_blob() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_read_file() -> Result<()> {
+    let (mut server, client) = setup_mock_server().await?;
+
+    // Setup mock response
+    let mock = server
+        .mock("GET", "/v1/blobs/test_blob_id")
+        .with_status(200)
+        .with_body(TEST_CONTENT)
+        .create_async()
+        .await;
+
+    // Test read_file
+    let content = client.read_file("test_blob_id").await?;
+
+    // Verify the content was read correctly
+    assert_eq!(content.len(), TEST_CONTENT.len());
+    assert_eq!(content, TEST_CONTENT);
+
+    // Verify the request was made
+    mock.assert_async().await;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_error_handling() -> Result<()> {
     let (mut server, client) = setup_mock_server().await?;
 
