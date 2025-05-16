@@ -5,12 +5,12 @@
 
 use nexus_toolkit::bootstrap;
 mod auth;
+mod direct_message;
 mod error;
 mod list;
 mod tweet;
 mod twitter_client;
 mod user;
-
 /// This function bootstraps the tool and starts the server.
 #[tokio::main]
 async fn main() {
@@ -30,5 +30,6 @@ async fn main() {
         list::remove_member::RemoveMember,
         user::get_user_by_id::GetUserById,
         user::get_user_by_username::GetUserByUsername,
+        direct_message::create_group_conversation::CreateGroupDmConversation,
     ]);
 }

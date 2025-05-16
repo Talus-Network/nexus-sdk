@@ -1,8 +1,29 @@
 use {
-    crate::tweet::models::{ApiError, Entities, Meta, ReferencedTweet},
+    crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
+        tweet::models::{ApiError, Meta, ReferencedTweet},
+        twitter_client::TwitterApiParsedResponse,
+    },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
 };
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DmConversationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<DmConversationData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DmConversationData {
+    /// Unique identifier of a DM conversation.
+    pub dm_conversation_id: String,
+    /// Unique identifier of a DM Event.
+    pub dm_event_id: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DmEventsResponse {
@@ -282,21 +303,67 @@ pub enum TweetField {
     Withheld,
 }
 
-#[derive(Deserialize, JsonSchema, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ConversationType {
     Group,
 }
 
-#[derive(Deserialize, JsonSchema)]
-pub struct Attachment {
-    /// The media id of the attachment.
-    pub media_id: String,
-}
-
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     /// The text of the message.
+    /// Required if media_ids is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    /// The attachments for the message.
-    pub attachments: Option<Vec<Attachment>>,
+    /// The media IDs for the message.
+    /// Required if text is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_ids: Option<MediaIdsBag>,
 }
+
+/// Allow the interface to accept a [`Vec`] or a single media ID.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum MediaIdsBag {
+    /// A single media ID
+    One(String),
+    /// Multiple media IDs
+    Many(Vec<String>),
+}
+
+impl Default for MediaIdsBag {
+    fn default() -> Self {
+        MediaIdsBag::Many(Vec::default())
+    }
+}
+
+impl From<MediaIdsBag> for Vec<String> {
+    fn from(ids: MediaIdsBag) -> Self {
+        match ids {
+            MediaIdsBag::One(id) => vec![id],
+            MediaIdsBag::Many(ids) => ids,
+        }
+    }
+}
+
+impl MediaIdsBag {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            MediaIdsBag::One(_) => false,
+            MediaIdsBag::Many(ids) => ids.is_empty(),
+        }
+    }
+}
+
+impl Message {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.text.as_ref().map_or(true, |t| t.is_empty())
+            && self.media_ids.as_ref().map_or(true, |m| m.is_empty())
+        {
+            return Err("Either text or media_ids must be provided and non-empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl_twitter_response_parser!(DmConversationResponse, DmConversationData);
