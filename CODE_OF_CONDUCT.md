@@ -1,4 +1,4 @@
-# Contributor Covenant Code of Conduct
+# Contributor Code of Conduct
 
 ## Our Pledge
 
@@ -50,7 +50,7 @@ This Code of Conduct applies within all project-managed community spaces, includ
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the enforcers (as defined in "Enforcement Responsibilities") at
-[TODO: insert contact].
+hi@talus.network.
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
