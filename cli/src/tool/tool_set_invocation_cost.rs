@@ -1,25 +1,23 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::transactions::gas,
+    nexus_sdk::transactions::tool,
 };
 
-/// Upload `coin` as a gas budget for the Nexus workflow.
-pub(crate) async fn add_gas_budget(
-    coin: sui::ObjectID,
+/// Set the invocation cost in MIST for a tool based on its FQN.
+pub(crate) async fn set_tool_invocation_cost(
+    tool_fqn: ToolFqn,
+    owner_cap: sui::ObjectID,
+    invocation_cost: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Adding '{coin}' as gas budget for Nexus");
+    command_title!("Setting '{invocation_cost}' invocation cost for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -29,30 +27,20 @@ pub(crate) async fn add_gas_budget(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
-    // Fetch budget coin.
-    let budget_coin = fetch_object_by_id(&sui, coin).await?;
-
-    if budget_coin.object_id == gas_coin.coin_object_id {
-        return Err(NexusCliError::Any(anyhow!(
-            "Gas and budget coins must be different."
-        )));
-    }
-
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
+
+    // Fetch the OwnerCap object.
+    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::add_budget(
-        &mut tx,
-        *workflow_pkg_id,
-        gas_service,
-        address.into(),
-        &budget_coin,
-    ) {
+    if let Err(e) =
+        tool::set_invocation_cost(&mut tx, objects, &tool_fqn, &owner_cap, invocation_cost)
+    {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
@@ -68,7 +56,7 @@ pub(crate) async fn add_gas_budget(
         reference_gas_price,
     );
 
-    // Sign and send the TX.
+    // Sign and submit the TX.
     let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     json_output(&json!({ "digest": response.digest }))?;

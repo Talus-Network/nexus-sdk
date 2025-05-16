@@ -3,23 +3,21 @@ use {
     nexus_sdk::transactions::gas,
 };
 
-/// Upload `coin` as a gas budget for the Nexus workflow.
-pub(crate) async fn add_gas_budget(
+/// Buy an expiry gas ticket to pay for the specified tool.
+pub(crate) async fn buy_expiry_gas_ticket(
+    tool_fqn: ToolFqn,
+    minutes: u64,
     coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Adding '{coin}' as gas budget for Nexus");
+    command_title!("Buying an expiry gas ticket for '{minutes}' minuites for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -29,12 +27,12 @@ pub(crate) async fn add_gas_budget(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
-    // Fetch budget coin.
-    let budget_coin = fetch_object_by_id(&sui, coin).await?;
+    // Fetch the coin to pay for the ticket with.
+    let pay_with_coin = fetch_object_by_id(&sui, coin).await?;
 
-    if budget_coin.object_id == gas_coin.coin_object_id {
+    if pay_with_coin.object_id == gas_coin.coin_object_id {
         return Err(NexusCliError::Any(anyhow!(
-            "Gas and budget coins must be different."
+            "Gas and payment coins must be different."
         )));
     }
 
@@ -46,17 +44,12 @@ pub(crate) async fn add_gas_budget(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::add_budget(
-        &mut tx,
-        *workflow_pkg_id,
-        gas_service,
-        address.into(),
-        &budget_coin,
-    ) {
+    if let Err(e) = gas::buy_expiry_gas_ticket(&mut tx, objects, &tool_fqn, &pay_with_coin, minutes)
+    {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
-    }
+    };
 
     tx_handle.success();
 

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - `nexus gas add-budget` command to be able to pay for evaluations
+- `nexus gas expiry enable` to enable the expiry gas extension for a tool
+- `nexus gas expiry disable` to disable the expiry gas extension for a tool
+- `nexus gas expiry buy-ticket` to buy an expiry gas ticket for a tool
+- `nexus tool set-invocation-cost` to set the invocation cost for a tool
 
 #### Changed
 

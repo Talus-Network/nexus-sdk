@@ -28,7 +28,7 @@ test: _check-cargo
 test-completions: build
     #!/usr/bin/env bash
 
-    source <(cargo +stable run --bin nexus completion bash)
+    source <(cargo +stable run --package {{ package }} completion bash)
 
 # Run rustfmt on the CLI project
 fmt-check: _check-cargo

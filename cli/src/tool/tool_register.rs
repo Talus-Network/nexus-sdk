@@ -33,7 +33,7 @@ pub(crate) async fn register_tool(
     );
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let NexusObjects {
@@ -47,13 +47,7 @@ pub(crate) async fn register_tool(
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
-
-    let address = match wallet.active_address() {
-        Ok(address) => address,
-        Err(e) => {
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas and collateral coin objects.
     let (gas_coin, collateral_coin) =
@@ -81,7 +75,7 @@ pub(crate) async fn register_tool(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match tool::register_off_chain_for_self(
+    if let Err(e) = tool::register_off_chain_for_self(
         &mut tx,
         &meta,
         address.into(),
@@ -92,13 +86,10 @@ pub(crate) async fn register_tool(
         *workflow_pkg_id,
         *primitives_pkg_id,
     ) {
-        Ok(tx) => tx,
-        Err(e) => {
-            tx_handle.error();
+        tx_handle.error();
 
-            return Err(NexusCliError::Any(e));
-        }
-    };
+        return Err(NexusCliError::Any(e));
+    }
 
     tx_handle.success();
 

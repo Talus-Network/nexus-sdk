@@ -3,23 +3,20 @@ use {
     nexus_sdk::transactions::gas,
 };
 
-/// Upload `coin` as a gas budget for the Nexus workflow.
-pub(crate) async fn add_gas_budget(
-    coin: sui::ObjectID,
+/// Disable the expiry gas extension for the specified tool.
+pub(crate) async fn disable_expiry_extension(
+    tool_fqn: ToolFqn,
+    owner_cap: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Adding '{coin}' as gas budget for Nexus");
+    command_title!("Disabling the expiry gas extension for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects {
-        workflow_pkg_id,
-        gas_service,
-        ..
-    } = get_nexus_objects(&conf)?;
+    let objects = get_nexus_objects(&conf)?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -29,14 +26,8 @@ pub(crate) async fn add_gas_budget(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
-    // Fetch budget coin.
-    let budget_coin = fetch_object_by_id(&sui, coin).await?;
-
-    if budget_coin.object_id == gas_coin.coin_object_id {
-        return Err(NexusCliError::Any(anyhow!(
-            "Gas and budget coins must be different."
-        )));
-    }
+    // Fetch the OwnerCap<OverGas> object.
+    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
@@ -46,13 +37,7 @@ pub(crate) async fn add_gas_budget(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::add_budget(
-        &mut tx,
-        *workflow_pkg_id,
-        gas_service,
-        address.into(),
-        &budget_coin,
-    ) {
+    if let Err(e) = gas::disable_expiry(&mut tx, objects, &tool_fqn, &owner_cap) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

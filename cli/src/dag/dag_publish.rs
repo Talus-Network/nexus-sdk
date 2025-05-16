@@ -23,7 +23,7 @@ pub(crate) async fn publish_dag(
     command_title!("Publishing Nexus DAG");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let NexusObjects {
@@ -35,13 +35,7 @@ pub(crate) async fn publish_dag(
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
-
-    let address = match wallet.active_address() {
-        Ok(address) => address,
-        Err(e) => {
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
