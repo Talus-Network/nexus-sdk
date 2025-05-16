@@ -232,8 +232,8 @@ _opt_ **`sort_order`: [`Option<SortOrder>`]** _default_: [`None`]
 
 Order in which to return results. Available values:
 
-- `Recency`: Return results in order of newest to oldest
-- `Relevancy`: Return results in order of relevance score
+- `recency`: Return results in order of newest to oldest
+- `relevancy`: Return results in order of relevance score
 
 _opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
 
