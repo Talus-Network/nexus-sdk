@@ -26,8 +26,13 @@ pub enum UploadErrorKind {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
+    /// The blob ID to verify
     blob_id: String,
-    #[serde(default)]
+    /// The URL of the Walrus aggregator to verify the blob on
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     aggregator_url: Option<String>,
 }
 
