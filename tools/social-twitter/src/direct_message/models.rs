@@ -303,13 +303,13 @@ pub enum TweetField {
     Withheld,
 }
 
-#[derive(Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationType {
     Group,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     /// The text of the message.
     /// Required if media_ids is not provided.
@@ -318,7 +318,41 @@ pub struct Message {
     /// The media IDs for the message.
     /// Required if text is not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_ids: Option<Vec<String>>,
+    pub media_ids: Option<MediaIdsBag>,
+}
+
+/// Allow the interface to accept a [`Vec`] or a single media ID.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum MediaIdsBag {
+    /// A single media ID
+    One(String),
+    /// Multiple media IDs
+    Many(Vec<String>),
+}
+
+impl Default for MediaIdsBag {
+    fn default() -> Self {
+        MediaIdsBag::Many(Vec::default())
+    }
+}
+
+impl From<MediaIdsBag> for Vec<String> {
+    fn from(ids: MediaIdsBag) -> Self {
+        match ids {
+            MediaIdsBag::One(id) => vec![id],
+            MediaIdsBag::Many(ids) => ids,
+        }
+    }
+}
+
+impl MediaIdsBag {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            MediaIdsBag::One(_) => false,
+            MediaIdsBag::Many(ids) => ids.is_empty(),
+        }
+    }
 }
 
 impl Message {

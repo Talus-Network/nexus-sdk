@@ -1169,11 +1169,12 @@ The message sending failed.
   - `429` - Too Many Requests (rate limit exceeded)
   - `5xx` - Server errors
 
-# Validation Rules
+## Validation Rules
 
 The message must follow these validation rules:
 
 1. Either `text` or `media_ids` must be provided and non-empty
+2. If `media_ids` is provided, it must not be empty (for `Many` variant)
 
 ## Example Error Messages
 

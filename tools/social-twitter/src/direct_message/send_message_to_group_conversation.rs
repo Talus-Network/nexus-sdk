@@ -5,7 +5,7 @@
 use {
     crate::{
         auth::TwitterAuth,
-        direct_message::models::{DmConversationResponse, Message},
+        direct_message::models::{DmConversationResponse, MediaIdsBag, Message},
         error::TwitterErrorKind,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
@@ -155,7 +155,10 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: Some("Test group message".to_string()),
-                media_ids: Some(vec!["12345".to_string(), "67890".to_string()]),
+                media_ids: Some(MediaIdsBag::Many(vec![
+                    "12345".to_string(),
+                    "67890".to_string(),
+                ])),
             },
         }
     }
@@ -187,7 +190,10 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: None,
-                media_ids: Some(vec!["12345".to_string(), "67890".to_string()]),
+                media_ids: Some(MediaIdsBag::Many(vec![
+                    "12345".to_string(),
+                    "67890".to_string(),
+                ])),
             },
         }
     }
@@ -219,7 +225,7 @@ mod tests {
             dm_conversation_id: "123456789".to_string(),
             message: Message {
                 text: None,
-                media_ids: Some(vec![]),
+                media_ids: Some(MediaIdsBag::Many(vec![])),
             },
         }
     }
