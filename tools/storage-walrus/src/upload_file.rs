@@ -41,7 +41,10 @@ pub(crate) struct Input {
     /// The path to the file to upload
     file_path: String,
     /// The walrus publisher URL
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::validation::deserialize_url_opt"
+    )]
     publisher_url: Option<String>,
     /// The number of epochs to store the file
     #[serde(default = "default_epochs")]
