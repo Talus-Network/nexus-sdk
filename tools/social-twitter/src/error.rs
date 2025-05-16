@@ -32,10 +32,12 @@ pub enum TwitterErrorKind {
     Api,
     /// Unknown error
     Unknown,
+    /// Validation error
+    Validation,
 }
 
 /// A Twitter API error returned by the API
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct TwitterApiError {
     pub title: String,
     #[serde(rename = "type")]
