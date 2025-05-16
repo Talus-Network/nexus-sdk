@@ -1133,7 +1133,9 @@ The type of conversation to create. Currently only supports `Group`.
 The initial message to send in the conversation, containing:
 
 - **`text`: [`Option<String>`]** - The text content of the message
-- **`media_ids`: [`Option<Vec<String>>`]** - List of media IDs to attach to the message
+- **`media_ids`: [`Option<MediaIdsBag>`]** - Media IDs to attach to the message. Can be either a single ID or multiple IDs:
+  - `One(String)` - A single media ID
+  - `Many(Vec<String>)` - Multiple media IDs
 
 **`participant_ids`: [`Vec<String>`]**
 
@@ -1178,6 +1180,7 @@ The group conversation creation failed.
 The message must follow these validation rules:
 
 1. Either `text` or `media_ids` must be provided and non-empty
+2. If `media_ids` is provided, it must not be empty (for `Many` variant)
 
 ---
 
