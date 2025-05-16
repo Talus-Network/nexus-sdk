@@ -35,7 +35,7 @@ pub enum TwitterErrorKind {
 }
 
 /// A Twitter API error returned by the API
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct TwitterApiError {
     pub title: String,
     #[serde(rename = "type")]
@@ -276,6 +276,19 @@ where
 {
     let status = response.status();
     let text = response.text().await.map_err(TwitterError::Network)?;
+
+    // Handle empty response for 204 No Content
+    if status == reqwest::StatusCode::NO_CONTENT {
+        if text.is_empty() {
+            // For EmptyResponse type, return empty response
+            if std::any::type_name::<T>()
+                == std::any::type_name::<crate::media::models::EmptyResponse>()
+            {
+                return serde_json::from_value(serde_json::json!({}))
+                    .map_err(TwitterError::ParseError);
+            }
+        }
+    }
 
     if status.is_success() {
         parse_successful_twitter_response(text)
