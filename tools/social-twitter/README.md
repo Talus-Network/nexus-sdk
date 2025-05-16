@@ -1177,9 +1177,7 @@ The group conversation creation failed.
 
 The message must follow these validation rules:
 
-1. Either `text` or `media_ids` must be provided (both cannot be empty)
-2. If `text` is provided, it must not be empty
-3. If `media_ids` is provided, the list must not be empty
+1. Either `text` or `media_ids` must be provided and non-empty
 
 ---
 
