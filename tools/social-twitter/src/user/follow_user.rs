@@ -29,11 +29,13 @@ pub(crate) struct Input {
 
 #[derive(Serialize, JsonSchema)]
 pub(crate) enum Output {
-    Ok {
+    Followed {
         /// Whether the user was followed
-        followed: bool,
+        result: bool,
+    },
+    Pending {
         /// Whether the follow request is pending
-        pending: bool,
+        result: bool,
     },
     Err {
         /// Detailed error message
@@ -95,10 +97,15 @@ impl NexusTool for FollowUser {
             )
             .await
         {
-            Ok(data) => Output::Ok {
-                followed: data.following,
-                pending: data.pending_follow,
-            },
+            Ok(data) => {
+                if data.pending_follow {
+                    Output::Pending { result: true }
+                } else if data.following {
+                    Output::Followed { result: true }
+                } else {
+                    Output::Followed { result: false }
+                }
+            }
             Err(e) => Output::Err {
                 reason: e.reason,
                 kind: e.kind,
@@ -169,9 +176,11 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok { followed, pending } => {
+            Output::Followed { result: followed } => {
                 assert_eq!(followed, true);
-                assert_eq!(pending, false);
+            }
+            Output::Pending { result: pending } => {
+                panic!("Expected followed, got pending: {}", pending);
             }
             Output::Err {
                 reason,
@@ -214,7 +223,8 @@ mod tests {
 
         // Verify the error response
         match result {
-            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Followed { .. } => panic!("Expected error, got followed success"),
+            Output::Pending { .. } => panic!("Expected error, got pending success"),
             Output::Err {
                 reason,
                 kind,
@@ -267,7 +277,8 @@ mod tests {
 
         // Verify the error response
         match result {
-            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Followed { .. } => panic!("Expected error, got followed success"),
+            Output::Pending { .. } => panic!("Expected error, got pending success"),
             Output::Err {
                 reason,
                 kind,
@@ -327,7 +338,8 @@ mod tests {
 
         // Verify the error response
         match result {
-            Output::Ok { .. } => panic!("Expected error, got success"),
+            Output::Followed { .. } => panic!("Expected error, got followed success"),
+            Output::Pending { .. } => panic!("Expected error, got pending success"),
             Output::Err {
                 reason,
                 kind,
@@ -387,9 +399,11 @@ mod tests {
 
         // Verify the response
         match result {
-            Output::Ok { followed, pending } => {
-                assert_eq!(followed, false);
-                assert_eq!(pending, true);
+            Output::Pending { result } => {
+                assert_eq!(result, true);
+            }
+            Output::Followed { result } => {
+                panic!("Expected pending, got followed: {}", result);
             }
             Output::Err {
                 reason,

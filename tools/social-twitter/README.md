@@ -1134,12 +1134,17 @@ The ID of the user to follow.
 
 ## Output Variants & Ports
 
-**`ok`**
+**`followed`**
 
-The follow operation was successful.
+The user was successfully followed.
 
-- **`ok.followed`: [`bool`]** - Whether the user is now following the target user
-- **`ok.pending`: [`bool`]** - Whether the follow request is pending (e.g., when following a protected account)
+- **`followed.result`: [`bool`]** - Confirmation that the user was followed (true)
+
+**`pending`**
+
+The follow request is pending (e.g., when following a protected account).
+
+- **`pending.result`: [`bool`]** - Confirmation that the follow request is pending (true)
 
 **`err`**
 
