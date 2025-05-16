@@ -49,7 +49,7 @@ pub(crate) async fn inspect_dag_execution(
     // Loop until we find an `ExecutionFinished` event.
     'query: loop {
         let query = sui::EventFilter::MoveEventModule {
-            package: primitives_pkg_id,
+            package: *primitives_pkg_id,
             module: primitives::Event::EVENT_WRAPPER.module.into(),
         };
 

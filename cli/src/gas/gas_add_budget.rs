@@ -1,16 +1,15 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::transactions::tool,
+    nexus_sdk::transactions::gas,
 };
 
-/// Claim collateral for a Tool based on the provided FQN.
-pub(crate) async fn claim_collateral(
-    tool_fqn: ToolFqn,
-    owner_cap: sui::ObjectID,
+/// Upload `coin` as a gas budget for the Nexus workflow.
+pub(crate) async fn add_gas_budget(
+    coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Claiming collateral for Tool '{tool_fqn}'");
+    command_title!("Adding '{coin}' as gas budget for Nexus");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
@@ -18,7 +17,7 @@ pub(crate) async fn claim_collateral(
     // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id,
-        tool_registry,
+        gas_service,
         ..
     } = get_nexus_objects(&conf)?;
 
@@ -36,23 +35,29 @@ pub(crate) async fn claim_collateral(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
+    // Fetch budget coin.
+    let coin = fetch_object_by_id(&sui, coin).await?;
+
+    if coin.object_id == gas_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and budget coins must be different."
+        )));
+    }
+
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Fetch the OwnerCap object.
-    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
-
-    // Craft a TX to claim the collaters for a Tool.
+    // Craft a TX to publish the DAG.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    match tool::claim_collateral_for_self(
+    match gas::add_budget(
         &mut tx,
-        &tool_fqn,
-        &owner_cap,
-        tool_registry,
         *workflow_pkg_id,
+        gas_service,
+        address.into(),
+        &coin,
     ) {
         Ok(tx) => tx,
         Err(e) => {
@@ -72,7 +77,7 @@ pub(crate) async fn claim_collateral(
         reference_gas_price,
     );
 
-    // Sign and submit the TX.
+    // Sign and send the TX.
     let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     json_output(&json!({ "digest": response.digest }))?;

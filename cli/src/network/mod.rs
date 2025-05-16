@@ -31,8 +31,8 @@ pub(crate) enum NetworkCommand {
     },
 }
 
-/// Handle the provided dag command. The [NetworkCommand] instance is passed from
-/// [crate::main].
+/// Handle the provided network command. The [NetworkCommand] instance is passed
+/// from [crate::main].
 pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliError> {
     match command {
         // == `$ nexus network create` ==
