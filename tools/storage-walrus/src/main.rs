@@ -3,9 +3,11 @@
 use nexus_toolkit::bootstrap;
 
 mod client;
+mod read_file;
 mod read_json;
 mod upload_file;
 mod upload_json;
+mod utils;
 mod verify_blob;
 
 #[tokio::main]
@@ -15,5 +17,6 @@ async fn main() {
         upload_json::UploadJson,
         read_json::ReadJson,
         verify_blob::VerifyBlob,
+        read_file::ReadFile,
     ])
 }
