@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{sui::traits::*, *},
+    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -39,7 +39,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
-    pub(crate) nexus: NexusConf,
+    pub(crate) nexus: Option<NexusObjects>,
 }
 
 impl CliConf {
@@ -87,25 +87,6 @@ impl Default for SuiConf {
             auth_password: None,
         }
     }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub(crate) struct NexusConf {
-    pub(crate) workflow_pkg_id: Option<sui::ObjectID>,
-    pub(crate) primitives_pkg_id: Option<sui::ObjectID>,
-    pub(crate) tool_registry_object_id: Option<sui::ObjectID>,
-    pub(crate) default_sap_object_id: Option<sui::ObjectID>,
-    pub(crate) network_id: Option<sui::ObjectID>,
-}
-
-/// Non-optional version of [NexusConf].
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct NexusObjects {
-    pub(crate) workflow_pkg_id: sui::ObjectID,
-    pub(crate) primitives_pkg_id: sui::ObjectID,
-    pub(crate) tool_registry_object_id: sui::ObjectID,
-    pub(crate) default_sap_object_id: sui::ObjectID,
-    pub(crate) network_id: sui::ObjectID,
 }
 
 /// Reusable Sui gas command args.

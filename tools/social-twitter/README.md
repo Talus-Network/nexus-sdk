@@ -299,6 +299,63 @@ The tweet posting failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.delete-tweet@1`
+
+Standard Nexus Tool that deletes a tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/post-delete-by-post-id#post-delete-by-post-id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully deleted.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the tweet was deleted (true)
+
+**`err`**
+
+The tweets could not be deleted due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible
+  values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # `xyz.taluslabs.social.twitter.like-tweet@1`
 
 Standard Nexus Tool that allows a user to like a specific tweet.
@@ -448,55 +505,90 @@ The tweet mentions retrieval failed.
 
 ---
 
----
+# `xyz.taluslabs.social.twitter.get-tweets@1`
 
-# `xyz.taluslabs.social.twitter.undo-retweet-tweet@1`
-
-Standard Nexus Tool that undoes a retweet.
-Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-unretweet-the-specified-post)
+Standard Nexus Tool that retrieves multiple tweets by their IDs from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/lookup/api-reference/get-tweets)
 
 ## Input
 
-**Authentication Parameters**
+**`bearer_token`: [`String`]**
 
-The following authentication parameters are provided as part of the TwitterAuth structure:
+The bearer token for the user's Twitter account.
 
-- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
-- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
-- **`access_token`: [`String`]** - Access Token for user's Twitter account
-- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+**`ids`: [`Vec<String>`]**
 
-**Additional Parameters**
+A list of Tweet IDs to retrieve. Up to 100 are allowed in a single request.
 
-**`user_id`: [`String`]**
+_opt_ **`tweet_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
 
-The ID of the authenticated user who will undo the retweet.
+A list of Tweet fields to display.
 
-**`tweet_id`: [`String`]**
+_opt_ **`expansions`: [`Option<Vec<String>>`]** _default_: [`None`]
 
-The ID of the tweet to undo retweet.
+A list of fields to expand.
+
+_opt_ **`media_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Media fields to display.
+
+_opt_ **`poll_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Poll fields to display.
+
+_opt_ **`user_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`place_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Place fields to display.
 
 ## Output Variants & Ports
 
 **`ok`**
 
-The retweet was successfully undone.
+The tweets were retrieved successfully.
 
-- **`ok.retweeted`: [`bool`]** - Confirmation that the retweet was undone (false)
+- **`ok.data`: [`Vec<Tweet>`]** - The collection of retrieved tweets.
+- **`ok.includes`: [`Option<Includes>`]** - Additional data included in the response (users, media, polls, etc.)
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response.
 
 **`err`**
 
-The undo retweet operation failed.
+The tweets could not be retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
 
 - **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error status (Code/Message format)
-  - Twitter API error details (Detail/Status/Title format)
-  - Unauthorized error
-  - Invalid JSON response
-  - Failed to read Twitter API response
-  - Failed to send undo retweet request to Twitter API
-  - Unexpected response format from Twitter API
-  - Twitter API indicated the tweet was already retweeted
+
+  - Twitter API error (e.g., "Twitter API returned errors: Not Found Error: Could not find tweet with id: [1346889436626259969].")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No tweet data or errors found in the response" when the API response is empty
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
 
 # `xyz.taluslabs.social.twitter.get-user-by-id@1`
 
@@ -1031,6 +1123,7 @@ The ID of the user to add to the list.
 
 The user was successfully added to the list.
 
+- \*\*`ok.is_member`
 - **`ok.is_member`** - Confirmation that the user is a member of the list (true).
 
 **`err`**

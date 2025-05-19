@@ -91,3 +91,10 @@ pub mod traits {
         sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
     };
 }
+
+/// Use this whenever you need da Clock (=`0x06`) as Tx argument.
+pub const CLOCK_OBJ_ARG: ObjectArg = ObjectArg::SharedObject {
+    id: CLOCK_OBJECT_ID,
+    initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
+    mutable: false,
+};
