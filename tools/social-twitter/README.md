@@ -1699,50 +1699,15 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
-<<<<<<< HEAD
-
-# `xyz.taluslabs.social.twitter.get-user-lists@1`
-
-Standard Nexus Tool that retrieves lists owned by a user from Twitter.
-Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/list-lookup/api-reference/get-users-id-owned_lists)
-=======
-
 # `xyz.taluslabs.social.twitter.get-recent-tweet-count@1`
 
 Standard Nexus Tool that retrieves tweet counts for queries from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/counts/api-reference/get-tweets-counts-recent)
-
-> > > > > > > origin/main
 
 ## Input
 
 **`bearer_token`: [`String`]**
 
 The bearer token for the user's Twitter account.
-
-<<<<<<< HEAD
-**`user_id`: [`String`]**
-
-The ID of the user to retrieve lists for.
-
-_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
-
-The maximum number of results to retrieve (range: 5-100).
-
-_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
-
-Used to get the next 'page' of results.
-
-_opt_ **`list_fields`: [`Option<Vec<ListField>>`]** _default_: [`None`]
-
-A list of List fields to display.
-
-_opt_ **`expansions`: [`Option<Vec<Expansion>>`]** _default_: [`None`]
-
-A list of fields to expand.
-
-_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
-
-# A list of User fields to display.
 
 **`query`: [`String`]**
 
@@ -1783,8 +1748,6 @@ Time granularity for the counts. Options are:
 _opt_ **`search_count_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
 
 A comma separated list of SearchCount fields to display.
-
-> > > > > > > origin/main
 
 ## Output Variants & Ports
 
