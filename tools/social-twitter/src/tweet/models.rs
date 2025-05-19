@@ -14,7 +14,7 @@ pub struct TweetsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<Tweet>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -672,3 +672,4 @@ pub struct DeleteData {
 
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
 impl_twitter_response_parser!(DeleteResponse, DeleteData);
+impl_twitter_response_parser!(TweetsResponse, Vec<Tweet>, includes = Includes, meta = Meta);

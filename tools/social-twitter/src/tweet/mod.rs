@@ -5,6 +5,7 @@
 pub(crate) mod delete_tweet;
 pub(crate) mod get_mentioned_tweets;
 pub(crate) mod get_tweet;
+pub(crate) mod get_tweets;
 pub(crate) mod get_user_tweets;
 pub(crate) mod like_tweet;
 pub(crate) mod models;

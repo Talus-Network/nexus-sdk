@@ -10,11 +10,11 @@ The JSON data to upload.
 
 _opt_ **`publisher_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus publisher URL.
+The Walrus publisher URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to upload the JSON to.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`epochs`: [`u64`]** _default_: [`1`]
 
@@ -67,7 +67,7 @@ The path to the file to upload.
 
 _opt_ **`publisher_url`: [`Option<String>`]** _default_: [`None`]
 
-The walrus publisher URL.
+The Walrus publisher URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`epochs`: [`u64`]** _default_: [`1`]
 
@@ -117,7 +117,7 @@ The blob ID of the JSON file to read.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to read the JSON from.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 _opt_ **`json_schema`: [`Option<WalrusJsonSchema>`]** _default_: [`None`]
 
@@ -152,6 +152,40 @@ The JSON read operation failed.
 
 ---
 
+# `xyz.taluslabs.storage.walrus.read-file@1`
+
+Standard Nexus Tool that reads a file from Walrus and returns its content as bytes.
+
+## Input
+
+**`blob_id`: [`String`]**
+
+The unique identifier of the blob to read.
+
+_opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
+
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The file was read successfully.
+
+- **`ok.bytes`: [`Vec<u8>`]** - The file content as a byte array
+
+**`err`**
+
+The file read operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`ReadErrorKind`]** - Type of error that occurred
+  - Possible kinds:
+    - `network` - Error during HTTP requests or network connectivity issues
+- **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for network errors)
+
+---
+
 # `xyz.taluslabs.storage.walrus.verify-blob@1`
 
 Standard Nexus Tool that verifies a blob in Walrus.
@@ -164,7 +198,7 @@ The ID of the blob to verify.
 
 _opt_ **`aggregator_url`: [`Option<String>`]** _default_: [`None`]
 
-The URL of the Walrus aggregator to verify the blob against.
+The Walrus aggregator URL. Must be a valid URL with http:// or https:// scheme. If not provided, the default Walrus configuration will be used.
 
 ## Output Variants & Ports
 
@@ -189,5 +223,3 @@ An error occurred during verification.
   - Possible kinds:
     - `server` - Server-side errors during verification
 - **`err.status_code`: [`Option<u16>`]** - HTTP status code if available (for API errors)
-
----
