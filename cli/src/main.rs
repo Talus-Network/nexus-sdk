@@ -29,7 +29,7 @@ struct Cli {
 enum Command {
     #[command(subcommand, about = "Manage Nexus Tools")]
     Tool(tool::ToolCommand),
-    #[command(about = "Manage Nexus Configuration")]
+    #[command(subcommand, about = "Manage Nexus Configuration")]
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
@@ -60,7 +60,7 @@ async fn main() {
 
             eprintln!(
                 "{ballot} {error}",
-                ballot = "✘".red().bold(),
+                ballot = "✖".red().bold(),
                 error = NexusCliError::Syntax(e)
             );
 
@@ -82,7 +82,7 @@ async fn main() {
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
-        eprintln!("\n{ballot} {e}", ballot = "✘".red().bold());
+        eprintln!("\n{ballot} {e}", ballot = "✖".red().bold());
 
         std::process::exit(1);
     }

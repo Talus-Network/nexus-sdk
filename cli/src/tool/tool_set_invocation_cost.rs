@@ -3,14 +3,15 @@ use {
     nexus_sdk::transactions::tool,
 };
 
-/// Claim collateral for a Tool based on the provided FQN.
-pub(crate) async fn claim_collateral(
+/// Set the invocation cost in MIST for a tool based on its FQN.
+pub(crate) async fn set_tool_invocation_cost(
     tool_fqn: ToolFqn,
     owner_cap: sui::ObjectID,
+    invocation_cost: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Claiming collateral for Tool '{tool_fqn}'");
+    command_title!("Setting '{invocation_cost}' invocation cost for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
@@ -32,12 +33,14 @@ pub(crate) async fn claim_collateral(
     // Fetch the OwnerCap object.
     let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
-    // Craft a TX to claim the collaters for a Tool.
+    // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = tool::claim_collateral_for_self(&mut tx, objects, &tool_fqn, &owner_cap) {
+    if let Err(e) =
+        tool::set_invocation_cost(&mut tx, objects, &tool_fqn, &owner_cap, invocation_cost)
+    {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
