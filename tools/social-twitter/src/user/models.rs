@@ -3,7 +3,6 @@ use {
         error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
         impl_twitter_response_parser,
         list::models::{Includes, Meta},
-        tweet::models::ApiError,
         twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
@@ -30,8 +29,6 @@ pub struct UsersResponse {
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Meta>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub includes: Option<Includes>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
