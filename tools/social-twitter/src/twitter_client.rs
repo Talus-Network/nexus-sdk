@@ -113,11 +113,14 @@ impl TwitterClient {
     }
 
     /// Makes a DELETE request to the Twitter API
-    pub async fn delete<T>(&self, auth: &TwitterAuth) -> Result<T, TwitterErrorResponse>
+    pub async fn delete<T>(&self, auth: &TwitterAuth) -> Result<T::Output, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request::<T, Value>("DELETE", auth, None).await
+        let raw_response: T = self
+            .make_request::<T, serde_json::Value>("DELETE", auth, None)
+            .await?;
+        raw_response.parse_twitter_response()
     }
 
     /// Makes an authenticated request to the Twitter API with auth
