@@ -674,5 +674,59 @@ pub struct RetweetData {
     pub retweeted: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeleteResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<DeleteData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteData {
+    pub deleted: bool,
+}
+
+/// Twitter API response for an undo retweet request
+#[derive(Debug, Deserialize)]
+pub struct UndoRetweetResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<UndoRetweetData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+/// Data structure for a successful undo retweet response
+#[derive(Debug, Deserialize)]
+pub struct UndoRetweetData {
+    /// Whether the tweet was successfully retweeted
+    pub retweeted: bool,
+}
+
+/// Twitter API response for an unlike request
+#[derive(Debug, Deserialize)]
+pub struct UnlikeResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<UnlikeData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+/// Data structure for a successful unlike response
+#[derive(Debug, Deserialize)]
+pub struct UnlikeData {
+    /// Whether the tweet was successfully unliked
+    pub liked: bool,
+}
+
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
+impl_twitter_response_parser!(DeleteResponse, DeleteData);
 impl_twitter_response_parser!(TweetsResponse, Vec<Tweet>, includes = Includes, meta = Meta);
+impl_twitter_response_parser!(UndoRetweetResponse, UndoRetweetData);
+impl_twitter_response_parser!(UnlikeResponse, UnlikeData);
