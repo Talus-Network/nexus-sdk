@@ -16,10 +16,12 @@ mod user;
 async fn main() {
     bootstrap!([
         tweet::post_tweet::PostTweet,
+        tweet::delete_tweet::DeleteTweet,
         tweet::get_tweet::GetTweet,
         tweet::like_tweet::LikeTweet,
         tweet::get_mentioned_tweets::GetMentionedTweets,
         tweet::get_user_tweets::GetUserTweets,
+        tweet::get_tweets::GetTweets,
         tweet::retweet_tweet::RetweetTweet,
         list::create_list::CreateList,
         list::get_list::GetList,
