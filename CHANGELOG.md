@@ -9,22 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-cli`
 
+#### Added
+
+- `nexus gas add-budget` command to be able to pay for evaluations
+- `nexus gas expiry enable` to enable the expiry gas extension for a tool
+- `nexus gas expiry disable` to disable the expiry gas extension for a tool
+- `nexus gas expiry buy-ticket` to buy an expiry gas ticket for a tool
+- `nexus tool set-invocation-cost` to set the invocation cost for a tool
+- `indicatif` crate to handle progress spinners
+- `--batch` flag to `nexus tool register` command to allow registering multiple tools at once
+
 #### Changed
 
 - JSON DAG definition no longer specifies entry input ports
 - renamed JSON DAG `vertices.input_ports` to `vertices.entry_ports`
+- `nexus tool list` supports the new `description` and `registered_at_ms` attributes
+- tool registration now takes `invocation_cost` parameter and returns 2 owner caps `OverTool` and `OverGas`
+- `nexus conf --nexus.objects` is now the only way to populate the `nexus.objects` field in the config
+- `nexus conf` changed to have `set` and `get` subcommands
 
 ### `nexus-sdk`
 
 #### Added
 
-- added Walrus Client module to interact with Walrus decentralized storage
-- added support for generating shell completions
+- Walrus Client module to interact with Walrus decentralized storage
+- `transactions::gas` module containing PTB templates for gas-related transactions
+- support for generating shell completions
+
+#### Changed
+
+- `transactions::tool` register PTB template now accepts invocation cost
+- all transaction templates now accept an `objects` argument instead of accepting objects one by one
 
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
+
+### `nexus-toolkit-rust`
+
+#### Added
+
+- `/tools` endpoint to the `boostrap!` macro that returns a list of all tools registered on the webserver
 
 ## [`0.1.0`] - 2025-04-14
 

@@ -9,7 +9,7 @@ pub(crate) struct CompletionCommand {
 pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError> {
     let mut cli_command = Cli::command();
     let bin_name = env!("CARGO_CRATE_NAME").to_string();
-    println!("Processing '{}'", bin_name);
+
     clap_complete::generate(
         command.shell,
         &mut cli_command,
