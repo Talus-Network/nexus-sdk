@@ -1,23 +1,15 @@
 use {
-    crate::{command_title, confirm, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::transactions::tool,
+    crate::{command_title, display::json_output, loading, prelude::*, sui::*},
+    nexus_sdk::transactions::gas,
 };
 
-/// Unregister a Tool based on the provided FQN.
-pub(crate) async fn unregister_tool(
-    tool_fqn: ToolFqn,
-    owner_cap: sui::ObjectID,
+/// Upload `coin` as a gas budget for the Nexus workflow.
+pub(crate) async fn add_gas_budget(
+    coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
-    skip_confirmation: bool,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Unregistering Tool '{tool_fqn}'");
-
-    if !skip_confirmation {
-        confirm!(
-            "Unregistering a Tool will make all DAGs using it invalid. Do you want to proceed?"
-        );
-    }
+    command_title!("Adding '{coin}' as gas budget for Nexus");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
@@ -25,7 +17,7 @@ pub(crate) async fn unregister_tool(
     // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id,
-        tool_registry,
+        gas_service,
         ..
     } = get_nexus_objects(&conf)?;
 
@@ -37,23 +29,29 @@ pub(crate) async fn unregister_tool(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
+    // Fetch budget coin.
+    let budget_coin = fetch_object_by_id(&sui, coin).await?;
+
+    if budget_coin.object_id == gas_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and budget coins must be different."
+        )));
+    }
+
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Fetch the OwnerCap object.
-    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
-
-    // Craft a TX to unregister the tool.
+    // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = tool::unregister(
+    if let Err(e) = gas::add_budget(
         &mut tx,
-        &tool_fqn,
-        &owner_cap,
-        tool_registry,
         *workflow_pkg_id,
+        gas_service,
+        address.into(),
+        &budget_coin,
     ) {
         tx_handle.error();
 
@@ -70,7 +68,7 @@ pub(crate) async fn unregister_tool(
         reference_gas_price,
     );
 
-    // Sign and submit the TX.
+    // Sign and send the TX.
     let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     json_output(&json!({ "digest": response.digest }))?;
