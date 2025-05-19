@@ -16,12 +16,19 @@ mod user;
 async fn main() {
     bootstrap!([
         tweet::post_tweet::PostTweet,
+        tweet::delete_tweet::DeleteTweet,
         tweet::get_tweet::GetTweet,
         tweet::like_tweet::LikeTweet,
         tweet::get_mentioned_tweets::GetMentionedTweets,
         tweet::get_user_tweets::GetUserTweets,
+        tweet::get_recent_tweet_count::GetRecentTweetCount,
+        tweet::get_recent_search_tweets::GetRecentSearchTweets,
+        tweet::unlike_tweet::UnlikeTweet,
+        tweet::undo_retweet_tweet::UndoRetweetTweet,
+        tweet::get_tweets::GetTweets,
         tweet::retweet_tweet::RetweetTweet,
         list::create_list::CreateList,
+        list::delete_list::DeleteList,
         list::get_list::GetList,
         list::get_list_tweets::GetListTweets,
         list::get_list_members::GetListMembers,
@@ -31,5 +38,8 @@ async fn main() {
         list::remove_member::RemoveMember,
         user::get_user_by_id::GetUserById,
         user::get_user_by_username::GetUserByUsername,
+        user::unfollow_user::UnfollowUser,
+        user::get_users_by_username::GetUsersByUsername,
+        user::get_users_by_id::GetUsersById,
     ]);
 }

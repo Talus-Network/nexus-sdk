@@ -186,6 +186,129 @@ The tweets could not be retrieved due to an error.
 
 ---
 
+# `xyz.taluslabs.social.twitter.get-recent-search-tweets@1`
+
+Standard Nexus Tool that retrieves tweets from the recent search API. Twitter api [reference](https:/developer.twitter.com/en/docs/twitter-api/tweets/search/api-reference/get-tweets-search-recent)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`query`: [`String`]**
+
+Search query for matching tweets.
+
+_opt_ **`start_time`: [`Option<String>`]** _default_: [`None`]
+
+The oldest UTC timestamp from which the tweets will be provided (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`end_time`: [`Option<String>`]** _default_: [`None`]
+
+The newest UTC timestamp to which the tweets will be provided (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`since_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID greater than (more recent than) the specified ID.
+
+_opt_ **`until_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID less than (older than) the specified ID.
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
+
+The maximum number of search results to be returned (between 10 and 100).
+
+_opt_ **`next_token`: [`Option<String>`]** _default_: [`None`]
+
+Token for pagination to get the next page of results.
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+Alternative parameter for pagination (same as next_token).
+
+_opt_ **`sort_order`: [`Option<SortOrder>`]** _default_: [`None`]
+
+Order in which to return results. Available values:
+
+- `recency`: Return results in order of newest to oldest
+- `relevancy`: Return results in order of relevance score
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A list of Tweet fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`media_fields`: [`Option<Vec<MediaField>>`]** _default_: [`None`]
+
+A list of Media fields to display.
+
+_opt_ **`poll_fields`: [`Option<Vec<PollField>>`]** _default_: [`None`]
+
+A list of Poll fields to display.
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`place_fields`: [`Option<Vec<PlaceField>>`]** _default_: [`None`]
+
+A list of Place fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The search results were retrieved successfully.
+
+- **`ok.data`: [`Vec<Tweet>`]** - The collection of tweets matching the search query.
+- **`ok.includes`: [`Option<Includes>`]** - Additional data included in the response (users, media, polls, etc.)
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response (result_count, newest_id, oldest_id, next_token, etc.)
+
+**`err`**
+
+The search results could not be retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+
+  - Twitter API error (e.g., "Twitter API returned errors: Invalid Request: One or more parameters to your request was invalid.")
+  - Validation error (e.g., "Validation error: max_results must be between 10 and 100")
+  - Timestamp format error (e.g., "Invalid start_time format. Expected format: YYYY-MM-DDTHH:mm:ssZ")
+  - Sort order error (e.g., "sort_order must be either 'recency' or 'relevancy'")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No search results found" when the API response doesn't contain tweet data
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # `xyz.taluslabs.social.twitter.post-tweet@1`
 
 Standard Nexus Tool that posts a content to Twitter.
@@ -299,6 +422,63 @@ The tweet posting failed.
 
 ---
 
+# `xyz.taluslabs.social.twitter.delete-tweet@1`
+
+Standard Nexus Tool that deletes a tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/post-delete-by-post-id#post-delete-by-post-id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully deleted.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the tweet was deleted (true)
+
+**`err`**
+
+The tweets could not be deleted due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible
+  values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
 # `xyz.taluslabs.social.twitter.like-tweet@1`
 
 Standard Nexus Tool that allows a user to like a specific tweet.
@@ -346,6 +526,56 @@ The like operation failed.
   - Invalid JSON response
   - Failed to read Twitter API response
   - Failed to send like request to Twitter API
+
+---
+
+# `xyz.taluslabs.social.twitter.unlike-tweet@1`
+
+Standard Nexus Tool that unlikes a tweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-unlike-the-specified-post#causes-the-user-in-the-path-to-unlike-the-specified-post)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will unlike the tweet.
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to unlike.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet was successfully unliked.
+
+- **`ok.unliked`: [`bool`]** - Confirmation that the tweet was unliked
+
+**`err`**
+
+The unlike operation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send unlike request to Twitter API
+  - Unexpected response format from Twitter API
+  - Twitter API indicated the tweet was already unliked
 
 ---
 
@@ -445,6 +675,141 @@ The tweet mentions retrieval failed.
   - `404` - Not Found
   - `429` - Too Many Requests (rate limit exceeded)
   - `5xx` - Server errors
+
+---
+
+# `xyz.taluslabs.social.twitter.get-tweets@1`
+
+Standard Nexus Tool that retrieves multiple tweets by their IDs from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/lookup/api-reference/get-tweets)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`ids`: [`Vec<String>`]**
+
+A list of Tweet IDs to retrieve. Up to 100 are allowed in a single request.
+
+_opt_ **`tweet_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Tweet fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`media_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Media fields to display.
+
+_opt_ **`poll_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Poll fields to display.
+
+_opt_ **`user_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`place_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A list of Place fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweets were retrieved successfully.
+
+- **`ok.data`: [`Vec<Tweet>`]** - The collection of retrieved tweets.
+- **`ok.includes`: [`Option<Includes>`]** - Additional data included in the response (users, media, polls, etc.)
+- **`ok.meta`: [`Option<Meta>`]** - Metadata about the response.
+
+**`err`**
+
+The tweets could not be retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+
+  - Twitter API error (e.g., "Twitter API returned errors: Not Found Error: Could not find tweet with id: [1346889436626259969].")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No tweet data or errors found in the response" when the API response is empty
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
+# `xyz.taluslabs.social.twitter.undo-retweet-tweet@1`
+
+Standard Nexus Tool that undoes a retweet.
+Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-path-to-unretweet-the-specified-post)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will undo the retweet.
+
+**`tweet_id`: [`String`]**
+
+The ID of the tweet to undo retweet.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The retweet was successfully undone.
+
+- **`ok.retweeted`: [`bool`]** - Confirmation that the retweet was undone (false)
+
+**`err`**
+
+The undo retweet operation failed.
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error status (Code/Message format)
+  - Twitter API error details (Detail/Status/Title format)
+  - Unauthorized error
+  - Invalid JSON response
+  - Failed to read Twitter API response
+  - Failed to send undo retweet request to Twitter API
+  - Unexpected response format from Twitter API
+  - Twitter API indicated the tweet was already retweeted
 
 ---
 
@@ -602,14 +967,183 @@ The user was retrieved successfully.
 
 The user was not retrieved due to an error.
 
-- **`err.reason`: [`String`]** - Detailed error message describing what went wrong
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
+  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found) - User not found")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - User not found error (e.g., "Twitter API error: User not found (code: 50)")
+  - Invalid token error (e.g., "Twitter API error: Invalid token (code: 89)")
+  - Rate limit exceeded error (e.g., "Twitter API error: Rate limit exceeded (code: 88)")
+  - No user data found in the response
+
+---
+
+# `xyz.taluslabs.social.twitter.get-users-by-username@1`
+
+Standard Nexus Tool that retrieves multiple users from the Twitter API by their usernames. Twitter api [reference](https://docs.x.com/x-api/users/user-lookup-by-usernames)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`usernames`: [`Vec<String>`]**
+
+A list of usernames to retrieve (without the @ symbol).
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display.
+
+_opt_ **`expansions_fields`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A list of Tweet fields to display.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The users were retrieved successfully.
+
+- **`ok.users`: [`Vec<UserData>`]** - Array of user data objects with the following fields:
+  - `id`: The user's unique identifier
+  - `name`: The user's display name
+  - `username`: The user's @username
+  - `protected`: Whether the user's account is protected
+  - `affiliation`: The user's affiliation information
+  - `connection_status`: The user's connection status
+  - `created_at`: When the user's account was created
+  - `description`: The user's profile description/bio
+  - `entities`: Entities found in the user's description
+  - `location`: The user's location
+  - `most_recent_tweet_id`: ID of the user's most recent tweet
+  - `pinned_tweet_id`: ID of the user's pinned tweet
+  - `profile_banner_url`: URL of the user's profile banner image
+  - `profile_image_url`: URL of the user's profile image
+  - `public_metrics`: Public metrics about the user
+  - `receives_your_dm`: Whether the user accepts direct messages
+  - `subscription_type`: The user's subscription type
+  - `url`: The user's website URL
+  - `verified`: Whether the user is verified
+  - `verified_type`: The user's verification type
+  - `withheld`: Withholding information for the user
+- **`ok.includes`: [`Option<Includes>`]** - Additional entities related to the users:
+  - `users`: Other users referenced by these users
+  - `tweets`: Tweets referenced by these users (e.g., pinned tweets)
+  - `media`: Media items referenced by these users
+  - `places`: Geographic places referenced by these users
+  - `polls`: Polls referenced by these users
+
+**`err`**
+
+The users were not retrieved due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
   - `network` - A network-related error occurred when connecting to Twitter
   - `connection` - Could not establish a connection to Twitter
   - `timeout` - The request to Twitter timed out
   - `parse` - Failed to parse Twitter's response
   - `auth` - Authentication or authorization error
   - `not_found` - The requested user was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
+
+---
+
+# `xyz.taluslabs.social.twitter.get-users@1`
+
+Standard Nexus Tool that retrieves multiple users by their IDs. Twitter api [reference](https://docs.x.com/x-api/users/user-lookup-by-ids#user-lookup-by-ids)
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+**`ids`: [`Vec<String>`]**
+
+A list of User IDs to lookup (up to 100). Example: ["2244994945", "6253282", "12"]
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+A list of User fields to display. Available values include: affiliation, confirmed_email, connection_status, created_at, description, entities, id, is_identity_verified, location, most_recent_tweet_id, name, parody, pinned_tweet_id, profile_banner_url, profile_image_url, protected, public_metrics, receives_your_dm, subscription, subscription_type, url, username, verified, verified_followers_count, verified_type, withheld
+
+_opt_ **`expansions`: [`Option<Vec<ExpansionField>>`]** _default_: [`None`]
+
+A list of fields to expand. Available values include: affiliation.user_id, most_recent_tweet_id, pinned_tweet_id
+
+_opt_ **`tweet_fields`: [`Option<Vec<TweetField>>`]** _default_: [`None`]
+
+A list of Tweet fields to display when using expansions to include referenced tweets.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The users were retrieved successfully.
+
+- **`ok.users`: [`Vec<UserData>`]** - The collection of user data from the API:
+  - `id`: The user's unique identifier
+  - `name`: The user's display name
+  - `username`: The user's @username
+  - `protected`: Whether the user's account is protected
+  - `affiliation`: The user's affiliation information
+  - `connection_status`: The user's connection status
+  - `created_at`: When the user's account was created
+  - `description`: The user's profile description/bio
+  - `entities`: Entities found in the user's description
+  - `location`: The user's location
+  - `most_recent_tweet_id`: ID of the user's most recent tweet
+  - `pinned_tweet_id`: ID of the user's pinned tweet
+  - `profile_banner_url`: URL of the user's profile banner image
+  - `profile_image_url`: URL of the user's profile image
+  - `public_metrics`: Public metrics about the user
+  - `receives_your_dm`: Whether the user accepts direct messages
+  - `subscription_type`: The user's subscription type
+  - `url`: The user's website URL
+  - `verified`: Whether the user is verified
+  - `verified_type`: The user's verification type
+  - `withheld`: Withholding information for the user
+- **`ok.includes`: [`Option<Includes>`]** - Additional entities related to the users:
+  - `users`: Other users referenced
+  - `tweets`: Tweets referenced (e.g., pinned tweets)
+  - `media`: Media items referenced
+  - `places`: Geographic places referenced
+  - `polls`: Polls referenced
+
+**`err`**
+
+The users were not retrieved due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested users were not found
   - `rate_limit` - Twitter's rate limit was exceeded
   - `server` - An error occurred on Twitter's servers
   - `forbidden` - The request was forbidden
@@ -677,6 +1211,64 @@ The list creation failed.
   - Response parsing error
   - Status code error
   - Other error types handled by the centralized error handling mechanism
+
+---
+
+# `xyz.taluslabs.social.twitter.delete-list@1`
+
+Standard Nexus Tool that deletes a list on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/manage-lists/api-reference/delete-lists-id)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`list_id`: [`String`]**
+
+The ID of the list to delete.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The list was deleted successfully.
+
+- **`ok.deleted`: [`bool`]** - Confirmation that the list was deleted (true)
+
+**`err`**
+
+The list deletion failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested list was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
 
 ---
 
@@ -981,6 +1573,7 @@ The ID of the user to add to the list.
 
 The user was successfully added to the list.
 
+- \*\*`ok.is_member`
 - **`ok.is_member`** - Confirmation that the user is a member of the list (true).
 
 **`err`**
@@ -1090,6 +1683,209 @@ The retweet operation failed.
   - `parse` - Failed to parse Twitter's response
   - `auth` - Authentication or authorization error
   - `not_found` - The requested tweet was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+It's important to note that some errors may have either a specific error kind (like `NotFound`, `Auth`, or `RateLimit`) or the more general `Api` error kind, and the status code may be a specific value or `None` depending on the error details.
+
+---
+
+<<<<<<< HEAD
+
+# `xyz.taluslabs.social.twitter.get-user-lists@1`
+
+Standard Nexus Tool that retrieves lists owned by a user from Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/list-lookup/api-reference/get-users-id-owned_lists)
+=======
+
+# `xyz.taluslabs.social.twitter.get-recent-tweet-count@1`
+
+Standard Nexus Tool that retrieves tweet counts for queries from the Twitter API. Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/tweets/counts/api-reference/get-tweets-counts-recent)
+
+> > > > > > > origin/main
+
+## Input
+
+**`bearer_token`: [`String`]**
+
+The bearer token for the user's Twitter account.
+
+<<<<<<< HEAD
+**`user_id`: [`String`]**
+
+The ID of the user to retrieve lists for.
+
+_opt_ **`max_results`: [`Option<i32>`]** _default_: [`None`]
+
+The maximum number of results to retrieve (range: 5-100).
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+Used to get the next 'page' of results.
+
+_opt_ **`list_fields`: [`Option<Vec<ListField>>`]** _default_: [`None`]
+
+A list of List fields to display.
+
+_opt_ **`expansions`: [`Option<Vec<Expansion>>`]** _default_: [`None`]
+
+A list of fields to expand.
+
+_opt_ **`user_fields`: [`Option<Vec<UserField>>`]** _default_: [`None`]
+
+# A list of User fields to display.
+
+**`query`: [`String`]**
+
+Search query for counting tweets.
+
+_opt_ **`start_time`: [`Option<String>`]** _default_: [`None`]
+
+The oldest UTC timestamp from which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`end_time`: [`Option<String>`]** _default_: [`None`]
+
+The newest UTC timestamp to which the tweets will be counted (YYYY-MM-DDTHH:mm:ssZ).
+
+_opt_ **`since_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID greater than (more recent than) the specified ID.
+
+_opt_ **`until_id`: [`Option<String>`]** _default_: [`None`]
+
+Returns results with a tweet ID less than (older than) the specified ID.
+
+_opt_ **`next_token`: [`Option<String>`]** _default_: [`None`]
+
+Token for pagination to get the next page of results.
+
+_opt_ **`pagination_token`: [`Option<String>`]** _default_: [`None`]
+
+Alternative parameter for pagination (same as next_token).
+
+_opt_ **`granularity`: [`Option<Granularity>`]** _default_: [`Granularity::Hour`]
+
+Time granularity for the counts. Options are:
+
+- `Minute`: Minute-by-minute counts
+- `Hour`: Hourly counts (default)
+- `Day`: Daily counts
+
+_opt_ **`search_count_fields`: [`Option<Vec<String>>`]** _default_: [`None`]
+
+A comma separated list of SearchCount fields to display.
+
+> > > > > > > origin/main
+
+## Output Variants & Ports
+
+**`ok`**
+
+The tweet counts were retrieved successfully.
+
+- **`ok.data`: [`Vec<TweetCount>`]** - The collection of tweet count data:
+  - `start`: Start time for the count bucket
+  - `end`: End time for the count bucket
+  - `tweet_count`: Number of tweets counted in this time period
+- **`ok.meta`: [`Option<TweetCountMeta>`]** - Metadata about the counts:
+  - `newest_id`: The newest tweet ID in the response
+  - `next_token`: Token for the next page of results
+  - `oldest_id`: The oldest tweet ID in the response
+  - `total_tweet_count`: Total count of tweets matching the query
+
+**`err`**
+
+The tweet counts could not be retrieved due to an error.
+
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested tweet or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `unknown` - An unexpected error occurred
+
+- **`err.reason`: [`String`]** - The reason for the error. This could be:
+
+  - Twitter API error (e.g., "Twitter API returned errors: Invalid Request: One or more parameters to your request was invalid.")
+  - Validation error (e.g., "Validation error: Invalid start_time format. Expected format: YYYY-MM-DDTHH:mm:ssZ")
+  - Network error (e.g., "Network error: network error: Connection refused")
+  - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
+  - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
+  - "No tweet count data found" when the API response doesn't contain count data
+  - Unauthorized error (e.g., "Unauthorized")
+  - Other error types handled by the centralized error handling mechanism
+
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+---
+
+# `xyz.taluslabs.social.twitter.unfollow-user@1`
+
+Standard Nexus Tool that allows a user to unfollow another user on Twitter.
+Twitter api [reference](https://docs.x.com/x-api/users/unfollow)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`user_id`: [`String`]**
+
+The ID of the authenticated user who will unfollow another user.
+
+**`target_user_id`: [`String`]**
+
+The ID of the user to unfollow.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The user was successfully unfollowed.
+
+- **`ok.unfollowed`: [`bool`]** - Confirmation that the user is no longer being followed
+
+**`err`**
+
+The unfollow operation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested user was not found
   - `rate_limit` - Twitter's rate limit was exceeded
   - `server` - An error occurred on Twitter's servers
   - `forbidden` - The request was forbidden
