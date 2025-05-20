@@ -7,6 +7,7 @@ pub(crate) use {
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
+        collections::HashMap,
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
     },
@@ -40,6 +41,8 @@ impl std::fmt::Display for SuiNet {
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
+    #[serde(default)]
+    pub(crate) tools: HashMap<ToolFqn, ToolOnwerCaps>,
 }
 
 impl CliConf {
@@ -55,7 +58,13 @@ impl CliConf {
         Ok(toml::from_str(&conf)?)
     }
 
-    pub(crate) async fn save(&self, path: &PathBuf) -> AnyResult<()> {
+    pub(crate) async fn save(&self) -> AnyResult<()> {
+        let conf_path = expand_tilde(CLI_CONF_PATH)?;
+
+        self.save_to_path(&conf_path).await
+    }
+
+    pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
         let parent_folder = path.parent().expect("Parent folder must exist.");
         let conf = toml::to_string_pretty(&self)?;
 
@@ -87,6 +96,12 @@ impl Default for SuiConf {
             auth_password: None,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ToolOnwerCaps {
+    pub(crate) over_tool: sui::ObjectID,
+    pub(crate) over_gas: sui::ObjectID,
 }
 
 /// Reusable Sui gas command args.

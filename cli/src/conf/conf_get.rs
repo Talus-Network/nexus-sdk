@@ -39,9 +39,12 @@ mod tests {
             auth_password: Some("pass".to_string()),
         };
 
+        let tools = HashMap::new();
+
         let conf = CliConf {
             sui: sui_conf,
             nexus: Some(nexus_objects),
+            tools,
         };
 
         // Write the configuration to the file.
