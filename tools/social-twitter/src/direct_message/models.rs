@@ -2,7 +2,7 @@ use {
     crate::{
         error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
         impl_twitter_response_parser,
-        tweet::models::{ApiError, Meta, ReferencedTweet},
+        tweet::models::{Meta, ReferencedTweet},
         twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
@@ -30,7 +30,7 @@ pub struct DmEventsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<DmEvent>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,6 +38,7 @@ pub struct DmEventsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct DmEvent {
     pub id: String,
     pub event_type: EventType,
@@ -191,6 +192,10 @@ pub struct Tweet {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct User {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -366,4 +371,48 @@ impl Message {
     }
 }
 
+#[derive(Deserialize, JsonSchema)]
+pub struct Attachment {
+    /// The media id of the attachment.
+    pub media_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub enum ReplySettings {
+    #[serde(rename = "following")]
+    Following,
+    #[serde(rename = "mentionedUsers")]
+    MentionedUsers,
+    #[serde(rename = "subscribers")]
+    Subscribers,
+}
+
+/// Data structure for a successful direct message response
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct DirectMessageResponseData {
+    /// Unique identifier of a DM conversation
+    pub dm_conversation_id: String,
+    /// Unique identifier of a DM Event
+    pub dm_event_id: String,
+}
+
+/// Twitter API response for a direct message request
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct DirectMessageResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<DirectMessageResponseData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
 impl_twitter_response_parser!(DmConversationResponse, DmConversationData);
+impl_twitter_response_parser!(
+    DmEventsResponse,
+    Vec<DmEvent>,
+    includes = Includes,
+    meta = Meta
+);
+// Implement the TwitterApiParsedResponse trait for DirectMessageResponse
+impl_twitter_response_parser!(DirectMessageResponse, DirectMessageResponseData);

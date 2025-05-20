@@ -76,7 +76,9 @@ impl TwitterClient {
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        let raw_response: T = self.make_request("POST", auth, Some(body)).await?;
+        let raw_response: T = self
+            .make_request::<T, U>("POST", auth, Some(body), None)
+            .await?;
         raw_response.parse_twitter_response()
     }
 
@@ -96,11 +98,18 @@ impl TwitterClient {
     }
 
     /// Makes a GET request to the Twitter API with auth
-    pub async fn get_with_auth<T>(&self, auth: &TwitterAuth) -> Result<T, TwitterErrorResponse>
+    pub async fn get_with_auth<T>(
+        &self,
+        auth: &TwitterAuth,
+        query_params: Option<Vec<(String, String)>>,
+    ) -> Result<T::Output, TwitterErrorResponse>
     where
-        T: DeserializeOwned + std::fmt::Debug,
+        T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
-        self.make_request::<T, Value>("GET", auth, None).await
+        let raw_response = self
+            .make_request::<T, Value>("GET", auth, None, query_params)
+            .await?;
+        raw_response.parse_twitter_response()
     }
 
     /// Makes a PUT request to the Twitter API
@@ -109,7 +118,7 @@ impl TwitterClient {
         T: DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        self.make_request("PUT", auth, Some(body)).await
+        self.make_request("PUT", auth, Some(body), None).await
     }
 
     /// Makes a DELETE request to the Twitter API
@@ -118,7 +127,7 @@ impl TwitterClient {
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
         let raw_response: T = self
-            .make_request::<T, serde_json::Value>("DELETE", auth, None)
+            .make_request::<T, serde_json::Value>("DELETE", auth, None, None)
             .await?;
         raw_response.parse_twitter_response()
     }
@@ -131,13 +140,14 @@ impl TwitterClient {
         method: &str,
         auth: &TwitterAuth,
         body: Option<Value>,
+        query_params: Option<Vec<(String, String)>>,
     ) -> Result<T, TwitterErrorResponse>
     where
         T: DeserializeOwned + std::fmt::Debug,
         Value: Serialize,
     {
         let auth_header = match method {
-            "GET" => auth.generate_auth_header(&self.api_base),
+            "GET" => auth.generate_auth_header_for_get(&self.api_base),
             "POST" => auth.generate_auth_header(&self.api_base),
             "DELETE" => auth.generate_auth_header_for_delete(&self.api_base),
             "PUT" => auth.generate_auth_header_for_put(&self.api_base),
@@ -160,6 +170,11 @@ impl TwitterClient {
 
         if let Some(body) = body {
             request = request.json(&body);
+        }
+
+        // Add query parameters if provided
+        if let Some(params) = query_params {
+            request = request.query(&params);
         }
 
         // Network/connection errors

@@ -1,16 +1,17 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
-    nexus_sdk::transactions::tool,
+    nexus_sdk::transactions::gas,
 };
 
-/// Claim collateral for a Tool based on the provided FQN.
-pub(crate) async fn claim_collateral(
+/// Buy an expiry gas ticket to pay for the specified tool.
+pub(crate) async fn buy_expiry_gas_ticket(
     tool_fqn: ToolFqn,
-    owner_cap: sui::ObjectID,
+    minutes: u64,
+    coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Claiming collateral for Tool '{tool_fqn}'");
+    command_title!("Buying an expiry gas ticket for '{minutes}' minuites for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
@@ -26,22 +27,29 @@ pub(crate) async fn claim_collateral(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
+    // Fetch the coin to pay for the ticket with.
+    let pay_with_coin = fetch_object_by_id(&sui, coin).await?;
+
+    if pay_with_coin.object_id == gas_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and payment coins must be different."
+        )));
+    }
+
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Fetch the OwnerCap object.
-    let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
-
-    // Craft a TX to claim the collaters for a Tool.
+    // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = tool::claim_collateral_for_self(&mut tx, objects, &tool_fqn, &owner_cap) {
+    if let Err(e) = gas::buy_expiry_gas_ticket(&mut tx, objects, &tool_fqn, &pay_with_coin, minutes)
+    {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
-    }
+    };
 
     tx_handle.success();
 
@@ -53,7 +61,7 @@ pub(crate) async fn claim_collateral(
         reference_gas_price,
     );
 
-    // Sign and submit the TX.
+    // Sign and send the TX.
     let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
 
     json_output(&json!({ "digest": response.digest }))?;
