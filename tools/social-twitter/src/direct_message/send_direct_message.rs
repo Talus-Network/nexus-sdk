@@ -320,7 +320,7 @@ mod tests {
             Output::Err {
                 reason,
                 kind,
-                status_code,
+                status_code: _,
             } => {
                 assert_eq!(kind, TwitterErrorKind::Parse);
                 assert!(

@@ -164,8 +164,8 @@ mod tests {
             }
             Output::Err {
                 reason,
-                kind,
-                status_code,
+                kind: _,
+                status_code: _,
             } => {
                 panic!("Expected success, got error: {}", reason);
             }
