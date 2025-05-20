@@ -2193,6 +2193,84 @@ The conversation messages were not retrieved due to an error.
 
 ---
 
+# `xyz.taluslabs.social.twitter.create-group-conversation@1`
+
+Standard Nexus Tool that creates a group DM conversation on Twitter.
+Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct-messages/manage/api-reference/post-dm_conversations)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`conversation_type`: [`ConversationType`]**
+
+The type of conversation to create. Currently only supports `Group`.
+
+**`message`: [`Message`]**
+
+The initial message to send in the conversation, containing:
+
+- **`text`: [`Option<String>`]** - The text content of the message
+- **`media_ids`: [`Option<MediaIdsBag>`]** - Media IDs to attach to the message. Can be either a single ID or multiple IDs:
+  - `One(String)` - A single media ID
+  - `Many(Vec<String>)` - Multiple media IDs
+
+**`participant_ids`: [`Vec<String>`]**
+
+List of user IDs who will participate in the group conversation.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The group conversation was created successfully.
+
+- **`ok.dm_conversation_id`: [`String`]** - The unique identifier of the DM conversation
+- **`ok.dm_event_id`: [`String`]** - The unique identifier of the DM event
+
+**`err`**
+
+The group conversation creation failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested conversation or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `validation` - Input validation error (e.g., empty message text or media_ids)
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+## Validation Rules
+
+The message must follow these validation rules:
+
+1. Either `text` or `media_ids` must be provided and non-empty
+2. If `media_ids` is provided, it must not be empty (for `Many` variant)
+
+---
+
 # Error Handling
 
 The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
