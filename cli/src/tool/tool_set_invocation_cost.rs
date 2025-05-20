@@ -6,7 +6,7 @@ use {
 /// Set the invocation cost in MIST for a tool based on its FQN.
 pub(crate) async fn set_tool_invocation_cost(
     tool_fqn: ToolFqn,
-    owner_cap: sui::ObjectID,
+    owner_cap: Option<sui::ObjectID>,
     invocation_cost: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
@@ -30,7 +30,13 @@ pub(crate) async fn set_tool_invocation_cost(
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Fetch the OwnerCap object.
+    // Use the provided or saved `owner_cap` object ID and fetch the object.
+    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {
+        return Err(NexusCliError::Any(anyhow!(
+            "No OwnerCap object ID found for tool '{tool_fqn}'."
+        )));
+    };
+
     let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
     // Craft the transaction.

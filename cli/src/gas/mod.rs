@@ -47,7 +47,7 @@ pub(crate) enum ExpiryCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: sui::ObjectID,
+        owner_cap: Option<sui::ObjectID>,
         #[arg(
             long = "cost-per-minute",
             short = 'c',
@@ -74,7 +74,7 @@ pub(crate) enum ExpiryCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: sui::ObjectID,
+        owner_cap: Option<sui::ObjectID>,
         #[command(flatten)]
         gas: GasArgs,
     },

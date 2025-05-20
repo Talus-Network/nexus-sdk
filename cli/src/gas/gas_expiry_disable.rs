@@ -6,7 +6,7 @@ use {
 /// Disable the expiry gas extension for the specified tool.
 pub(crate) async fn disable_expiry_extension(
     tool_fqn: ToolFqn,
-    owner_cap: sui::ObjectID,
+    owner_cap: Option<sui::ObjectID>,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -26,7 +26,13 @@ pub(crate) async fn disable_expiry_extension(
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
 
-    // Fetch the OwnerCap<OverGas> object.
+    // Use the provided or saved `owner_cap` object ID and fetch the object.
+    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {
+        return Err(NexusCliError::Any(anyhow!(
+            "No OwnerCap object ID found for tool '{tool_fqn}'."
+        )));
+    };
+
     let owner_cap = fetch_object_by_id(&sui, owner_cap).await?;
 
     // Fetch reference gas price.
