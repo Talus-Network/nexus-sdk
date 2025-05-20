@@ -25,7 +25,7 @@ pub(crate) async fn inspect_dag_execution(
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let NexusObjects {
