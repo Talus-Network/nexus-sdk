@@ -1,16 +1,16 @@
 use crate::{
     idents::{primitives, sui_framework, workflow},
     sui,
-    types::{Dag, Data, DefaultValue, Edge, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
+    types::{Dag, Data, DefaultValue, Edge, NexusObjects, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
 };
 
 /// PTB template for creating a new empty DAG.
 pub fn empty(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
 ) -> sui::Argument {
     tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::NEW.module.into(),
         workflow::Dag::NEW.name.into(),
         vec![],
@@ -21,10 +21,10 @@ pub fn empty(
 /// PTB template to publish a DAG.
 pub fn publish(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
 ) -> sui::Argument {
-    let dag_type = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::DAG);
+    let dag_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG);
 
     tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
@@ -38,32 +38,25 @@ pub fn publish(
 /// PTB template to publish a full [`crate::types::Dag`].
 pub fn create(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
-    primitives_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     mut dag_arg: sui::Argument,
     dag: Dag,
 ) -> anyhow::Result<sui::Argument> {
     // Create all vertices.
     for vertex in &dag.vertices {
-        dag_arg = create_vertex(tx, workflow_pkg_id, dag_arg, vertex)?;
+        dag_arg = create_vertex(tx, objects, dag_arg, vertex)?;
     }
 
     // Create all default values if present.
     if let Some(default_values) = &dag.default_values {
         for default_value in default_values {
-            dag_arg = create_default_value(
-                tx,
-                workflow_pkg_id,
-                primitives_pkg_id,
-                dag_arg,
-                default_value,
-            )?;
+            dag_arg = create_default_value(tx, objects, dag_arg, default_value)?;
         }
     }
 
     // Create all edges.
     for edge in &dag.edges {
-        dag_arg = create_edge(tx, workflow_pkg_id, dag_arg, edge)?;
+        dag_arg = create_edge(tx, objects, dag_arg, edge)?;
     }
 
     // Create all entry ports and vertices. Or create a default entry group
@@ -81,7 +74,7 @@ pub fn create(
                     for entry_port in entry_ports {
                         dag_arg = mark_entry_input_port(
                             tx,
-                            workflow_pkg_id,
+                            objects,
                             dag_arg,
                             vertex,
                             entry_port,
@@ -89,8 +82,7 @@ pub fn create(
                         )?;
                     }
                 } else {
-                    dag_arg =
-                        mark_entry_vertex(tx, workflow_pkg_id, dag_arg, vertex, &entry_group.name)?;
+                    dag_arg = mark_entry_vertex(tx, objects, dag_arg, vertex, &entry_group.name)?;
                 }
             }
         }
@@ -103,7 +95,7 @@ pub fn create(
             for entry_port in entry_ports {
                 dag_arg = mark_entry_input_port(
                     tx,
-                    workflow_pkg_id,
+                    objects,
                     dag_arg,
                     &vertex.name,
                     entry_port,
@@ -119,18 +111,18 @@ pub fn create(
 /// PTB template for creating a new DAG vertex.
 pub fn create_vertex(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
     vertex: &Vertex,
 ) -> anyhow::Result<sui::Argument> {
     // `name: Vertex`
-    let name = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &vertex.name)?;
+    let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
-            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, workflow_pkg_id, tool_fqn)?
+            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
         VertexKind::OnChain { .. } => {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
@@ -139,7 +131,7 @@ pub fn create_vertex(
 
     // `dag.with_vertex(name, kind)`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::WITH_VERTEX.module.into(),
         workflow::Dag::WITH_VERTEX.name.into(),
         vec![],
@@ -150,21 +142,22 @@ pub fn create_vertex(
 /// PTB template for creating a new DAG default value.
 pub fn create_default_value(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
-    primitives_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
     default_value: &DefaultValue,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &default_value.vertex)?;
+    let vertex =
+        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex)?;
 
     // `port: InputPort`
-    let port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, &default_value.input_port)?;
+    let port =
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port)?;
 
     // `value: NexusData`
     let value = match &default_value.value {
         Data::Inline { data } => {
-            primitives::Data::nexus_data_from_json(tx, primitives_pkg_id, data)?
+            primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, data)?
         }
         // Allowing to remind us that any other data storages can be added here.
         #[allow(unreachable_patterns)]
@@ -175,7 +168,7 @@ pub fn create_default_value(
 
     // `dag.with_default_value(vertex, port, value)`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::WITH_DEFAULT_VALUE.module.into(),
         workflow::Dag::WITH_DEFAULT_VALUE.name.into(),
         vec![],
@@ -186,30 +179,35 @@ pub fn create_default_value(
 /// PTB template for creating a new DAG edge.
 pub fn create_edge(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
     edge: &Edge,
 ) -> anyhow::Result<sui::Argument> {
     // `from_vertex: Vertex`
-    let from_vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &edge.from.vertex)?;
+    let from_vertex =
+        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex)?;
 
     // `from_variant: OutputVariant`
-    let from_variant =
-        workflow::Dag::output_variant_from_str(tx, workflow_pkg_id, &edge.from.output_variant)?;
+    let from_variant = workflow::Dag::output_variant_from_str(
+        tx,
+        objects.workflow_pkg_id,
+        &edge.from.output_variant,
+    )?;
 
     // `from_port: OutputPort`
     let from_port =
-        workflow::Dag::output_port_from_str(tx, workflow_pkg_id, &edge.from.output_port)?;
+        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &edge.from.output_port)?;
 
     // `to_vertex: Vertex`
-    let to_vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, &edge.to.vertex)?;
+    let to_vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.to.vertex)?;
 
     // `to_port: InputPort`
-    let to_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, &edge.to.input_port)?;
+    let to_port =
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
 
     // `dag.with_edge(frpm_vertex, from_variant, from_port, to_vertex, to_port)`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::WITH_EDGE.module.into(),
         workflow::Dag::WITH_EDGE.name.into(),
         vec![],
@@ -227,20 +225,21 @@ pub fn create_edge(
 /// PTB template for marking a vertex as an entry vertex.
 pub fn mark_entry_vertex(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
     vertex: &str,
     entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_in_group(vertex, entry_group)`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::WITH_ENTRY_IN_GROUP.module.into(),
         workflow::Dag::WITH_ENTRY_IN_GROUP.name.into(),
         vec![],
@@ -251,24 +250,25 @@ pub fn mark_entry_vertex(
 /// PTB template for marking an input port as an input port.
 pub fn mark_entry_input_port(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    workflow_pkg_id: sui::ObjectID,
+    objects: &NexusObjects,
     dag: sui::Argument,
     vertex: &str,
     entry_port: &str,
     entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
-    let entry_port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, entry_port)?;
+    let entry_port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, entry_port)?;
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_port_in_group(vertex, entry_port, entry_group)`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module.into(),
         workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name.into(),
         vec![],
@@ -277,22 +277,17 @@ pub fn mark_entry_input_port(
 }
 
 /// PTB template to execute a DAG.
-// TODO: This could be alleviated by the function accepting a NexusObjects struct.
-#[allow(clippy::too_many_arguments)]
 pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
-    default_sap: sui::ObjectRef,
-    dag: sui::ObjectRef,
+    objects: &NexusObjects,
+    dag: &sui::ObjectRef,
     entry_group: &str,
     input_json: serde_json::Value,
-    workflow_pkg_id: sui::ObjectID,
-    primitives_pkg_id: sui::ObjectID,
-    network_id: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut DefaultSAP`
     let default_sap = tx.obj(sui::ObjectArg::SharedObject {
-        id: default_sap.object_id,
-        initial_shared_version: default_sap.version,
+        id: objects.default_sap.object_id,
+        initial_shared_version: objects.default_sap.version,
         mutable: true,
     })?;
 
@@ -303,20 +298,28 @@ pub fn execute(
         mutable: false,
     })?;
 
+    // `gas_service: &mut GasService`
+    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.gas_service.object_id,
+        initial_shared_version: objects.gas_service.version,
+        mutable: true,
+    })?;
+
     // `network: ID`
-    let network = sui_framework::Object::id_from_object_id(tx, network_id)?;
+    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, workflow_pkg_id, entry_group)?;
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
     let inner_vec_map_type = vec![
-        workflow::into_type_tag(workflow_pkg_id, workflow::Dag::INPUT_PORT),
-        primitives::into_type_tag(primitives_pkg_id, primitives::Data::NEXUS_DATA),
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
     let outer_vec_map_type = vec![
-        workflow::into_type_tag(workflow_pkg_id, workflow::Dag::VERTEX),
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
         sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
             address: *sui::FRAMEWORK_PACKAGE_ID,
             module: sui_framework::VecMap::VEC_MAP.module.into(),
@@ -347,7 +350,7 @@ pub fn execute(
         };
 
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, workflow_pkg_id, vertex)?;
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.programmable_move_call(
@@ -360,10 +363,11 @@ pub fn execute(
 
         for (port, value) in data {
             // `port: InputPort`
-            let port = workflow::Dag::input_port_from_str(tx, workflow_pkg_id, port)?;
+            let port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?;
 
             // `value: NexusData`
-            let value = primitives::Data::nexus_data_from_json(tx, primitives_pkg_id, value)?;
+            let value =
+                primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, value)?;
 
             // `with_vertex_input.insert(port, value)`
             tx.programmable_move_call(
@@ -386,21 +390,18 @@ pub fn execute(
     }
 
     // `clock: &Clock`
-    let clock = tx.obj(sui::ObjectArg::SharedObject {
-        id: sui::CLOCK_OBJECT_ID,
-        initial_shared_version: sui::CLOCK_OBJECT_SHARED_VERSION,
-        mutable: false,
-    })?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
     // `workflow::default_sap::begin_dag_execution()`
     Ok(tx.programmable_move_call(
-        workflow_pkg_id,
+        objects.workflow_pkg_id,
         workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.into(),
         workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.into(),
         vec![],
         vec![
             default_sap,
             dag,
+            gas_service,
             network,
             entry_group,
             with_vertex_inputs,
@@ -415,24 +416,24 @@ mod tests {
         super::*,
         crate::{
             fqn,
-            test_utils::sui_mocks::mock_sui_object_ref,
+            test_utils::sui_mocks,
             types::{FromPort, ToPort},
         },
     };
 
     #[test]
     fn test_empty() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        empty(&mut tx, workflow_pkg_id);
+        empty(&mut tx, &objects);
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create an empty DAG");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Dag::NEW.module.to_string(),);
         assert_eq!(call.function, workflow::Dag::NEW.name.to_string());
         assert_eq!(call.type_arguments.len(), 0);
@@ -441,11 +442,11 @@ mod tests {
 
     #[test]
     fn test_publish() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        publish(&mut tx, workflow_pkg_id, dag);
+        publish(&mut tx, &objects, dag);
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -471,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_create_vertex() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let vertex = Vertex {
             name: "vertex1".to_string(),
@@ -482,22 +483,21 @@ mod tests {
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        create_vertex(&mut tx, workflow_pkg_id, dag, &vertex).unwrap();
+        create_vertex(&mut tx, &objects, dag, &vertex).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create a vertex");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Dag::WITH_VERTEX.module.to_string(),);
         assert_eq!(call.function, workflow::Dag::WITH_VERTEX.name.to_string());
     }
 
     #[test]
     fn test_create_default_value() {
-        let workflow_pkg_id = sui::ObjectID::random();
-        let primitives_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let default_value = DefaultValue {
             vertex: "vertex1".to_string(),
@@ -508,21 +508,14 @@ mod tests {
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        create_default_value(
-            &mut tx,
-            workflow_pkg_id,
-            primitives_pkg_id,
-            dag,
-            &default_value,
-        )
-        .unwrap();
+        create_default_value(&mut tx, &objects, dag, &default_value).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create a default value");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::Dag::WITH_DEFAULT_VALUE.module.to_string(),
@@ -535,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_create_edge() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let edge = Edge {
             from: FromPort {
@@ -550,34 +543,34 @@ mod tests {
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        create_edge(&mut tx, workflow_pkg_id, dag, &edge).unwrap();
+        create_edge(&mut tx, &objects, dag, &edge).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create an edge");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Dag::WITH_EDGE.module.to_string(),);
         assert_eq!(call.function, workflow::Dag::WITH_EDGE.name.to_string());
     }
 
     #[test]
     fn test_mark_entry_vertex() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let vertex = "vertex1";
         let entry_group = "group1";
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        mark_entry_vertex(&mut tx, workflow_pkg_id, dag, vertex, entry_group).unwrap();
+        mark_entry_vertex(&mut tx, &objects, dag, vertex, entry_group).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to mark an entry vertex");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::Dag::WITH_ENTRY_IN_GROUP.module.to_string(),
@@ -590,19 +583,19 @@ mod tests {
 
     #[test]
     fn test_mark_entry_input_port() {
-        let workflow_pkg_id = sui::ObjectID::random();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let vertex = "vertex1";
-        let input_port = "port1";
+        let entry_port = "port1";
         let entry_group = "group1";
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         mark_entry_input_port(
             &mut tx,
-            workflow_pkg_id,
+            &nexus_objects,
             dag,
             vertex,
-            input_port,
+            entry_port,
             entry_group,
         )
         .unwrap();
@@ -612,7 +605,7 @@ mod tests {
             panic!("Expected last command to be a MoveCall to mark an entry input port");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module.to_string(),
@@ -625,11 +618,8 @@ mod tests {
 
     #[test]
     fn test_execute() {
-        let workflow_pkg_id = sui::ObjectID::random();
-        let primitives_pkg_id = sui::ObjectID::random();
-        let network_id = sui::ObjectID::random();
-        let default_sap = mock_sui_object_ref();
-        let dag = mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
         let input_json = serde_json::json!({
             "vertex1": {
@@ -638,24 +628,14 @@ mod tests {
         });
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(
-            &mut tx,
-            default_sap,
-            dag,
-            entry_group,
-            input_json,
-            workflow_pkg_id,
-            primitives_pkg_id,
-            network_id,
-        )
-        .unwrap();
+        execute(&mut tx, &nexus_objects, &dag, entry_group, input_json).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to execute a DAG");
         };
 
-        assert_eq!(call.package, workflow_pkg_id);
+        assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.to_string(),

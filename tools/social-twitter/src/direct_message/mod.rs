@@ -4,3 +4,4 @@
 
 pub(crate) mod get_conversation_messages;
 pub(crate) mod models;
+pub(crate) mod send_direct_message;
