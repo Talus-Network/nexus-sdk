@@ -14,7 +14,7 @@ pub struct TweetsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<Tweet>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -571,6 +571,25 @@ pub enum PlaceField {
     PlaceType,
 }
 
+/// Sort order for tweet results
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SortOrder {
+    /// Return results in order of recency
+    Recency,
+    /// Return results in order of relevancy
+    Relevancy,
+}
+
+impl ToString for SortOrder {
+    fn to_string(&self) -> String {
+        match self {
+            SortOrder::Recency => "recency".to_string(),
+            SortOrder::Relevancy => "relevancy".to_string(),
+        }
+    }
+}
+
 /// Available Exclude fields
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -635,6 +654,59 @@ pub enum ReplySettings {
     Subscribers,
 }
 
+/// A single count result from the Twitter API
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCount {
+    /// Start time for this count bucket
+    pub start: String,
+    /// End time for this count bucket
+    pub end: String,
+    /// Number of tweets counted in this time period
+    pub tweet_count: i64,
+}
+
+/// Response structure for tweet counts
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCountResponse {
+    /// Array of tweet count data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<TweetCount>>,
+    /// Error information if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<TwitterApiError>>,
+    /// Metadata about the tweet counts request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<TweetCountMeta>,
+}
+
+/// Metadata for tweet count results
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TweetCountMeta {
+    /// The newest tweet ID in the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub newest_id: Option<String>,
+    /// Token for the next page of results
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// The oldest tweet ID in the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_id: Option<String>,
+    /// Total count of tweets matching the query
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tweet_count: Option<i64>,
+}
+
+/// Granularity options for tweet counts
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Granularity {
+    /// Minute-by-minute counts
+    Minute,
+    /// Hourly counts (default)
+    Hour,
+    /// Daily counts
+    Day,
+}
 /// Twitter API response for a retweet request
 #[derive(Debug, Deserialize)]
 pub struct RetweetResponse {
@@ -655,4 +727,60 @@ pub struct RetweetData {
     pub retweeted: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeleteResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<DeleteData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteData {
+    pub deleted: bool,
+}
+
+/// Twitter API response for an undo retweet request
+#[derive(Debug, Deserialize)]
+pub struct UndoRetweetResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<UndoRetweetData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+/// Data structure for a successful undo retweet response
+#[derive(Debug, Deserialize)]
+pub struct UndoRetweetData {
+    /// Whether the tweet was successfully retweeted
+    pub retweeted: bool,
+}
+
+/// Twitter API response for an unlike request
+#[derive(Debug, Deserialize)]
+pub struct UnlikeResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<UnlikeData>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+/// Data structure for a successful unlike response
+#[derive(Debug, Deserialize)]
+pub struct UnlikeData {
+    /// Whether the tweet was successfully unliked
+    pub liked: bool,
+}
+
 impl_twitter_response_parser!(RetweetResponse, RetweetData);
+impl_twitter_response_parser!(TweetCountResponse, Vec<TweetCount>, meta = TweetCountMeta);
+impl_twitter_response_parser!(DeleteResponse, DeleteData);
+impl_twitter_response_parser!(TweetsResponse, Vec<Tweet>, includes = Includes, meta = Meta);
+impl_twitter_response_parser!(UndoRetweetResponse, UndoRetweetData);
+impl_twitter_response_parser!(UnlikeResponse, UnlikeData);

@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk", "tools/*"]
 
 [workspace.package]
 edition = "2021"
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.5"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license-file = "LICENSE.txt"
@@ -27,6 +27,7 @@ colored = "3.0.0"
 convert_case = "0.7.1"
 env_logger = "0.11.7"
 home = "0.5.11"
+indicatif = "0.17.11"
 jsonschema = "0.28.3"
 lazy-regex = "3.4.1"
 log = "^0.4.26"
@@ -56,7 +57,6 @@ warp = "0.3.7"
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
-
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
