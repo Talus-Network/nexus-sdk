@@ -212,7 +212,7 @@ pub(crate) async fn register_tool(
 
         conf.tools.insert(
             meta.fqn.clone(),
-            ToolOnwerCaps {
+            ToolOwnerCaps {
                 over_tool: *over_tool_id,
                 over_gas: *over_gas_id,
             },

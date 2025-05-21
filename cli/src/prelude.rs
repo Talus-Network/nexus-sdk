@@ -42,7 +42,7 @@ pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
-    pub(crate) tools: HashMap<ToolFqn, ToolOnwerCaps>,
+    pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
 }
 
 impl CliConf {
@@ -99,7 +99,7 @@ impl Default for SuiConf {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ToolOnwerCaps {
+pub(crate) struct ToolOwnerCaps {
     pub(crate) over_tool: sui::ObjectID,
     pub(crate) over_gas: sui::ObjectID,
 }
