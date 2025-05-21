@@ -2004,10 +2004,6 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
-# Error Handling
-
-The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
-
 # `xyz.taluslabs.social.twitter.send-direct-message@1`
 
 Standard Nexus Tool that sends a direct message to a user on Twitter.
@@ -2416,6 +2412,143 @@ The message must follow these validation rules:
 - "Response parsing error" (when Twitter's response cannot be parsed)
 
 ---
+
+# `xyz.taluslabs.social.twitter.upload-media@1`
+
+Standard Nexus Tool that uploads media to Twitter.
+Twitter api [reference](https://docs.x.com/x-api/media/quickstart/media-upload-chunked)
+
+## Input
+
+**Authentication Parameters**
+
+The following authentication parameters are provided as part of the TwitterAuth structure:
+
+- **`consumer_key`: [`String`]** - Twitter API application's Consumer Key
+- **`consumer_secret_key`: [`String`]** - Twitter API application's Consumer Secret Key
+- **`access_token`: [`String`]** - Access Token for user's Twitter account
+- **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
+
+**Additional Parameters**
+
+**`media_data`: [`String`]**
+
+The Base64 encoded media content to upload.
+
+**`media_type`: [`MediaType`]**
+
+The MIME type of the media being uploaded. This is an enum type that includes:
+
+- `image/jpeg` - For JPEG images
+- `image/gif` - For GIF images
+- `image/png` - For PNG images
+- `image/webp` - For WebP images
+- `image/pjpeg` - For Progressive JPEG images
+- `image/tiff` - For TIFF images
+- `image/bmp` - For BMP images
+- `video/mp4` - For MP4 videos
+- `video/webm` - For WebM videos
+- `video/mp2t` - For MPEG-2 Transport Stream videos
+- `text/srt` - For SRT subtitle files
+- `text/vtt` - For VTT subtitle files
+- `model/gltf-binary` - For 3D model files (glTF binary format)
+
+**`media_category`: [`MediaCategory`]**
+
+A string enum value which identifies a media use-case. Options include:
+
+- `tweet_image` - For images in tweets
+- `tweet_gif` - For GIFs in tweets
+- `tweet_video` - For videos in tweets
+- `dm_image` - For images in direct messages
+- `dm_gif` - For GIFs in direct messages
+- `dm_video` - For videos in direct messages
+- `amplify_video` - For amplify video
+- `subtitles` - For subtitles
+
+_opt_ **`additional_owners`: [`Vec<String>`]** _default_: [`Empty Vec`]
+
+A comma-separated list of user IDs to set as additional owners allowed to use the returned media_id in tweets. Up to a maximum of 100 additional owners can be specified.
+
+_opt_ **`chunk_size`: [`usize`]** _default_: [`0`] (Auto-calculated)
+
+Chunk size in bytes for uploading media. When set to 0 (default), the chunk size is automatically calculated based on media type and size:
+
+- For files smaller than 5MB: Uses a single chunk (the full file)
+- For images: Calculated as 1/4 of the file size, up to 2MB maximum
+- For GIFs: Uses 3MB chunks
+- For videos: Uses 4MB chunks for smaller videos, 5MB (maximum) for large videos
+- For other media types: Dynamically calculated based on file size
+
+Setting a specific value will override the automatic calculation. Maximum allowed chunk size is 5MB as per Twitter API limits.
+
+_opt_ **`optimistic_upload`: [`bool`]** _default_: [`true`]
+
+Controls when the tool returns after media upload:
+
+- When `true` (default): Returns immediately after upload is complete, without waiting for processing
+- When `false`: Waits for media processing to fully complete before returning
+
+Setting to `false` is useful when you need to ensure the media is fully processed (especially for videos) before attempting to use it in a tweet.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The media was uploaded successfully.
+
+- **`ok.media_id`: [`String`]** - The unique identifier for the uploaded media. Use this when attaching media to tweets.
+- **`ok.media_key`: [`String`]** - The media key identifier for this media attachment.
+
+**`err`**
+
+The media upload failed.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`TwitterErrorKind`]** - The type of error that occurred. Possible values:
+  - `network` - A network-related error occurred when connecting to Twitter
+  - `connection` - Could not establish a connection to Twitter
+  - `timeout` - The request to Twitter timed out
+  - `parse` - Failed to parse Twitter's response
+  - `auth` - Authentication or authorization error
+  - `not_found` - The requested media or resource was not found
+  - `rate_limit` - Twitter's rate limit was exceeded
+  - `server` - An error occurred on Twitter's servers
+  - `forbidden` - The request was forbidden
+  - `api` - An API-specific error occurred
+  - `validation` - Input validation error (e.g., invalid media type or size)
+  - `unknown` - An unexpected error occurred
+- **`err.status_code`: [`Option<u16>`]** - The HTTP status code returned by Twitter, if available. Common codes include:
+  - `401` - Unauthorized (authentication error)
+  - `403` - Forbidden
+  - `404` - Not Found
+  - `429` - Too Many Requests (rate limit exceeded)
+  - `5xx` - Server errors
+
+## Validation Rules
+
+The media upload must follow these validation rules:
+
+1. Media data must be valid Base64 encoded content
+2. Media type must be one of the supported types
+3. Media category must be appropriate for the media type
+4. Media size must be within Twitter's limits:
+   - Images: Up to 5MB
+   - GIFs: Up to 15MB
+   - Videos: Up to 512MB
+   - Other media types: Varies by type
+
+## Example Error Messages
+
+- "Invalid Base64 encoding"
+- "Unsupported media type"
+- "Media size exceeds limit"
+- "Invalid media category for this media type"
+- "Media processing failed"
+- "Unauthorized" (when authentication fails)
+- "Response parsing error" (when Twitter's response cannot be parsed)
+
+It's important to note that some errors may have either a specific error kind (like NotFound, Auth, or RateLimit) or the more general Api error kind, and the status code may be a specific value or None depending on the error details.
 
 # Error Handling
 
