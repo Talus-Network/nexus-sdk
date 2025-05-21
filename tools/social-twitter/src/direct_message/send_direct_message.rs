@@ -110,7 +110,7 @@ impl NexusTool for SendDirectMessage {
 
         // Make the request to Twitter API
         match client
-            .post::<DirectMessageResponse, _>(&request.auth, request_body)
+            .post::<DirectMessageResponse, _>(&request.auth, Some(request_body), None)
             .await
         {
             Ok(data) => Output::Ok {

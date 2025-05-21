@@ -5,7 +5,7 @@
 use {
     crate::{
         auth::TwitterAuth,
-        direct_message::models::{DmConversationResponse, MediaIdsBag, Message},
+        direct_message::models::{DmConversationResponse, Message},
         error::TwitterErrorKind,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
@@ -100,7 +100,11 @@ impl NexusTool for SendMessageToGroupConversation {
         };
 
         match client
-            .post::<DmConversationResponse, _>(&request.auth, json!({ "message": request.message }))
+            .post::<DmConversationResponse, _>(
+                &request.auth,
+                Some(json!({ "message": request.message })),
+                None,
+            )
             .await
         {
             Ok(data) => Output::Ok {
@@ -118,7 +122,12 @@ impl NexusTool for SendMessageToGroupConversation {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::direct_message::models::Message, ::mockito::Server, serde_json::json};
+    use {
+        super::*,
+        crate::direct_message::models::{MediaIdsBag, Message},
+        ::mockito::Server,
+        serde_json::json,
+    };
 
     impl SendMessageToGroupConversation {
         fn with_api_base(api_base: &str) -> Self {

@@ -93,7 +93,8 @@ impl NexusTool for FollowUser {
         match client
             .post::<FollowUserResponse, _>(
                 &request.auth,
-                json!({ "target_user_id": request.target_user_id }),
+                Some(json!({ "target_user_id": request.target_user_id })),
+                None,
             )
             .await
         {

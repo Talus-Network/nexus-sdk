@@ -5,7 +5,7 @@
 use {
     crate::{
         auth::TwitterAuth,
-        direct_message::models::{ConversationType, DmConversationResponse, MediaIdsBag, Message},
+        direct_message::models::{ConversationType, DmConversationResponse, Message},
         error::TwitterErrorKind,
         twitter_client::{TwitterClient, TWITTER_API_BASE},
     },
@@ -102,11 +102,12 @@ impl NexusTool for CreateGroupDmConversation {
         match client
             .post::<DmConversationResponse, _>(
                 &request.auth,
-                json!({
+                Some(json!({
                     "conversation_type": request.conversation_type,
                     "message": request.message,
                     "participant_ids": request.participant_ids,
-                }),
+                })),
+                None,
             )
             .await
         {
@@ -126,7 +127,12 @@ impl NexusTool for CreateGroupDmConversation {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ::mockito::Server, serde_json::json};
+    use {
+        super::*,
+        crate::direct_message::models::MediaIdsBag,
+        ::mockito::Server,
+        serde_json::json,
+    };
 
     impl CreateGroupDmConversation {
         fn with_api_base(api_base: &str) -> Self {
