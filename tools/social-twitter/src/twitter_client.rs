@@ -78,16 +78,11 @@ impl TwitterClient {
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        let raw_response: T = self.make_request("POST", auth, body, form).await?;
+        let raw_response: T = self.make_request("POST", auth, body, None, form).await?;
         raw_response.parse_twitter_response()
     }
 
     /// Makes a GET request to the Twitter API with a bearer token
-    pub async fn get<T>(
-        &self,
-        bearer_token: String,
-        query_params: Option<Vec<(String, String)>>,
-    ) -> Result<T::Output, TwitterErrorResponse>
     pub async fn get<T>(
         &self,
         bearer_token: String,
@@ -112,7 +107,7 @@ impl TwitterClient {
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
         let raw_response = self
-            .make_request::<T, Value>("GET", auth, None, query_params)
+            .make_request::<T, Value>("GET", auth, None, query_params, None)
             .await?;
         raw_response.parse_twitter_response()
     }
@@ -123,7 +118,7 @@ impl TwitterClient {
         T: DeserializeOwned + std::fmt::Debug,
         U: Serialize,
     {
-        self.make_request("PUT", auth, Some(body), None).await
+        self.make_request("PUT", auth, Some(body), None, None).await
     }
 
     /// Makes a DELETE request to the Twitter API
@@ -132,7 +127,7 @@ impl TwitterClient {
         T: TwitterApiParsedResponse + DeserializeOwned + std::fmt::Debug,
     {
         let raw_response: T = self
-            .make_request::<T, serde_json::Value>("DELETE", auth, None, None)
+            .make_request::<T, serde_json::Value>("DELETE", auth, None, None, None)
             .await?;
         raw_response.parse_twitter_response()
     }
