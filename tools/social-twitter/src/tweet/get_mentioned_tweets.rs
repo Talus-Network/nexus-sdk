@@ -7,8 +7,16 @@ use {
         error::{parse_twitter_response, TwitterErrorKind, TwitterResult},
         tweet::{
             models::{
-                ExpansionField, Includes, MediaField, Meta, PlaceField, PollField, Tweet,
-                TweetField, TweetsResponse, UserField,
+                ExpansionField,
+                Includes,
+                MediaField,
+                Meta,
+                PlaceField,
+                PollField,
+                Tweet,
+                TweetField,
+                TweetsResponse,
+                UserField,
             },
             TWITTER_API_BASE,
         },

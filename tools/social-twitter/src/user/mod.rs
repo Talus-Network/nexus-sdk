@@ -5,7 +5,7 @@
 pub(crate) mod follow_user;
 pub(crate) mod get_user_by_id;
 pub(crate) mod get_user_by_username;
-pub(crate) mod get_users_by_username;
 pub(crate) mod get_users_by_id;
+pub(crate) mod get_users_by_username;
 pub(crate) mod models;
 pub(crate) mod unfollow_user;
