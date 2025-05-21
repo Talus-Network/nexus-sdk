@@ -2,6 +2,7 @@
 //!
 //! This module contains tools for Twitter operations.
 #![doc = include_str!("../README.md")]
+#![recursion_limit = "256"]
 
 use nexus_toolkit::bootstrap;
 mod auth;

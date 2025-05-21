@@ -113,6 +113,7 @@ impl TwitterClient {
     }
 
     /// Makes a PUT request to the Twitter API
+    #[allow(dead_code)]
     pub async fn put<T, U>(&self, auth: &TwitterAuth, body: U) -> Result<T, TwitterErrorResponse>
     where
         T: DeserializeOwned + std::fmt::Debug,
