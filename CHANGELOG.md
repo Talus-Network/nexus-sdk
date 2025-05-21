@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus tool set-invocation-cost` to set the invocation cost for a tool
 - `indicatif` crate to handle progress spinners
 - `--batch` flag to `nexus tool register` command to allow registering multiple tools at once
+- upon tool registration, the CLI will save the owner caps to the CLI conf; these are then used to fall back to if no `--owner-cap` arg is provided for some commands
 
 #### Changed
 

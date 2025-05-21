@@ -56,7 +56,9 @@ Command that makes a request to `GET <url>/meta` to fetch the Tool definition an
 
 This returns 2 OwnerCap object IDs that can be used to manage the Tool and its Gas settlement methods.
 
-If the `--batch` flag is passed, the command will accept a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
+If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
+
+Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -72,11 +74,11 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool unregister --tool-fqn <fqn> --owner-cap <object_id>`**
+**`nexus tool unregister --tool-fqn <fqn> --owner-cap [object_id]`**
 
 Command that sends a TX to our Tool Registry and unregisters a Tool with the provided `<fqn>`. This command requires confirmation as unregistering a Tool will render all DAGs using it unusable.
 
-Owned OwnerCap object must be passed to this command for authorization.
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -84,11 +86,11 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tool claim-collateral --tool-fqn <fqn> --owner-cap <object_id>`**
+**`nexus tool claim-collateral --tool-fqn <fqn> --owner-cap [object_id]`**
 
 After the period of time configured in our Tool Registry, let the Tool developer claim the collateral, transferring the amount back to their wallet.
 
-Owned OwnerCap object must be passed to this command for authorization.
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -96,9 +98,11 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tool set-invocation-cost --tool-fqn <fqn> --owner-cap <object_id> --invocation-cost <mist>`**
+**`nexus tool set-invocation-cost --tool-fqn <fqn> --owner-cap [object_id] --invocation-cost <mist>`**
 
 Tool owners can change the invocation cost of their Tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 <!-- TODO: <https://github.com/Talus-Network/nexus-next/issues/283> -->
 
@@ -194,9 +198,11 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus gas expiry enable --tool-fqn <fqn> --owner-cap <object_id> --cost-per-minute <mist>`**
+**`nexus gas expiry enable --tool-fqn <fqn> --owner-cap [object_id] --cost-per-minute <mist>`**
 
-The tool owners can enable the expiry gas extension for their tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender. This allows users to buy expiry gas tickets that can be used to pay for the tool usage for a limited amount of time.
+The tool owners can enable the expiry gas extension for their tools specified by the FQN. This allows users to buy expiry gas tickets that can be used to pay for the tool usage for a limited amount of time.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 Calling this command again with a different `cost-per-minute` value will update the cost of the tickets.
 
@@ -206,9 +212,11 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus gas expiry disable --tool-fqn <fqn> --owner-cap <object_id>`**
+**`nexus gas expiry disable --tool-fqn <fqn> --owner-cap [object_id]`**
 
-Disables the expiry gas extension for the tool specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
+Disables the expiry gas extension for the tool specified by the FQN.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

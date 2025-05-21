@@ -98,7 +98,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: sui::ObjectID,
+        owner_cap: Option<sui::ObjectID>,
         /// Whether to skip the confirmation prompt.
         #[arg(long = "yes", short = 'y', help = "Skip the confirmation prompt")]
         skip_confirmation: bool,
@@ -121,7 +121,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: sui::ObjectID,
+        owner_cap: Option<sui::ObjectID>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -141,7 +141,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: sui::ObjectID,
+        owner_cap: Option<sui::ObjectID>,
         #[arg(
             long = "invocation-cost",
             short = 'i',
