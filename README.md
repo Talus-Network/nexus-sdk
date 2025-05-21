@@ -1,5 +1,7 @@
 # Nexus SDK
 
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+
 The **Nexus SDK** is a collection of tools that simplifies building with **Nexus**, the Agentic Workflow Engine. Developers can quickly create [Talus agents][talus-agents] or [Talus tools][talus-tools].
 
 This repository includes open-source Nexus packages:
