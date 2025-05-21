@@ -1,7 +1,9 @@
 use {
     crate::{
+        error::{TwitterApiError, TwitterError, TwitterErrorKind, TwitterErrorResponse},
+        impl_twitter_response_parser,
         list::models::{Includes, Meta},
-        tweet::models::ApiError,
+        twitter_client::TwitterApiParsedResponse,
     },
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
@@ -12,7 +14,7 @@ pub struct UserResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<UserData>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub includes: Option<Includes>,
 }
@@ -22,12 +24,14 @@ pub struct UsersResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<UserData>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ApiError>>,
+    pub errors: Option<Vec<TwitterApiError>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub includes: Option<Includes>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Meta>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct UserData {
     pub id: String,
     pub name: String,
@@ -218,3 +222,44 @@ pub struct UrlImage {
     pub width: i32,
     pub height: i32,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct FollowUserResponse {
+    /// Data returned when the request is successful
+    #[serde(default)]
+    pub data: Option<FollowResponse>,
+    /// Errors returned when the request fails
+    #[serde(default)]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FollowResponse {
+    pub following: bool,
+    pub pending_follow: bool,
+}
+
+impl_twitter_response_parser!(FollowUserResponse, FollowResponse);
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UnfollowResponse {
+    /// Data returned when the request is successful
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<UnfollowData>,
+    /// Errors returned when the request fails
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<TwitterApiError>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UnfollowData {
+    /// Whether the user was unfollowed
+    pub following: bool,
+}
+
+impl_twitter_response_parser!(UnfollowResponse, UnfollowData);
+impl_twitter_response_parser!(
+    UsersResponse,
+    Vec<UserData>,
+    includes = Includes,
+    meta = Meta
+);

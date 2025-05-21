@@ -7,6 +7,7 @@ edition = "2021"
 oauth1-request = "0.6.1"
 base64 = "0.13.0"
 
+chrono.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 reqwest = { workspace = true, features = ["json", "multipart"] }
