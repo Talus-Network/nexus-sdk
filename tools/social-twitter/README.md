@@ -2143,10 +2143,6 @@ It's important to note that some errors may have either a specific error kind (l
 
 ---
 
-# Error Handling
-
-The Twitter SDK includes a centralized error handling system that provides consistent error responses across all modules. This system includes:
-
 # `xyz.taluslabs.social.twitter.send-direct-message@1`
 
 Standard Nexus Tool that sends a direct message to a user on Twitter.
