@@ -21,7 +21,7 @@ By contributing to `nexus-sdk`, you agree that ... TBD
 5. **Ensure all tests pass** before submitting a pull request.
 6. **Ensure `rustfmt` and `clippy` are happy** before submitting a pull request.
 7. **Do not use unsafe Rust code**.
-
+8. **Update documentation** to complement code changes
 ## Reporting Issues
 
 - Use the [Issue Tracker] to report bugs or suggest enhancements.
