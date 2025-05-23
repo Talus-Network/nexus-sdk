@@ -54,12 +54,14 @@
 
 use subtle::ConstantTimeEq; // Constant‑time comparison
 use {
+    // For custom IdentityKey (de)serialisation
+    super::secret_bytes::SecretBytes,
     aead::{Aead, KeyInit, Payload},
     chacha20poly1305::{XChaCha20Poly1305, XNonce},
     hkdf::Hkdf,
     rand::rngs::OsRng,
     rand_core::RngCore,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
     sha2::Sha256,
     thiserror::Error,
     x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret},
@@ -214,6 +216,48 @@ impl IdentityKey {
             signing,
             verify,
         }
+    }
+
+    /// Get a reference to the secret key
+    pub fn secret(&self) -> &StaticSecret {
+        &self.secret
+    }
+
+    /// Create an identity key from an existing secret
+    pub fn from_secret(secret: StaticSecret) -> Self {
+        let dh_public = X25519PublicKey::from(&secret);
+        let signing = XEdPrivate::from(&secret);
+        let verify = XEdPublic::from(&dh_public);
+        Self {
+            secret,
+            dh_public,
+            signing,
+            verify,
+        }
+    }
+}
+
+// Custom Serde for IdentityKey
+
+impl Serialize for IdentityKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialise only the secret scalar using the helper wrapper.
+        SecretBytes::from(&self.secret).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for IdentityKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Reconstruct IdentityKey from the secret bytes.
+        let secret_bytes = SecretBytes::deserialize(deserializer)?;
+        let secret: StaticSecret = secret_bytes.into();
+        Ok(IdentityKey::from_secret(secret))
     }
 }
 

@@ -1,9 +1,14 @@
 pub(crate) use {
-    crate::error::NexusCliError,
+    crate::{error::NexusCliError, secrets::secret::Secret},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
+    nexus_sdk::{
+        crypto::{session::Session, x3dh::IdentityKey},
+        sui::traits::*,
+        types::NexusObjects,
+        *,
+    },
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -37,12 +42,14 @@ impl std::fmt::Display for SuiNet {
 }
 
 /// Struct holding the config structure.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
+    #[serde(default)]
+    pub(crate) crypto: Secret<CryptoConf>,
 }
 
 impl CliConf {
@@ -97,6 +104,36 @@ impl Default for SuiConf {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Default)]
+pub(crate) struct CryptoConf {
+    /// User's long-term identity key (None until first generated)
+    pub(crate) identity_key: Option<IdentityKey>,
+    /// Stored Double-Ratchet sessions keyed by their 32-byte session-id.
+    #[serde(default)]
+    pub(crate) sessions: HashMap<[u8; 32], Session>,
+}
+
+// Custom implementations because `IdentityKey` does not implement common traits.
+
+impl std::fmt::Debug for CryptoConf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CryptoConf")
+            // Avoid printing sensitive material.
+            .field("identity_key", &self.identity_key.is_some())
+            .field("sessions", &self.sessions.len())
+            .finish()
+    }
+}
+
+impl PartialEq for CryptoConf {
+    fn eq(&self, _other: &Self) -> bool {
+        // All equal for now
+        true
+    }
+}
+
+impl Eq for CryptoConf {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {

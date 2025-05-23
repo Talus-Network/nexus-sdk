@@ -16,7 +16,14 @@ mod tests {
     use {super::*, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
+    #[serial_test::serial(master_key_env)]
     async fn test_get_nexus_conf() {
+        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+
+        let secret_home = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
+        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
 
@@ -41,10 +48,16 @@ mod tests {
 
         let tools = HashMap::new();
 
+        let crypto_conf = CryptoConf {
+            identity_key: Some(IdentityKey::generate()),
+            sessions: HashMap::new(), // no sessions yet
+        };
+
         let conf = CliConf {
             sui: sui_conf,
             nexus: Some(nexus_objects),
             tools,
+            crypto: Secret(crypto_conf),
         };
 
         // Write the configuration to the file.
@@ -58,5 +71,10 @@ mod tests {
         let result = get_nexus_conf(path).await.expect("Failed to print config");
 
         assert_eq!(result, conf);
+
+        // Clean-up env vars
+        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("XDG_DATA_HOME");
     }
 }

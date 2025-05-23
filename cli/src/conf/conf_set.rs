@@ -7,6 +7,7 @@ pub(crate) async fn set_nexus_conf(
     sui_auth_user: Option<String>,
     sui_auth_password: Option<String>,
     nexus_objects_path: Option<PathBuf>,
+    generate_identity_key: bool,
     conf_path: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
     let mut conf = CliConf::load_from_path(&conf_path)
@@ -49,6 +50,14 @@ pub(crate) async fn set_nexus_conf(
     conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
     conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
 
+    // Optionally generate a fresh identity key.
+    if generate_identity_key {
+        conf.crypto.identity_key = Some(IdentityKey::generate());
+        // wipe all sessions
+        // TODO: think of something better than this
+        conf.crypto.sessions.clear();
+    }
+
     json_output(&serde_json::to_value(&conf).unwrap())?;
 
     match conf.save_to_path(&conf_path).await {
@@ -68,7 +77,14 @@ mod tests {
     use {super::*, assert_matches::assert_matches, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
+    #[serial_test::serial(master_key_env)]
     async fn test_conf_loads_and_saves() {
+        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+
+        let secret_home = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
+        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
@@ -101,6 +117,7 @@ mod tests {
             Some("user".to_string()),
             Some("pass".to_string()),
             Some(tempdir.join("objects.toml")),
+            true,
             path.clone(),
         )
         .await;
@@ -108,8 +125,7 @@ mod tests {
         assert_matches!(result, Ok(()));
 
         // Check that file was written with the correct contents.
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
-        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+        let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
@@ -119,13 +135,20 @@ mod tests {
         assert_eq!(objects, nexus_objects_instance);
 
         // Overriding one value will save that one value and leave other values intact.
-        let result =
-            set_nexus_conf(Some(SuiNet::Testnet), None, None, None, None, path.clone()).await;
+        let result = set_nexus_conf(
+            Some(SuiNet::Testnet),
+            None,
+            None,
+            None,
+            None,
+            true,
+            path.clone(),
+        )
+        .await;
 
         assert_matches!(result, Ok(()));
 
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
-        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+        let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Testnet);
@@ -133,5 +156,10 @@ mod tests {
         assert_eq!(conf.sui.auth_user, Some("user".to_string()));
         assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
         assert_eq!(objects, nexus_objects_instance);
+
+        // Clean up env vars.
+        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("XDG_DATA_HOME");
     }
 }

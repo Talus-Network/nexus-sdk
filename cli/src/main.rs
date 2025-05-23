@@ -6,6 +6,7 @@ mod error;
 mod gas;
 mod network;
 mod prelude;
+mod secrets;
 mod sui;
 mod tool;
 

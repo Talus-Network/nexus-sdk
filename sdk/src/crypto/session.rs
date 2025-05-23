@@ -57,7 +57,7 @@ use {
         },
     },
     hkdf::Hkdf,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
     sha2::{Digest, Sha256},
     thiserror::Error,
     x25519_dalek::{PublicKey, StaticSecret},
@@ -137,12 +137,48 @@ pub struct Session {
     remote_identity: PublicKey,
 }
 
+impl Serialize for Session {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (
+            &self.session_id,
+            &self.ratchet,
+            self.local_identity.as_bytes(),
+            self.remote_identity.as_bytes(),
+        )
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Session {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (session_id, ratchet, local_bytes, remote_bytes): (
+            [u8; 32],
+            RatchetStateHE,
+            [u8; 32],
+            [u8; 32],
+        ) = Deserialize::deserialize(deserializer)?;
+
+        Ok(Session {
+            session_id,
+            ratchet,
+            local_identity: PublicKey::from(local_bytes),
+            remote_identity: PublicKey::from(remote_bytes),
+        })
+    }
+}
+
 impl Session {
     // === Low-level helpers ===
 
     /// Deterministically derives the session-ID from the X3DH shared secret.
     /// Use something else if its more convenient for your application.
-    fn calculate_session_id(shared_secret: &[u8; 32]) -> [u8; 32] {
+    pub fn calculate_session_id(shared_secret: &[u8; 32]) -> [u8; 32] {
         let mut hasher = Sha256::new();
         // session-id | shared-secret
         hasher.update(b"session-id");
@@ -352,6 +388,31 @@ impl Session {
     ) -> Option<Vec<u8>> {
         let ad = self.make_associated_data();
         self.ratchet.decrypt_own_static_he(header, ciphertext, &ad)
+    }
+
+    /// Creates a Session from storage data
+    pub fn from_storage(
+        session_id: [u8; 32],
+        ratchet: RatchetStateHE,
+        local_identity: PublicKey,
+        remote_identity: PublicKey,
+    ) -> Self {
+        Self {
+            session_id,
+            ratchet,
+            local_identity,
+            remote_identity,
+        }
+    }
+
+    /// Get a reference to the internal ratchet state
+    pub fn ratchet(&self) -> &RatchetStateHE {
+        &self.ratchet
+    }
+
+    /// Get a reference to the remote identity public key
+    pub fn remote_identity(&self) -> &PublicKey {
+        &self.remote_identity
     }
 }
 

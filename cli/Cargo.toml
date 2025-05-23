@@ -35,6 +35,19 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 
+# crypto helpers
+aes-siv = "0.7"
+rand = "0.8"
+# Encryption helpers
+aes-gcm = "0.10"
+base64 = "0.21"
+bincode = "1"
+argon2 = "0.5"
+directories = "5"
+hex = "0.4"
+keyring = "3.6"
+zeroize = "1.7"
+
 # === Nexus deps ===
 [dependencies.nexus-sdk]
 workspace = true

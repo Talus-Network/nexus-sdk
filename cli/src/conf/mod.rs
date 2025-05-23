@@ -57,6 +57,13 @@ pub(crate) enum ConfCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         nexus_objects_path: Option<PathBuf>,
+        #[arg(
+            long = "crypto.generate-identity-key",
+            help = "Generate and store a fresh identity key inside the crypto configuration.
+            WARNING: This will invalidate all existing sessions!",
+            action = clap::ArgAction::SetTrue
+        )]
+        generate_identity_key: bool,
         /// Hidden argument used for testing to set the path of the configuration
         /// file.
         #[arg(
@@ -94,6 +101,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             sui_auth_user,
             sui_auth_password,
             nexus_objects_path,
+            generate_identity_key,
             conf_path,
         } => {
             set_nexus_conf(
@@ -102,6 +110,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
                 sui_auth_user,
                 sui_auth_password,
                 nexus_objects_path,
+                generate_identity_key,
                 conf_path,
             )
             .await
