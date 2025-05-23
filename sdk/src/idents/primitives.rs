@@ -7,19 +7,34 @@ pub struct Data;
 const DATA_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("data");
 
 impl Data {
-    /// Create NexusData from an array of arrays of bytes.
+    /// Create NexusData from a vector of vectors of bytes.
     ///
     /// `nexus_primitives::data::inline_many`
     pub const INLINE_MANY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DATA_MODULE,
         name: sui::move_ident_str!("inline_many"),
     };
-    /// Create NexusData from an array of bytes.
+    /// Create NexusData from a vector of vectors of bytes and mark it as
+    /// encrypted.
+    ///
+    /// `nexus_primitives::data::inline_many_encrypted`
+    pub const INLINE_MANY_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("inline_many_encrypted"),
+    };
+    /// Create NexusData from a vector of bytes.
     ///
     /// `nexus_primitives::data::inline_one`
     pub const INLINE_ONE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DATA_MODULE,
         name: sui::move_ident_str!("inline_one"),
+    };
+    /// Create NexusData from a vector of bytes and mark it as encrypted.
+    ///
+    /// `nexus_primitives::data::inline_one_encrypted`
+    pub const INLINE_ONE_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("inline_one_encrypted"),
     };
     /// NexusData struct. Mostly used for creating generic types.
     ///
@@ -34,8 +49,19 @@ impl Data {
         tx: &mut sui::ProgrammableTransactionBuilder,
         primitives_pkg_id: sui::ObjectID,
         json: &T,
+        encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
         let json = tx.pure(serde_json::to_string(json)?.into_bytes())?;
+
+        if encrypted {
+            return Ok(tx.programmable_move_call(
+                primitives_pkg_id,
+                Self::INLINE_ONE_ENCRYPTED.module.into(),
+                Self::INLINE_ONE_ENCRYPTED.name.into(),
+                vec![],
+                vec![json],
+            ));
+        }
 
         Ok(tx.programmable_move_call(
             primitives_pkg_id,

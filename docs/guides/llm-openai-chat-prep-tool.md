@@ -3,9 +3,10 @@
 This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations from the [math tool](../../tools/math/README.md) as input for the [chat completion tool](../../tools/llm-openai-chat-completion/README.md).
 
 {% hint style="info" %} Prerequisites
-* Follow the [setup guide](setup.md) to make sure you've got the [Nexus CLI](../cli.md) installed.
-* Read the [Toolkit Rust](../toolkit-rust.md) and [Tool development](../tool-development.md) docs that provide more context.
-{% endhint %}
+
+- Follow the [setup guide](setup.md) to make sure you've got the [Nexus CLI](../cli.md) installed.
+- Read the [Toolkit Rust](../toolkit-rust.md) and [Tool development](../tool-development.md) docs that provide more context.
+  {% endhint %}
 
 ## Project Setup
 
@@ -317,6 +318,14 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
           "value": "You are a helpful assistant that explains numbers. Please explain the following number:"
         }
       }
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "chat",
+      "output_variant": "ok",
+      "output_port": "message",
+      "encrypted": false
     }
   ]
 }

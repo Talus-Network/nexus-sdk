@@ -255,7 +255,34 @@ We provide the constant values needed for the operations.
 - Each entry specifies the `vertex` and `input_port` to receive the value.
 - `"storage": "inline"` means the `data` is directly embedded in the DAG definition.
 
-### 4. Entry Points (Implicit Default)
+### 4. Specify outputs (`outputs` list)
+
+In order to access the final result of the DAG, we need to define outputs for the vertices that do not have outgoing edges. In this case, all our math operations have an output port named `result`, so we can define them as follows:
+
+```json
+{
+  // ... other sections ...
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
+    }
+  ]
+}
+```
+
+### 5. Entry Points (Implicit Default)
 
 Since we haven't defined an `entry_groups` section, Nexus uses the default entry mechanism, i.e. `_default_group`. It identifies vertices that have entry ports specified.
 
@@ -400,6 +427,23 @@ Combining these sections gives us the complete `math_branching.json`:
         "vertex": "add_1",
         "input_port": "a"
       }
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
     }
   ]
   // No "entry_groups" section needed, default mechanism applies.

@@ -55,6 +55,8 @@ pub enum NexusEventKind {
     DAGVertexAdded(serde_json::Value),
     #[serde(rename = "DAGEdgeAddedEvent")]
     DAGEdgeAdded(serde_json::Value),
+    #[serde(rename = "DAGOutputAddedEvent")]
+    DAGOutputAdded(serde_json::Value),
     #[serde(rename = "DAGEntryVertexInputPortAddedEvent")]
     DAGEntryVertexInputPortAdded(serde_json::Value),
     #[serde(rename = "DAGDefaultValueAddedEvent")]

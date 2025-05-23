@@ -434,3 +434,9 @@ impl<T> Structure<T> {
         &mut self.fields
     }
 }
+
+impl<T> From<T> for Structure<T> {
+    fn from(fields: T) -> Self {
+        Self { fields }
+    }
+}

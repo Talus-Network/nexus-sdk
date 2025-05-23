@@ -40,7 +40,7 @@ pub(crate) async fn register_tool(
             .map_err(NexusCliError::Http)?
             .json::<Vec<String>>()
             .await
-            .map_err(|e| NexusCliError::Http(e))?;
+            .map_err(NexusCliError::Http)?;
 
         response
             .iter()

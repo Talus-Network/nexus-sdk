@@ -111,7 +111,14 @@ pub(crate) async fn inspect_dag_execution(
                         );
 
                         match data {
-                            NexusData::Inline { data } => {
+                            NexusData::Inline { data, encrypted } if !encrypted => {
+                                json_data.push(json!({
+                                    "port": port.name,
+                                    "data": data,
+                                }));
+                            }
+                            NexusData::Inline { data, .. } => {
+                                // TODO: <https://github.com/Talus-Network/nexus-next/issues/300>
                                 json_data.push(json!({
                                     "port": port.name,
                                     "data": data,
@@ -162,7 +169,14 @@ pub(crate) async fn inspect_dag_execution(
                         );
 
                         match data {
-                            NexusData::Inline { data } => {
+                            NexusData::Inline { data, encrypted } if !encrypted => {
+                                json_data.push(json!({
+                                    "port": port.name,
+                                    "data": data,
+                                }));
+                            }
+                            NexusData::Inline { data, .. } => {
+                                // TODO: <https://github.com/Talus-Network/nexus-next/issues/300>
                                 json_data.push(json!({
                                     "port": port.name,
                                     "data": data,

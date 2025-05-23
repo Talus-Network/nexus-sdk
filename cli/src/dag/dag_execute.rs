@@ -16,9 +16,10 @@ pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
     input_json: serde_json::Value,
+    encrypt: Vec<String>,
+    inspect: bool,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
-    inspect: bool,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
@@ -47,7 +48,7 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json) {
+    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, encrypt) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
