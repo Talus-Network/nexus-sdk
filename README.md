@@ -1,5 +1,8 @@
 # Nexus SDK
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Talus-Network/nexus-sdk/blob/main/LICENSE.txt)
+[![Actions](https://img.shields.io/badge/GitHub_Actions-Active-brightgreen)](https://github.com/Talus-Network/nexus-sdk/actions)
+
 The **Nexus SDK** is a collection of tools that simplifies building with **Nexus**, the Agentic Workflow Engine. Developers can quickly create [Talus agents][talus-agents] or [Talus tools][talus-tools].
 
 This repository includes open-source Nexus packages:
