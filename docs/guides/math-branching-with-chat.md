@@ -621,5 +621,5 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 
 <!-- List of references -->
 
-[math-branching-entry-guide]: ./math_branching-dag-entry.md
+[math-branching-entry-guide]: ./math-branching-dag-entry.md
 [llm-openai-chat-prep-tool]: ./llm-openai-chat-prep-tool.md

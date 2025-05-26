@@ -1778,7 +1778,7 @@ The ID of the user to add to the list.
 
 The user was successfully added to the list.
 
-- \*\*`ok.is_member`
+- **`ok.is_member`**
 - **`ok.is_member`** - Confirmation that the user is a member of the list (true).
 
 **`err`**
