@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `/tools` endpoint to the `boostrap!` macro that returns a list of all tools registered on the webserver
 
+### `docs`
+
+#### Added
+
+- added markdown linter configuration
+- added Github workflow for markdown linting and spellcheck actions
+- added markdown style guide
+
 ## [`0.1.0`] - 2025-04-14
 
 ### `nexus-cli`
