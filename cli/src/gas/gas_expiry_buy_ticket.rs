@@ -25,7 +25,7 @@ pub(crate) async fn buy_expiry_gas_ticket(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Fetch the coin to pay for the ticket with.
     let pay_with_coin = fetch_object_by_id(&sui, coin).await?;

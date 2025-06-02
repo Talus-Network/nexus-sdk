@@ -23,7 +23,7 @@ pub(crate) async fn add_gas_budget(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Fetch budget coin.
     let budget_coin = fetch_object_by_id(&sui, coin).await?;

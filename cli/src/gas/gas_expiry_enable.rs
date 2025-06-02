@@ -25,7 +25,7 @@ pub(crate) async fn enable_expiry_extension(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
     let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {

@@ -34,7 +34,7 @@ pub(crate) async fn publish_dag(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;

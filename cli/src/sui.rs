@@ -122,101 +122,6 @@ pub(crate) async fn fetch_all_coins_for_address(
     Ok(results)
 }
 
-/// Request tokens from the Faucet for the given address.
-///
-/// Inspired by:
-/// <https://github.com/MystenLabs/sui/blob/aa99382c9191cd592cd65d0e197c33c49e4d9c4f/crates/sui/src/client_commands.rs#L2541>
-pub(crate) async fn request_tokens_from_faucet(
-    sui_net: SuiNet,
-    addr: sui::Address,
-) -> AnyResult<(), NexusCliError> {
-    let faucet_handle = loading!("Requesting tokens from faucet...");
-
-    let url = if let Ok(faucet_url) = std::env::var("SUI_FAUCET_URL") {
-        faucet_url
-    } else {
-        // Fallback to default URLs based on the network.
-        match sui_net {
-            SuiNet::Testnet => "https://faucet.testnet.sui.io/v1/gas".to_string(),
-            SuiNet::Devnet => "https://faucet.devnet.sui.io/v1/gas".to_string(),
-            SuiNet::Localnet => "http://127.0.0.1:9123/gas".to_string(),
-            _ => {
-                faucet_handle.error();
-                return Err(NexusCliError::Any(anyhow!("Mainnet faucet not supported")));
-            }
-        }
-    };
-
-    #[derive(Deserialize)]
-    struct FaucetResponse {
-        error: Option<String>,
-    }
-
-    let json_body = serde_json::json![{
-        "FixedAmountRequest": {
-            "recipient": &addr.to_string()
-        }
-    }];
-
-    // Make the request to the faucet JSON RPC API for coin.
-    let resp = match Client::new()
-        .post(url)
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::USER_AGENT, "nexus-cli")
-        .json(&json_body)
-        .send()
-        .await
-    {
-        Ok(resp) => resp,
-        Err(e) => {
-            faucet_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(e)));
-        }
-    };
-
-    let result = match resp.status() {
-        StatusCode::ACCEPTED | StatusCode::CREATED => {
-            let faucet_resp = resp.json::<FaucetResponse>().await;
-
-            if let Err(e) = faucet_resp {
-                Err(anyhow!(e))
-            } else {
-                match faucet_resp.unwrap().error {
-                    Some(e) => Err(anyhow!(e)),
-                    None => Ok(()),
-                }
-            }
-        }
-        StatusCode::TOO_MANY_REQUESTS => {
-            Err(anyhow!(
-                "Faucet service received too many requests from this IP address. Please try again after 60 minutes."
-            ))
-        }
-        StatusCode::SERVICE_UNAVAILABLE => {
-            Err(anyhow!(
-                "Faucet service is currently overloaded or unavailable. Please try again later."
-            ))
-        }
-        status_code => {
-            Err(anyhow!("Faucet request was unsuccessful: {status_code}"))
-        }
-    };
-
-    match result {
-        Ok(()) => {
-            faucet_handle.success();
-
-            Ok(())
-        }
-        Err(e) => {
-            faucet_handle.error();
-
-            Err(NexusCliError::Any(anyhow!(e)))
-        }
-    }
-}
-
 /// Fetch reference gas price from Sui.
 pub(crate) async fn fetch_reference_gas_price(sui: &sui::Client) -> AnyResult<u64, NexusCliError> {
     let gas_price_handle = loading!("Fetching reference gas price...");
@@ -345,26 +250,10 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, Nexu
 /// not present.
 pub(crate) async fn fetch_gas_coin(
     sui: &sui::Client,
-    sui_net: SuiNet,
     addr: sui::Address,
     sui_gas_coin: Option<sui::ObjectID>,
 ) -> AnyResult<sui::Coin, NexusCliError> {
     let mut coins = fetch_all_coins_for_address(sui, addr).await?;
-
-    // We need at least 1 coin. We can create it on Localnet, Devnet and Testnet.
-    match sui_net {
-        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.is_empty() => {
-            request_tokens_from_faucet(sui_net, addr).await?;
-
-            coins = fetch_all_coins_for_address(sui, addr).await?;
-        }
-        SuiNet::Mainnet if coins.is_empty() => {
-            return Err(NexusCliError::Any(anyhow!(
-                "The wallet does not have enough coins to submit the transaction"
-            )));
-        }
-        _ => (),
-    }
 
     if coins.is_empty() {
         return Err(NexusCliError::Any(anyhow!(
