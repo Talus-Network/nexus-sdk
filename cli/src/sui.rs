@@ -60,7 +60,7 @@ pub(crate) async fn create_wallet_context(
     };
 
     // Check that the Sui net matches.
-    if wallet.config.active_env != Some(net.to_string()) {
+    if wallet.config.active_env != get_sui_env(net).map(|env| env.alias) {
         wallet_handle.error();
 
         if let Some(active_env) = wallet.config.active_env.as_ref() {
@@ -339,13 +339,13 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
             basic_auth: None,
         })
     } else {
-        let client = match net {
+        let env = match net {
             SuiNet::Localnet => sui::Env::localnet(),
             SuiNet::Devnet => sui::Env::devnet(),
             SuiNet::Testnet => sui::Env::testnet(),
             SuiNet::Mainnet => todo!("Mainnet not yet supported"),
         };
-        Some(client)
+        Some(env)
     }
 }
 
