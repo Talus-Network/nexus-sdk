@@ -1,7 +1,6 @@
 use {
     crate::{loading, notify_success, prelude::*},
     nexus_sdk::{object_crawler::fetch_one, sui},
-    reqwest::{header, Client, StatusCode},
 };
 
 /// Build Sui client for the provided Sui net.
@@ -340,11 +339,27 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
         })
     } else {
         let env = match net {
-            SuiNet::Localnet => sui::Env::localnet(),
-            SuiNet::Devnet => sui::Env::devnet(),
-            SuiNet::Testnet => sui::Env::testnet(),
+            SuiNet::Localnet => sui::Env {
+                alias: "localnet".to_string(),
+                rpc: sui::LOCAL_NETWORK_URL.into(),
+                ws: None,
+                basic_auth: None,
+            },
+            SuiNet::Devnet => sui::Env {
+                alias: "devnet".to_string(),
+                rpc: sui::DEVNET_URL.into(),
+                ws: None,
+                basic_auth: None,
+            },
+            SuiNet::Testnet => sui::Env {
+                alias: "testnet".to_string(),
+                rpc: sui::TESTNET_URL.into(),
+                ws: None,
+                basic_auth: None,
+            },
             SuiNet::Mainnet => todo!("Mainnet not yet supported"),
         };
+
         Some(env)
     }
 }
@@ -353,6 +368,7 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
 mod tests {
     use {
         super::*,
+        assert_matches::assert_matches,
         nexus_sdk::sui::Address,
         rstest::rstest,
         serial_test::serial,
@@ -523,5 +539,82 @@ mod tests {
 
         // Clean up temporary files.
         let _ = std::fs::remove_dir_all(&config_dir);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_wallet_context() {
+        std::env::set_var(
+            "SUI_SECRET_MNEMONIC",
+            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+        );
+
+        let conf = SuiConf {
+            net: SuiNet::Localnet,
+            wallet_path: PathBuf::from("/invalid"),
+            auth_user: None,
+            auth_password: None,
+        };
+
+        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+
+        let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
+
+        assert!(wallet.is_ok());
+
+        std::env::remove_var("SUI_SECRET_MNEMONIC");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_wallet_context_net_mismatch() {
+        std::env::set_var(
+            "SUI_SECRET_MNEMONIC",
+            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+        );
+
+        let conf = SuiConf {
+            net: SuiNet::Devnet,
+            wallet_path: PathBuf::from("/invalid"),
+            auth_user: None,
+            auth_password: None,
+        };
+
+        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+
+        let err = create_wallet_context(&path, SuiNet::Devnet)
+            .await
+            .err()
+            .unwrap();
+
+        assert_matches!(err, NexusCliError::Any(e) if e.to_string().contains("The Sui net of the wallet does not match"));
+
+        std::env::remove_var("SUI_SECRET_MNEMONIC");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_wallet_context_rpc_url() {
+        std::env::set_var(
+            "SUI_SECRET_MNEMONIC",
+            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+        );
+        std::env::set_var("SUI_RPC_URL", "http://localhost:9000");
+
+        let conf = SuiConf {
+            net: SuiNet::Devnet,
+            wallet_path: PathBuf::from("/invalid"),
+            auth_user: None,
+            auth_password: None,
+        };
+
+        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+
+        let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
+
+        assert!(wallet.is_ok());
+
+        std::env::remove_var("SUI_SECRET_MNEMONIC");
+        std::env::remove_var("SUI_RPC_URL");
     }
 }

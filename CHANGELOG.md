@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - automated faucet calls for gas and collateral coins
 
+#### Fixed
+
+- `create_wallet_context` takes `SUI_RPC_URL` into consideration when checking active env
+
 ### `nexus-sdk`
 
 #### Added
