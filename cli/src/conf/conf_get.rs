@@ -2,9 +2,13 @@ use crate::{command_title, prelude::*};
 
 /// Print the current Nexus CLI configuration.
 pub(crate) async fn get_nexus_conf(conf_path: PathBuf) -> AnyResult<CliConf, NexusCliError> {
-    let conf = CliConf::load_from_path(&conf_path)
-        .await
-        .unwrap_or_default();
+    let conf = CliConf::load_from_path(&conf_path).await.map_err(|e| {
+        NexusCliError::Any(anyhow!(
+            "Failed to load Nexus CLI configuration from {}: {}",
+            conf_path.display(),
+            e
+        ))
+    })?;
 
     command_title!("Current Nexus CLI Configuration");
 

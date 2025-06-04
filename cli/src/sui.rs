@@ -240,7 +240,7 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, Nexu
     Err(NexusCliError::Any(anyhow!(
         "{message}\n\n{command}",
         message = "References to Nexus objects are missing in the CLI configuration. Use the following command to update it:",
-        command = "$ nexus conf --nexus.objects <PATH_TO_OBJECTS_TOML>".bold(),
+        command = "$ nexus conf set --nexus.objects <PATH_TO_OBJECTS_TOML>".bold(),
     )))
 }
 
