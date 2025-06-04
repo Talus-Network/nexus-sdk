@@ -50,8 +50,7 @@ mod tests {
         let sui_conf = SuiConf {
             net: SuiNet::Mainnet,
             wallet_path: tempdir.join("wallet"),
-            auth_user: Some("user".to_string()),
-            auth_password: Some("pass".to_string()),
+            rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
         };
 
         let tools = HashMap::new();

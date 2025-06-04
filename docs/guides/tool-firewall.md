@@ -8,13 +8,13 @@ To enhance security on your Tool, it's essential to configure your server to acc
 
 Ensure that only the following IP addresses are permitted:
 
-* `35.211.137.107`
-* `35.207.42.45`
+- `35.211.137.107`
+- `35.207.42.45`
 
 ## Prerequisites
 
-* Ubuntu server with [UFW](https://help.ubuntu.com/community/UFW) installed.
-* Administrative privileges (`sudo` access).
+- Ubuntu server with [UFW](https://help.ubuntu.com/community/UFW) installed.
+- Administrative privileges (`sudo` access).
 
 ## Step-by-Step Instructions
 
@@ -67,8 +67,8 @@ You should see entries indicating that connections from the specified IP address
 
 ## Additional Resources
 
-* [How to Set Up a Firewall with UFW on Ubuntu](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-firewall-with-ufw-on-ubuntu)
-* [UFW Essentials: Common Firewall Rules and Commands](https://www.digitalocean.com/community/tutorials/ufw-essentials-common-firewall-rules-and-commands)
+- [How to Set Up a Firewall with UFW on Ubuntu](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-firewall-with-ufw-on-ubuntu)
+- [UFW Essentials: Common Firewall Rules and Commands](https://www.digitalocean.com/community/tutorials/ufw-essentials-common-firewall-rules-and-commands)
 
 ---
 

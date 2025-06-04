@@ -89,9 +89,7 @@ pub(crate) struct SuiConf {
     #[serde(default = "default_sui_wallet_path")]
     pub(crate) wallet_path: PathBuf,
     #[serde(default)]
-    pub(crate) auth_user: Option<String>,
-    #[serde(default)]
-    pub(crate) auth_password: Option<String>,
+    pub(crate) rpc_url: Option<reqwest::Url>,
 }
 
 impl Default for SuiConf {
@@ -99,8 +97,7 @@ impl Default for SuiConf {
         Self {
             net: SuiNet::Localnet,
             wallet_path: default_sui_wallet_path(),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         }
     }
 }

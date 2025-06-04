@@ -8,13 +8,11 @@ pub(crate) async fn build_sui_client(conf: &SuiConf) -> AnyResult<sui::Client, N
     let building_handle = loading!("Building Sui client...");
     let client;
 
-    let mut builder = sui::ClientBuilder::default();
-
-    if let (Some(user), Some(password)) = (conf.auth_user.as_ref(), conf.auth_password.as_ref()) {
-        builder = builder.basic_auth(user, password);
-    }
+    let builder = sui::ClientBuilder::default();
 
     if let Ok(sui_rpc_url) = std::env::var("SUI_RPC_URL") {
+        client = builder.build(sui_rpc_url).await
+    } else if let Some(sui_rpc_url) = &conf.rpc_url {
         client = builder.build(sui_rpc_url).await
     } else {
         client = match conf.net {
@@ -412,8 +410,7 @@ mod tests {
         let conf = SuiConf {
             net: SuiNet::Localnet,
             wallet_path: PathBuf::from(format!("{}/client.toml", &sui_default_config)),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         };
 
         // Call the function under test.
@@ -541,6 +538,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&config_dir);
     }
 
+    #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context() {
@@ -552,8 +550,7 @@ mod tests {
         let conf = SuiConf {
             net: SuiNet::Localnet,
             wallet_path: PathBuf::from("/invalid"),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         };
 
         let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
@@ -565,6 +562,7 @@ mod tests {
         std::env::remove_var("SUI_SECRET_MNEMONIC");
     }
 
+    #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_net_mismatch() {
@@ -576,8 +574,7 @@ mod tests {
         let conf = SuiConf {
             net: SuiNet::Devnet,
             wallet_path: PathBuf::from("/invalid"),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         };
 
         let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
@@ -592,6 +589,7 @@ mod tests {
         std::env::remove_var("SUI_SECRET_MNEMONIC");
     }
 
+    #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_rpc_url() {
@@ -604,8 +602,7 @@ mod tests {
         let conf = SuiConf {
             net: SuiNet::Devnet,
             wallet_path: PathBuf::from("/invalid"),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         };
 
         let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");

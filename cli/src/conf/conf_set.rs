@@ -4,8 +4,7 @@ use crate::{command_title, display::json_output, loading, prelude::*, sui::resol
 pub(crate) async fn set_nexus_conf(
     sui_net: Option<SuiNet>,
     sui_wallet_path: Option<PathBuf>,
-    sui_auth_user: Option<String>,
-    sui_auth_password: Option<String>,
+    sui_rpc_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     generate_identity_key: bool,
     conf_path: PathBuf,
@@ -15,13 +14,6 @@ pub(crate) async fn set_nexus_conf(
         .unwrap_or_default();
 
     command_title!("Updating Nexus CLI Configuration");
-
-    if sui_auth_user.is_some() != sui_auth_password.is_some() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Both --sui.basic-auth-user and --sui.basic-auth-password must be provided together."
-        )));
-    }
-
     let conf_handle = loading!("Updating configuration...");
 
     // If a nexus.objects file is provided, load the file and update configuration.
@@ -47,8 +39,7 @@ pub(crate) async fn set_nexus_conf(
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
-    conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
-    conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
+    conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
 
     // Optionally generate a fresh identity key.
     if generate_identity_key {
@@ -115,8 +106,7 @@ mod tests {
         let result = set_nexus_conf(
             Some(SuiNet::Mainnet),
             Some(tempdir.join("wallet")),
-            Some("user".to_string()),
-            Some("pass".to_string()),
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(tempdir.join("objects.toml")),
             true,
             path.clone(),
@@ -131,21 +121,15 @@ mod tests {
 
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
         assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
-        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
-        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
+        assert_eq!(
+            conf.sui.rpc_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
         assert_eq!(objects, nexus_objects_instance);
 
         // Overriding one value will save that one value and leave other values intact.
-        let result = set_nexus_conf(
-            Some(SuiNet::Testnet),
-            None,
-            None,
-            None,
-            None,
-            true,
-            path.clone(),
-        )
-        .await;
+        let result =
+            set_nexus_conf(Some(SuiNet::Testnet), None, None, None, true, path.clone()).await;
 
         assert_matches!(result, Ok(()));
 
@@ -154,8 +138,10 @@ mod tests {
 
         assert_eq!(conf.sui.net, SuiNet::Testnet);
         assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
-        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
-        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
+        assert_eq!(
+            conf.sui.rpc_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
         assert_eq!(objects, nexus_objects_instance);
 
         // Clean up env vars.
