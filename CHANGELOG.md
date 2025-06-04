@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - `create_wallet_context` takes `SUI_RPC_URL` into consideration when checking active env
+- when `nexus conf get` fails to parse the config it shows the error instead of defaulting
 
 ### `nexus-sdk`
 
