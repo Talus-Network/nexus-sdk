@@ -76,6 +76,7 @@ pub(crate) enum ToolCommand {
             help = "Should all tools on a webserver be registered at once?"
         )]
         batch: bool,
+
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
@@ -161,8 +162,8 @@ pub(crate) enum ToolCommand {
 }
 
 /// Struct holding an either on-chain or off-chain Tool identifier. Off-chain
-/// tools are identified by their URL, while on-chain tools are identified by
-/// a Move ident.
+/// tools are identified by their URL and public key hash, while on-chain tools
+/// are identified by a Move ident.
 #[derive(Args, Clone, Debug)]
 #[group(required = true, multiple = false)]
 pub(crate) struct ToolIdent {
@@ -172,7 +173,13 @@ pub(crate) struct ToolIdent {
         help = "The URL of the off-chain Tool to validate",
         value_name = "URL"
     )]
-    pub(crate) off_chain: Option<reqwest::Url>,
+    pub(crate) off_chain_url: Option<reqwest::Url>,
+    #[arg(
+        long = "pub-key-hash",
+        help = "Public key hash for TLS pinning (hex-encoded SHA-256, required for off-chain tools)",
+        value_name = "HASH"
+    )]
+    pub(crate) pub_key_hash: Option<String>,
     #[arg(
         long = "on-chain",
         short = 'n',
@@ -180,6 +187,16 @@ pub(crate) struct ToolIdent {
         value_name = "IDENT"
     )]
     pub(crate) on_chain: Option<String>,
+}
+
+impl ToolIdent {
+    /// Get the off-chain tool info as a tuple of (URL, pub_key_hash)
+    pub fn off_chain(&self) -> Option<(reqwest::Url, String)> {
+        match (&self.off_chain_url, &self.pub_key_hash) {
+            (Some(url), Some(hash)) => Some((url.clone(), hash.clone())),
+            _ => None,
+        }
+    }
 }
 
 /// Handle the provided tool command. The [ToolCommand] instance is passed from

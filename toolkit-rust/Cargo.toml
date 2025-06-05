@@ -13,18 +13,37 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-anyhow.workspace = true
-reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
-warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
+hyper-rustls.workspace = true
+# TLS dependencies
+ring.workspace = true
+pkcs8.workspace = true
+rand_core.workspace = true
+rand.workspace = true
+rustls.workspace = true
+anyhow.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+sha2.workspace = true
+subtle.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-rustls.workspace = true
+warp.workspace = true
+ed25519-dalek = { version = "2.1", features = ["rand_core", "pkcs8"] }
 # === Nexus deps ===
 nexus-sdk.workspace = true
+
 
 [dev-dependencies]
 reqwest = { version = "0.12.14", features = ["json"] }
 tokio = { version = "1.44.1", features = ["macros"] }
+tempfile = "3.8"
+rustls = { version = "0.23", features = ["ring"] }
+serial_test = "3.0"

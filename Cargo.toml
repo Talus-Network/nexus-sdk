@@ -34,6 +34,7 @@ directories = "5"
 env_logger = "0.11.7"
 hex = "0.4"
 home = "0.5.11"
+hyper-rustls = "0.27"
 indicatif = "0.17.11"
 jsonschema = "0.28.3"
 keyring = "3.6"
@@ -45,8 +46,9 @@ openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }
+rand_core = "0.6"
 regex = "1.11.1"
-reqwest = "0.12.14"
+reqwest = "0.12.19"
 rpassword = "7.4.0"
 rstest = "0.25.0"
 # Keep an eye for the full release here. We need v1 for draft2020-12 schema.
@@ -65,6 +67,16 @@ tokio-retry = "0.3.0"
 toml = "0.8.20"
 warp = "0.3.7"
 zeroize = "1.7"
+rustls = { version = "0.23.27", features = ["ring"] }
+tokio-rustls = "0.26"
+ring = "0.17"
+x509-parser = "0.16"
+ed25519-dalek = { version = "2", features = ["pkcs8"] } 
+futures-util = { version = "0.3", features = ["sink", "std"] }
+pkcs8 = "0.10"
+sha2 = "0.10"
+subtle = "2.6"
+tokio-stream = { version = "0.1", features = ["net"] }
 
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }

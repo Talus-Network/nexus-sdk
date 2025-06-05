@@ -1,20 +1,24 @@
 use {
     crate::{command_title, loading, prelude::*, tool::ToolIdent},
     nexus_sdk::types::ToolMeta,
+    nexus_toolkit::tls::reqwest_with_pin,
     reqwest::StatusCode,
 };
 
 /// Validate either an off-chain or an on-chain tool.
 pub(crate) async fn validate_tool(ident: ToolIdent) -> AnyResult<ToolMeta, NexusCliError> {
-    match (ident.off_chain, ident.on_chain) {
-        (Some(url), None) => validate_off_chain_tool(url).await,
+    match (ident.off_chain(), ident.on_chain) {
+        (Some((url, hash)), None) => validate_off_chain_tool(url, hash).await,
         (None, Some(ident)) => validate_on_chain_tool(ident).await,
         _ => unreachable!("Checked by clap"),
     }
 }
 
 /// Validate an off-chain tool based on the provided URL.
-async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, NexusCliError> {
+async fn validate_off_chain_tool(
+    url: reqwest::Url,
+    pub_key_hash: String,
+) -> AnyResult<ToolMeta, NexusCliError> {
     command_title!("Validating off-chain Tool at '{url}'");
 
     // Strip the trailing slash from the URL path.
@@ -29,6 +33,10 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         .join(full_path.as_str())
         .expect("Joining URL must be valid");
 
+    // Create pinned TLS client for secure HTTPS connections.
+    let client =
+        reqwest_with_pin(std::iter::once(pub_key_hash.as_str())).map_err(NexusCliError::Any)?;
+
     // Check health.
     let health_handle = loading!("Checking tool health...");
 
@@ -36,7 +44,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
         .join("health")
         .expect("Appending health must be valid");
 
-    match reqwest::Client::new().get(health_url).send().await {
+    match client.get(health_url).send().await {
         Ok(response) if response.status() == StatusCode::OK => (),
         Ok(_) => {
             health_handle.error();
@@ -59,7 +67,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
 
     let meta_url = base_url.join("meta").expect("Appending meta must be valid");
 
-    let response = match reqwest::Client::new().get(meta_url).send().await {
+    let response = match client.get(meta_url).send().await {
         Ok(response) => response,
         Err(error) => {
             meta_handle.error();
@@ -100,7 +108,13 @@ async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliE
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_toolkit::*, schemars::JsonSchema, warp::http::StatusCode};
+    use {
+        super::*,
+        nexus_toolkit::*,
+        schemars::JsonSchema,
+        tempfile::NamedTempFile,
+        warp::http::StatusCode,
+    };
 
     // == Dummy tools setup ==
 
@@ -168,18 +182,40 @@ mod tests {
         }
     }
 
+    async fn setup_test_tls_key() -> (NamedTempFile, String) {
+        // Install default crypto provider for rustls
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+
+        let key_file = NamedTempFile::new().unwrap();
+        let key_path = key_file.path().to_string_lossy().to_string();
+        let spki_hash = nexus_toolkit::tls::generate_key_and_hash(&key_path).unwrap();
+        (key_file, spki_hash)
+    }
+
     #[tokio::test]
     async fn test_validate_oks_valid_off_chain_tools() {
-        tokio::spawn(
-            async move { bootstrap!(([127, 0, 0, 1], 8042), [DummyTool, DummyToolWithPath]) },
-        );
+        let (_key_file, spki_hash) = setup_test_tls_key().await;
+        let key_path = _key_file.path().to_string_lossy().to_string();
+
+        // Set TLS_KEY environment variable
+        std::env::set_var("TLS_KEY", &key_path);
+
+        tokio::spawn(async move {
+            bootstrap!(
+                std::net::SocketAddr::from(([127, 0, 0, 1], 8042)),
+                [DummyTool, DummyToolWithPath]
+            )
+        });
 
         // Give the webserver some time to start.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
         // No path with slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/").unwrap()),
+            off_chain_url: Some(reqwest::Url::parse("https://localhost:8042/").unwrap()),
+            pub_key_hash: Some(spki_hash.clone()),
             on_chain: None,
         })
         .await;
@@ -190,7 +226,8 @@ mod tests {
 
         // No path no slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042").unwrap()),
+            off_chain_url: Some(reqwest::Url::parse("https://localhost:8042").unwrap()),
+            pub_key_hash: Some(spki_hash.clone()),
             on_chain: None,
         })
         .await;
@@ -200,7 +237,8 @@ mod tests {
 
         // Path with slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool/").unwrap()),
+            off_chain_url: Some(reqwest::Url::parse("https://localhost:8042/dummy/tool/").unwrap()),
+            pub_key_hash: Some(spki_hash.clone()),
             on_chain: None,
         })
         .await;
@@ -210,12 +248,16 @@ mod tests {
 
         // Path no slash
         let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool").unwrap()),
+            off_chain_url: Some(reqwest::Url::parse("https://localhost:8042/dummy/tool").unwrap()),
+            pub_key_hash: Some(spki_hash.clone()),
             on_chain: None,
         })
         .await;
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+
+        // Clean up environment variable
+        std::env::remove_var("TLS_KEY");
     }
 }

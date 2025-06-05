@@ -70,6 +70,16 @@ macro_rules! bootstrap {
             .parse::<std::net::SocketAddr>()
             .expect("Invalid socket address in BIND_ADDR")
     }};
+    (@start_server $routes:expr, $addr:expr) => {{
+        // Maybe need a better way to handle this.
+        let key_path = std::env::var("TLS_KEY").unwrap_or_else(|_| "key.pub".into());
+        let tls_cfg = $crate::server_cfg(&key_path)
+            .expect("TLS key missing or invalid - refusing to serve HTTP"); // There is no reason why we would serve HTTP.
+        let acceptor = $crate::tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(tls_cfg));
+        $crate::spawn_tls_server($routes.clone(), $addr, acceptor)
+            .await
+            .expect("TLS server terminated unexpectedly");
+    }};
     ($addr:expr, [$tool:ty $(, $next_tool:ty)* $(,)?]) => {{
         let _ = $crate::env_logger::try_init();
         use {
@@ -98,7 +108,7 @@ macro_rules! bootstrap {
 
         let routes = routes.or(default_health_route).or(default_tools_route);
         // Serve the routes.
-        $crate::warp::serve(routes).run($addr).await
+        bootstrap!(@start_server routes.clone(), $addr)
     }};
     // Default address.
     ([$($tool:ty),+ $(,)?]) => {{
@@ -215,14 +225,15 @@ async fn meta_handler<T: NexusTool>(
         }
     };
 
-    // As in the case of the host, we need to use the most "external" scheme,
-    // which is basically the scheme used by the client to access the tool.
-    // If the scheme is not present, we check the environment variable, which
-    // might have been set for operational purposes.
-    // As a last resort, we use http as the default scheme.
-    //
-    // Ref: https://github.com/Talus-Network/nexus-sdk/issues/77
-    let scheme = x_forwarded_proto.unwrap_or_else(|| "http".to_string());
+    // We should never default to plain http – that breaks pinning and
+    // misleads clients behind dumb TCP-load-balancers.  Treat missing header
+    // as HTTPS unless ALLOW_INSECURE is explicitly set (for local dev only).
+    // Default to https unless ALLOW_INSECURE env is set (for local dev only)
+    // Do not default to http in production.
+    let scheme = x_forwarded_proto
+        .or_else(|| std::env::var("ALLOW_INSECURE").ok())
+        .unwrap_or_else(|| "https".to_string());
+
     let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
         Ok(url) => url,
         Err(e) => {
