@@ -20,7 +20,7 @@ impl EncryptionAlgo for AesGcmEncryption {
     const NONCE_LEN: usize = 12;
 
     fn encrypt(nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, SecretStoreError> {
-        let key: Zeroizing<[u8; KEY_LEN]> = MasterKeyProvider::default().key()?;
+        let key: Zeroizing<[u8; KEY_LEN]> = MasterKeyProvider.key()?;
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&*key));
         let nonce_array: [u8; 12] = nonce
             .try_into()
@@ -31,7 +31,7 @@ impl EncryptionAlgo for AesGcmEncryption {
     }
 
     fn decrypt(nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, SecretStoreError> {
-        let key: Zeroizing<[u8; KEY_LEN]> = MasterKeyProvider::default().key()?;
+        let key: Zeroizing<[u8; KEY_LEN]> = MasterKeyProvider.key()?;
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&*key));
         let nonce_array: [u8; 12] = nonce
             .try_into()

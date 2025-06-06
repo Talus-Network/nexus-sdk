@@ -202,7 +202,7 @@ async fn upload_media(
     };
 
     // Validate number of chunks doesn't exceed Twitter's API limit of 999
-    let total_chunks = (media_data.len() + optimal_chunk_size - 1) / optimal_chunk_size;
+    let total_chunks = media_data.len().div_ceil(optimal_chunk_size);
     if total_chunks > 999 {
         return Err(TwitterError::Other(format!(
             "Media would require {} chunks, which exceeds Twitter's limit of 999.",
@@ -212,7 +212,7 @@ async fn upload_media(
 
     // 1. INIT phase - Initialize upload
     let init_response = init_upload(
-        &client,
+        client,
         auth,
         media_data.len() as u32,
         media_type,
@@ -227,11 +227,11 @@ async fn upload_media(
     let chunks = media_data.chunks(optimal_chunk_size).enumerate();
 
     for (i, chunk) in chunks {
-        append_chunk(&client, auth, &media_id, chunk, i as i32).await?;
+        append_chunk(client, auth, &media_id, chunk, i as i32).await?;
     }
 
     // 3. FINALIZE phase - Complete the upload
-    let mut finalize_result = finalize_upload(&client, auth, &media_id).await?;
+    let mut finalize_result = finalize_upload(client, auth, &media_id).await?;
 
     // 4. STATUS phase - Wait for processing to complete if not optimistic
     if !optimistic_upload {
@@ -395,7 +395,7 @@ async fn append_chunk(
     segment_index: i32,
 ) -> TwitterResult<()> {
     // Validate segment_index is within allowed range (0-999)
-    if segment_index < 0 || segment_index > 999 {
+    if !(0..=999).contains(&segment_index) {
         return Err(TwitterError::Other(format!(
             "Invalid segment_index: {}. Must be between 0 and 999",
             segment_index

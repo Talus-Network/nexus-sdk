@@ -206,7 +206,7 @@ pub struct IdentityKey {
 impl IdentityKey {
     /// Generate a fresh identity key pair.
     pub fn generate() -> Self {
-        let secret = StaticSecret::random_from_rng(&mut OsRng);
+        let secret = StaticSecret::random_from_rng(OsRng);
         let dh_public = X25519PublicKey::from(&secret);
         let signing = XEdPrivate::from(&secret);
         let verify = XEdPublic::from(&dh_public);
@@ -303,7 +303,7 @@ impl PreKeyBundle {
     ) -> Self {
         let spk_pub = X25519PublicKey::from(spk_secret);
         // Signature proves possession of IK_B
-        let spk_sig = identity.signing.sign(&encode_pk(&spk_pub), &mut OsRng);
+        let spk_sig = identity.signing.sign(&encode_pk(&spk_pub), OsRng);
         let identity_verify_bytes = *identity.verify.as_bytes();
 
         Self {
@@ -480,7 +480,7 @@ pub fn sender_init(
         .map_err(|_| X3dhError::SigVerifyFailed)?;
 
     // 2. Ephemeral key pair
-    let ek_secret = StaticSecret::random_from_rng(&mut OsRng);
+    let ek_secret = StaticSecret::random_from_rng(OsRng);
     let ek_pub = X25519PublicKey::from(&ek_secret);
 
     // 3. DH computations
@@ -650,20 +650,21 @@ pub struct PreKeyBundleWithSecrets {
 /// * `spk_id` – monotonically increasing identifier managed by the caller(used to identify the SPK)
 /// * `next_otpk_id` – mutable counter for OTPK ids(used to identify the OTPK)
 /// * `n_otpks` – how many OTPKs to attach (0‑`n`).
-/// Returns a bundle with the SPK and the OTPKs.
+///
+///   Returns a bundle with the SPK and the OTPKs.
 pub fn receiver_generate_pre_key_bundle(
     identity: &IdentityKey,
     spk_id: u32,
     next_otpk_id: &mut u32,
     n_otpks: usize,
 ) -> PreKeyBundleWithSecrets {
-    let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+    let spk_secret = StaticSecret::random_from_rng(OsRng);
 
     let mut otpk_secrets = Vec::with_capacity(n_otpks);
     for _ in 0..n_otpks {
         let id = *next_otpk_id;
         *next_otpk_id = next_otpk_id.wrapping_add(1);
-        let sk = StaticSecret::random_from_rng(&mut OsRng);
+        let sk = StaticSecret::random_from_rng(OsRng);
         otpk_secrets.push((id, sk));
     }
 
@@ -719,7 +720,7 @@ mod tests {
         let sender = IdentityKey::generate();
         let receiver = IdentityKey::generate();
 
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1u32;
 
         let bundle = PreKeyBundle::new(&receiver, spk_id, &spk_secret, None, None);
@@ -736,11 +737,11 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 7;
 
         // Receiver OTPK
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 99;
 
         // Create bundle with OTPK
@@ -766,9 +767,9 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver creates pre-keys
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 42u32;
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 123u32;
 
         // Create bundle with OTPK
@@ -805,7 +806,7 @@ mod tests {
         let mut bundles = Vec::new();
 
         for i in 0..5 {
-            let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+            let spk_secret = StaticSecret::random_from_rng(OsRng);
             let bundle = PreKeyBundle::new(&receiver, i as u32, &spk_secret, None, None);
 
             bundles.push((bundle, spk_secret));
@@ -828,14 +829,14 @@ mod tests {
         let eve = IdentityKey::generate();
 
         // Receiver creates SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1u32;
 
         // Create legitimate bundle
         let mut bundle = PreKeyBundle::new(&receiver, spk_id, &spk_secret, None, None);
 
         // Tamper with signature - replace with Eve's signature
-        let eve_sig = eve.signing.sign(&encode_pk(&bundle.spk_pub), &mut OsRng);
+        let eve_sig = eve.signing.sign(&encode_pk(&bundle.spk_pub), OsRng);
         bundle.spk_sig = eve_sig;
 
         // Sender should reject the tampered bundle
@@ -850,7 +851,7 @@ mod tests {
         let mallory = IdentityKey::generate(); // Attacker
 
         // Receiver's SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 5u32;
 
         // Create bundle
@@ -864,7 +865,7 @@ mod tests {
         assert!(matches!(result, Err(X3dhError::DecryptFailed)));
 
         // Receiver attempts to decrypt with wrong SPK
-        let wrong_spk = StaticSecret::random_from_rng(&mut OsRng);
+        let wrong_spk = StaticSecret::random_from_rng(OsRng);
         let result = receiver_receive(&receiver, &wrong_spk, spk_id, None, &msg.0);
         assert!(matches!(result, Err(X3dhError::DecryptFailed)));
     }
@@ -875,7 +876,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 3u32;
 
         // Create bundle
@@ -900,7 +901,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 9u32;
 
         // Create bundle
@@ -919,7 +920,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 10u32;
 
         // Create bundle
@@ -938,7 +939,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 11u32;
 
         // Create bundle
@@ -961,12 +962,12 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver creates pre-keys
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 12u32;
 
         // Create multiple OTPKs
         let otpk_secrets: Vec<(StaticSecret, u32)> = (0..5)
-            .map(|i| (StaticSecret::random_from_rng(&mut OsRng), 200 + i))
+            .map(|i| (StaticSecret::random_from_rng(OsRng), 200 + i))
             .collect();
 
         // Test each OTPK separately
@@ -1005,7 +1006,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 13u32;
 
         // Create bundle
@@ -1034,7 +1035,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 14u32;
 
         // Create bundle
@@ -1080,9 +1081,9 @@ mod tests {
 
         // Test PreKeyBundle serialization/deserialization
         let receiver = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 42u32;
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 123u32;
 
         // Create bundle with OTPK

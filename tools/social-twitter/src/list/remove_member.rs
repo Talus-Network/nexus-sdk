@@ -150,11 +150,9 @@ impl NexusTool for RemoveMember {
                     },
                 }
             }
-            Err(e) => {
-                return Output::Err {
-                    reason: format!("Failed to send request to Twitter API: {}", e),
-                }
-            }
+            Err(e) => Output::Err {
+                reason: format!("Failed to send request to Twitter API: {}", e),
+            },
         }
     }
 }

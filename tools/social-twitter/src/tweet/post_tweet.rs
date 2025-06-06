@@ -174,11 +174,9 @@ impl NexusTool for PostTweet {
             .await;
 
         match response {
-            Err(e) => {
-                return Output::Err {
-                    reason: format!("Failed to send tweet to Twitter API: {}", e),
-                }
-            }
+            Err(e) => Output::Err {
+                reason: format!("Failed to send tweet to Twitter API: {}", e),
+            },
             Ok(result) => {
                 let text = match result.text().await {
                     Err(e) => {

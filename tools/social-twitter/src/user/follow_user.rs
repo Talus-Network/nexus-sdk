@@ -178,7 +178,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Followed { result: followed } => {
-                assert_eq!(followed, true);
+                assert!(followed);
             }
             Output::Pending { result: pending } => {
                 panic!("Expected followed, got pending: {}", pending);
@@ -401,7 +401,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Pending { result } => {
-                assert_eq!(result, true);
+                assert!(result);
             }
             Output::Followed { result } => {
                 panic!("Expected pending, got followed: {}", result);

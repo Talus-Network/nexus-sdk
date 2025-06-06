@@ -45,6 +45,7 @@ directories.workspace = true
 hex.workspace = true
 keyring.workspace = true
 zeroize.workspace = true
+rpassword.workspace = true
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]

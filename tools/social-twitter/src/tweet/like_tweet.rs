@@ -250,7 +250,7 @@ mod tests {
         match result {
             Output::Ok { tweet_id, liked } => {
                 assert_eq!(tweet_id, "67890");
-                assert_eq!(liked, true);
+                assert!(liked);
             }
             Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }

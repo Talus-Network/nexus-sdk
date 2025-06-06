@@ -141,19 +141,15 @@ impl NexusTool for GetUsersById {
             .get::<UsersResponse>(request.bearer_token, Some(query_params))
             .await
         {
-            Ok(response) => {
-                return Output::Ok {
-                    users: response.0,
-                    includes: response.1,
-                }
-            }
-            Err(e) => {
-                return Output::Err {
-                    reason: e.reason,
-                    kind: e.kind,
-                    status_code: e.status_code,
-                }
-            }
+            Ok(response) => Output::Ok {
+                users: response.0,
+                includes: response.1,
+            },
+            Err(e) => Output::Err {
+                reason: e.reason,
+                kind: e.kind,
+                status_code: e.status_code,
+            },
         }
     }
 }
@@ -230,7 +226,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -298,11 +294,11 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input_with_user_fields();
-        let query_params = vec![
+        let query_params = [
             ("ids".to_string(), input.ids.join(",")),
             (
                 "user.fields".to_string(),
-                vec!["description", "created_at", "public_metrics"].join(","),
+                ["description", "created_at", "public_metrics"].join(","),
             ),
         ];
 
@@ -373,12 +369,12 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input_with_expansions();
-        let query_params = vec![
+        let query_params = [
             ("ids".to_string(), input.ids.join(",")),
-            ("expansions".to_string(), vec!["author_id"].join(",")),
+            ("expansions".to_string(), ["author_id"].join(",")),
             (
                 "tweet.fields".to_string(),
-                vec!["author_id", "created_at"].join(","),
+                ["author_id", "created_at"].join(","),
             ),
         ];
 
@@ -453,7 +449,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -500,7 +496,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input_single_id();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -555,7 +551,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -604,7 +600,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -653,7 +649,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")
@@ -719,7 +715,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let input = create_test_input();
-        let query_params = vec![("ids".to_string(), input.ids.join(","))];
+        let query_params = [("ids".to_string(), input.ids.join(","))];
 
         let mock = server
             .mock("GET", "/users")

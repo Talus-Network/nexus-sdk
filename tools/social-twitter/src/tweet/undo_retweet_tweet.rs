@@ -160,7 +160,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { retweeted } => {
-                assert_eq!(retweeted, false);
+                assert!(!retweeted);
             }
             Output::Err {
                 reason,
@@ -348,7 +348,7 @@ mod tests {
         // Verify the response - Expect Ok with retweeted: true
         match result {
             Output::Ok { retweeted } => {
-                assert_eq!(retweeted, true);
+                assert!(retweeted);
             }
             Output::Err { reason, .. } => {
                 panic!(

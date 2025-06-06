@@ -48,8 +48,7 @@ pub(crate) struct CliConf {
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
-    #[serde(default)]
-    pub(crate) crypto: Secret<CryptoConf>,
+    pub(crate) crypto: Option<Secret<CryptoConf>>,
 }
 
 impl CliConf {

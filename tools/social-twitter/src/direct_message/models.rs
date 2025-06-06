@@ -362,8 +362,8 @@ impl MediaIdsBag {
 
 impl Message {
     pub fn validate(&self) -> Result<(), String> {
-        if self.text.as_ref().map_or(true, |t| t.is_empty())
-            && self.media_ids.as_ref().map_or(true, |m| m.is_empty())
+        if self.text.as_ref().is_none_or(|t| t.is_empty())
+            && self.media_ids.as_ref().is_none_or(|m| m.is_empty())
         {
             return Err("Either text or media_ids must be provided and non-empty".to_string());
         }

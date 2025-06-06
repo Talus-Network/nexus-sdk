@@ -80,7 +80,7 @@ impl NexusTool for CreateList {
 
     async fn invoke(&self, request: Self::Input) -> Self::Output {
         // Validate name length
-        if request.name.len() < 1 || request.name.len() > 25 {
+        if request.name.is_empty() || request.name.len() > 25 {
             return Output::Err {
                 reason: "List name must be between 1 and 25 characters".to_string(),
             };
@@ -118,11 +118,9 @@ impl NexusTool for CreateList {
             .await;
 
         match response {
-            Err(e) => {
-                return Output::Err {
-                    reason: format!("Failed to send request to Twitter API: {}", e),
-                }
-            }
+            Err(e) => Output::Err {
+                reason: format!("Failed to send request to Twitter API: {}", e),
+            },
             Ok(result) => {
                 let text = match result.text().await {
                     Err(e) => {

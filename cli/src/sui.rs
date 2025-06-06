@@ -328,37 +328,34 @@ fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf,
 }
 
 fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
+    let alias = match net {
+        SuiNet::Localnet => "localnet".to_string(),
+        SuiNet::Devnet => "devnet".to_string(),
+        SuiNet::Testnet => "testnet".to_string(),
+        SuiNet::Mainnet => todo!("Mainnet not yet supported"),
+    };
+
     if let Ok(sui_rpc_url) = std::env::var("SUI_RPC_URL") {
         Some(sui::Env {
-            alias: "localnet".to_string(),
+            alias,
             rpc: sui_rpc_url,
             ws: None,
             basic_auth: None,
         })
     } else {
-        let env = match net {
-            SuiNet::Localnet => sui::Env {
-                alias: "localnet".to_string(),
-                rpc: sui::LOCAL_NETWORK_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
-            SuiNet::Devnet => sui::Env {
-                alias: "devnet".to_string(),
-                rpc: sui::DEVNET_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
-            SuiNet::Testnet => sui::Env {
-                alias: "testnet".to_string(),
-                rpc: sui::TESTNET_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
+        let rpc = match net {
+            SuiNet::Localnet => sui::LOCAL_NETWORK_URL.into(),
+            SuiNet::Devnet => sui::DEVNET_URL.into(),
+            SuiNet::Testnet => sui::TESTNET_URL.into(),
             SuiNet::Mainnet => todo!("Mainnet not yet supported"),
         };
 
-        Some(env)
+        Some(sui::Env {
+            alias,
+            rpc,
+            ws: None,
+            basic_auth: None,
+        })
     }
 }
 
@@ -542,6 +539,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
@@ -557,20 +559,30 @@ mod tests {
 
         let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
 
-        assert!(wallet.is_ok());
+        match wallet {
+            Ok(_) => {} // Test passes
+            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+        }
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
+        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_net_mismatch() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
         );
 
+        // Create wallet config for devnet
         let conf = SuiConf {
             net: SuiNet::Devnet,
             wallet_path: PathBuf::from("/invalid"),
@@ -579,7 +591,8 @@ mod tests {
 
         let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
 
-        let err = create_wallet_context(&path, SuiNet::Devnet)
+        // Try to use the devnet wallet with localnet - this should fail
+        let err = create_wallet_context(&path, SuiNet::Localnet)
             .await
             .err()
             .unwrap();
@@ -587,12 +600,18 @@ mod tests {
         assert_matches!(err, NexusCliError::Any(e) if e.to_string().contains("The Sui net of the wallet does not match"));
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
+        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_rpc_url() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
@@ -609,9 +628,13 @@ mod tests {
 
         let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
 
-        assert!(wallet.is_ok());
+        match wallet {
+            Ok(_) => {} // Test passes
+            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+        }
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
         std::env::remove_var("SUI_RPC_URL");
+        std::env::remove_var("SUI_CONFIG_DIR");
     }
 }

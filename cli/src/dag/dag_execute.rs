@@ -33,18 +33,11 @@ pub(crate) async fn execute_dag(
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
 
-    // Always validate authentication before proceeding
-    // This validation is still required even if we dont encrypt anything at input ports
-    validate_authentication(&conf)?;
+    // Get the active session for potential encryption
+    let session = get_active_session(&mut conf)?;
 
     if !encrypt.is_empty() {
-        // Get the active session and modify it (this advances the ratchet state)
-        let session = get_active_session(&mut conf)?;
-
         encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
-
-        // Save the updated config
-        conf.save().await.map_err(NexusCliError::Any)?;
     }
 
     // Nexus objects must be present in the configuration.
@@ -124,6 +117,9 @@ pub(crate) async fn execute_dag(
         json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
     }
 
+    // Always save the updated config
+    conf.save().await.map_err(NexusCliError::Any)?;
+
     Ok(())
 }
 
@@ -173,31 +169,28 @@ fn encrypt_entry_ports_once(
     Ok(())
 }
 
-/// Validates that the user has an active authentication session
-fn validate_authentication(conf: &CliConf) -> Result<(), NexusCliError> {
-    if conf.crypto.sessions.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        )));
-    }
-    Ok(())
-}
-
 /// Gets the active session for encryption/decryption
 fn get_active_session(
     conf: &mut CliConf,
 ) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
-    if conf.crypto.sessions.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        )));
-    }
+    match &mut conf.crypto {
+        Some(crypto_secret) => {
+            if crypto_secret.sessions.is_empty() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "Authentication required — run `nexus crypto auth` first"
+                )));
+            }
 
-    let session_id = *conf.crypto.sessions.values().next().unwrap().id();
-    conf.crypto
-        .sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
+            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
+            crypto_secret
+                .sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
+        }
+        None => Err(NexusCliError::Any(anyhow!(
+            "Authentication required — run `nexus crypto auth` first"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -394,7 +387,7 @@ mod tests {
         // The complex JSON should be encrypted
         assert!(input["vertex1"]["port1"].is_array());
         // It should no longer contain the original nested structure
-        assert!(!input["vertex1"]["port1"].get("nested").is_some());
+        assert!(input["vertex1"]["port1"].get("nested").is_none());
     }
 
     #[test]

@@ -164,7 +164,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { unfollowed } => {
-                assert_eq!(unfollowed, true);
+                assert!(unfollowed);
             }
             Output::Err {
                 reason,
@@ -379,7 +379,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { unfollowed } => {
-                assert_eq!(unfollowed, false);
+                assert!(!unfollowed);
             }
             Output::Err {
                 reason,
