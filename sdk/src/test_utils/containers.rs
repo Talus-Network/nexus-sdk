@@ -12,6 +12,7 @@ use testcontainers_modules::{
 
 pub type SuiContainer = ContainerAsync<Sui>;
 pub type RedisContainer = ContainerAsync<Redis>;
+pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand;
 
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
