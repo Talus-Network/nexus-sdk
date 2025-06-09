@@ -12,6 +12,7 @@ use {
         idents::{primitives, workflow},
         transactions::tool,
     },
+    nexus_toolkit::tls::reqwest_with_pin,
 };
 
 /// Validate and then register a new Tool.
@@ -28,12 +29,15 @@ pub(crate) async fn register_tool(
     // Validate either a single tool or a batch of tools if the `batch` flag is
     // provided.
     let idents = if batch {
-        let Some(url) = &ident.off_chain else {
+        let Some((url, pub_key_hash)) = ident.off_chain() else {
             todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
         };
 
-        // Fetch all tools on the webserver.
-        let response = reqwest::Client::new()
+        // Fetch all tools on the webserver using pinned TLS client.
+        let client =
+            reqwest_with_pin(std::iter::once(pub_key_hash.as_str())).map_err(NexusCliError::Any)?;
+
+        let response = client
             .get(url.join("/tools").expect("Joining URL must be valid"))
             .send()
             .await
@@ -46,8 +50,9 @@ pub(crate) async fn register_tool(
             .iter()
             .filter_map(|s| match url.join(s) {
                 Ok(url) => Some(ToolIdent {
-                    off_chain: Some(url),
+                    off_chain_url: Some(url),
                     on_chain: None,
+                    pub_key_hash: Some(pub_key_hash.clone()),
                 }),
                 Err(_) => None,
             })
@@ -59,7 +64,17 @@ pub(crate) async fn register_tool(
     let mut registration_results = Vec::with_capacity(idents.len());
 
     for ident in idents {
-        let meta = validate_tool(ident).await?;
+        let meta = validate_tool(ident.clone()).await?;
+
+        // Get pub_key_hash for off-chain tools
+        let pub_key_hash = match ident.off_chain() {
+            Some((_, hash)) => hash,
+            None => {
+                todo!(
+                    "TODO: On-chain tools <https://github.com/Talus-Network/nexus-next/issues/96>"
+                );
+            }
+        };
 
         command_title!(
             "Registering Tool '{fqn}' at '{url}'",
@@ -103,6 +118,12 @@ pub(crate) async fn register_tool(
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
+        // Convert hex string to byte array
+        let pub_key_hash_bytes: [u8; 32] = hex::decode(&pub_key_hash)
+            .map_err(|e| NexusCliError::Any(anyhow!("Invalid hex string: {}", e)))?
+            .try_into()
+            .map_err(|_| NexusCliError::Any(anyhow!("Hash must be exactly 32 bytes")))?;
+
         if let Err(e) = tool::register_off_chain_for_self(
             &mut tx,
             objects,
@@ -110,6 +131,7 @@ pub(crate) async fn register_tool(
             address.into(),
             &collateral_coin,
             invocation_cost,
+            &pub_key_hash_bytes,
         ) {
             tx_handle.error();
 
@@ -220,12 +242,14 @@ pub(crate) async fn register_tool(
 
         save_handle.success();
 
-        registration_results.push(json!({
+        let result = json!({
             "digest": response.digest,
             "tool_fqn": meta.fqn,
             "owner_cap_over_tool_id": over_tool_id,
             "owner_cap_over_gas_id": over_gas_id,
-        }))
+        });
+
+        registration_results.push(result);
     }
 
     json_output(&registration_results)?;

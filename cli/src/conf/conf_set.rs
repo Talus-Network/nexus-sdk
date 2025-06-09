@@ -119,7 +119,6 @@ mod tests {
 
         // Overriding one value will save that one value and leave other values intact.
         let result = set_nexus_conf(Some(SuiNet::Testnet), None, None, None, path.clone()).await;
-
         assert_matches!(result, Ok(()));
 
         let conf = CliConf::load_from_path(&path).await.unwrap();

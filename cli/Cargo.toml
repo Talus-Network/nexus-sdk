@@ -28,7 +28,7 @@ indicatif.workspace = true
 minijinja.workspace = true
 openssl.workspace = true
 petgraph.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["rustls-tls"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -52,6 +52,9 @@ rpassword.workspace = true
 workspace = true
 features = ["full"]
 
+[dependencies.nexus-toolkit]
+workspace = true
+
 [dev-dependencies]
 assert_fs = "1.1"
 assert_matches = "1.5.0"
@@ -61,6 +64,7 @@ rstest.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
 nexus-toolkit.workspace = true
+rustls = { version = "0.23", features = ["ring"] }
 
 [dev-dependencies.nexus-sdk]
 workspace = true

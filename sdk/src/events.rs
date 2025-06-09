@@ -123,6 +123,8 @@ pub struct OffChainToolRegisteredEvent {
         serialize_with = "serialize_json_value_to_bytes"
     )]
     pub output_schema: serde_json::Value,
+    /// TLS hash of the tool's public key.
+    pub public_key_hash: Vec<u8>,
 }
 
 /// Fired by the Nexus Workflow when a new on-chain tool is registered so that

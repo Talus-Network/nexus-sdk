@@ -421,14 +421,27 @@ mod tests {
         super::*,
         mockito::{Matcher, Server},
         portpicker::pick_unused_port,
-        reqwest::Client,
         rstest::rstest,
         schemars::schema_for,
         serde_json::json,
         serial_test::serial,
         std::time::Duration,
+        tempfile::NamedTempFile,
         tokio::time::sleep,
     };
+
+    // Helper function to set up TLS key for tests
+    async fn setup_test_tls_key() -> (NamedTempFile, String) {
+        // Install default crypto provider for rustls
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+
+        let key_file = NamedTempFile::new().unwrap();
+        let key_path = key_file.path().to_string_lossy().to_string();
+        let spki_hash = nexus_toolkit::generate_key_and_hash(&key_path).unwrap();
+        (key_file, spki_hash)
+    }
 
     impl OpenaiChatCompletion {
         /// Creates a new instance of the OpenAI Chat Completion tool with the given
@@ -448,10 +461,17 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_openai_chat_completion_health_success(indicator: &str, expected_status: u16) {
+        // Set up TLS key for the test
+        let (_key_file, spki_hash) = setup_test_tls_key().await;
+        let key_path = _key_file.path().to_string_lossy().to_string();
+
+        // Set TLS_KEY environment variable
+        std::env::set_var("TLS_KEY", &key_path);
+
         // Start a mockito server.
         let mut server = Server::new_async().await;
         let free_port = pick_unused_port().expect("No free port available");
-        let addr = ([127, 0, 0, 1], free_port);
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], free_port));
 
         // Build a response with the test case indicator.
         let response_body = format!(
@@ -493,8 +513,8 @@ mod tests {
         // Wait briefly to allow the server to start.
         sleep(Duration::from_secs(1)).await;
 
-        // Send a GET request to the /health endpoint.
-        let client = Client::new();
+        // Create TLS client with proper pinning
+        let client = nexus_toolkit::reqwest_with_pin([spki_hash.as_str()]).unwrap();
         let response = client
             .get(format!("http://127.0.0.1:{}/health", free_port))
             .send()
@@ -516,6 +536,10 @@ mod tests {
         );
 
         _mock.assert_async().await;
+
+        // Clean up environment variable
+        std::env::remove_var("TLS_KEY");
+        std::env::remove_var("HEALTHCHECK_URL");
     }
 
     #[test]
