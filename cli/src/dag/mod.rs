@@ -135,6 +135,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             inspect,
             gas,
         } => {
+            // Optional: Check auth at CLI level instead of inside execute_dag
+            // validate_cli_authentication().await?;
+
             execute_dag(
                 dag_id,
                 entry_group,

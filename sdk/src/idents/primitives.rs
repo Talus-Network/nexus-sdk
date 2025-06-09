@@ -51,9 +51,15 @@ impl Data {
         json: &T,
         encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
+        eprintln!(
+            "DEBUG: nexus_data_from_json called with encrypted={}, json={:?}",
+            encrypted,
+            serde_json::to_value(json)?
+        );
         let json = tx.pure(serde_json::to_string(json)?.into_bytes())?;
 
         if encrypted {
+            eprintln!("DEBUG: Using INLINE_ONE_ENCRYPTED");
             return Ok(tx.programmable_move_call(
                 primitives_pkg_id,
                 Self::INLINE_ONE_ENCRYPTED.module.into(),
@@ -63,6 +69,7 @@ impl Data {
             ));
         }
 
+        eprintln!("DEBUG: Using INLINE_ONE");
         Ok(tx.programmable_move_call(
             primitives_pkg_id,
             Self::INLINE_ONE.module.into(),

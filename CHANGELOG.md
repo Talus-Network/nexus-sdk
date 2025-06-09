@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus conf` changed to have `set` and `get` subcommands
 - `nexus dag execute` now takes `--encrypt` argument that accepts `vertex.port` pairs to encrypt before sending data on-chain
 - JSON DAG now accepts `encrypted` field on `edges.[].from`
+- `nexus dag execute` now encrypts any  `vertex.port` mentioned in the arguments
 
 #### Removed
 

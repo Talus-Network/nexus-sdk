@@ -23,7 +23,7 @@ tool_fqn = ["regex", "lazy-regex"]
 crypto = [
     "aead", "serde-big-array", "chacha20poly1305", "hkdf", "rand", "rand_core",
     "sha2", "subtle", "x25519-dalek", "xeddsa", "zeroize", "thiserror", "hmac",
-    "ciborium", "aes-gcm", "bincode", "serde_json", "aes-siv", "serde_bytes"
+    "ciborium", "aes-gcm", "bincode", "serde_json", "aes-siv", "serde_bytes", "hex", "blake3", "lru"
 ]
 
 # Secret core feature provides a generic secret type
@@ -135,6 +135,10 @@ optional = true
 
 [dependencies.hmac]
 version = "0.12"
+optional = true
+
+[dependencies.hex]
+version = "0.4"
 optional = true
 
 [dependencies.rand]
@@ -273,3 +277,11 @@ tempfile = "3"
 # === Build deps ===
 [build-dependencies]
 toml.workspace = true
+
+[dependencies.blake3]
+version = "1.3"
+optional = true
+
+[dependencies.lru]
+version = "0.12"
+optional = true

@@ -98,13 +98,13 @@ pub enum X3dhError {
     #[error("decryption failed")]
     DecryptFailed,
     /// Receiver attempted to decrypt a message that references an OTPK he no longer possesses.
-    #[error("OTPK secret missing – refuse to process one‑time pre‑key message")]
+    #[error("OTPK secret missing - refuse to process one-time pre-key message")]
     MissingOneTimeSecret,
     /// The SPK identifier in the message does not match Receiver's current SPK.
-    #[error("signed pre‑key id mismatch")]
+    #[error("signed pre-key id mismatch")]
     SpkIdMismatch,
     /// The OTPK identifier in the message does not match the supplied OTPK secret.
-    #[error("one‑time pre‑key id mismatch")]
+    #[error("one-time pre-key id mismatch")]
     OtpkIdMismatch,
     /// Receiver's X25519 and XEdDSA public keys are not the Edwards–Montgomery map of each other.
     #[error("identity DH and Ed keys do not match")]
@@ -400,8 +400,7 @@ pub mod x25519_serde {
 /// Serializes as an optional raw 32‑byte string.
 pub mod option_x25519_serde {
     use {
-        super::x25519_serde,
-        serde::{Deserializer, Serializer},
+        serde::{Deserialize, Deserializer, Serialize, Serializer},
         x25519_dalek::PublicKey as X25519PublicKey,
     };
 
@@ -409,38 +408,15 @@ pub mod option_x25519_serde {
     where
         S: Serializer,
     {
-        match maybe {
-            Some(pk) => x25519_serde::serialize(pk, ser),
-            None => ser.serialize_none(),
-        }
+        maybe.as_ref().map(|pk| pk.as_bytes()).serialize(ser)
     }
 
     pub fn deserialize<'de, D>(de: D) -> Result<Option<X25519PublicKey>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // Try to peek – if we see null return None, otherwise parse a PK
-        struct OptVisitor;
-        impl<'de> serde::de::Visitor<'de> for OptVisitor {
-            type Value = Option<X25519PublicKey>;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("null or a 32-byte X25519 public key")
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(None)
-            }
-
-            fn visit_some<D>(self, de: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                x25519_serde::deserialize(de).map(Some)
-            }
-        }
-
-        de.deserialize_option(OptVisitor)
+        let maybe_bytes: Option<[u8; 32]> = Option::deserialize(de)?;
+        Ok(maybe_bytes.map(X25519PublicKey::from))
     }
 }
 
@@ -1075,5 +1051,98 @@ mod tests {
 
         // Ciphertexts should be different even with same plaintext due to different nonces
         assert_ne!(msg1.0.ciphertext, msg2.0.ciphertext);
+    }
+
+    #[test]
+    fn test_serialization_deserialization() {
+        // Test IdentityKey serialization/deserialization
+        let identity = IdentityKey::generate();
+        let original_dh_public_bytes = *identity.dh_public.as_bytes();
+        let original_verify_bytes = *identity.verify.as_bytes();
+
+        // Serialize IdentityKey to binary format using bincode
+        let identity_bytes =
+            bincode::serialize(&identity).expect("Failed to serialize IdentityKey");
+
+        // Deserialize IdentityKey from binary format
+        let deserialized_identity: IdentityKey =
+            bincode::deserialize(&identity_bytes).expect("Failed to deserialize IdentityKey");
+
+        // Verify that the deserialized identity key matches the original
+        assert_eq!(
+            original_dh_public_bytes,
+            *deserialized_identity.dh_public.as_bytes()
+        );
+        assert_eq!(
+            original_verify_bytes,
+            *deserialized_identity.verify.as_bytes()
+        );
+
+        // Test PreKeyBundle serialization/deserialization
+        let receiver = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_id = 42u32;
+        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_id = 123u32;
+
+        // Create bundle with OTPK
+        let original_bundle = PreKeyBundle::new(
+            &receiver,
+            spk_id,
+            &spk_secret,
+            Some(otpk_id),
+            Some(&otpk_secret),
+        );
+
+        // Serialize PreKeyBundle to binary format using bincode
+        let bundle_bytes =
+            bincode::serialize(&original_bundle).expect("Failed to serialize PreKeyBundle");
+
+        // Deserialize PreKeyBundle from binary format
+        let deserialized_bundle: PreKeyBundle =
+            bincode::deserialize(&bundle_bytes).expect("Failed to deserialize PreKeyBundle");
+
+        // Verify that all fields match
+        assert_eq!(original_bundle.spk_id, deserialized_bundle.spk_id);
+        assert_eq!(
+            original_bundle.spk_pub.as_bytes(),
+            deserialized_bundle.spk_pub.as_bytes()
+        );
+        assert_eq!(original_bundle.spk_sig, deserialized_bundle.spk_sig);
+        assert_eq!(
+            original_bundle.identity_verify_bytes,
+            deserialized_bundle.identity_verify_bytes
+        );
+        assert_eq!(
+            original_bundle.identity_pk.as_bytes(),
+            deserialized_bundle.identity_pk.as_bytes()
+        );
+        assert_eq!(original_bundle.otpk_id, deserialized_bundle.otpk_id);
+
+        // Check OTPK public key
+        match (original_bundle.otpk_pub, deserialized_bundle.otpk_pub) {
+            (Some(orig), Some(deser)) => assert_eq!(orig.as_bytes(), deser.as_bytes()),
+            (None, None) => {}
+            _ => panic!("OTPK public key mismatch between original and deserialized"),
+        }
+
+        // Verify that the deserialized bundle still passes signature verification
+        assert!(deserialized_bundle.verify_spk());
+
+        // Test that we can use the deserialized bundle in a full X3DH exchange
+        let sender = IdentityKey::generate();
+        let plaintext = b"test with deserialized bundle";
+
+        let msg = sender_init(&sender, &deserialized_bundle, plaintext).unwrap();
+        let out = receiver_receive(
+            &receiver,
+            &spk_secret,
+            spk_id,
+            Some((&otpk_secret, otpk_id)),
+            &msg.0,
+        )
+        .unwrap();
+
+        assert_eq!(plaintext, &out.0[..]);
     }
 }

@@ -422,7 +422,7 @@ pub fn execute(
         );
     };
 
-    for (vertex, data) in data {
+    for (vertex_name, data) in data {
         let Some(data) = data.as_object() else {
             anyhow::bail!(
                 "Values of input JSON must be an object containing the input ports and their respective values."
@@ -430,7 +430,7 @@ pub fn execute(
         };
 
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.programmable_move_call(
@@ -445,7 +445,9 @@ pub fn execute(
             // Whether the entry port is encrypted is determined by the
             // `--encrypt` argument which accepts a list of `vertex.port`
             // strings.
-            let encrypted = encrypt.iter().any(|e| e == &format!("{}.{}", vertex, port));
+            let encrypted = encrypt
+                .iter()
+                .any(|e| e == &format!("{}.{}", vertex_name, port));
 
             // `port: InputPort`
             let port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?;
