@@ -20,12 +20,12 @@ pub(crate) async fn create_network(
     );
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_default();
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id, ..
-    } = get_nexus_objects(&conf)?;
+    } = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;

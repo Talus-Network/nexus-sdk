@@ -54,12 +54,13 @@ features = ["full"]
 [dev-dependencies]
 assert_fs = "1.1"
 assert_matches = "1.5.0"
-schemars.workspace = true
-warp = "0.3.7"
-rstest.workspace = true
-tempfile.workspace = true
-serial_test.workspace = true
+mockito.workspace = true
 nexus-toolkit.workspace = true
+rstest.workspace = true
+schemars.workspace = true
+serial_test.workspace = true
+tempfile.workspace = true
+warp = "0.3.7"
 
 [dev-dependencies.nexus-sdk]
 workspace = true

@@ -33,7 +33,7 @@ pub(crate) async fn inspect_dag_execution(
     let primitives_pkg_id = {
         let NexusObjects {
             primitives_pkg_id, ..
-        } = get_nexus_objects(&conf)?;
+        } = &get_nexus_objects(&mut conf).await?;
         *primitives_pkg_id // ObjectID is Copy
     };
 
