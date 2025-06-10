@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `secrets` module that provides a wrapper to encrypt and decrypt its inner values
 - `crypto` section to the CLI configuration to save the current state of the `crypto`
 - `nexus conf set --sui.rpc-url` to set a custom Sui RPC URL for the CLI to use
+- automatically fetching devnet objects for user ergonomiocs
 
 #### Changed
 
@@ -34,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus conf` changed to have `set` and `get` subcommands
 - `nexus dag execute` now takes `--encrypt` argument that accepts `vertex.port` pairs to encrypt before sending data on-chain
 - JSON DAG now accepts `encrypted` field on `edges.[].from`
-- `nexus dag execute` now encrypts any  `vertex.port` mentioned in the arguments
+- `nexus dag execute` now encrypts any `vertex.port` mentioned in the arguments
 
 #### Removed
 
