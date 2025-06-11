@@ -356,7 +356,7 @@ mod tests {
         // verify the response
         match result {
             Output::Ok { deleted } => {
-                // deleted:false dönünce de Ok yanıtı olmalı
+                // deleted:false 
                 assert!(!deleted);
             }
             Output::Err { reason, .. } => {
