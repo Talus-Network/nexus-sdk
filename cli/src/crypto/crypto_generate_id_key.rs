@@ -9,7 +9,7 @@ pub(crate) async fn crypto_generate_identity_key(
         .await
         .unwrap_or_default();
 
-    command_title!("Generating a fresh Identity Key");
+    command_title!("Generating a fresh identity key");
 
     let conf_handle = loading!("Generating identity key...");
 
