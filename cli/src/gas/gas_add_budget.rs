@@ -12,10 +12,10 @@ pub(crate) async fn add_gas_budget(
     command_title!("Adding '{coin}' as gas budget for Nexus");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_default();
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;

@@ -22,7 +22,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     // 1. Load config & objects
     let mut conf = CliConf::load().await.unwrap_or_default();
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // 2. Wallet / client / address
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -134,7 +134,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     }
 
     // Make borrow checker happy
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // 8. Craft associate transaction
     let tx_handle = loading!("Crafting transaction...");

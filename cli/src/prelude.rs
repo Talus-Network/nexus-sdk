@@ -18,8 +18,14 @@ pub(crate) use {
     },
 };
 
-// Where to find config file.
+/// Where to find config file.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+
+/// objects.toml locations for each network.
+pub(crate) const DEVNET_OBJECTS_TOML: &str =
+    "https://storage.googleapis.com/production-talus-sui-packages/objects.devnet.toml";
+pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
+pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {

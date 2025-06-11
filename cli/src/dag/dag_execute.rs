@@ -41,7 +41,7 @@ pub(crate) async fn execute_dag(
     }
 
     // Nexus objects must be present in the configuration.
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;

@@ -223,12 +223,31 @@ pub(crate) async fn fetch_object_by_id(
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.
-// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
-pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, NexusCliError> {
+pub(crate) async fn get_nexus_objects(
+    conf: &mut CliConf,
+) -> AnyResult<NexusObjects, NexusCliError> {
     let objects_handle = loading!("Loading Nexus object IDs configuration...");
 
-    if let Some(objects) = &conf.nexus {
+    // If objects are configured locally, return them.
+    if let Some(objects) = conf.nexus.clone() {
         objects_handle.success();
+
+        return Ok(objects);
+    }
+
+    // For some networks, we attempt to load the objects from public endpoints.
+    let response = match conf.sui.net {
+        SuiNet::Devnet => fetch_objects_from_url(DEVNET_OBJECTS_TOML).await,
+        _ => Err(anyhow!(
+            "Nexus objects are not configured for this network."
+        )),
+    };
+
+    if let Ok(objects) = response {
+        objects_handle.success();
+
+        conf.nexus = Some(objects.clone());
+        conf.save().await.map_err(|e| NexusCliError::Any(e))?;
 
         return Ok(objects);
     }
@@ -240,6 +259,22 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, Nexu
         message = "References to Nexus objects are missing in the CLI configuration. Use the following command to update it:",
         command = "$ nexus conf set --nexus.objects <PATH_TO_OBJECTS_TOML>".bold(),
     )))
+}
+
+async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
+    let response = reqwest::Client::new().get(url).send().await?;
+
+    if !response.status().is_success() {
+        bail!(
+            "Failed to fetch Nexus objects from {url}: {}",
+            response.status()
+        );
+    }
+
+    let text = response.text().await?;
+    let objects: NexusObjects = toml::from_str(&text)?;
+
+    Ok(objects)
 }
 
 /// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
@@ -364,6 +399,7 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
+        mockito::Server,
         nexus_sdk::sui::Address,
         rstest::rstest,
         serial_test::serial,
@@ -636,5 +672,100 @@ mod tests {
         std::env::remove_var("SUI_SECRET_MNEMONIC");
         std::env::remove_var("SUI_RPC_URL");
         std::env::remove_var("SUI_CONFIG_DIR");
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_fetch_devnet_objects() {
+        let mut server = Server::new_async().await;
+
+        let response_body = format!(
+            r#"
+                primitives_pkg_id = "0x1"
+                workflow_pkg_id = "0x2"
+                interface_pkg_id = "0x3"
+                network_id = "0x4"
+
+                [tool_registry]
+                objectId = "0x5"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [default_sap]
+                objectId = "0x6"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [gas_service]
+                objectId = "0x7"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [pre_key_vault]
+                objectId = "0x8"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+            "#
+        );
+
+        // Create a mock for the devnet objects endpoint.
+        let mock = server
+            .mock("GET", "/production-talus-sui-packages/objects.devnet.toml")
+            .with_status(200)
+            .with_body(&response_body)
+            .create_async()
+            .await;
+
+        let res = fetch_objects_from_url(
+            format!(
+                "http://{}/production-talus-sui-packages/objects.devnet.toml",
+                server.host_with_port()
+            )
+            .as_str(),
+        )
+        .await;
+
+        assert!(res.is_ok());
+
+        let objects = res.unwrap();
+
+        assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
+        assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
+        assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
+        assert_eq!(objects.network_id, "0x4".parse().unwrap());
+        assert_eq!(objects.tool_registry.object_id, "0x5".parse().unwrap());
+        assert_eq!(objects.tool_registry.version, 1.into());
+        assert_eq!(
+            objects.tool_registry.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.default_sap.object_id, "0x6".parse().unwrap());
+        assert_eq!(objects.default_sap.version, 1.into());
+        assert_eq!(
+            objects.default_sap.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.gas_service.object_id, "0x7".parse().unwrap());
+        assert_eq!(objects.gas_service.version, 1.into());
+        assert_eq!(
+            objects.gas_service.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.pre_key_vault.object_id, "0x8".parse().unwrap());
+        assert_eq!(objects.pre_key_vault.version, 1.into());
+        assert_eq!(
+            objects.pre_key_vault.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+
+        mock.assert_async().await;
     }
 }
