@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `secrets` module that provides a wrapper to encrypt and decrypt its inner values
 - `crypto` section to the CLI configuration to save the current state of the `crypto`
 - `nexus conf set --sui.rpc-url` to set a custom Sui RPC URL for the CLI to use
-- automatically fetching devnet objects for user ergonomiocs
+- automatically fetching devnet objects for user ergonomics
 
 #### Changed
 
