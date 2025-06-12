@@ -65,7 +65,7 @@ macro_rules! notify_error {
         if !JSON_MODE.load(Ordering::Relaxed) {
             eprintln!(
                 "[{ballot}] {msg}",
-                ballot = "✖".red().bold(),
+                ballot = "X".red().bold(),
                 msg = format!($($args)*)
             );
         }
@@ -141,7 +141,7 @@ impl LoadingHandle {
 
             eprintln!(
                 "[{ballot}] {message}",
-                ballot = "✖".red().bold(),
+                ballot = "X".red().bold(),
                 message = self.msg
             );
         }

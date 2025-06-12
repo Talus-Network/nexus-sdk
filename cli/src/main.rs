@@ -87,7 +87,7 @@ async fn main() {
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
-        eprintln!("\n{ballot} {e}", ballot = "✖".red().bold());
+        eprintln!("\n{ballot} {e}", ballot = "X".red().bold());
 
         std::process::exit(1);
     }
