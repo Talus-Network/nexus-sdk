@@ -3,6 +3,7 @@ use {
         command_title,
         display::json_output,
         loading,
+        notify_error,
         notify_success,
         prelude::*,
         sui::*,
@@ -127,7 +128,40 @@ pub(crate) async fn register_tool(
         );
 
         // Sign and submit the TX.
-        let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
+        let response = match sign_and_execute_transaction(&sui, &wallet, tx_data).await {
+            Ok(response) => response,
+            // If the tool is already registered, we don't want to fail the
+            // command.
+            Err(NexusCliError::Any(e)) if e.to_string().contains("register_off_chain_tool_") => {
+                notify_error!(
+                    "Tool '{fqn}' is already registered.",
+                    fqn = meta.fqn.to_string().truecolor(100, 100, 100)
+                );
+
+                registration_results.push(json!({
+                    "tool_fqn": meta.fqn,
+                    "already_registered": true,
+                }));
+
+                continue;
+            }
+            // Any other error fails the tool registration but continues the
+            // loop.
+            Err(e) => {
+                notify_error!(
+                    "Failed to register tool '{fqn}': {error}",
+                    fqn = meta.fqn.to_string().truecolor(100, 100, 100),
+                    error = e
+                );
+
+                registration_results.push(json!({
+                    "tool_fqn": meta.fqn,
+                    "error": e.to_string(),
+                }));
+
+                continue;
+            }
+        };
 
         // Parse the owner cap object IDs from the response.
         let owner_caps = response
@@ -225,6 +259,7 @@ pub(crate) async fn register_tool(
             "tool_fqn": meta.fqn,
             "owner_cap_over_tool_id": over_tool_id,
             "owner_cap_over_gas_id": over_gas_id,
+            "already_registered": false,
         }))
     }
 
