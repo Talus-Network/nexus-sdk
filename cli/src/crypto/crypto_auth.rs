@@ -183,7 +183,7 @@ mod tests {
     };
 
     #[tokio::test]
-    #[serial_test::serial(crypto_auth_offline)]
+    #[serial_test::serial(master_key_env)]
     async fn test_crypto_auth_offline_session_persistence() {
         // Arrange
         // Isolate the filesystem & environment so the test is self-contained.
@@ -230,10 +230,7 @@ mod tests {
             crypto: Some(secret_crypto),
         };
 
-        let toml_str = toml::to_string(&cli_conf).expect("serialize conf to TOML");
-        tokio::fs::write(&conf_path, toml_str)
-            .await
-            .expect("write conf.toml");
+        cli_conf.save_to_path(&conf_path).await.expect("save conf");
 
         // Reload and check that the session is still present & decrypts cleanly.
         let loaded_conf = CliConf::load_from_path(&conf_path)

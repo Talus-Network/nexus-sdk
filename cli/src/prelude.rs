@@ -9,7 +9,6 @@ pub(crate) use {
         types::NexusObjects,
         *,
     },
-    regex::Regex,
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -79,13 +78,7 @@ impl CliConf {
 
     pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
         let parent_folder = path.parent().expect("Parent folder must exist.");
-        let mut conf = toml::to_string_pretty(&self)?;
-
-        // Ensure triple-quoted multiline strings start on a new line to comply with TOML spec.
-        // The default pretty-printer keeps the first character on the same line, which breaks
-        // deserialisation for long Base-64 blobs.
-        let re = Regex::new(r#"= \"\"\"([^\n])"#).unwrap();
-        conf = re.replace_all(&conf, "= \"\"\"\n$1").into_owned();
+        let conf = toml::to_string_pretty(&self)?;
 
         tokio::fs::create_dir_all(parent_folder).await?;
         tokio::fs::write(path, conf).await?;
