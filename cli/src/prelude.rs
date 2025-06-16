@@ -9,6 +9,7 @@ pub(crate) use {
         types::NexusObjects,
         *,
     },
+    regex::Regex,
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -16,7 +17,6 @@ pub(crate) use {
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
     },
-    regex::Regex,
 };
 
 /// Where to find config file.
