@@ -78,7 +78,7 @@ impl CliConf {
 
     pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
         let parent_folder = path.parent().expect("Parent folder must exist.");
-        let conf = toml::to_string_pretty(&self)?;
+        let conf = toml::to_string(&self)?;
 
         tokio::fs::create_dir_all(parent_folder).await?;
         tokio::fs::write(path, conf).await?;
