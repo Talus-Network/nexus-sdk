@@ -228,7 +228,11 @@ mod tests {
             tools: HashMap::new(),
             crypto: Some(secret_crypto),
         };
-        cli_conf.save_to_path(&conf_path).await.expect("save conf");
+
+        let toml_str = toml::to_string(&cli_conf).expect("serialize conf to TOML");
+        tokio::fs::write(&conf_path, toml_str)
+            .await
+            .expect("write conf.toml");
 
         // Reload and check that the session is still present & decrypts cleanly.
         let loaded_conf = CliConf::load_from_path(&conf_path)
