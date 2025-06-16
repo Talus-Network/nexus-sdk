@@ -17,10 +17,15 @@ pub async fn crypto_set_passphrase(stdin: bool, force: bool) -> AnyResult<(), Ne
     // Will lose all existing sessions
     let check_handle = loading!("Checking for existing keys...");
 
-    if Entry::new(SERVICE, USER)
+    // Abort if a raw master-key or a pass-phrase entry already exists (unless --force).
+    if (Entry::new(SERVICE, USER)
         .map_err(|e| NexusCliError::Any(e.into()))?
         .get_password()
         .is_ok()
+        || Entry::new(SERVICE, "passphrase")
+            .map_err(|e| NexusCliError::Any(e.into()))?
+            .get_password()
+            .is_ok())
         && !force
     {
         check_handle.error();
@@ -66,6 +71,8 @@ pub async fn crypto_set_passphrase(stdin: bool, force: bool) -> AnyResult<(), Ne
     {
         Ok(()) => {
             store_handle.success();
+            // Remove any stale raw master-key so that key-status prefers the pass-phrase.
+            let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
             notify_success!("pass-phrase stored in the OS key-ring");
             Ok(())
         }
