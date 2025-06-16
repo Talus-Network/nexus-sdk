@@ -33,7 +33,13 @@ A DAG JSON file consists of sections defining the graph's components:
     "tool_fqn": "namespace.tool.name@version"
   },
   "name": "unique_vertex_name",
-  "entry_ports": ["entry_port_name", "another_entry_port_name", ...]
+  "entry_ports": [
+    {
+      "name": "input_port_name", // Must match the tool's input schema
+      "encrypted": false // Optional, default is false
+    }
+    // ... potentially more entry ports
+  ]
 }
 ```
 

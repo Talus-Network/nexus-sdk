@@ -158,7 +158,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] --encrypt [vertex1.port1 vertex2.port2] [--inspect]`**
+**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] [--inspect]`**
 
 Execute a DAG with the provided `<id>`. This command also accepts an entry `<group>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry `<group>` defaults to a starndardized `_default_group` string.
 
@@ -168,7 +168,7 @@ The input `<data>` is a JSON string with the following structure:
 - Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
-The `--encrypt` argument accepts a space-separated list of `vertex.port` pairs. The data on these ports will be encrypted before being sent to the chain.
+Data for encrypted ports are automatically encrypted before being sent on-chain.
 
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 

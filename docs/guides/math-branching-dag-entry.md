@@ -110,7 +110,12 @@ We'll start with the vertices from our original DAG and add the new `mul_inputs`
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -118,7 +123,16 @@ We'll start with the vertices from our original DAG and add the new `mul_inputs`
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -344,7 +358,12 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -352,7 +371,16 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
