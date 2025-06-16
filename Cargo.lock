@@ -4957,6 +4957,7 @@ dependencies = [
  "openssl",
  "petgraph 0.7.1",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "rpassword",
  "rstest",

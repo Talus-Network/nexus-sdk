@@ -123,6 +123,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     crypto_secret.sessions.insert(session_id, session);
 
     let save_handle = loading!("Saving session to configuration...");
+
     match conf.save().await {
         Ok(()) => {
             save_handle.success();
