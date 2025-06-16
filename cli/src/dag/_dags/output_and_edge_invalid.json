@@ -1,0 +1,41 @@
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
+      "entry_ports": ["input"]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b"
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "1",
+        "output_port": "1.0",
+        "encrypted": true
+      },
+      "to": {
+        "vertex": "b",
+        "input_port": "1"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "a",
+      "output_variant": "1",
+      "output_port": "1.0",
+      "encrypted": true
+    }
+  ]
+}

@@ -273,6 +273,33 @@ We'll keep the same default values as the original DAG:
 }
 ```
 
+### 4. Specify outputs (`outputs` list)
+
+Outputs will also remain identical.
+
+```json
+{
+  // ... other sections ...
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
+    }
+  ]
+}
+```
+
 Notice that we do not add any default values for the `mul_inputs` vertex, as both its input ports will be provided by the user.
 
 ### 4. Define Entry Groups (`entry_groups` list)
@@ -463,6 +490,23 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
     {
       "name": "mul_entry",
       "vertices": ["mul_inputs"]
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
     }
   ]
 }

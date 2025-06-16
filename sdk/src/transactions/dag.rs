@@ -1,7 +1,17 @@
 use crate::{
     idents::{primitives, sui_framework, workflow},
     sui,
-    types::{Dag, Data, DefaultValue, Edge, NexusObjects, Vertex, VertexKind, DEFAULT_ENTRY_GROUP},
+    types::{
+        Dag,
+        Data,
+        DefaultValue,
+        Edge,
+        FromPort,
+        NexusObjects,
+        Vertex,
+        VertexKind,
+        DEFAULT_ENTRY_GROUP,
+    },
 };
 
 /// PTB template for creating a new empty DAG.
@@ -57,6 +67,13 @@ pub fn create(
     // Create all edges.
     for edge in &dag.edges {
         dag_arg = create_edge(tx, objects, dag_arg, edge)?;
+    }
+
+    // Create all outputs.
+    if let Some(outputs) = &dag.outputs {
+        for output in outputs {
+            dag_arg = create_output(tx, objects, dag_arg, output)?;
+        }
     }
 
     // Create all entry ports and vertices. Or create a default entry group
@@ -156,8 +173,10 @@ pub fn create_default_value(
 
     // `value: NexusData`
     let value = match &default_value.value {
-        Data::Inline { data } => {
-            primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, data)?
+        Data::Inline { data, .. } => {
+            // Default values cannot be secret. Sensitive data should be passed
+            // via entry ports at runtime.
+            primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, data, false)?
         }
         // Allowing to remind us that any other data storages can be added here.
         #[allow(unreachable_patterns)]
@@ -205,7 +224,25 @@ pub fn create_edge(
     let to_port =
         workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
 
-    // `dag.with_edge(frpm_vertex, from_variant, from_port, to_vertex, to_port)`
+    if edge.from.encrypted {
+        // `dag.with_encrypted_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
+        return Ok(tx.programmable_move_call(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_ENCRYPTED_EDGE.module.into(),
+            workflow::Dag::WITH_ENCRYPTED_EDGE.name.into(),
+            vec![],
+            vec![
+                dag,
+                from_vertex,
+                from_variant,
+                from_port,
+                to_vertex,
+                to_port,
+            ],
+        ));
+    }
+
+    // `dag.with_edge(from_vertex, from_variant, from_port, encrypted, to_vertex, to_port)`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::Dag::WITH_EDGE.module.into(),
@@ -219,6 +256,48 @@ pub fn create_edge(
             to_vertex,
             to_port,
         ],
+    ))
+}
+
+/// PTB template for creating a new DAG edge.
+pub fn create_output(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::Argument,
+    output: &FromPort,
+) -> anyhow::Result<sui::Argument> {
+    // `vertex: Vertex`
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex)?;
+
+    // `variant: OutputVariant`
+    let variant = workflow::Dag::output_variant_from_str(
+        tx,
+        objects.workflow_pkg_id,
+        &output.output_variant,
+    )?;
+
+    // `port: OutputPort`
+    let port =
+        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port)?;
+
+    if output.encrypted {
+        // `dag.with_encrypted_output(vertex, variant, port)`
+        return Ok(tx.programmable_move_call(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_ENCRYPTED_OUTPUT.module.into(),
+            workflow::Dag::WITH_ENCRYPTED_OUTPUT.name.into(),
+            vec![],
+            vec![dag, vertex, variant, port],
+        ));
+    }
+
+    // `dag.with_output(vertex, variant, port)`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Dag::WITH_OUTPUT.module.into(),
+        workflow::Dag::WITH_OUTPUT.name.into(),
+        vec![],
+        vec![dag, vertex, variant, port],
     ))
 }
 
@@ -283,6 +362,7 @@ pub fn execute(
     dag: &sui::ObjectRef,
     entry_group: &str,
     input_json: serde_json::Value,
+    encrypt: Vec<String>,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut DefaultSAP`
     let default_sap = tx.obj(sui::ObjectArg::SharedObject {
@@ -342,7 +422,7 @@ pub fn execute(
         );
     };
 
-    for (vertex, data) in data {
+    for (vertex_name, data) in data {
         let Some(data) = data.as_object() else {
             anyhow::bail!(
                 "Values of input JSON must be an object containing the input ports and their respective values."
@@ -350,7 +430,7 @@ pub fn execute(
         };
 
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.programmable_move_call(
@@ -362,12 +442,24 @@ pub fn execute(
         );
 
         for (port, value) in data {
+            // Whether the entry port is encrypted is determined by the
+            // `--encrypt` argument which accepts a list of `vertex.port`
+            // strings.
+            let encrypted = encrypt
+                .iter()
+                .any(|e| e == &format!("{}.{}", vertex_name, port));
+
             // `port: InputPort`
             let port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?;
 
             // `value: NexusData`
-            let value =
-                primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, value)?;
+            // TODO: <https://github.com/Talus-Network/nexus-next/issues/300>
+            let value = primitives::Data::nexus_data_from_json(
+                tx,
+                objects.primitives_pkg_id,
+                value,
+                encrypted,
+            )?;
 
             // `with_vertex_input.insert(port, value)`
             tx.programmable_move_call(
@@ -504,6 +596,7 @@ mod tests {
             input_port: "port1".to_string(),
             value: Data::Inline {
                 data: serde_json::json!({"key": "value"}),
+                encrypted: false,
             },
         };
 
@@ -535,6 +628,7 @@ mod tests {
                 vertex: "vertex1".to_string(),
                 output_variant: "variant1".to_string(),
                 output_port: "port1".to_string(),
+                encrypted: false,
             },
             to: ToPort {
                 vertex: "vertex2".to_string(),
@@ -628,7 +722,15 @@ mod tests {
         });
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(&mut tx, &nexus_objects, &dag, entry_group, input_json).unwrap();
+        execute(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            entry_group,
+            input_json,
+            vec![],
+        )
+        .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -643,6 +745,60 @@ mod tests {
         assert_eq!(
             call.function,
             workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.to_string()
+        );
+    }
+
+    #[test]
+    fn test_create_output_unencrypted() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag = sui::Argument::Result(0);
+        let output = FromPort {
+            vertex: "vertex1".to_string(),
+            output_variant: "variant1".to_string(),
+            output_port: "port1".to_string(),
+            encrypted: false,
+        };
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_output(&mut tx, &objects, dag, &output).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create an output");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.module, workflow::Dag::WITH_OUTPUT.module.to_string());
+        assert_eq!(call.function, workflow::Dag::WITH_OUTPUT.name.to_string());
+    }
+
+    #[test]
+    fn test_create_output_encrypted() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag = sui::Argument::Result(0);
+        let output = FromPort {
+            vertex: "vertex1".to_string(),
+            output_variant: "variant1".to_string(),
+            output_port: "port1".to_string(),
+            encrypted: true,
+        };
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        create_output(&mut tx, &objects, dag, &output).unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to create an encrypted output");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::WITH_ENCRYPTED_OUTPUT.module.to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::WITH_ENCRYPTED_OUTPUT.name.to_string()
         );
     }
 }

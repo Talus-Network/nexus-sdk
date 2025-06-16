@@ -169,6 +169,22 @@ You need to set up default values for both tools:
 }
 ```
 
+## Step 5: Updating DAG outputs
+
+We can no longer assign outputs to be on the math tools because they now have outgoing edges. Instead our new output will be the chat completion tool:
+
+```json
+{
+  "outputs": [
+    {
+      "vertex": "chat_completion",
+      "output_variant": "ok",
+      "output_port": "completion"
+    }
+  ]
+}
+```
+
 ## Step 5: Updating Entry Groups
 
 You need to add the `chat_completion` to our entry groups:
@@ -517,6 +533,13 @@ Here's the complete DAG definition that combines all the components we've discus
       "name": "mul_entry",
       "vertices": ["mul_inputs", "chat_completion"]
     }
+  ],
+  "outputs": [
+    {
+      "vertex": "chat_completion",
+      "output_variant": "ok",
+      "output_port": "completion"
+    }
   ]
 }
 ```
@@ -546,13 +569,13 @@ For testing, you can use the Nexus CLI to execute the DAG:
 nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{
   "add_input_and_default": {"a": 10},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
+}' --inspect --encrypt chat_completion.api_key
 
 # Using the multiplication entry group
 nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{
   "mul_inputs": {"a": 5, "b": 2},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
+}' --inspect --encrypt chat_completion.api_key
 ```
 
 The `--inspect` flag will show you detailed information about the execution, including:
@@ -561,6 +584,8 @@ The `--inspect` flag will show you detailed information about the execution, inc
 - Inputs and outputs at each step
 - Any errors that occurred
 - The final chat completion response
+
+The `--encrypt` flag is used to encrypt sensitive information, such as the API key, before sending it to the Nexus network.
 
 ### 2. Integration with Applications
 
@@ -621,5 +646,5 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 
 <!-- List of references -->
 
-[math-branching-entry-guide]: ./math_branching-dag-entry.md
+[math-branching-entry-guide]: ./math-branching-dag-entry.md
 [llm-openai-chat-prep-tool]: ./llm-openai-chat-prep-tool.md

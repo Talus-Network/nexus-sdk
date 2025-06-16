@@ -293,7 +293,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     // output port if they don't exist yet.
     let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
 
-    for edge in dag.edges {
+    for edge in &dag.edges {
         let origin_vertex = GraphNode::Vertex {
             name: edge.from.vertex.clone(),
         };
@@ -442,6 +442,22 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
             bail!(
                 "'{default_value}' is an entry port or has an edge leading into it and therefore cannot have a default value.",
             );
+        }
+    }
+
+    // Check that outputs are not defined on vertices that have outgoing edges.
+    for vertex in &dag.vertices {
+        let outputs = dag.outputs.clone().unwrap_or_default();
+
+        let has_outputs = outputs.iter().any(|output| output.vertex == vertex.name);
+        let has_edges = dag.edges.iter().any(|edge| edge.from.vertex == vertex.name);
+
+        let vertex_ident = GraphNode::Vertex {
+            name: vertex.name.clone(),
+        };
+
+        if has_outputs && has_edges {
+            bail!("'{vertex_ident}' cannot have both outgoing edges and ports marked as output.");
         }
     }
 

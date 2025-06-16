@@ -4,8 +4,7 @@ use crate::{command_title, display::json_output, loading, prelude::*, sui::resol
 pub(crate) async fn set_nexus_conf(
     sui_net: Option<SuiNet>,
     sui_wallet_path: Option<PathBuf>,
-    sui_auth_user: Option<String>,
-    sui_auth_password: Option<String>,
+    sui_rpc_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     conf_path: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
@@ -14,13 +13,6 @@ pub(crate) async fn set_nexus_conf(
         .unwrap_or_default();
 
     command_title!("Updating Nexus CLI Configuration");
-
-    if sui_auth_user.is_some() != sui_auth_password.is_some() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Both --sui.basic-auth-user and --sui.basic-auth-password must be provided together."
-        )));
-    }
-
     let conf_handle = loading!("Updating configuration...");
 
     // If a nexus.objects file is provided, load the file and update configuration.
@@ -46,8 +38,7 @@ pub(crate) async fn set_nexus_conf(
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
     conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
-    conf.sui.auth_user = sui_auth_user.or(conf.sui.auth_user);
-    conf.sui.auth_password = sui_auth_password.or(conf.sui.auth_password);
+    conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
 
     json_output(&serde_json::to_value(&conf).unwrap())?;
 
@@ -68,7 +59,14 @@ mod tests {
     use {super::*, assert_matches::assert_matches, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
+    #[serial_test::serial(master_key_env)]
     async fn test_conf_loads_and_saves() {
+        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+
+        let secret_home = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
+        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
@@ -83,6 +81,7 @@ mod tests {
             tool_registry: sui_mocks::mock_sui_object_ref(),
             default_sap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
+            pre_key_vault: sui_mocks::mock_sui_object_ref(),
         };
 
         // Serialize the NexusObjects instance to a TOML string.
@@ -98,8 +97,7 @@ mod tests {
         let result = set_nexus_conf(
             Some(SuiNet::Mainnet),
             Some(tempdir.join("wallet")),
-            Some("user".to_string()),
-            Some("pass".to_string()),
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(tempdir.join("objects.toml")),
             path.clone(),
         )
@@ -108,30 +106,36 @@ mod tests {
         assert_matches!(result, Ok(()));
 
         // Check that file was written with the correct contents.
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
-        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+        let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Mainnet);
         assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
-        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
-        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
+        assert_eq!(
+            conf.sui.rpc_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
         assert_eq!(objects, nexus_objects_instance);
 
         // Overriding one value will save that one value and leave other values intact.
-        let result =
-            set_nexus_conf(Some(SuiNet::Testnet), None, None, None, None, path.clone()).await;
+        let result = set_nexus_conf(Some(SuiNet::Testnet), None, None, None, path.clone()).await;
 
         assert_matches!(result, Ok(()));
 
-        let contents = tokio::fs::read_to_string(&path).await.unwrap();
-        let conf = toml::from_str::<CliConf>(&contents).unwrap();
+        let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
         assert_eq!(conf.sui.net, SuiNet::Testnet);
         assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
-        assert_eq!(conf.sui.auth_user, Some("user".to_string()));
-        assert_eq!(conf.sui.auth_password, Some("pass".to_string()));
+        assert_eq!(
+            conf.sui.rpc_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
         assert_eq!(objects, nexus_objects_instance);
+
+        // Clean up env vars.
+        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("XDG_DATA_HOME");
     }
 }

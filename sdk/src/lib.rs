@@ -52,3 +52,7 @@ pub mod walrus;
 /// Cryptographic primitives including X3DH for secure key exchange
 #[cfg(feature = "crypto")]
 pub mod crypto;
+
+/// Secret core provides a generic secret type that can be used to store
+#[cfg(feature = "secret_core")]
+pub mod secret_core;

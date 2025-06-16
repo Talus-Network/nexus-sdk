@@ -17,6 +17,9 @@ pub struct Dag {
     /// If there are no entry groups specified, all specified input ports are
     /// considered to be part of the [`DEFAULT_ENTRY_GROUP`].
     pub entry_groups: Option<Vec<EntryGroup>>,
+    /// Which output variants & ports of which vertices should be the output of
+    /// the DAG.
+    pub outputs: Option<Vec<FromPort>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -55,7 +58,14 @@ pub struct DefaultValue {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "storage", rename_all = "snake_case")]
 pub enum Data {
-    Inline { data: serde_json::Value },
+    Inline {
+        data: serde_json::Value,
+        /// Whether the [`Data::Inline::data`] is encrypted. If `true`, the
+        /// leader will decrypt before passing the data to the tool. Defaults to
+        /// `false`.
+        #[serde(default)]
+        encrypted: bool,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -64,11 +74,15 @@ pub struct Edge {
     pub to: ToPort,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct FromPort {
     pub vertex: String,
     pub output_variant: String,
     pub output_port: String,
+    /// Whether the output port data should be encrypted before being sent to
+    /// the workflow. Defaults to `false`.
+    #[serde(default)]
+    pub encrypted: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

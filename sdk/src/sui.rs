@@ -80,6 +80,10 @@ pub use {
         wallet_context::WalletContext,
         SuiClient as Client,
         SuiClientBuilder as ClientBuilder,
+        SUI_DEVNET_URL as DEVNET_URL,
+        SUI_LOCAL_NETWORK_URL as LOCAL_NETWORK_URL,
+        SUI_MAINNET_URL as MAINNET_URL,
+        SUI_TESTNET_URL as TESTNET_URL,
     },
 };
 

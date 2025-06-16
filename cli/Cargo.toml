@@ -35,6 +35,18 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 
+# crypto helpers
+rand.workspace = true
+# Encryption helpers
+aes-gcm.workspace = true
+bincode.workspace = true
+argon2.workspace = true
+directories.workspace = true
+hex.workspace = true
+keyring.workspace = true
+zeroize.workspace = true
+rpassword.workspace = true
+
 # === Nexus deps ===
 [dependencies.nexus-sdk]
 workspace = true
@@ -43,12 +55,13 @@ features = ["full"]
 [dev-dependencies]
 assert_fs = "1.1"
 assert_matches = "1.5.0"
-schemars.workspace = true
-warp = "0.3.7"
-rstest.workspace = true
-tempfile.workspace = true
-serial_test.workspace = true
+mockito.workspace = true
 nexus-toolkit.workspace = true
+rstest.workspace = true
+schemars.workspace = true
+serial_test.workspace = true
+tempfile.workspace = true
+warp = "0.3.7"
 
 [dev-dependencies.nexus-sdk]
 workspace = true

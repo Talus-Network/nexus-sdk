@@ -157,7 +157,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { deleted } => {
-                assert_eq!(deleted, true);
+                assert!(deleted);
             }
             Output::Err {
                 reason,
@@ -344,7 +344,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { deleted } => {
-                assert_eq!(deleted, false);
+                assert!(!deleted);
             }
             Output::Err {
                 reason,

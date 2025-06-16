@@ -179,6 +179,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_edge"),
     };
+    /// Add an encrypted Edge to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_encrypted_edge`
+    pub const WITH_ENCRYPTED_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_encrypted_edge"),
+    };
+    /// Add an encrypted output to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_encrypted_output`
+    pub const WITH_ENCRYPTED_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_encrypted_output"),
+    };
     /// Mark a vertex as an entry vertex and assign it to a group.
     ///
     /// `nexus_workflow::dag::with_entry_in_group`
@@ -200,6 +214,13 @@ impl Dag {
     pub const WITH_ENTRY_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_entry_vertex"),
+    };
+    /// Add an output to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_output`
+    pub const WITH_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_output"),
     };
     /// Add a Vertex to a DAG.
     ///
@@ -529,6 +550,57 @@ impl DefaultGasExtension {
     pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("enable_expiry"),
+    };
+}
+
+// == `nexus_workflow::pre_key_vault` ==
+
+pub struct PreKeyVault;
+
+const PRE_KEY_VAULT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("pre_key_vault");
+
+impl PreKeyVault {
+    /// Associate a pre key with the sender and fire an initial message.
+    ///
+    /// `nexus_workflow::pre_key_vault::associate_pre_key`
+    pub const ASSOCIATE_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("associate_pre_key"),
+    };
+    /// Claim a pre key for the tx sender.
+    ///
+    /// `nexus_workflow::pre_key_vault::claim_pre_key_for_self`
+    pub const CLAIM_PRE_KEY_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("claim_pre_key_for_self"),
+    };
+    /// PreKey struct type. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::pre_key_vault::PreKey`
+    pub const PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("PreKey"),
+    };
+    /// Create a new pre key from bytes.
+    ///
+    /// `nexus_workflow::pre_key_vault::pre_key_from_bytes`
+    pub const PRE_KEY_FROM_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("pre_key_from_bytes"),
+    };
+    /// PreKeyVault type for lookups.
+    ///
+    /// `nexus_workflow::pre_key_vault::PreKeyVault`
+    pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("PreKeyVault"),
+    };
+    /// Replenish the pre key vault with public pre_keys.
+    ///
+    /// `nexus_workflow::pre_key_vault::replenish_pre_keys`
+    pub const REPLENISH_PRE_KEYS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("replenish_pre_keys"),
     };
 }
 

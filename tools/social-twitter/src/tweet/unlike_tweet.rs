@@ -160,7 +160,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { unliked } => {
-                assert_eq!(unliked, true);
+                assert!(unliked);
             }
             Output::Err {
                 reason,
@@ -362,7 +362,7 @@ mod tests {
         // Verify the response - Expect Ok with unliked: true
         match result {
             Output::Ok { unliked } => {
-                assert_eq!(unliked, false); // Verify the API response is correctly passed through
+                assert!(!unliked); // Verify the API response is correctly passed through
             }
             Output::Err { reason, .. } => {
                 panic!(

@@ -316,7 +316,7 @@ Twitter api [reference](https://docs.x.com/x-api/tweets/post-tweet)
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -325,7 +325,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`text`: [`String`]**
 
@@ -429,7 +429,7 @@ Twitter api [reference](https://docs.x.com/x-api/posts/post-delete-by-post-id#po
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -438,7 +438,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`tweet_id`: [`String`]**
 
@@ -486,7 +486,7 @@ Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-pa
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -495,7 +495,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -536,7 +536,7 @@ Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-pa
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -545,7 +545,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -586,7 +586,7 @@ Twitter api [reference](https://docs.x.com/x-api/media/quickstart/media-upload-c
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -595,7 +595,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`media_data`: [`String`]**
 
@@ -696,9 +696,9 @@ The media upload failed.
 The media upload must follow these validation rules:
 
 1. Media data must be valid Base64 encoded content
-2. Media type must be one of the supported types
-3. Media category must be appropriate for the media type
-4. Media size must be within Twitter's limits:
+1. Media type must be one of the supported types
+1. Media category must be appropriate for the media type
+1. Media size must be within Twitter's limits:
    - Images: Up to 5MB
    - GIFs: Up to 15MB
    - Videos: Up to 512MB
@@ -909,7 +909,7 @@ Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-pa
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -918,7 +918,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -959,7 +959,7 @@ Twitter api [reference](https://docs.x.com/x-api/users/follow)
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -968,7 +968,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -1173,8 +1173,8 @@ The user was retrieved successfully.
 The user was not retrieved due to an error.
 
 - **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
-  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found) - User not found")
+  - Twitter API error with title and error type (e.g., "Twitter API error: Not Found Error ([type](https://api.twitter.com/2/problems/resource-not-found))")
+  - Twitter API error with optional detail and message (e.g., "Twitter API error: Not Found Error ([type](https://api.twitter.com/2/problems/resource-not-found) - User not found"))
   - Network error (e.g., "Network error: network error: Connection refused")
   - Response parsing error (e.g., "Response parsing error: expected value at line 1 column 1")
   - Status code error (e.g., "Twitter API status error: 429 Too Many Requests")
@@ -1372,7 +1372,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1381,7 +1381,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`name`: [`String`]**
 
@@ -1411,7 +1411,7 @@ The list was created successfully.
 The list creation failed.
 
 - **`err.reason`: [`String`]** - The reason for the error. This could be:
-  - Twitter API error (e.g., "Twitter API error: Not Found Error (type: https://api.twitter.com/2/problems/resource-not-found)")
+  - Twitter API error (e.g., "Twitter API error: Not Found Error ([type](https://api.twitter.com/2/problems/resource-not-found))")
   - Network error (e.g., "Network error: network error: Connection refused")
   - Response parsing error
   - Status code error
@@ -1426,7 +1426,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1435,7 +1435,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`list_id`: [`String`]**
 
@@ -1698,7 +1698,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1707,7 +1707,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`list_id`: [`String`]**
 
@@ -1753,7 +1753,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1762,7 +1762,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`list_id`: [`String`]**
 
@@ -1778,7 +1778,7 @@ The ID of the user to add to the list.
 
 The user was successfully added to the list.
 
-- \*\*`ok.is_member`
+- **`ok.is_member`**
 - **`ok.is_member`** - Confirmation that the user is a member of the list (true).
 
 **`err`**
@@ -1801,7 +1801,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/lists/
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1810,7 +1810,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`list_id`: [`String`]**
 
@@ -1848,7 +1848,7 @@ Twitter api [reference](https://docs.x.com/x-api/posts/causes-the-user-in-the-pa
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -1857,7 +1857,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -2015,7 +2015,7 @@ Twitter api [reference](https://docs.x.com/x-api/users/unfollow)
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2024,7 +2024,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`user_id`: [`String`]**
 
@@ -2150,7 +2150,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2159,7 +2159,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`participant_id`: [`String`]**
 
@@ -2209,7 +2209,7 @@ Standard Nexus Tool that retrieves direct messages from a conversation. Twitter 
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2218,7 +2218,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`participant_id`: [`String`]**
 
@@ -2309,7 +2309,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2318,7 +2318,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`conversation_id`: [`String`]**
 
@@ -2401,7 +2401,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2410,7 +2410,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`conversation_type`: [`ConversationType`]**
 
@@ -2468,7 +2468,7 @@ The group conversation creation failed.
 The message must follow these validation rules:
 
 1. Either `text` or `media_ids` must be provided and non-empty
-2. If `media_ids` is provided, it must not be empty (for `Many` variant)
+1. If `media_ids` is provided, it must not be empty (for `Many` variant)
 
 ---
 
@@ -2479,7 +2479,7 @@ Twitter api [reference](https://developer.twitter.com/en/docs/twitter-api/direct
 
 ## Input
 
-**Authentication Parameters**
+### Authentication Parameters
 
 The following authentication parameters are provided as part of the TwitterAuth structure:
 
@@ -2488,7 +2488,7 @@ The following authentication parameters are provided as part of the TwitterAuth 
 - **`access_token`: [`String`]** - Access Token for user's Twitter account
 - **`access_token_secret`: [`String`]** - Access Token Secret for user's Twitter account
 
-**Additional Parameters**
+### Additional Parameters
 
 **`dm_conversation_id`: [`String`]**
 
@@ -2540,7 +2540,7 @@ The message sending failed.
 The message must follow these validation rules:
 
 1. Either `text` or `media_ids` must be provided and non-empty
-2. If `media_ids` is provided, it must not be empty (for `Many` variant)
+1. If `media_ids` is provided, it must not be empty (for `Many` variant)
 
 ## Example Error Messages
 
@@ -2577,8 +2577,8 @@ The `err.kind` field provides a categorized error type for easier programmatic h
 Each error includes three primary components:
 
 1. **`kind` (TwitterErrorKind)**: The categorized error type (as described above)
-2. **`reason` (String)**: A descriptive message that provides details about the error
-3. **`status_code` (Option<u16>)**: The HTTP status code returned by Twitter API, if available
+1. **`reason` (String)**: A descriptive message that provides details about the error
+1. **`status_code` (Option<u16>)**: The HTTP status code returned by Twitter API, if available
 
 ### Common Status Codes
 

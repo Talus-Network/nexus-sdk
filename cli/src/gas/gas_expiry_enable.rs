@@ -14,10 +14,10 @@ pub(crate) async fn enable_expiry_extension(
     command_title!("Enabling the expiry gas extension for tool '{tool_fqn}' with cost '{cost_per_minute}' MIST per minute");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_default();
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -25,7 +25,7 @@ pub(crate) async fn enable_expiry_extension(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
     let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {

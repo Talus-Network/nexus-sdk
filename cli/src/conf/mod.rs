@@ -39,17 +39,11 @@ pub(crate) enum ConfCommand {
         )]
         sui_wallet_path: Option<PathBuf>,
         #[arg(
-            long = "sui.basic-auth-user",
-            help = "Set an user for basic authentication to the Sui node",
-            value_name = "USER"
+            long = "sui.rpc-url",
+            help = "Set a custom RPC URL for the Sui node",
+            value_name = "URL"
         )]
-        sui_auth_user: Option<String>,
-        #[arg(
-            long = "sui.basic-auth-password",
-            help = "Set a password for basic authentication to the Sui node",
-            value_name = "PASSWORD"
-        )]
-        sui_auth_password: Option<String>,
+        sui_rpc_url: Option<reqwest::Url>,
         #[arg(
             long = "nexus.objects",
             help = "Path to a TOML file containing Nexus objects",
@@ -57,6 +51,7 @@ pub(crate) enum ConfCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         nexus_objects_path: Option<PathBuf>,
+
         /// Hidden argument used for testing to set the path of the configuration
         /// file.
         #[arg(
@@ -91,16 +86,14 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         ConfCommand::Set {
             sui_net,
             sui_wallet_path,
-            sui_auth_user,
-            sui_auth_password,
+            sui_rpc_url,
             nexus_objects_path,
             conf_path,
         } => {
             set_nexus_conf(
                 sui_net,
                 sui_wallet_path,
-                sui_auth_user,
-                sui_auth_password,
+                sui_rpc_url,
                 nexus_objects_path,
                 conf_path,
             )

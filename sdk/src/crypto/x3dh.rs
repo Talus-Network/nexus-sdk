@@ -54,12 +54,14 @@
 
 use subtle::ConstantTimeEq; // Constant‑time comparison
 use {
+    // For custom IdentityKey (de)serialisation
+    super::secret_bytes::SecretBytes,
     aead::{Aead, KeyInit, Payload},
     chacha20poly1305::{XChaCha20Poly1305, XNonce},
     hkdf::Hkdf,
     rand::rngs::OsRng,
     rand_core::RngCore,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
     sha2::Sha256,
     thiserror::Error,
     x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret},
@@ -74,7 +76,7 @@ use {
 /// Curve identifier for `Encode(PK)` (see section 2.5 of the X3DH spec).
 const CURVE_ID_X25519: u8 = 0x05;
 /// Maximum ciphertext length accepted in a pre‑key message (**16 KiB**).
-const MAX_PREKEY_MSG: usize = 16 * 1024;
+const MAX_PRE_KEY_MSG: usize = 16 * 1024;
 /// Default string fed into HKDF's `info` field. Overwrite when its needed.
 const HKDF_INFO: &[u8] = b"X3DH";
 
@@ -96,13 +98,13 @@ pub enum X3dhError {
     #[error("decryption failed")]
     DecryptFailed,
     /// Receiver attempted to decrypt a message that references an OTPK he no longer possesses.
-    #[error("OTPK secret missing – refuse to process one‑time pre‑key message")]
+    #[error("OTPK secret missing - refuse to process one-time pre-key message")]
     MissingOneTimeSecret,
     /// The SPK identifier in the message does not match Receiver's current SPK.
-    #[error("signed pre‑key id mismatch")]
+    #[error("signed pre-key id mismatch")]
     SpkIdMismatch,
     /// The OTPK identifier in the message does not match the supplied OTPK secret.
-    #[error("one‑time pre‑key id mismatch")]
+    #[error("one-time pre-key id mismatch")]
     OtpkIdMismatch,
     /// Receiver's X25519 and XEdDSA public keys are not the Edwards–Montgomery map of each other.
     #[error("identity DH and Ed keys do not match")]
@@ -113,7 +115,7 @@ pub enum X3dhError {
     /// Authenticated encryption error (should be unreachable).
     #[error("AEAD error")]
     Aead,
-    /// Ciphertext length exceeded [`MAX_PREKEY_MSG`].
+    /// Ciphertext length exceeded [`MAX_PRE_KEY_MSG`].
     #[error("ciphertext too large")]
     CiphertextTooLarge,
 }
@@ -204,7 +206,25 @@ pub struct IdentityKey {
 impl IdentityKey {
     /// Generate a fresh identity key pair.
     pub fn generate() -> Self {
-        let secret = StaticSecret::random_from_rng(&mut OsRng);
+        let secret = StaticSecret::random_from_rng(OsRng);
+        let dh_public = X25519PublicKey::from(&secret);
+        let signing = XEdPrivate::from(&secret);
+        let verify = XEdPublic::from(&dh_public);
+        Self {
+            secret,
+            dh_public,
+            signing,
+            verify,
+        }
+    }
+
+    /// Get a reference to the secret key
+    pub fn secret(&self) -> &StaticSecret {
+        &self.secret
+    }
+
+    /// Create an identity key from an existing secret
+    pub fn from_secret(secret: StaticSecret) -> Self {
         let dh_public = X25519PublicKey::from(&secret);
         let signing = XEdPrivate::from(&secret);
         let verify = XEdPublic::from(&dh_public);
@@ -217,6 +237,30 @@ impl IdentityKey {
     }
 }
 
+// Custom Serde for IdentityKey
+
+impl Serialize for IdentityKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialise only the secret scalar using the helper wrapper.
+        SecretBytes::from(&self.secret).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for IdentityKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Reconstruct IdentityKey from the secret bytes.
+        let secret_bytes = SecretBytes::deserialize(deserializer)?;
+        let secret: StaticSecret = secret_bytes.into();
+        Ok(IdentityKey::from_secret(secret))
+    }
+}
+
 // === Pre‑Key material (Receiver‑side) ===
 
 /// Public bundle uploaded by Receiver
@@ -225,21 +269,26 @@ impl IdentityKey {
 /// * the *Signed Pre‑Key* (SPK) plus its identifier and XEdDSA signature,
 /// * Receiver's long‑term *Identity Key* (`IK_B`),
 /// * **optionally** one *One‑Time Pre‑Key* (OTPK).
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreKeyBundle {
     /// Identifier of the signed pre‑key.
     pub spk_id: u32,
     /// SPK public key.
+    #[serde(with = "x25519_serde")]
     pub spk_pub: X25519PublicKey,
     /// XEdDSA signature over `Encode(spk_pub)`.
+    #[serde(with = "serde_big_array::BigArray")]
     pub spk_sig: [u8; 64],
     /// Raw bytes of `Ed25519(IK_B)`.
-    /// It allows verify the signature of the SPK.
+    /// It allows for verification of the signature of the SPK.
     pub identity_verify_bytes: [u8; 32],
     /// DH form of Receiver's identity key.
+    #[serde(with = "x25519_serde")]
     pub identity_pk: X25519PublicKey,
     /// Identifier of the accompanying OTPK (if any).
     pub otpk_id: Option<u32>,
     /// OTPK public key.
+    #[serde(with = "option_x25519_serde")]
     pub otpk_pub: Option<X25519PublicKey>,
 }
 
@@ -254,8 +303,9 @@ impl PreKeyBundle {
     ) -> Self {
         let spk_pub = X25519PublicKey::from(spk_secret);
         // Signature proves possession of IK_B
-        let spk_sig = identity.signing.sign(&encode_pk(&spk_pub), &mut OsRng);
+        let spk_sig = identity.signing.sign(&encode_pk(&spk_pub), OsRng);
         let identity_verify_bytes = *identity.verify.as_bytes();
+
         Self {
             spk_id,
             spk_pub,
@@ -294,9 +344,9 @@ impl PreKeyBundle {
 
 // === Serde helpers ===
 
-/// Serde (de)serialisation for `x25519_dalek::PublicKey`.
+/// Serde (de)serialization for `x25519_dalek::PublicKey`.
 ///
-/// Serialises as a raw 32‑byte string.
+/// Serializes as a raw 32‑byte string.
 pub mod x25519_serde {
     use {
         super::X25519PublicKey,
@@ -342,6 +392,31 @@ pub mod x25519_serde {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_bytes(PublicKeyVisitor)
+    }
+}
+
+/// Serde (de)serialization for `Option<x25519_dalek::PublicKey>`.
+///
+/// Serializes as an optional raw 32‑byte string.
+pub mod option_x25519_serde {
+    use {
+        serde::{Deserialize, Deserializer, Serialize, Serializer},
+        x25519_dalek::PublicKey as X25519PublicKey,
+    };
+
+    pub fn serialize<S>(maybe: &Option<X25519PublicKey>, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        maybe.as_ref().map(|pk| pk.as_bytes()).serialize(ser)
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<Option<X25519PublicKey>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let maybe_bytes: Option<[u8; 32]> = Option::deserialize(de)?;
+        Ok(maybe_bytes.map(X25519PublicKey::from))
     }
 }
 
@@ -405,7 +480,7 @@ pub fn sender_init(
         .map_err(|_| X3dhError::SigVerifyFailed)?;
 
     // 2. Ephemeral key pair
-    let ek_secret = StaticSecret::random_from_rng(&mut OsRng);
+    let ek_secret = StaticSecret::random_from_rng(OsRng);
     let ek_pub = X25519PublicKey::from(&ek_secret);
 
     // 3. DH computations
@@ -536,7 +611,7 @@ pub fn receiver_receive(
     ad.extend_from_slice(&encode_pk(&receiver_id.dh_public));
 
     // 4. Size check
-    if msg.ciphertext.len() > MAX_PREKEY_MSG {
+    if msg.ciphertext.len() > MAX_PRE_KEY_MSG {
         return Err(X3dhError::CiphertextTooLarge);
     }
 
@@ -575,20 +650,21 @@ pub struct PreKeyBundleWithSecrets {
 /// * `spk_id` – monotonically increasing identifier managed by the caller(used to identify the SPK)
 /// * `next_otpk_id` – mutable counter for OTPK ids(used to identify the OTPK)
 /// * `n_otpks` – how many OTPKs to attach (0‑`n`).
-/// Returns a bundle with the SPK and the OTPKs.
-pub fn receiver_generate_prekey_bundle(
+///
+///   Returns a bundle with the SPK and the OTPKs.
+pub fn receiver_generate_pre_key_bundle(
     identity: &IdentityKey,
     spk_id: u32,
     next_otpk_id: &mut u32,
     n_otpks: usize,
 ) -> PreKeyBundleWithSecrets {
-    let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+    let spk_secret = StaticSecret::random_from_rng(OsRng);
 
     let mut otpk_secrets = Vec::with_capacity(n_otpks);
     for _ in 0..n_otpks {
         let id = *next_otpk_id;
         *next_otpk_id = next_otpk_id.wrapping_add(1);
-        let sk = StaticSecret::random_from_rng(&mut OsRng);
+        let sk = StaticSecret::random_from_rng(OsRng);
         otpk_secrets.push((id, sk));
     }
 
@@ -613,7 +689,7 @@ pub fn receiver_generate_prekey_bundle(
 }
 
 /// Convenience helper: create many bundles in one go (useful for batch upload).
-pub fn receiver_generate_many_prekey_bundles(
+pub fn receiver_generate_many_pre_key_bundles(
     identity: &IdentityKey,
     count: usize,
     next_spk_id: &mut u32,
@@ -622,8 +698,12 @@ pub fn receiver_generate_many_prekey_bundles(
 ) -> Vec<PreKeyBundleWithSecrets> {
     let mut out = Vec::with_capacity(count);
     for _ in 0..count {
-        let bundle =
-            receiver_generate_prekey_bundle(identity, *next_spk_id, next_otpk_id, otpks_per_bundle);
+        let bundle = receiver_generate_pre_key_bundle(
+            identity,
+            *next_spk_id,
+            next_otpk_id,
+            otpks_per_bundle,
+        );
         *next_spk_id = next_spk_id.wrapping_add(1);
         out.push(bundle);
     }
@@ -640,7 +720,7 @@ mod tests {
         let sender = IdentityKey::generate();
         let receiver = IdentityKey::generate();
 
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1u32;
 
         let bundle = PreKeyBundle::new(&receiver, spk_id, &spk_secret, None, None);
@@ -657,11 +737,11 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 7;
 
         // Receiver OTPK
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 99;
 
         // Create bundle with OTPK
@@ -687,9 +767,9 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver creates pre-keys
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 42u32;
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 123u32;
 
         // Create bundle with OTPK
@@ -726,7 +806,7 @@ mod tests {
         let mut bundles = Vec::new();
 
         for i in 0..5 {
-            let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+            let spk_secret = StaticSecret::random_from_rng(OsRng);
             let bundle = PreKeyBundle::new(&receiver, i as u32, &spk_secret, None, None);
 
             bundles.push((bundle, spk_secret));
@@ -749,14 +829,14 @@ mod tests {
         let eve = IdentityKey::generate();
 
         // Receiver creates SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1u32;
 
         // Create legitimate bundle
         let mut bundle = PreKeyBundle::new(&receiver, spk_id, &spk_secret, None, None);
 
         // Tamper with signature - replace with Eve's signature
-        let eve_sig = eve.signing.sign(&encode_pk(&bundle.spk_pub), &mut OsRng);
+        let eve_sig = eve.signing.sign(&encode_pk(&bundle.spk_pub), OsRng);
         bundle.spk_sig = eve_sig;
 
         // Sender should reject the tampered bundle
@@ -771,7 +851,7 @@ mod tests {
         let mallory = IdentityKey::generate(); // Attacker
 
         // Receiver's SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 5u32;
 
         // Create bundle
@@ -785,7 +865,7 @@ mod tests {
         assert!(matches!(result, Err(X3dhError::DecryptFailed)));
 
         // Receiver attempts to decrypt with wrong SPK
-        let wrong_spk = StaticSecret::random_from_rng(&mut OsRng);
+        let wrong_spk = StaticSecret::random_from_rng(OsRng);
         let result = receiver_receive(&receiver, &wrong_spk, spk_id, None, &msg.0);
         assert!(matches!(result, Err(X3dhError::DecryptFailed)));
     }
@@ -796,7 +876,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 3u32;
 
         // Create bundle
@@ -821,7 +901,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 9u32;
 
         // Create bundle
@@ -840,7 +920,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 10u32;
 
         // Create bundle
@@ -859,7 +939,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 11u32;
 
         // Create bundle
@@ -882,12 +962,12 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver creates pre-keys
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 12u32;
 
         // Create multiple OTPKs
         let otpk_secrets: Vec<(StaticSecret, u32)> = (0..5)
-            .map(|i| (StaticSecret::random_from_rng(&mut OsRng), 200 + i))
+            .map(|i| (StaticSecret::random_from_rng(OsRng), 200 + i))
             .collect();
 
         // Test each OTPK separately
@@ -926,7 +1006,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 13u32;
 
         // Create bundle
@@ -955,7 +1035,7 @@ mod tests {
         let receiver = IdentityKey::generate();
 
         // Receiver SPK
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 14u32;
 
         // Create bundle
@@ -972,5 +1052,98 @@ mod tests {
 
         // Ciphertexts should be different even with same plaintext due to different nonces
         assert_ne!(msg1.0.ciphertext, msg2.0.ciphertext);
+    }
+
+    #[test]
+    fn test_serialization_deserialization() {
+        // Test IdentityKey serialization/deserialization
+        let identity = IdentityKey::generate();
+        let original_dh_public_bytes = *identity.dh_public.as_bytes();
+        let original_verify_bytes = *identity.verify.as_bytes();
+
+        // Serialize IdentityKey to binary format using bincode
+        let identity_bytes =
+            bincode::serialize(&identity).expect("Failed to serialize IdentityKey");
+
+        // Deserialize IdentityKey from binary format
+        let deserialized_identity: IdentityKey =
+            bincode::deserialize(&identity_bytes).expect("Failed to deserialize IdentityKey");
+
+        // Verify that the deserialized identity key matches the original
+        assert_eq!(
+            original_dh_public_bytes,
+            *deserialized_identity.dh_public.as_bytes()
+        );
+        assert_eq!(
+            original_verify_bytes,
+            *deserialized_identity.verify.as_bytes()
+        );
+
+        // Test PreKeyBundle serialization/deserialization
+        let receiver = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
+        let spk_id = 42u32;
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
+        let otpk_id = 123u32;
+
+        // Create bundle with OTPK
+        let original_bundle = PreKeyBundle::new(
+            &receiver,
+            spk_id,
+            &spk_secret,
+            Some(otpk_id),
+            Some(&otpk_secret),
+        );
+
+        // Serialize PreKeyBundle to binary format using bincode
+        let bundle_bytes =
+            bincode::serialize(&original_bundle).expect("Failed to serialize PreKeyBundle");
+
+        // Deserialize PreKeyBundle from binary format
+        let deserialized_bundle: PreKeyBundle =
+            bincode::deserialize(&bundle_bytes).expect("Failed to deserialize PreKeyBundle");
+
+        // Verify that all fields match
+        assert_eq!(original_bundle.spk_id, deserialized_bundle.spk_id);
+        assert_eq!(
+            original_bundle.spk_pub.as_bytes(),
+            deserialized_bundle.spk_pub.as_bytes()
+        );
+        assert_eq!(original_bundle.spk_sig, deserialized_bundle.spk_sig);
+        assert_eq!(
+            original_bundle.identity_verify_bytes,
+            deserialized_bundle.identity_verify_bytes
+        );
+        assert_eq!(
+            original_bundle.identity_pk.as_bytes(),
+            deserialized_bundle.identity_pk.as_bytes()
+        );
+        assert_eq!(original_bundle.otpk_id, deserialized_bundle.otpk_id);
+
+        // Check OTPK public key
+        match (original_bundle.otpk_pub, deserialized_bundle.otpk_pub) {
+            (Some(orig), Some(deser)) => assert_eq!(orig.as_bytes(), deser.as_bytes()),
+            (None, None) => {}
+            _ => panic!("OTPK public key mismatch between original and deserialized"),
+        }
+
+        // Verify that the deserialized bundle still passes signature verification
+        assert!(deserialized_bundle.verify_spk());
+
+        // Test that we can use the deserialized bundle in a full X3DH exchange
+        let sender = IdentityKey::generate();
+        let plaintext = b"test with deserialized bundle";
+
+        let msg = sender_init(&sender, &deserialized_bundle, plaintext).unwrap();
+        let out = receiver_receive(
+            &receiver,
+            &spk_secret,
+            spk_id,
+            Some((&otpk_secret, otpk_id)),
+            &msg.0,
+        )
+        .unwrap();
+
+        assert_eq!(plaintext, &out.0[..]);
     }
 }

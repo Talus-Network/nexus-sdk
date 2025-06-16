@@ -40,7 +40,7 @@ pub(crate) async fn register_tool(
             .map_err(NexusCliError::Http)?
             .json::<Vec<String>>()
             .await
-            .map_err(|e| NexusCliError::Http(e))?;
+            .map_err(NexusCliError::Http)?;
 
         response
             .iter()
@@ -68,10 +68,10 @@ pub(crate) async fn register_tool(
         );
 
         // Load CLI configuration.
-        let conf = CliConf::load().await.unwrap_or_default();
+        let mut conf = CliConf::load().await.unwrap_or_default();
 
         // Nexus objects must be present in the configuration.
-        let objects = get_nexus_objects(&conf)?;
+        let objects = &get_nexus_objects(&mut conf).await?;
 
         // Create wallet context, Sui client and find the active address.
         let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -79,14 +79,8 @@ pub(crate) async fn register_tool(
         let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
         // Fetch gas and collateral coin objects.
-        let (gas_coin, collateral_coin) = fetch_gas_and_collateral_coins(
-            &sui,
-            conf.sui.net,
-            address,
-            sui_gas_coin,
-            collateral_coin,
-        )
-        .await?;
+        let (gas_coin, collateral_coin) =
+            fetch_gas_and_collateral_coins(&sui, address, sui_gas_coin, collateral_coin).await?;
 
         if gas_coin.coin_object_id == collateral_coin.coin_object_id {
             return Err(NexusCliError::Any(anyhow!(
@@ -244,30 +238,11 @@ pub(crate) async fn register_tool(
 /// if the coins are not present.
 async fn fetch_gas_and_collateral_coins(
     sui: &sui::Client,
-    sui_net: SuiNet,
     addr: sui::Address,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_collateral_coin: Option<sui::ObjectID>,
 ) -> AnyResult<(sui::Coin, sui::Coin), NexusCliError> {
     let mut coins = fetch_all_coins_for_address(sui, addr).await?;
-
-    // We need at least 2 coins. We can create those on Localnet, Devnet and
-    // Testnet.
-    match sui_net {
-        SuiNet::Localnet | SuiNet::Devnet | SuiNet::Testnet if coins.len() < 2 => {
-            // Only call once because on Localnet and Devnet, we get 5 coins and
-            // on Testnet this will be rate-limited.
-            request_tokens_from_faucet(sui_net, addr).await?;
-
-            coins = fetch_all_coins_for_address(sui, addr).await?;
-        }
-        SuiNet::Mainnet if coins.len() < 2 => {
-            return Err(NexusCliError::Any(anyhow!(
-                "The wallet does not have enough coins to register the tool"
-            )));
-        }
-        _ => (),
-    }
 
     if coins.len() < 2 {
         return Err(NexusCliError::Any(anyhow!(

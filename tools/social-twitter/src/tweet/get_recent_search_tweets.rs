@@ -99,7 +99,7 @@ impl Input {
     fn validate(&self) -> Result<(), String> {
         // Validate max_results (10-100)
         if let Some(max_results) = self.max_results {
-            if max_results < 10 || max_results > 100 {
+            if !(10..=100).contains(&max_results) {
                 return Err(format!(
                     "max_results must be between 10 and 100, got {}",
                     max_results

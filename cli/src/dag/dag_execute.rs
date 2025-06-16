@@ -8,25 +8,40 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{idents::workflow, transactions::dag},
+    anyhow::anyhow,
+    bincode,
+    nexus_sdk::{
+        crypto::session::{Message, Session},
+        idents::workflow,
+        transactions::dag,
+    },
+    serde_json::Value,
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
-    input_json: serde_json::Value,
+    mut input_json: serde_json::Value,
+    encrypt: Vec<String>,
+    inspect: bool,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
-    inspect: bool,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_default();
+    let mut conf = CliConf::load().await.unwrap_or_default();
+
+    // Get the active session for potential encryption
+    let session = get_active_session(&mut conf)?;
+
+    if !encrypt.is_empty() {
+        encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
+    }
 
     // Nexus objects must be present in the configuration.
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -34,7 +49,7 @@ pub(crate) async fn execute_dag(
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
@@ -47,7 +62,7 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json) {
+    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, encrypt) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
@@ -102,5 +117,301 @@ pub(crate) async fn execute_dag(
         json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
     }
 
+    // Always save the updated config
+    conf.save().await.map_err(NexusCliError::Any)?;
+
     Ok(())
+}
+
+fn encrypt_entry_ports_once(
+    session: &mut Session,
+    input: &mut Value,
+    targets: &[String],
+) -> Result<(), NexusCliError> {
+    if targets.is_empty() {
+        return Ok(()); // nothing to do, avoid ratchet advance
+    }
+
+    for handle in targets {
+        let (vertex, port) = handle
+            .split_once('.')
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Bad --encrypt handle: {handle}")))?;
+
+        // Take the plaintext for ownership
+        let slot = input
+            .get_mut(vertex)
+            .and_then(|v| v.get_mut(port))
+            .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
+
+        let plaintext = slot.take();
+        let bytes = serde_json::to_vec(&plaintext).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+
+        // Encrypt
+        let msg = session
+            .encrypt(&bytes)
+            .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+
+        // Session must always return a Standard packet here
+        let Message::Standard(pkt) = msg else {
+            return Err(NexusCliError::Any(anyhow!(
+                "Session returned non-standard packet"
+            )));
+        };
+
+        // Serialize the StandardMessage with bincode
+        let serialized = bincode::serialize(&pkt).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+        *slot = serde_json::to_value(&serialized).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+    }
+
+    // commit the session state
+    session.commit_sender(None);
+
+    Ok(())
+}
+
+/// Gets the active session for encryption/decryption
+fn get_active_session(
+    conf: &mut CliConf,
+) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
+    match &mut conf.crypto {
+        Some(crypto_secret) => {
+            if crypto_secret.sessions.is_empty() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "Authentication required — run `nexus crypto auth` first"
+                )));
+            }
+
+            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
+            crypto_secret
+                .sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
+        }
+        None => Err(NexusCliError::Any(anyhow!(
+            "Authentication required — run `nexus crypto auth` first"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        nexus_sdk::crypto::{
+            session::{Message, Session},
+            x3dh::{IdentityKey, PreKeyBundle},
+        },
+        serde_json::json,
+    };
+
+    /// Helper to create a mock session for testing
+    fn create_mock_session() -> Session {
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = IdentityKey::generate().secret().clone();
+        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
+
+        let (message, mut sender_sess) =
+            Session::initiate(&sender_id, &bundle, b"test").expect("Failed to initiate session");
+
+        let initial_msg = match message {
+            Message::Initial(msg) => msg,
+            _ => panic!("Expected Initial message type"),
+        };
+
+        let (mut receiver_sess, _) =
+            Session::recv(&receiver_id, &spk_secret, &bundle, &initial_msg, None)
+                .expect("Failed to receive session");
+
+        // Exchange messages to establish the ratchet properly
+        let setup_msg = sender_sess
+            .encrypt(b"setup")
+            .expect("Failed to encrypt setup message");
+        let _ = receiver_sess
+            .decrypt(&setup_msg)
+            .expect("Failed to decrypt setup message");
+
+        sender_sess
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_empty_targets() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "test_value"
+            }
+        });
+        let targets: Vec<String> = vec![];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_ok());
+        // Input should remain unchanged when no targets are specified
+        assert_eq!(input["vertex1"]["port1"], "test_value");
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_single_target() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "test_value",
+                "port2": "other_value"
+            }
+        });
+        let targets = vec!["vertex1.port1".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_ok());
+
+        // port1 should be encrypted (no longer the original string)
+        assert_ne!(input["vertex1"]["port1"], "test_value");
+        // port2 should remain unchanged
+        assert_eq!(input["vertex1"]["port2"], "other_value");
+
+        // The encrypted value should be a JSON array of bytes
+        assert!(input["vertex1"]["port1"].is_array());
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_multiple_targets() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "value1",
+                "port2": "value2"
+            },
+            "vertex2": {
+                "port3": "value3"
+            }
+        });
+        let targets = vec![
+            "vertex1.port1".to_string(),
+            "vertex1.port2".to_string(),
+            "vertex2.port3".to_string(),
+        ];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_ok());
+
+        // All targeted ports should be encrypted
+        assert!(input["vertex1"]["port1"].is_array());
+        assert!(input["vertex1"]["port2"].is_array());
+        assert!(input["vertex2"]["port3"].is_array());
+
+        // Original values should no longer be present
+        assert_ne!(input["vertex1"]["port1"], "value1");
+        assert_ne!(input["vertex1"]["port2"], "value2");
+        assert_ne!(input["vertex2"]["port3"], "value3");
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_bad_handle_format() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "test_value"
+            }
+        });
+        let targets = vec!["invalid_handle_format".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Bad --encrypt handle"));
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_nonexistent_vertex() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "test_value"
+            }
+        });
+        let targets = vec!["nonexistent_vertex.port1".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Input JSON has no nonexistent_vertex.port1"));
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_nonexistent_port() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "test_value"
+            }
+        });
+        let targets = vec!["vertex1.nonexistent_port".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Input JSON has no vertex1.nonexistent_port"));
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_complex_data_types() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": {
+                    "nested": {
+                        "data": [1, 2, 3],
+                        "string": "test"
+                    }
+                }
+            }
+        });
+        let targets = vec!["vertex1.port1".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_ok());
+
+        // The complex JSON should be encrypted
+        assert!(input["vertex1"]["port1"].is_array());
+        // It should no longer contain the original nested structure
+        assert!(input["vertex1"]["port1"].get("nested").is_none());
+    }
+
+    #[test]
+    fn test_encrypt_entry_ports_once_ratchet_advancement() {
+        let mut session = create_mock_session();
+        let mut input = json!({
+            "vertex1": {
+                "port1": "value1",
+                "port2": "value2"
+            }
+        });
+        let targets = vec!["vertex1.port1".to_string(), "vertex1.port2".to_string()];
+
+        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+
+        assert!(result.is_ok());
+
+        // Both values should be encrypted, but since we advance the ratchet only once,
+        // subsequent encryptions should use static encryption
+        assert!(input["vertex1"]["port1"].is_array());
+        assert!(input["vertex1"]["port2"].is_array());
+
+        // The encrypted values should be different even for the same session
+        // (due to nonces), but we can't easily test the ratchet state directly
+        // without access to session internals
+    }
 }

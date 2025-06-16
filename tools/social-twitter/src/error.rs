@@ -280,15 +280,12 @@ where
     let text = response.text().await.map_err(TwitterError::Network)?;
 
     // Handle empty response for 204 No Content
-    if status == reqwest::StatusCode::NO_CONTENT {
-        if text.is_empty() {
-            // For EmptyResponse type, return empty response
-            if std::any::type_name::<T>()
-                == std::any::type_name::<crate::media::models::EmptyResponse>()
-            {
-                return serde_json::from_value(serde_json::json!({}))
-                    .map_err(TwitterError::ParseError);
-            }
+    if status == reqwest::StatusCode::NO_CONTENT && text.is_empty() {
+        // For EmptyResponse type, return empty response
+        if std::any::type_name::<T>()
+            == std::any::type_name::<crate::media::models::EmptyResponse>()
+        {
+            return serde_json::from_value(serde_json::json!({})).map_err(TwitterError::ParseError);
         }
     }
 

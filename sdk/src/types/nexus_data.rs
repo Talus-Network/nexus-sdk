@@ -19,6 +19,9 @@ use {
 pub enum NexusData {
     Inline {
         data: serde_json::Value,
+        /// Whether the data is encrypted and should be decrypted before sending
+        /// it to a tool.
+        encrypted: bool,
     },
     #[allow(dead_code)]
     Remote {
@@ -54,6 +57,7 @@ mod parser {
             serialize_with = "serialize_json_value_to_array_of_bytes"
         )]
         data: serde_json::Value,
+        encrypted: bool,
     }
 
     pub(super) fn deserialize_onchain_repr_to_enum<'de, D>(
@@ -65,7 +69,10 @@ mod parser {
         let data: NexusDataAsStruct = Deserialize::deserialize(deserializer)?;
 
         match data.storage.as_ref() {
-            NEXUS_DATA_INLINE_STORAGE_TAG => Ok(NexusData::Inline { data: data.data }),
+            NEXUS_DATA_INLINE_STORAGE_TAG => Ok(NexusData::Inline {
+                data: data.data,
+                encrypted: data.encrypted,
+            }),
             _ => todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>"),
         }
     }
@@ -78,9 +85,10 @@ mod parser {
         S: Serializer,
     {
         let data = match value {
-            NexusData::Inline { data } => NexusDataAsStruct {
+            NexusData::Inline { data, encrypted } => NexusDataAsStruct {
                 storage: NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
                 data: data.clone(),
+                encrypted: *encrypted,
             },
             NexusData::Remote {} => {
                 todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
@@ -119,6 +127,7 @@ mod parser {
                 data: serde_json::json!({
                     "key": "value"
                 }),
+                encrypted: false,
             };
 
             let serialized = serde_json::to_string(&dag_data).unwrap();
@@ -131,7 +140,7 @@ mod parser {
 
             assert_eq!(
                 serialized,
-                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]]}"#
+                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#
             );
 
             let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -148,13 +157,14 @@ mod parser {
                         "key": "value"
                     }
                 ]),
+                encrypted: false,
             };
 
             let serialized = serde_json::to_string(&dag_data).unwrap();
 
             assert_eq!(
                 serialized,
-                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]]}"#
+                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#
             );
 
             let deserialized = serde_json::from_str(&serialized).unwrap();

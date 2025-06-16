@@ -1,5 +1,6 @@
 mod completion;
 mod conf;
+mod crypto;
 mod dag;
 mod display;
 mod error;
@@ -8,6 +9,7 @@ mod network;
 mod prelude;
 mod sui;
 mod tool;
+mod utils;
 
 use crate::prelude::*;
 
@@ -37,6 +39,8 @@ enum Command {
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Manage Nexus networks and leader caps")]
     Network(network::NetworkCommand),
+    #[command(subcommand, about = "Manage Nexus crypto")]
+    Crypto(crypto::CryptoCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),
 }
@@ -77,6 +81,7 @@ async fn main() {
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
         Command::Gas(gas) => gas::handle(gas).await,
+        Command::Crypto(crypto) => crypto::handle(crypto).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 
