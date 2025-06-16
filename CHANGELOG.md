@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus crypto set-passphrase` prompts for and stores a passphrase securely in the keyring
 - `nexus crypto key-status` shows where the key was loaded from
 - automatically fetching devnet objects for user ergonomics
+- configured `cargo-deny` rules
 
 #### Changed
 
