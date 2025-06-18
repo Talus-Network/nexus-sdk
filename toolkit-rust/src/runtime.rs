@@ -223,6 +223,20 @@ async fn meta_handler<T: NexusTool>(
     //
     // Ref: https://github.com/Talus-Network/nexus-sdk/issues/77
     let scheme = x_forwarded_proto.unwrap_or_else(|| "http".to_string());
+    
+    // Validate scheme to prevent URL injection attacks
+    if scheme != "http" && scheme != "https" {
+        let reply = json!({
+            "error": "invalid_scheme",
+            "details": "Scheme must be either 'http' or 'https'.",
+        });
+
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&reply),
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    
     let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
         Ok(url) => url,
         Err(e) => {
@@ -251,7 +265,7 @@ async fn invoke_handler<T: NexusTool>(input: serde_json::Value) -> Result<impl R
         Err(e) => {
             let reply = json!({
                 "error": "input_deserialization_error",
-                "details": e.to_string(),
+                "details": format!("Failed to parse input: {}", e.to_string().split('\n').next().unwrap_or_default())
             });
 
             // Reply with 422 if we can't parse the input data.
