@@ -48,7 +48,12 @@
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {

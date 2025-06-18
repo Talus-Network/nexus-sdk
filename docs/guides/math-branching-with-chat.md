@@ -31,7 +31,12 @@ First, let's add both the number-to-message tool and the chat completion tool to
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -284,7 +289,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a"
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -292,7 +302,16 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -328,7 +347,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -569,13 +593,13 @@ For testing, you can use the Nexus CLI to execute the DAG:
 nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{
   "add_input_and_default": {"a": 10},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect --encrypt chat_completion.api_key
+}' --inspect chat_completion.api_key
 
 # Using the multiplication entry group
 nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{
   "mul_inputs": {"a": 5, "b": 2},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect --encrypt chat_completion.api_key
+}' --inspect chat_completion.api_key
 ```
 
 The `--inspect` flag will show you detailed information about the execution, including:
@@ -585,7 +609,7 @@ The `--inspect` flag will show you detailed information about the execution, inc
 - Any errors that occurred
 - The final chat completion response
 
-The `--encrypt` flag is used to encrypt sensitive information, such as the API key, before sending it to the Nexus network.
+The `api_key` entry port is defined as `encrypted` in the JSON structure, so the CLI will encrypt the data before sending it to the Nexus network.
 
 ### 2. Integration with Applications
 

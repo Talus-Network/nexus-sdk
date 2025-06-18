@@ -45,7 +45,7 @@ pub enum MasterKeyError {
     Argon2(String),
     #[error(
         "no persistent master key found; \
-            run `nexus-cli crypto init-key` or `set-passphrase`"
+            run `nexus crypto init-key` or `set-passphrase`"
     )]
     NoPersistentKey,
     #[error(
@@ -123,7 +123,6 @@ fn get_or_create_salt() -> Result<(PathBuf, [u8; SALT_LEN]), MasterKeyError> {
             return Ok((salt_path, salt_array));
         }
         // Invalid salt file, recreate it
-        eprintln!("Warning: Invalid salt file, recreating...");
         let _ = fs::remove_file(&salt_path);
     }
 

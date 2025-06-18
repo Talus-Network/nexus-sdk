@@ -6,7 +6,16 @@
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "location_decider",
-      "entry_ports": ["messages", "context"]
+      "entry_ports": [
+        {
+          "name": "context",
+          "encrypted": false
+        },
+        {
+          "name": "messages",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {

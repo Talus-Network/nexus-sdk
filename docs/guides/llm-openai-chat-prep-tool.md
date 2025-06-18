@@ -256,7 +256,12 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     }
   ],
   "edges": [

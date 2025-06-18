@@ -1,17 +1,21 @@
-use crate::{
-    idents::{primitives, sui_framework, workflow},
-    sui,
-    types::{
-        Dag,
-        Data,
-        DefaultValue,
-        Edge,
-        FromPort,
-        NexusObjects,
-        Vertex,
-        VertexKind,
-        DEFAULT_ENTRY_GROUP,
+use {
+    crate::{
+        idents::{primitives, sui_framework, workflow},
+        sui,
+        types::{
+            Dag,
+            Data,
+            DefaultValue,
+            Edge,
+            EntryPort,
+            FromPort,
+            NexusObjects,
+            Vertex,
+            VertexKind,
+            DEFAULT_ENTRY_GROUP,
+        },
     },
+    std::collections::HashMap,
 };
 
 /// PTB template for creating a new empty DAG.
@@ -332,14 +336,18 @@ pub fn mark_entry_input_port(
     objects: &NexusObjects,
     dag: sui::Argument,
     vertex: &str,
-    entry_port: &str,
+    entry_port: &EntryPort,
     entry_group: &str,
 ) -> anyhow::Result<sui::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
-    let entry_port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, entry_port)?;
+    let entry_port = if entry_port.encrypted {
+        workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
+    } else {
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
+    };
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -362,7 +370,7 @@ pub fn execute(
     dag: &sui::ObjectRef,
     entry_group: &str,
     input_json: serde_json::Value,
-    encrypt: Vec<String>,
+    encrypt: &HashMap<String, Vec<String>>,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut DefaultSAP`
     let default_sap = tx.obj(sui::ObjectArg::SharedObject {
@@ -442,18 +450,18 @@ pub fn execute(
         );
 
         for (port, value) in data {
-            // Whether the entry port is encrypted is determined by the
-            // `--encrypt` argument which accepts a list of `vertex.port`
-            // strings.
             let encrypted = encrypt
-                .iter()
-                .any(|e| e == &format!("{}.{}", vertex_name, port));
+                .get(vertex_name)
+                .map_or(false, |ports| ports.contains(port));
 
             // `port: InputPort`
-            let port = workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?;
+            let port = if encrypted {
+                workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, port)?
+            } else {
+                workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?
+            };
 
             // `value: NexusData`
-            // TODO: <https://github.com/Talus-Network/nexus-next/issues/300>
             let value = primitives::Data::nexus_data_from_json(
                 tx,
                 objects.primitives_pkg_id,
@@ -680,7 +688,10 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui::Argument::Result(0);
         let vertex = "vertex1";
-        let entry_port = "port1";
+        let entry_port = &EntryPort {
+            name: "test".to_string(),
+            encrypted: false,
+        };
         let entry_group = "group1";
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
@@ -728,7 +739,7 @@ mod tests {
             &dag,
             entry_group,
             input_json,
-            vec![],
+            &HashMap::new(),
         )
         .unwrap();
         let tx = tx.finish();

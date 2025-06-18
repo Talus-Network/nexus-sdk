@@ -34,10 +34,17 @@ pub enum VertexKind {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct EntryPort {
+    pub name: String,
+    #[serde(default)]
+    pub encrypted: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Vertex {
     pub kind: VertexKind,
     pub name: String,
-    pub entry_ports: Option<Vec<String>>,
+    pub entry_ports: Option<Vec<EntryPort>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

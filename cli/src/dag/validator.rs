@@ -416,7 +416,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
         for entry_port in entry_ports {
             let entry_port_ident = GraphNode::InputPort {
                 vertex: vertex.name.clone(),
-                name: entry_port.clone(),
+                name: entry_port.name.clone(),
             };
 
             if graph_nodes.contains_key(&entry_port_ident) {

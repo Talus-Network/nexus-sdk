@@ -13,7 +13,9 @@ use {
     nexus_sdk::{
         crypto::session::{Message, Session},
         idents::workflow,
+        object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
+        types::TypeName,
     },
     serde_json::Value,
 };
@@ -23,7 +25,6 @@ pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
     mut input_json: serde_json::Value,
-    encrypt: Vec<String>,
     inspect: bool,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
@@ -33,20 +34,23 @@ pub(crate) async fn execute_dag(
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
 
-    // Get the active session for potential encryption
-    let session = get_active_session(&mut conf)?;
-
-    if !encrypt.is_empty() {
-        encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
-    }
-
-    // Nexus objects must be present in the configuration.
-    let objects = &get_nexus_objects(&mut conf).await?;
-
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
+
+    // Nexus objects must be present in the configuration.
+    let objects = &get_nexus_objects(&mut conf).await?;
+
+    // Get the active session for potential encryption
+    let session = get_active_session(&mut conf)?;
+
+    // Fetch information about entry ports that need to be encrypted.
+    let encrypt = fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
+
+    if !encrypt.is_empty() {
+        encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
+    }
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
@@ -62,7 +66,7 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, encrypt) {
+    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, &encrypt) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
@@ -126,41 +130,42 @@ pub(crate) async fn execute_dag(
 fn encrypt_entry_ports_once(
     session: &mut Session,
     input: &mut Value,
-    targets: &[String],
+    targets: &HashMap<String, Vec<String>>,
 ) -> Result<(), NexusCliError> {
     if targets.is_empty() {
         return Ok(()); // nothing to do, avoid ratchet advance
     }
 
-    for handle in targets {
-        let (vertex, port) = handle
-            .split_once('.')
-            .ok_or_else(|| NexusCliError::Any(anyhow!("Bad --encrypt handle: {handle}")))?;
+    for (vertex, ports) in targets {
+        for port in ports {
+            // Take the plaintext for ownership
+            let slot = input
+                .get_mut(&vertex)
+                .and_then(|v| v.get_mut(&port))
+                .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
 
-        // Take the plaintext for ownership
-        let slot = input
-            .get_mut(vertex)
-            .and_then(|v| v.get_mut(port))
-            .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
+            let plaintext = slot.take();
+            let bytes =
+                serde_json::to_vec(&plaintext).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
-        let plaintext = slot.take();
-        let bytes = serde_json::to_vec(&plaintext).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+            // Encrypt
+            let msg = session
+                .encrypt(&bytes)
+                .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
-        // Encrypt
-        let msg = session
-            .encrypt(&bytes)
-            .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+            // Session must always return a Standard packet here
+            let Message::Standard(pkt) = msg else {
+                return Err(NexusCliError::Any(anyhow!(
+                    "Session returned non-standard packet"
+                )));
+            };
 
-        // Session must always return a Standard packet here
-        let Message::Standard(pkt) = msg else {
-            return Err(NexusCliError::Any(anyhow!(
-                "Session returned non-standard packet"
-            )));
-        };
-
-        // Serialize the StandardMessage with bincode
-        let serialized = bincode::serialize(&pkt).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-        *slot = serde_json::to_value(&serialized).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+            // Serialize the StandardMessage with bincode
+            let serialized =
+                bincode::serialize(&pkt).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+            *slot =
+                serde_json::to_value(&serialized).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+        }
     }
 
     // commit the session state
@@ -191,6 +196,71 @@ fn get_active_session(
             "Authentication required — run `nexus crypto auth` first"
         ))),
     }
+}
+
+/// Fetches the encrypted entry ports for a DAG.
+async fn fetch_encrypted_entry_ports(
+    sui: &sui::Client,
+    entry_group: String,
+    dag_id: &sui::ObjectID,
+) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+    struct EntryPort {
+        name: String,
+        encrypted: bool,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct Dag {
+        entry_groups:
+            VecMap<Structure<TypeName>, VecMap<Structure<TypeName>, VecSet<Structure<EntryPort>>>>,
+    }
+
+    let result = fetch_one::<Structure<Dag>>(sui, *dag_id)
+        .await
+        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+
+    // Get the relevant entry group.
+    let group: TypeName = TypeName {
+        name: entry_group.clone(),
+    };
+
+    let entry_group = result
+        .data
+        .into_inner()
+        .entry_groups
+        .into_inner()
+        .remove(&group.into())
+        .ok_or_else(|| {
+            NexusCliError::Any(anyhow!("Entry group '{entry_group}' not found in DAG"))
+        })?;
+
+    // Collapse into a more readable format.
+    Ok(entry_group
+        .into_inner()
+        .into_iter()
+        .filter_map(|(vertex, ports)| {
+            let encrypted_ports: Vec<String> = ports
+                .into_inner()
+                .into_iter()
+                .filter_map(|port| {
+                    let port = port.into_inner();
+
+                    if port.encrypted {
+                        Some(port.name)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if encrypted_ports.is_empty() {
+                return None; // Skip vertices with no encrypted ports
+            }
+
+            Some((vertex.into_inner().name, encrypted_ports))
+        })
+        .collect::<HashMap<_, _>>())
 }
 
 #[cfg(test)]
@@ -242,7 +312,7 @@ mod tests {
                 "port1": "test_value"
             }
         });
-        let targets: Vec<String> = vec![];
+        let targets = HashMap::new();
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -260,7 +330,7 @@ mod tests {
                 "port2": "other_value"
             }
         });
-        let targets = vec!["vertex1.port1".to_string()];
+        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -287,11 +357,14 @@ mod tests {
                 "port3": "value3"
             }
         });
-        let targets = vec![
-            "vertex1.port1".to_string(),
-            "vertex1.port2".to_string(),
-            "vertex2.port3".to_string(),
-        ];
+
+        let targets = HashMap::from([
+            (
+                "vertex1".to_string(),
+                vec!["port1".to_string(), "port2".to_string()],
+            ),
+            ("vertex2".to_string(), vec!["port3".to_string()]),
+        ]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -316,7 +389,10 @@ mod tests {
                 "port1": "test_value"
             }
         });
-        let targets = vec!["invalid_handle_format".to_string()];
+        let targets = HashMap::from([(
+            "vertex1".to_string(),
+            vec!["invalid_handle_format".to_string()],
+        )]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -324,7 +400,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Bad --encrypt handle"));
+            .contains("Input JSON has no vertex1.invalid_handle_format"));
     }
 
     #[test]
@@ -335,7 +411,8 @@ mod tests {
                 "port1": "test_value"
             }
         });
-        let targets = vec!["nonexistent_vertex.port1".to_string()];
+        let targets =
+            HashMap::from([("nonexistent_vertex".to_string(), vec!["port1".to_string()])]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -354,7 +431,8 @@ mod tests {
                 "port1": "test_value"
             }
         });
-        let targets = vec!["vertex1.nonexistent_port".to_string()];
+        let targets =
+            HashMap::from([("vertex1".to_string(), vec!["nonexistent_port".to_string()])]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -378,7 +456,7 @@ mod tests {
                 }
             }
         });
-        let targets = vec!["vertex1.port1".to_string()];
+        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
@@ -399,7 +477,10 @@ mod tests {
                 "port2": "value2"
             }
         });
-        let targets = vec!["vertex1.port1".to_string(), "vertex1.port2".to_string()];
+        let targets = HashMap::from([(
+            "vertex1".to_string(),
+            vec!["port1".to_string(), "port2".to_string()],
+        )]);
 
         let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
 
