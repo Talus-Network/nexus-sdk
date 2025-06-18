@@ -21,13 +21,6 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
         .with_tag(env!("SUI_SDK_TAG"))
-        // Some recent versions of the image do **not** declare their ports via
-        // `EXPOSE` in the Dockerfile anymore.  When that happens the underlying
-        // `testcontainers` runtime does not create any host-port mappings and
-        // `get_host_port_ipv4(..)` fails with `PortNotExposed`.  We therefore
-        // explicitly map the two ports we need.  Using `0` as the host port
-        // lets Docker choose a free random port on the host while still
-        // ensuring the container port is published.
         .with_mapped_port(0, ContainerPort::Tcp(9000))
         .with_mapped_port(0, ContainerPort::Tcp(9123));
 
