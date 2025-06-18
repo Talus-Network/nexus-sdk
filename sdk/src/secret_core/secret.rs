@@ -1,14 +1,5 @@
 use {
-    super::{
-        error::SecretStoreError,
-        traits::{
-            BincodeCodec,
-            EncryptionAlgo,
-            EncryptionAlgoDefault,
-            KeyProvider,
-            PlaintextCodec,
-        },
-    },
+    super::traits::{BincodeCodec, EncryptionAlgo, EncryptionAlgoDefault, PlaintextCodec},
     base64::{engine::general_purpose, Engine as _},
     rand::{rngs::OsRng, RngCore},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer},
