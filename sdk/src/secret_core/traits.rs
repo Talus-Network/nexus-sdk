@@ -58,25 +58,6 @@ pub trait EncryptionAlgo: Default + Send + Sync + 'static {
     fn decrypt(nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, SecretStoreError>;
 }
 
-// Keyed Encryption schema
-pub trait KeyedEncryptionAlgo: Default + Send + Sync + 'static {
-    type Key: Send + Sync + 'static;
-    const NONCE_LEN: usize;
-    // Key, nonce, plaintext -> ciphertext
-    fn encrypt_with_key(
-        key: &Self::Key,
-        nonce: &[u8],
-        pt: &[u8],
-    ) -> Result<Vec<u8>, SecretStoreError>;
-
-    // Key, nonce, ciphertext -> plaintext
-    fn decrypt_with_key(
-        key: &Self::Key,
-        nonce: &[u8],
-        ct: &[u8],
-    ) -> Result<Vec<u8>, SecretStoreError>;
-}
-
 #[derive(Default, Debug, Clone, Copy)]
 pub struct EncryptionAlgoDefault;
 impl EncryptionAlgo for EncryptionAlgoDefault {
