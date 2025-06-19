@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.2.0`] - Unreleased
 
+### Repository
+
+#### Added
+
+- CONTRIBUTING.md
+- CODE_OF_CONDUCT.md
+
 ### `nexus-cli`
 
 #### Added
@@ -28,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus crypto set-passphrase` prompts for and stores a passphrase securely in the keyring
 - `nexus crypto key-status` shows where the key was loaded from
 - automatically fetching devnet objects for user ergonomics
+- configured `cargo-deny` rules
 - not failing if a tool is already registered when registering a tool
 - not failing a whole tool registration batch if one of the tools fails to register
 
@@ -42,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus dag execute` now takes `--encrypt` argument that accepts `vertex.port` pairs to encrypt before sending data on-chain
 - JSON DAG now accepts `encrypted` field on `edges.[].from`
 - `nexus dag execute` now encrypts any `vertex.port` mentioned in the arguments
+- removed `--encrypt` flag in favour of storing the information in the JSON DAG definition
 
 #### Removed
 
