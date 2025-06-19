@@ -245,11 +245,11 @@ impl Session {
 
         // 4. Initialise Double-Ratchet in "Sender" role (using init_sender_he method).
         let mut ratchet = RatchetStateHE::new();
-        let _ = ratchet.init_sender_he(&*sk, bundle.spk_pub, hks, hk_r);
+        let _ = ratchet.init_sender_he(&sk, bundle.spk_pub, hks, hk_r);
 
         // 5. Stable session-ID.
         // Change if needed for your application.
-        let session_id = Self::calculate_session_id(&*sk);
+        let session_id = Self::calculate_session_id(&sk);
 
         Ok((
             Message::Initial(init_msg),
@@ -304,10 +304,10 @@ impl Session {
         // 4. Initialise Double-Ratchet in "Receiver" role (using init_bob_he method).
         let mut ratchet = RatchetStateHE::new();
         let receiver_pub = PublicKey::from(spk_secret);
-        let _ = ratchet.init_receiver_he(&*sk, (spk_secret.clone(), receiver_pub), k_s, k_r);
+        let _ = ratchet.init_receiver_he(&sk, (spk_secret.clone(), receiver_pub), k_s, k_r);
 
         // 5. Stable session-ID.
-        let session_id = Self::calculate_session_id(&*sk);
+        let session_id = Self::calculate_session_id(&sk);
 
         Ok((
             Session {
@@ -451,7 +451,7 @@ mod tests {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
 
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1;
 
         // Initialize the bundle for testing
@@ -504,7 +504,7 @@ mod tests {
     fn test_decrypt_failure() {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
         let (message, mut sender_sess) = Session::initiate(&sender_id, &bundle, b"msg").unwrap();
 
@@ -532,7 +532,7 @@ mod tests {
     fn test_out_of_order_messages() {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
         let (message, mut sender_sess) =
@@ -577,7 +577,7 @@ mod tests {
     fn test_multiple_sessions() {
         // Receiver identity and SPK
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
         // Multiple Senders
@@ -632,7 +632,7 @@ mod tests {
         // 1. bootstrap a normal session
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
         let (init_msg, mut sender_sess) =
@@ -709,7 +709,7 @@ mod tests {
         let mut receiver_bundles = Vec::with_capacity(N_USERS);
 
         for i in 0..N_USERS {
-            let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+            let spk_secret = StaticSecret::random_from_rng(OsRng);
             let bundle = PreKeyBundle::new(&receiver_id, i as u32 + 1, &spk_secret, None, None);
             receiver_spk_secrets.push(spk_secret);
             receiver_bundles.push(bundle);
@@ -846,7 +846,7 @@ mod tests {
         let mut leader_spk_secrets = Vec::with_capacity(N_USERS); // can be the same SPK for all users
         let mut leader_bundles = Vec::with_capacity(N_USERS);
         for i in 0..N_USERS {
-            let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+            let spk_secret = StaticSecret::random_from_rng(OsRng);
             let bundle = PreKeyBundle::new(&leader_id, i as u32 + 1, &spk_secret, None, None);
             leader_spk_secrets.push(spk_secret);
             leader_bundles.push(bundle); // publish the bundle somewhere so users can read it
@@ -953,11 +953,11 @@ mod tests {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
 
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let spk_id = 1;
 
         // Generate an OTK for additional forward secrecy
-        let otpk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let otpk_secret = StaticSecret::random_from_rng(OsRng);
         let otpk_id = 42; // Some unique ID for the OTK
 
         // Create bundle with OTK
@@ -1025,7 +1025,7 @@ mod tests {
     fn test_read_own_msg_functionality() {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
         // Setup session
@@ -1093,7 +1093,7 @@ mod tests {
     fn test_commit_operations() {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
-        let spk_secret = StaticSecret::random_from_rng(&mut OsRng);
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
         // Setup session

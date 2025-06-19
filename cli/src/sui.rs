@@ -223,12 +223,31 @@ pub(crate) async fn fetch_object_by_id(
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.
-// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/20>
-pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, NexusCliError> {
+pub(crate) async fn get_nexus_objects(
+    conf: &mut CliConf,
+) -> AnyResult<NexusObjects, NexusCliError> {
     let objects_handle = loading!("Loading Nexus object IDs configuration...");
 
-    if let Some(objects) = &conf.nexus {
+    // If objects are configured locally, return them.
+    if let Some(objects) = conf.nexus.clone() {
         objects_handle.success();
+
+        return Ok(objects);
+    }
+
+    // For some networks, we attempt to load the objects from public endpoints.
+    let response = match conf.sui.net {
+        SuiNet::Devnet => fetch_objects_from_url(DEVNET_OBJECTS_TOML).await,
+        _ => Err(anyhow!(
+            "Nexus objects are not configured for this network."
+        )),
+    };
+
+    if let Ok(objects) = response {
+        objects_handle.success();
+
+        conf.nexus = Some(objects.clone());
+        conf.save().await.map_err(|e| NexusCliError::Any(e))?;
 
         return Ok(objects);
     }
@@ -240,6 +259,22 @@ pub(crate) fn get_nexus_objects(conf: &CliConf) -> AnyResult<&NexusObjects, Nexu
         message = "References to Nexus objects are missing in the CLI configuration. Use the following command to update it:",
         command = "$ nexus conf set --nexus.objects <PATH_TO_OBJECTS_TOML>".bold(),
     )))
+}
+
+async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
+    let response = reqwest::Client::new().get(url).send().await?;
+
+    if !response.status().is_success() {
+        bail!(
+            "Failed to fetch Nexus objects from {url}: {}",
+            response.status()
+        );
+    }
+
+    let text = response.text().await?;
+    let objects: NexusObjects = toml::from_str(&text)?;
+
+    Ok(objects)
 }
 
 /// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
@@ -328,37 +363,34 @@ fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf,
 }
 
 fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
+    let alias = match net {
+        SuiNet::Localnet => "localnet".to_string(),
+        SuiNet::Devnet => "devnet".to_string(),
+        SuiNet::Testnet => "testnet".to_string(),
+        SuiNet::Mainnet => todo!("Mainnet not yet supported"),
+    };
+
     if let Ok(sui_rpc_url) = std::env::var("SUI_RPC_URL") {
         Some(sui::Env {
-            alias: "localnet".to_string(),
+            alias,
             rpc: sui_rpc_url,
             ws: None,
             basic_auth: None,
         })
     } else {
-        let env = match net {
-            SuiNet::Localnet => sui::Env {
-                alias: "localnet".to_string(),
-                rpc: sui::LOCAL_NETWORK_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
-            SuiNet::Devnet => sui::Env {
-                alias: "devnet".to_string(),
-                rpc: sui::DEVNET_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
-            SuiNet::Testnet => sui::Env {
-                alias: "testnet".to_string(),
-                rpc: sui::TESTNET_URL.into(),
-                ws: None,
-                basic_auth: None,
-            },
+        let rpc = match net {
+            SuiNet::Localnet => sui::LOCAL_NETWORK_URL.into(),
+            SuiNet::Devnet => sui::DEVNET_URL.into(),
+            SuiNet::Testnet => sui::TESTNET_URL.into(),
             SuiNet::Mainnet => todo!("Mainnet not yet supported"),
         };
 
-        Some(env)
+        Some(sui::Env {
+            alias,
+            rpc,
+            ws: None,
+            basic_auth: None,
+        })
     }
 }
 
@@ -367,6 +399,7 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
+        mockito::Server,
         nexus_sdk::sui::Address,
         rstest::rstest,
         serial_test::serial,
@@ -542,6 +575,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
@@ -557,20 +595,30 @@ mod tests {
 
         let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
 
-        assert!(wallet.is_ok());
+        match wallet {
+            Ok(_) => {} // Test passes
+            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+        }
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
+        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_net_mismatch() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
         );
 
+        // Create wallet config for devnet
         let conf = SuiConf {
             net: SuiNet::Devnet,
             wallet_path: PathBuf::from("/invalid"),
@@ -579,7 +627,8 @@ mod tests {
 
         let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
 
-        let err = create_wallet_context(&path, SuiNet::Devnet)
+        // Try to use the devnet wallet with localnet - this should fail
+        let err = create_wallet_context(&path, SuiNet::Localnet)
             .await
             .err()
             .unwrap();
@@ -587,12 +636,18 @@ mod tests {
         assert_matches!(err, NexusCliError::Any(e) if e.to_string().contains("The Sui net of the wallet does not match"));
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
+        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_rpc_url() {
+        // Set up a clean temporary config directory
+        let temp_dir = tempdir().unwrap();
+        let sui_config_dir = temp_dir.path().to_str().unwrap();
+        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+
         std::env::set_var(
             "SUI_SECRET_MNEMONIC",
             "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
@@ -609,9 +664,108 @@ mod tests {
 
         let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
 
-        assert!(wallet.is_ok());
+        match wallet {
+            Ok(_) => {} // Test passes
+            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+        }
 
         std::env::remove_var("SUI_SECRET_MNEMONIC");
         std::env::remove_var("SUI_RPC_URL");
+        std::env::remove_var("SUI_CONFIG_DIR");
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_fetch_devnet_objects() {
+        let mut server = Server::new_async().await;
+
+        let response_body = format!(
+            r#"
+                primitives_pkg_id = "0x1"
+                workflow_pkg_id = "0x2"
+                interface_pkg_id = "0x3"
+                network_id = "0x4"
+
+                [tool_registry]
+                objectId = "0x5"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [default_sap]
+                objectId = "0x6"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [gas_service]
+                objectId = "0x7"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [pre_key_vault]
+                objectId = "0x8"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+            "#
+        );
+
+        // Create a mock for the devnet objects endpoint.
+        let mock = server
+            .mock("GET", "/production-talus-sui-packages/objects.devnet.toml")
+            .with_status(200)
+            .with_body(&response_body)
+            .create_async()
+            .await;
+
+        let res = fetch_objects_from_url(
+            format!(
+                "http://{}/production-talus-sui-packages/objects.devnet.toml",
+                server.host_with_port()
+            )
+            .as_str(),
+        )
+        .await;
+
+        assert!(res.is_ok());
+
+        let objects = res.unwrap();
+
+        assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
+        assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
+        assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
+        assert_eq!(objects.network_id, "0x4".parse().unwrap());
+        assert_eq!(objects.tool_registry.object_id, "0x5".parse().unwrap());
+        assert_eq!(objects.tool_registry.version, 1.into());
+        assert_eq!(
+            objects.tool_registry.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.default_sap.object_id, "0x6".parse().unwrap());
+        assert_eq!(objects.default_sap.version, 1.into());
+        assert_eq!(
+            objects.default_sap.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.gas_service.object_id, "0x7".parse().unwrap());
+        assert_eq!(objects.gas_service.version, 1.into());
+        assert_eq!(
+            objects.gas_service.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(objects.pre_key_vault.object_id, "0x8".parse().unwrap());
+        assert_eq!(objects.pre_key_vault.version, 1.into());
+        assert_eq!(
+            objects.pre_key_vault.digest,
+            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                .parse()
+                .unwrap()
+        );
+
+        mock.assert_async().await;
     }
 }

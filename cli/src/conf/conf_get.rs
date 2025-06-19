@@ -87,10 +87,10 @@ mod tests {
         };
 
         let conf = CliConf {
-            sui: sui_conf,
-            nexus: Some(nexus_objects),
-            tools,
-            crypto: Secret::new(crypto_conf),
+            sui: sui_conf.clone(),
+            nexus: Some(nexus_objects.clone()),
+            tools: tools.clone(),
+            crypto: Some(Secret::new(crypto_conf)),
         };
 
         // Write the configuration to the file.
@@ -107,13 +107,13 @@ mod tests {
 
         // Verify sessions field is properly handled during deserialization
         assert_eq!(
-            result.crypto.sessions.len(),
+            result.crypto.as_ref().unwrap().sessions.len(),
             1,
             "Should have 1 session (shared between sender and receiver)"
         );
 
         // Verify we can recover the sessions from the configuration
-        for (session_id, session) in result.crypto.sessions.iter() {
+        for (session_id, session) in result.crypto.as_ref().unwrap().sessions.iter() {
             // Verify session IDs are properly stored and retrieved
             assert_eq!(
                 session.id(),
@@ -121,6 +121,30 @@ mod tests {
                 "Session ID should match the map key"
             );
         }
+
+        // Test loading config without crypto field
+        let conf_without_crypto = CliConf {
+            sui: sui_conf.clone(),
+            nexus: Some(nexus_objects.clone()),
+            tools: tools.clone(),
+            crypto: None,
+        };
+
+        let path_no_crypto = tempdir.join("conf_no_crypto.toml");
+        let toml_str_no_crypto = toml::to_string(&conf_without_crypto)
+            .expect("Failed to serialize config without crypto to TOML");
+        tokio::fs::write(&path_no_crypto, toml_str_no_crypto)
+            .await
+            .expect("Failed to write conf_no_crypto.toml");
+
+        let result_no_crypto = get_nexus_conf(path_no_crypto)
+            .await
+            .expect("Failed to load config without crypto");
+        assert_eq!(result_no_crypto, conf_without_crypto);
+        assert!(
+            result_no_crypto.crypto.is_none(),
+            "Crypto field should be None"
+        );
 
         // Clean-up env vars
         std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");

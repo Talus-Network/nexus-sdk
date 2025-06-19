@@ -377,8 +377,8 @@ mod tests {
                 e.execution == execution &&
                 e.evaluations == evaluations &&
                 e.walk_index == 42 &&
-                e.next_vertex.name == "foo".to_string() &&
-                e.worksheet_from_type.name == "bar".to_string()
+                e.next_vertex.name == *"foo" &&
+                e.worksheet_from_type.name == *"bar"
         );
     }
 }

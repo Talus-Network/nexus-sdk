@@ -22,7 +22,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     // 1. Load config & objects
     let mut conf = CliConf::load().await.unwrap_or_default();
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // 2. Wallet / client / address
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
@@ -37,7 +37,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     let tx_handle = loading!("Crafting transaction...");
     let mut tx_builder = sui::ProgrammableTransactionBuilder::new();
     // Ignore the return value, it's probably empty
-    if let Err(e) = claim_pre_key_for_self(&mut tx_builder, &objects) {
+    if let Err(e) = claim_pre_key_for_self(&mut tx_builder, objects) {
         tx_handle.error();
         return Err(NexusCliError::Any(e));
     }
@@ -91,15 +91,20 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
         .map_err(|e| NexusCliError::Any(e.into()))?;
 
     // 6. Ensure IdentityKey
-    if conf.crypto.identity_key.is_none() {
-        conf.crypto.identity_key = Some(IdentityKey::generate());
-    }
+    // Ensure crypto config exists, initialize if needed
+    let crypto_secret = conf
+        .crypto
+        .get_or_insert_with(|| Secret::new(CryptoConf::default()));
+
+    crypto_secret
+        .identity_key
+        .get_or_insert_with(IdentityKey::generate);
 
     // 7. Run X3DH & store session
     let first_message = b"nexus auth";
     let (initial_msg, session) = {
-        let identity_key = conf.crypto.identity_key.as_ref().unwrap();
-        Session::initiate(&identity_key, &peer_bundle, first_message)
+        let identity_key = crypto_secret.identity_key.as_ref().unwrap();
+        Session::initiate(identity_key, &peer_bundle, first_message)
             .map_err(|e| NexusCliError::Any(e.into()))?
     };
 
@@ -115,7 +120,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     // Store session and save config
     let session_id = *session.id();
-    conf.crypto.sessions.insert(session_id, session);
+    crypto_secret.sessions.insert(session_id, session);
 
     let save_handle = loading!("Saving session to configuration...");
     match conf.save().await {
@@ -129,14 +134,14 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     }
 
     // Make borrow checker happy
-    let objects = get_nexus_objects(&conf)?;
+    let objects = &get_nexus_objects(&mut conf).await?;
 
     // 8. Craft associate transaction
     let tx_handle = loading!("Crafting transaction...");
     let mut tx_builder = sui::ProgrammableTransactionBuilder::new();
     if let Err(e) = associate_pre_key_with_sender(
         &mut tx_builder,
-        &objects,
+        objects,
         &prekey_object_ref,
         initial_message.clone(),
     ) {

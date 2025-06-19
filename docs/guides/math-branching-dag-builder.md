@@ -99,7 +99,12 @@ First, we define all the nodes (steps) in our graph. Each vertex needs a unique 
       "name": "add_input_and_default",
       // Declares 'a' as an input port that needs to be provided.
       // 'b' will be provided by a default value.
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       // Comparison step
@@ -352,7 +357,12 @@ Combining these sections gives us the complete `math_branching.json`:
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {

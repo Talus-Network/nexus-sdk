@@ -50,7 +50,16 @@
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": true
+        },
+        {
+          "name": "b",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -58,7 +67,16 @@
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {

@@ -32,7 +32,12 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "ig_post_reader",
-      "entry_ports": ["post_id"]
+      "entry_ports": [
+        {
+          "name": "post_id",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {

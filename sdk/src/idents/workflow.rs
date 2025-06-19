@@ -49,6 +49,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAGExecution"),
     };
+    /// Create an encrypted InputPort from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::encrypted_input_port_from_string`
+    pub const ENCRYPTED_INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("encrypted_input_port_from_string"),
+    };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::EntryGroup`
@@ -259,6 +266,23 @@ impl Dag {
             workflow_pkg_id,
             Self::INPUT_PORT_FROM_STRING.module.into(),
             Self::INPUT_PORT_FROM_STRING.name.into(),
+            vec![],
+            vec![str],
+        ))
+    }
+
+    /// Create an encrypted InputPort from a string.
+    pub fn encrypted_input_port_from_str<T: AsRef<str>>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        str: T,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module.into(),
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.name.into(),
             vec![],
             vec![str],
         ))

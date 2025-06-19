@@ -43,76 +43,61 @@ pub enum MasterKeyError {
     ProjectDirNotFound,
     #[error("argon2 failure: {0}")]
     Argon2(String),
+    #[error(
+        "no persistent master key found; \
+            run `nexus crypto init-key` or `set-passphrase`"
+    )]
+    NoPersistentKey,
+    #[error(
+        "a different persistent key already exists; \
+            re-run with --force if you really want to replace it"
+    )]
+    KeyAlreadyExists,
 }
 
 /// Obtain the process-wide master key.
 ///
-/// First tries the OS key-ring. If not present, derives a key from
-/// `NEXUS_CLI_STORE_PASSPHRASE` using Argon2id and an application-scoped
-/// salt. If neither exists, generates a
-/// random key and stores it in the key-ring.
+/// Resolution order (abort if none succeed):
+/// 1. `NEXUS_CLI_STORE_PASSPHRASE` env-var -> Argon2id(pass, salt)
+/// 2. key-ring entry  {service=SERVICE, user="passphrase"} -> Argon2id(pass, salt)
+/// 3. key-ring entry  {service=SERVICE, user=USER} -> raw 32-byte key
 pub fn get_master_key() -> Result<Zeroizing<[u8; KEY_LEN]>, MasterKeyError> {
-    // Try to get key from key-ring
-    // Only try keyring if no passphrase is set
-    // This ensures passphrase-derived keys are always re-derived
-    // rather than potentially getting a stale cached key
-    if env::var("NEXUS_CLI_STORE_PASSPHRASE").is_err() {
-        match Entry::new(SERVICE, USER) {
-            Ok(entry) => {
-                if let Ok(stored_hex) = entry.get_password() {
-                    let bytes = hex::decode(&stored_hex)?;
-                    if bytes.len() == KEY_LEN {
-                        let key_array: [u8; KEY_LEN] = bytes.try_into().unwrap();
-                        return Ok(Zeroizing::new(key_array));
-                    }
-                    // Invalid key in keyring, delete it
-                    let _ = entry.delete_credential();
-                }
-            }
-            Err(e) => {
-                // Keyring not available, continue without it
-                eprintln!("Warning: Keyring not available: {}", e);
-            }
-        }
-    }
-
-    // Try to derive key from passphrase
+    // 1. ENV-VAR branch (highest priority)
     if let Ok(passphrase) = env::var("NEXUS_CLI_STORE_PASSPHRASE") {
-        let (_, salt) = get_or_create_salt()?;
-
-        // Derive 256-bit key from passphrase + salt.
-        let params = Params::new(ARGON2_MEMORY_KIB, ARGON2_ITERATIONS, 1, Some(KEY_LEN))
-            .map_err(|e| MasterKeyError::Argon2(e.to_string()))?;
-        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-        let mut key = Zeroizing::new([0u8; KEY_LEN]);
-        argon2
-            .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
-            .map_err(|e| MasterKeyError::Argon2(e.to_string()))?;
-
-        // Don't cache passphrase-derived keys in keyring to avoid confusion
-        // The passphrase + salt should always produce the same key
-        return Ok(key);
+        return derive_from_passphrase(&passphrase);
     }
 
-    // Generate new random key
-    let mut key = Zeroizing::new([0u8; KEY_LEN]);
-    OsRng.fill_bytes(&mut *key);
+    // 2. Key-ring pass-phrase branch
+    if let Ok(passphrase) = Entry::new(SERVICE, "passphrase").and_then(|e| e.get_password()) {
+        return derive_from_passphrase(&passphrase);
+    }
 
-    // Try to save to keyring, but don't fail if it doesn't work
-    match Entry::new(SERVICE, USER) {
-        Ok(entry) => match entry.set_password(&hex::encode(&*key)) {
-            Ok(_) => Ok(key),
-            Err(e) => {
-                eprintln!("Warning: Failed to save key to keyring: {}", e);
-                Ok(key)
-            }
-        },
-        Err(e) => {
-            eprintln!("Warning: Keyring not available: {}", e);
-            Ok(key)
+    // 3. Raw 32-byte key stored in key-ring
+    if let Ok(hex_key) = Entry::new(SERVICE, USER).and_then(|e| e.get_password()) {
+        let bytes = hex::decode(&hex_key)?;
+        if bytes.len() == KEY_LEN {
+            let key_array: [u8; KEY_LEN] = bytes.try_into().unwrap();
+            return Ok(Zeroizing::new(key_array));
         }
+        // Corrupt entry – clean up to avoid surprises next run
+        let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
     }
+
+    // 4. Nothing worked -> hard error
+    Err(MasterKeyError::NoPersistentKey)
+}
+
+fn derive_from_passphrase(passphrase: &str) -> Result<Zeroizing<[u8; KEY_LEN]>, MasterKeyError> {
+    let (_, salt) = get_or_create_salt()?;
+    let params = Params::new(ARGON2_MEMORY_KIB, ARGON2_ITERATIONS, 1, Some(KEY_LEN))
+        .map_err(|e| MasterKeyError::Argon2(e.to_string()))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+    let mut key = Zeroizing::new([0u8; KEY_LEN]);
+    argon2
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
+        .map_err(|e| MasterKeyError::Argon2(e.to_string()))?;
+    Ok(key)
 }
 
 /// Locate `$XDG_CONFIG_HOME/nexus-cli/salt.bin` or platform-specific config dir,
@@ -138,7 +123,6 @@ fn get_or_create_salt() -> Result<(PathBuf, [u8; SALT_LEN]), MasterKeyError> {
             return Ok((salt_path, salt_array));
         }
         // Invalid salt file, recreate it
-        eprintln!("Warning: Invalid salt file, recreating...");
         let _ = fs::remove_file(&salt_path);
     }
 
@@ -174,52 +158,111 @@ fn write_salt_securely(path: &PathBuf, salt: &[u8; SALT_LEN]) -> io::Result<()> 
 mod tests {
     use {
         super::*,
-        std::{env, fs, sync::Mutex},
+        keyring::{mock, set_default_credential_builder, Entry},
+        std::{
+            env,
+            fs,
+            sync::{Mutex, Once},
+        },
         tempfile::TempDir,
     };
 
-    /// Serialise env-var mutations to avoid cross-test interference.
+    /// Serialise env‑var mutations to avoid cross‑test interference.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+    /// Ensure the mock key‑ring is installed exactly once for the whole test run.
+    static INIT_KEYRING: Once = Once::new();
 
+    fn init_mock_keyring() {
+        INIT_KEYRING.call_once(|| {
+            // Replace the default credential store with the in‑memory mock.
+            set_default_credential_builder(mock::default_credential_builder());
+        });
+    }
+
+    /// Helper that acquires the env‑lock, cleans up key‑ring state, executes the
+    /// test closure, and finally cleans up again. This keeps individual tests
+    /// run in order.
     fn with_env<F: FnOnce() -> R, R>(f: F) -> R {
+        init_mock_keyring();
+
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-        // Clean up any existing keyring entries before test
+        // Pre‑test clean‑up.
         let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
+        let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
 
+        // Execute the actual test body.
         let result = f();
 
-        // Clean up after test
+        // Post‑test clean‑up.
         let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
+        let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
 
         result
     }
 
     #[test]
     #[serial_test::serial(master_key_env)]
+    fn no_key_available_fails_with_hard_error() {
+        with_env(|| {
+            env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+
+            // Should fail with NoPersistentKey error
+            let result = get_master_key();
+            assert!(result.is_err(), "should fail when no key is available");
+            match result.unwrap_err() {
+                MasterKeyError::NoPersistentKey => {}
+                other => panic!("expected NoPersistentKey error, got: {:?}", other),
+            }
+        });
+    }
+
+    #[test]
+    #[serial_test::serial(master_key_env)]
+    fn env_var_passphrase_is_used_when_provided() {
+        with_env(|| {
+            let tmp = TempDir::new().unwrap();
+            let xdg_path = tmp.path().join("xdg_config");
+            let original_xdg = env::var("XDG_CONFIG_HOME").ok();
+            env::set_var("XDG_CONFIG_HOME", &xdg_path);
+
+            env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "my secret passphrase");
+
+            let key = get_master_key().expect("should derive key from env var");
+            assert_eq!(key.len(), KEY_LEN);
+
+            let key2 = get_master_key().expect("second call should work");
+            assert_eq!(&*key, &*key2);
+
+            // Cleanup
+            if let Some(old) = original_xdg {
+                env::set_var("XDG_CONFIG_HOME", old);
+            } else {
+                env::remove_var("XDG_CONFIG_HOME");
+            }
+            env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        });
+    }
+
+    #[test]
+    #[serial_test::serial(master_key_env)]
     fn passphrase_key_is_stable_and_salt_persists() {
         with_env(|| {
-            // Isolate XDG paths in a temp tree.
             let tmp = TempDir::new().unwrap();
             let xdg_path = tmp.path().join("xdg_config");
             let original_xdg = env::var("XDG_CONFIG_HOME").ok();
             env::set_var("XDG_CONFIG_HOME", &xdg_path);
             env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "correct horse battery staple");
 
-            // Same passphrase → identical keys.
             let k1 = get_master_key().expect("first derivation");
             let k2 = get_master_key().expect("second derivation");
-            assert_eq!(&*k1, &*k2, "key must be deterministic");
+            assert_eq!(&*k1, &*k2);
 
-            // A salt must have been created.
             let salt_path = xdg_path.join("nexus-cli").join("salt.bin");
-            assert!(salt_path.exists(), "salt file missing");
-
-            // Verify salt content is correct size
+            assert!(salt_path.exists());
             let salt_content = fs::read(&salt_path).unwrap();
-            assert_eq!(salt_content.len(), SALT_LEN, "salt file has wrong size");
+            assert_eq!(salt_content.len(), SALT_LEN);
 
-            // On Unix, salt must be 0o600.
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -227,7 +270,6 @@ mod tests {
                 assert_eq!(mode, 0o600, "salt file not private");
             }
 
-            // Cleanup
             if let Some(old) = original_xdg {
                 env::set_var("XDG_CONFIG_HOME", old);
             } else {
@@ -252,54 +294,14 @@ mod tests {
             env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "bravo");
             let k2 = get_master_key().unwrap();
 
-            assert_ne!(&*k1, &*k2, "distinct passphrases must yield distinct keys");
+            assert_ne!(&*k1, &*k2);
 
-            // Cleanup
             if let Some(old) = original_xdg {
                 env::set_var("XDG_CONFIG_HOME", old);
             } else {
                 env::remove_var("XDG_CONFIG_HOME");
             }
             env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        });
-    }
-
-    #[test]
-    #[serial_test::serial(master_key_env)]
-    fn random_key_is_persisted_in_keyring() {
-        with_env(|| {
-            // Ensure the passphrase path is disabled.
-            env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-
-            let first = get_master_key().expect("random key generated");
-
-            // For random keys, we try to use the keyring
-            // If keyring works, keys should match
-            // If keyring fails, we can't guarantee persistence
-            let second = get_master_key().expect("second call");
-
-            // Try to check if keyring is working by attempting to use it directly
-            match Entry::new(SERVICE, USER) {
-                Ok(entry) => {
-                    match entry.get_password() {
-                        Ok(_) => {
-                            // Keyring is working, keys should match
-                            assert_eq!(
-                                &*first, &*second,
-                                "subsequent calls should return cached key from key-ring"
-                            );
-                        }
-                        Err(_) => {
-                            // Keyring not working, skip assertion
-                            eprintln!("Note: Keyring not available, skipping persistence check");
-                        }
-                    }
-                }
-                Err(_) => {
-                    // Keyring not available at all
-                    eprintln!("Note: Keyring service not available, skipping persistence check");
-                }
-            }
         });
     }
 
@@ -313,21 +315,16 @@ mod tests {
             env::set_var("XDG_CONFIG_HOME", &xdg_path);
             env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test passphrase");
 
-            // Get key and force salt creation
             let k1 = get_master_key().unwrap();
 
-            // Read the salt that was created
             let salt_path = xdg_path.join("nexus-cli").join("salt.bin");
             let salt1 = fs::read(&salt_path).unwrap();
 
-            // Simulate new process by getting key again
             let k2 = get_master_key().unwrap();
             let salt2 = fs::read(&salt_path).unwrap();
-
-            // Salt should not change
-            assert_eq!(salt1, salt2, "salt should persist across calls");
-            assert_eq!(&*k1, &*k2, "keys should be identical with same salt");
-
+            // Check that the salt is the same across processes
+            assert_eq!(salt1, salt2);
+            assert_eq!(&*k1, &*k2);
             // Cleanup
             if let Some(old) = original_xdg {
                 env::set_var("XDG_CONFIG_HOME", old);

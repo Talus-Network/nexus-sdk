@@ -33,7 +33,7 @@ pub(crate) async fn inspect_dag_execution(
     let primitives_pkg_id = {
         let NexusObjects {
             primitives_pkg_id, ..
-        } = get_nexus_objects(&conf)?;
+        } = &get_nexus_objects(&mut conf).await?;
         *primitives_pkg_id // ObjectID is Copy
     };
 
@@ -256,17 +256,24 @@ fn process_port_data(
 fn get_active_session(
     conf: &mut CliConf,
 ) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
-    if conf.crypto.sessions.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        )));
-    }
+    match &mut conf.crypto {
+        Some(crypto_secret) => {
+            if crypto_secret.sessions.is_empty() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "Authentication required — run `nexus crypto auth` first"
+                )));
+            }
 
-    let session_id = *conf.crypto.sessions.values().next().unwrap().id();
-    conf.crypto
-        .sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
+            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
+            crypto_secret
+                .sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
+        }
+        None => Err(NexusCliError::Any(anyhow!(
+            "Authentication required — run `nexus crypto auth` first"
+        ))),
+    }
 }
 
 /// Struct defining deser of the `variant_ports_to_data` field in the

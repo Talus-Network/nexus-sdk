@@ -6,6 +6,7 @@ edition.workspace = true
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
+license.workspace = true
 license-file.workspace = true
 readme.workspace = true
 authors.workspace = true
@@ -45,6 +46,7 @@ directories.workspace = true
 hex.workspace = true
 keyring.workspace = true
 zeroize.workspace = true
+rpassword.workspace = true
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]
@@ -54,12 +56,13 @@ features = ["full"]
 [dev-dependencies]
 assert_fs = "1.1"
 assert_matches = "1.5.0"
-schemars.workspace = true
-warp = "0.3.7"
-rstest.workspace = true
-tempfile.workspace = true
-serial_test.workspace = true
+mockito.workspace = true
 nexus-toolkit.workspace = true
+rstest.workspace = true
+schemars.workspace = true
+serial_test.workspace = true
+tempfile.workspace = true
+warp = "0.3.7"
 
 [dev-dependencies.nexus-sdk]
 workspace = true

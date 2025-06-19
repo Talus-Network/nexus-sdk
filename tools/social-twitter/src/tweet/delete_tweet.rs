@@ -156,7 +156,7 @@ mod tests {
         // Verify the response
         match result {
             Output::Ok { deleted } => {
-                assert_eq!(deleted, true);
+                assert!(deleted);
             }
             Output::Err {
                 reason,
@@ -356,8 +356,8 @@ mod tests {
         // verify the response
         match result {
             Output::Ok { deleted } => {
-                // deleted:false dönünce de Ok yanıtı olmalı
-                assert_eq!(deleted, false);
+                // deleted:false 
+                assert!(!deleted);
             }
             Output::Err { reason, .. } => {
                 panic!("Expected success with deleted=false, got error: {}", reason)
