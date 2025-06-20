@@ -2,7 +2,6 @@ mod dag_execute;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
-mod validator;
 
 use {
     crate::prelude::*,

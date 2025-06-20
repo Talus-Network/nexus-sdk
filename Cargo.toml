@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["toolkit-rust", "cli", "sdk", "tools/*"]
+members = [
+    "toolkit-rust",
+    "cli",
+    "sdk",
+    "tools/*"
+]
 
 [workspace.package]
 edition = "2021"
@@ -10,7 +15,7 @@ homepage = "https://talus.network"
 license = "Apache-2.0"
 readme = "README.md"
 authors = ["Talus Engineers <engineering@taluslabs.xyz>"]
-keywords = ["blockchain", "cli", "framework", "nexus", "sdk", "sui", "talus"]
+keywords = ["nexus", "sdk", "cli", "talus", "web3"]
 categories = [
     "api-bindings",
     "command-line-interface",
