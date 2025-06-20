@@ -134,6 +134,8 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
         }
     }
 
+    let gas_coin = fetch_gas_coin(&sui, address, gas.sui_gas_coin).await?;
+
     // Make borrow checker happy
     let objects = &get_nexus_objects(&mut conf).await?;
 
