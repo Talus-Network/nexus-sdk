@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - automated faucet calls for gas and collateral coins
 - basic auth from the CLI configuration
+- DAG validation (moved to `nexus-sdk`)
 
 #### Fixed
 
@@ -80,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `idents::workflow::PreKeyVault` struct that contains pre key vault identifiers
 - `pre_key_vault` key to `NexusObjects`
 - pre key vault related Nexus events and their definitions
+- DAG validation (moved from `nexus-cli`)
 
 #### Changed
 
