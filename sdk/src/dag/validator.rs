@@ -1,7 +1,10 @@
-use anyhow::{bail, Result as AnyResult};
-use std::collections::{HashMap, HashSet};
-use crate::types::{Dag, DEFAULT_ENTRY_GROUP};
-use petgraph::graph::{DiGraph, NodeIndex};
+use {
+    anyhow::{bail, Result as AnyResult},
+    crate::types::{Dag, DEFAULT_ENTRY_GROUP},
+    petgraph::graph::{DiGraph, NodeIndex},
+    std::collections::{HashMap, HashSet},
+};
+
 type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>);
 
 /// Validate function takes a DAG and validates it based on nexus execution
