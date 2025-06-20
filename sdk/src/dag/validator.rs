@@ -1,10 +1,7 @@
-use {
-    crate::prelude::*,
-    nexus_sdk::types::{Dag, DEFAULT_ENTRY_GROUP},
-    petgraph::graph::{DiGraph, NodeIndex},
-    std::collections::{HashMap, HashSet},
-};
-
+use anyhow::{bail, Result as AnyResult};
+use std::collections::{HashMap, HashSet};
+use crate::types::{Dag, DEFAULT_ENTRY_GROUP};
+use petgraph::graph::{DiGraph, NodeIndex};
 type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>);
 
 /// Validate function takes a DAG and validates it based on nexus execution
@@ -13,7 +10,7 @@ type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec
 /// See our wiki for more information on the rules:
 /// <https://docs.talus.network/talus-documentation/devs/index/workflow#rules>
 /// <https://docs.talus.network/talus-documentation/devs/index-1/cli#nexus-dag>
-pub(crate) fn validate(dag: Dag) -> AnyResult<()> {
+pub fn validate(dag: Dag) -> AnyResult<()> {
     // Parse the dag into a petgraph DiGraph.
     let (graph, vertex_entry_groups) = try_into_graph(dag)?;
 
@@ -122,7 +119,7 @@ fn follows_concurrency_rules(
                         min_intermediate_nodes,
                         max_intermediate_nodes,
                     )
-                    .flat_map(|path: HashSet<_>| path)
+                        .flat_map(|path: HashSet<_>| path)
                 })
                 .collect::<HashSet<_>>();
 
@@ -462,4 +459,250 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     }
 
     Ok((graph, vertex_entry_groups))
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        assert_matches::assert_matches,
+        crate::types::{Dag, FromPort},
+    };
+
+    // == Various graph shapes ==
+
+    #[test]
+    fn test_ig_story_planner_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/ig_story_planner_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_immediately_converges_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/immediately_converges_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_immediately_converges_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/immediately_converges_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_default_group'"));
+    }
+
+    #[test]
+    fn test_intertwined_valid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/intertwined_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_intertwined_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/intertwined_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
+    }
+
+    #[test]
+    fn test_multiple_output_ports_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_output_ports_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
+    }
+
+    #[test]
+    fn test_multiple_output_ports_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_output_ports_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_goals_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/multiple_goals_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_dead_ends_valid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/dead_ends_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_entry_multiple_goal_valid() {
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/multiple_entry_multiple_goal_valid.json"
+        ))
+            .unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_multiple_entry_multiple_goal_invalid() {
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/multiple_entry_multiple_goal_invalid.json"
+        ))
+            .unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: c.1' has a race condition on it when invoking group 'group_a'"));
+    }
+
+    #[test]
+    fn test_branched_net_zero_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/branched_net_zero_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
+    }
+
+    #[test]
+    fn test_entry_groups_valid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/entry_groups_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_entry_groups_twice_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_twice_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn test_entry_groups_ne_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_ne_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' is unreachable when invoking group 'group_b'"));
+    }
+
+    #[test]
+    fn test_entry_groups_tm_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/entry_groups_tm_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
+    }
+
+    // == Cyclic or no input graphs ==
+
+    #[test]
+    fn test_cyclic_invalid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/cyclic_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: a.input' has an edge leading to it and therefore cannot be an entry port."));
+    }
+
+    // == Parser tests ==
+
+    #[test]
+    fn test_undefined_connections_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' is not connected to the DAG."));
+    }
+
+    #[test]
+    fn test_encrypted_port_output_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/encrypted_port_output_valid.json")).unwrap();
+
+        assert!(dag.edges.first().unwrap().from.encrypted);
+        assert_eq!(
+            *dag.outputs.unwrap().first().unwrap(),
+            FromPort {
+                vertex: "b".to_string(),
+                output_variant: "1".to_string(),
+                output_port: "1.0".to_string(),
+                encrypted: true,
+            }
+        )
+    }
+
+    #[test]
+    fn test_output_and_edge_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/output_and_edge_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' cannot have both outgoing edges and ports marked as output."));
+    }
+
+    #[test]
+    fn test_def_val_on_input_port_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/has_def_on_input_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is an entry port or has an edge leading into it and therefore cannot have a default value."));
+    }
+
+    #[test]
+    fn test_references_non_existing_vertex() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/references_non_existing_vertex.json"))
+                .unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_a' references a non-existing vertex 'invalid'."));
+    }
+
+    #[test]
+    fn test_empty_invalid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/empty_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices or ports."));
+    }
+
+    #[test]
+    fn test_both_vertex_and_entry_vertex_invalid() {
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/both_vertex_and_entry_vertex_invalid.json"
+        ))
+            .unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is defined multiple times."));
+    }
 }

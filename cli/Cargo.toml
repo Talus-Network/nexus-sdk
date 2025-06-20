@@ -27,7 +27,6 @@ home.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true
 openssl.workspace = true
-petgraph.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
