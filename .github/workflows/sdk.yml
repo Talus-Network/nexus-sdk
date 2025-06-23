@@ -54,7 +54,7 @@ jobs:
 
       # 4
       - run: cargo +stable --version
-      - run: cargo +nightly --version
+      - run: cargo +nightly-2025-01-06 --version
       - run: just sdk check
       - run: just sdk fmt-check
       - run: just sdk clippy
