@@ -578,7 +578,7 @@ Before you can execute the DAG, you need to publish it to the Nexus network. Thi
 
 ```bash
 # Publish the DAG definition
-nexus dag publish --path cli/src/dag/_dags/math_branching_with_chat.json
+nexus dag publish --path sdk/src/dag/_dags/math_branching_with_chat.json
 # Example output: DAG published successfully with Object ID: abc123...
 ```
 

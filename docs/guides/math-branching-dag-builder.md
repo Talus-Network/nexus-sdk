@@ -1,6 +1,6 @@
 # Build the Quickstart
 
-This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG that was used in the [quickstart example](math-branching-quickstart.md) step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
+This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/main/sdk/src/dag/_dags/math_branching.json) DAG that was used in the [quickstart example](math-branching-quickstart.md) step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
 
 {% hint style="info" %} Prerequisites
 Follow the [setup guide](setup.md) to get properly setup in case you haven't.

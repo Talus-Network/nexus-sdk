@@ -1,6 +1,6 @@
 # Extending Your DAG with Entry Groups
 
-This guide builds on the [Build the Quickstart guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
+This guide builds on the [Build the Quickstart guide][math-branching-dag-builder-guide] by extending the example to support multiple entry points using entry groups. You'll take the original [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/main/sdk/src/dag/_dags/math_branching.json) DAG and add an alternative entry path that allows users to directly provide two numbers for multiplication instead of adding a constant to the input.
 
 {% hint style="info" %} Prerequisites
 Follow the [setup guide](setup.md) to get properly setup in case you haven't.
@@ -549,7 +549,7 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
 Use the `nexus dag validate` command to validate the DAG structure:
 
 ```bash
-nexus dag validate --path cli/src/dag/_dags/math_branching_entry_group.json
+nexus dag validate --path sdk/src/dag/_dags/math_branching_entry_group.json
 ```
 
 This ensures your DAG conforms to all the rules, including those related to entry groups and potential race conditions.
@@ -560,7 +560,7 @@ After validation, publish the DAG:
 
 ```bash
 # Publish the DAG
-nexus dag publish --path cli/src/dag/_dags/math_branching_entry_group.json
+nexus dag publish --path sdk/src/dag/_dags/math_branching_entry_group.json
 # Example output: Published DAG with Object ID: <dag_object_id>
 ```
 

@@ -8,7 +8,7 @@ This quickstart guide helps developers test the Nexus CLI with a simple end-to-e
 In the quickstart example we'll use a simple conceptual workflow consisting of standard Nexus math tools. This example is not really useful in the real world, but will allow to showcase the Nexus concepts and Nexus CLI usage that you'll be using for all of your real world use cases.
 {% endhint %}
 
-The [`math_branching.json` DAG](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
+The [`math_branching.json` DAG](https://github.com/Talus-Network/nexus-sdk/blob/main/sdk/src/dag/_dags/math_branching.json) takes a number input, adds `-3` to it, checks if the result is negative, zero, or positive, and then performs one of three operations:
 
 * If negative: Multiply by `-3`
 * If positive: Multiply by `7`
@@ -79,7 +79,7 @@ This should show the following tools running:
 First, validate the DAG structure using the Nexus CLI:
 
 ```bash
-nexus dag validate --path cli/src/dag/_dags/math_branching.json
+nexus dag validate --path sdk/src/dag/_dags/math_branching.json
 ```
 
 This step ensures the DAG structure meets all Nexus workflow rules before attempting to publish it.
@@ -90,7 +90,7 @@ Once validated, publish the DAG to make it executable:
 
 ```bash
 # Publish the DAG (note the returned DAG Object ID)
-nexus dag publish --path cli/src/dag/_dags/math_branching.json
+nexus dag publish --path sdk/src/dag/_dags/math_branching.json
 # Example output: Published DAG with Object ID: <dag_object_id>
 ```
 
