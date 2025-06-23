@@ -1,6 +1,6 @@
 use {
-    anyhow::{bail, Result as AnyResult},
     crate::types::{Dag, DEFAULT_ENTRY_GROUP},
+    anyhow::{bail, Result as AnyResult},
     petgraph::graph::{DiGraph, NodeIndex},
     std::collections::{HashMap, HashSet},
 };
@@ -122,7 +122,7 @@ fn follows_concurrency_rules(
                         min_intermediate_nodes,
                         max_intermediate_nodes,
                     )
-                        .flat_map(|path: HashSet<_>| path)
+                    .flat_map(|path: HashSet<_>| path)
                 })
                 .collect::<HashSet<_>>();
 
@@ -468,8 +468,8 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
 mod tests {
     use {
         super::*,
-        assert_matches::assert_matches,
         crate::types::{Dag, FromPort},
+        assert_matches::assert_matches,
     };
 
     // == Various graph shapes ==
@@ -555,7 +555,7 @@ mod tests {
         let dag: Dag = serde_json::from_str(include_str!(
             "_dags/multiple_entry_multiple_goal_valid.json"
         ))
-            .unwrap();
+        .unwrap();
 
         assert!(validate(dag).is_ok());
     }
@@ -565,7 +565,7 @@ mod tests {
         let dag: Dag = serde_json::from_str(include_str!(
             "_dags/multiple_entry_multiple_goal_invalid.json"
         ))
-            .unwrap();
+        .unwrap();
 
         let res = validate(dag);
 
@@ -702,7 +702,7 @@ mod tests {
         let dag: Dag = serde_json::from_str(include_str!(
             "_dags/both_vertex_and_entry_vertex_invalid.json"
         ))
-            .unwrap();
+        .unwrap();
 
         let res = validate(dag);
 

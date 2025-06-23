@@ -1,9 +1,6 @@
 use {
     crate::{command_title, loading, prelude::*},
-    nexus_sdk::{
-        dag::validator::validate,
-        types::Dag,
-    },
+    nexus_sdk::{dag::validator::validate, types::Dag},
 };
 
 /// Validate if a JSON file at the provided location is a valid Nexus DAG. If so,
@@ -53,4 +50,3 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         }
     }
 }
-
