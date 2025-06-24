@@ -6,7 +6,7 @@ edition.workspace = true
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
-license-file.workspace = true
+license.workspace = true
 readme.workspace = true
 authors.workspace = true
 keywords.workspace = true
@@ -18,6 +18,16 @@ default = ["tool_fqn"]
 # Tool FQN feature enables the use of the `ToolFqn` struct and `fqn!` macro.
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
+
+# Crypto feature enables cryptographic primitives
+crypto = [
+    "aead", "serde-big-array", "chacha20poly1305", "hkdf", "rand", "rand_core",
+    "sha2", "subtle", "x25519-dalek", "xeddsa", "zeroize", "thiserror", "hmac",
+    "ciborium", "aes-gcm", "bincode", "serde_json", "aes-siv", "serde_bytes", "hex", "blake3", "lru"
+]
+
+# Secret core feature provides a generic secret type
+secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "zeroize"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
@@ -44,11 +54,14 @@ object_crawler = ["sui_types", "serde_json"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents"]
+transactions = ["sui_idents", "bincode"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
-walrus = ["reqwest", "futures-util", "tokio", "serde_json" , "thiserror"]
+walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
+
+# Provides DAG-related utilities.
+dag = ["petgraph"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -65,6 +78,8 @@ test_utils = [
 # Enable all features apart from `test_utils`.
 full = [
     "tool_fqn",
+    "crypto",
+    "secret_core",
     "sui_types",
     "sui_idents",
     "types",
@@ -72,12 +87,103 @@ full = [
     "object_crawler",
     "transactions",
     "walrus",
+    "dag",
 ]
+
 
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+dirs = "6.0.0"
 serde.workspace = true
+
+# === Optional deps for features ===
+[dependencies.base64]
+workspace = true
+optional = true
+
+# === Crypto deps ===
+[dependencies.aead]
+version = "0.5"
+optional = true
+
+[dependencies.serde-big-array]
+workspace = true
+optional = true
+
+[dependencies.serde_bytes]
+version = "0.11"
+optional = true
+
+[dependencies.aes-gcm]
+workspace = true
+optional = true
+
+[dependencies.aes-siv]
+workspace = true
+features = ["std"]
+optional = true
+
+[dependencies.bincode]
+workspace = true
+optional = true
+
+[dependencies.chacha20poly1305]
+version = "0.10"
+features = ["rand_core", "std"]
+optional = true
+
+[dependencies.hkdf]
+version = "0.12"
+optional = true
+
+[dependencies.hmac]
+version = "0.12"
+optional = true
+
+[dependencies.hex]
+version = "0.4"
+optional = true
+
+[dependencies.petgraph]
+workspace = true
+optional = true
+
+[dependencies.rand]
+workspace = true
+optional = true
+
+[dependencies.rand_core]
+version = "0.6.4"
+optional = true
+
+[dependencies.sha2]
+version = "0.10"
+optional = true
+
+[dependencies.subtle]
+version = "2"
+optional = true
+
+[dependencies.x25519-dalek]
+version = "2"
+features = ["zeroize"]
+optional = true
+
+[dependencies.xeddsa]
+version = "1.0.2"
+default-features = false
+features = ["xed25519"]
+optional = true
+
+[dependencies.zeroize]
+workspace = true
+features = ["zeroize_derive"]
+optional = true
+
+[dependencies.ciborium]
+version = "0.2"
+optional = true
 
 # === Optional deps ===
 [dependencies.futures-util]
@@ -174,7 +280,16 @@ assert_matches = "1.5.0"
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
 mockito.workspace = true
+tempfile = "3"
 
 # === Build deps ===
 [build-dependencies]
-toml = "0.8.20"
+toml.workspace = true
+
+[dependencies.blake3]
+version = "1.3"
+optional = true
+
+[dependencies.lru]
+version = "0.12"
+optional = true

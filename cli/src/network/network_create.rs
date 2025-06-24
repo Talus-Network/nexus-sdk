@@ -20,26 +20,20 @@ pub(crate) async fn create_network(
     );
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
     let NexusObjects {
         workflow_pkg_id, ..
-    } = get_nexus_objects(&conf)?;
+    } = &get_nexus_objects(&mut conf).await?;
 
     // Create wallet context, Sui client and find the active address.
     let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
     let sui = build_sui_client(&conf.sui).await?;
-
-    let address = match wallet.active_address() {
-        Ok(address) => address,
-        Err(e) => {
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
     // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, conf.sui.net, address, sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;

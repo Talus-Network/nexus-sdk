@@ -28,11 +28,11 @@ test: _check-cargo
 test-completions: build
     #!/usr/bin/env bash
 
-    source <(cargo +stable run --bin nexus completion bash)
+    source <(cargo +stable run --package {{ package }} completion bash)
 
 # Run rustfmt on the CLI project
 fmt-check: _check-cargo
-    cargo +nightly fmt --package {{ package }} --check
+    cargo +nightly-2025-01-06 fmt --package {{ package }} --check
 
 # Run clippy on the CLI project
 clippy: _check-cargo

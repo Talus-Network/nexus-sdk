@@ -31,7 +31,12 @@ First, let's add both the number-to-message tool and the chat completion tool to
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -169,6 +174,22 @@ You need to set up default values for both tools:
 }
 ```
 
+## Step 5: Updating DAG outputs
+
+We can no longer assign outputs to be on the math tools because they now have outgoing edges. Instead our new output will be the chat completion tool:
+
+```json
+{
+  "outputs": [
+    {
+      "vertex": "chat_completion",
+      "output_variant": "ok",
+      "output_port": "completion"
+    }
+  ]
+}
+```
+
 ## Step 5: Updating Entry Groups
 
 You need to add the `chat_completion` to our entry groups:
@@ -268,7 +289,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a"
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -276,7 +302,16 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -312,7 +347,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -517,6 +557,13 @@ Here's the complete DAG definition that combines all the components we've discus
       "name": "mul_entry",
       "vertices": ["mul_inputs", "chat_completion"]
     }
+  ],
+  "outputs": [
+    {
+      "vertex": "chat_completion",
+      "output_variant": "ok",
+      "output_port": "completion"
+    }
   ]
 }
 ```
@@ -531,7 +578,7 @@ Before you can execute the DAG, you need to publish it to the Nexus network. Thi
 
 ```bash
 # Publish the DAG definition
-nexus dag publish --path cli/src/dag/_dags/math_branching_with_chat.json
+nexus dag publish --path sdk/src/dag/_dags/math_branching_with_chat.json
 # Example output: DAG published successfully with Object ID: abc123...
 ```
 
@@ -546,13 +593,13 @@ For testing, you can use the Nexus CLI to execute the DAG:
 nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{
   "add_input_and_default": {"a": 10},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
+}' --inspect chat_completion.api_key
 
 # Using the multiplication entry group
 nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{
   "mul_inputs": {"a": 5, "b": 2},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect
+}' --inspect chat_completion.api_key
 ```
 
 The `--inspect` flag will show you detailed information about the execution, including:
@@ -561,6 +608,8 @@ The `--inspect` flag will show you detailed information about the execution, inc
 - Inputs and outputs at each step
 - Any errors that occurred
 - The final chat completion response
+
+The `api_key` entry port is defined as `encrypted` in the JSON structure, so the CLI will encrypt the data before sending it to the Nexus network.
 
 ### 2. Integration with Applications
 
@@ -621,5 +670,5 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 
 <!-- List of references -->
 
-[math-branching-entry-guide]: ./math_branching-dag-entry.md
+[math-branching-entry-guide]: ./math-branching-dag-entry.md
 [llm-openai-chat-prep-tool]: ./llm-openai-chat-prep-tool.md

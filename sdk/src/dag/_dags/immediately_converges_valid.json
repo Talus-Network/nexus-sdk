@@ -1,0 +1,65 @@
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
+      "entry_ports": [{ "name": "input", "encrypted": false }]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b"
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "1",
+        "output_port": "1"
+      },
+      "to": {
+        "vertex": "b",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "2",
+        "output_port": "2"
+      },
+      "to": {
+        "vertex": "b",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "3",
+        "output_port": "3"
+      },
+      "to": {
+        "vertex": "b",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "4",
+        "output_port": "4"
+      },
+      "to": {
+        "vertex": "b",
+        "input_port": "1"
+      }
+    }
+  ]
+}

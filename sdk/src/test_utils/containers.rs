@@ -7,11 +7,12 @@
 use testcontainers_modules::{
     redis::Redis,
     sui::Sui,
-    testcontainers::{runners::AsyncRunner, ContainerAsync, ImageExt},
+    testcontainers::{core::ports::ContainerPort, runners::AsyncRunner, ContainerAsync, ImageExt},
 };
 
 pub type SuiContainer = ContainerAsync<Sui>;
 pub type RedisContainer = ContainerAsync<Redis>;
+pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand;
 
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
@@ -20,7 +21,9 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
-        .with_tag(env!("SUI_SDK_TAG")); // set in build.rs
+        .with_tag(env!("SUI_SDK_TAG"))
+        .with_mapped_port(0, ContainerPort::Tcp(9000))
+        .with_mapped_port(0, ContainerPort::Tcp(9123));
 
     let container = sui_request
         .start()

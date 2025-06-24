@@ -13,7 +13,7 @@ use {
         user::models::{
             Affiliation,
             ConnectionStatus,
-            Entities,
+            // Entities,
             PublicMetrics,
             SubscriptionType,
             UserResponse,
@@ -74,8 +74,9 @@ pub(crate) enum Output {
         #[serde(skip_serializing_if = "Option::is_none")]
         description: Option<String>,
         /// Entities found in the user's description (hashtags, mentions, URLs)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        entities: Option<Entities>,
+        // Disabled to cut down on schema size.
+        // #[serde(skip_serializing_if = "Option::is_none")]
+        // entities: Option<Entities>,
         /// The user's location
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<String>,
@@ -166,7 +167,7 @@ impl NexusTool for GetUserByUsername {
                         connection_status: user.connection_status,
                         created_at: user.created_at,
                         description: user.description,
-                        entities: user.entities,
+                        // entities: user.entities,
                         location: user.location,
                         most_recent_tweet_id: user.most_recent_tweet_id,
                         pinned_tweet_id: user.pinned_tweet_id,

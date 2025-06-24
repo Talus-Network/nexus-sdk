@@ -15,10 +15,10 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Neuxs tools");
 
     // Load CLI configuration.
-    let conf = CliConf::load().await.unwrap_or_else(|_| CliConf::default());
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
     // Nexus objects must be present in the configuration.
-    let NexusObjects { tool_registry, .. } = get_nexus_objects(&conf)?;
+    let NexusObjects { tool_registry, .. } = &get_nexus_objects(&mut conf).await?;
 
     // Build the Sui client.
     let sui = build_sui_client(&conf.sui).await?;

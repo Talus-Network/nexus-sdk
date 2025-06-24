@@ -36,7 +36,7 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable, nightly
+          toolchain: stable, nightly-2025-01-06
           override: true
           components: rustfmt, clippy
 
@@ -51,7 +51,7 @@ jobs:
 
       # 4
       - run: cargo +stable --version
-      - run: cargo +nightly --version
+      - run: cargo +nightly-2025-01-06 --version
       - run: just toolkit-rust check
       - run: just toolkit-rust fmt-check
       - run: just toolkit-rust clippy

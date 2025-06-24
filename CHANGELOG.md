@@ -7,11 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.2.0`] - Unreleased
 
+### Repository
+
+#### Added
+
+- CONTRIBUTING.md
+- CODE_OF_CONDUCT.md
+
 ### `nexus-cli`
 
 #### Added
 
 - `nexus gas add-budget` command to be able to pay for evaluations
+- `nexus gas expiry enable` to enable the expiry gas extension for a tool
+- `nexus gas expiry disable` to disable the expiry gas extension for a tool
+- `nexus gas expiry buy-ticket` to buy an expiry gas ticket for a tool
+- `nexus tool set-invocation-cost` to set the invocation cost for a tool
+- `indicatif` crate to handle progress spinners
+- `--batch` flag to `nexus tool register` command to allow registering multiple tools at once
+- upon tool registration, the CLI will save the owner caps to the CLI conf; these are then used to fall back to if no `--owner-cap` arg is provided for some commands
+- `secrets` module that provides a wrapper to encrypt and decrypt its inner values
+- `crypto` section to the CLI configuration to save the current state of the `crypto`
+- `nexus conf set --sui.rpc-url` to set a custom Sui RPC URL for the CLI to use
+- `nexus crypto auth` establishes a secure session with the network
+- `nexus crypto generate-identity-key` generates and stores a fresh identity key
+- `nexus crypto init-key` generates and stores a random 32-byte master key
+- `nexus crypto set-passphrase` prompts for and stores a passphrase securely in the keyring
+- `nexus crypto key-status` shows where the key was loaded from
+- automatically fetching devnet objects for user ergonomics
+- configured `cargo-deny` rules
+- not failing if a tool is already registered when registering a tool
+- not failing a whole tool registration batch if one of the tools fails to register
 
 #### Changed
 
@@ -20,6 +46,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus tool list` supports the new `description` and `registered_at_ms` attributes
 - tool registration now takes `invocation_cost` parameter and returns 2 owner caps `OverTool` and `OverGas`
 - `nexus conf --nexus.objects` is now the only way to populate the `nexus.objects` field in the config
+- `nexus conf` changed to have `set` and `get` subcommands
+- `nexus dag execute` now takes `--encrypt` argument that accepts `vertex.port` pairs to encrypt before sending data on-chain
+- JSON DAG now accepts `encrypted` field on `edges.[].from`
+- `nexus dag execute` now encrypts any `vertex.port` mentioned in the arguments
+- removed `--encrypt` flag in favour of storing the information in the JSON DAG definition
+
+#### Removed
+
+- automated faucet calls for gas and collateral coins
+- basic auth from the CLI configuration
+- DAG validation (moved to `nexus-sdk`)
+
+#### Fixed
+
+- `create_wallet_context` takes `SUI_RPC_URL` into consideration when checking active env
+- when `nexus conf get` fails to parse the config it shows the error instead of defaulting
+- `master-key` uses keyring platform specific dependencies
+- `nexus crypto auth` fetches a new gas coin now
 
 ### `nexus-sdk`
 
@@ -28,15 +72,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Walrus Client module to interact with Walrus decentralized storage
 - `transactions::gas` module containing PTB templates for gas-related transactions
 - support for generating shell completions
+- `crypto` module
+- `x3dh` in `crypto` that implements X3DH key-exchange protocol according to the Signal Specs.
+- `double_ratchet` in `crypto` that implements Double Ratchet with header encryption.
+- `session` in `crypto` that glues together X3DH + Double Ratchet for a complete e2d Secure Session Layer.
+- generic `secret` type interface for encrypting and decrypting wrapped values
+- `transactions::crypto` module containing PTB templates for crypto-related transactions
+- `idents::workflow::PreKeyVault` struct that contains pre key vault identifiers
+- `pre_key_vault` key to `NexusObjects`
+- pre key vault related Nexus events and their definitions
+- DAG validation (moved from `nexus-cli`)
 
 #### Changed
 
 - `transactions::tool` register PTB template now accepts invocation cost
+- all transaction templates now accept an `objects` argument instead of accepting objects one by one
 
 #### Fixed
 
 - `test_utils::contracts` now creates a `Move.lock` if it doesn't exist yet
 - Fixed a bug that erases the current basic auth credentials from the config when any value is updated
+
+### `nexus-toolkit-rust`
+
+#### Added
+
+- `/tools` endpoint to the `bootstrap!` macro that returns a list of all tools registered on the webserver
+
+### `docs`
+
+#### Added
+
+- added markdown linter configuration
+- added Github workflow for markdown linting and spellcheck actions
+- added markdown style guide
 
 ## [`0.1.0`] - 2025-04-14
 

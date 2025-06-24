@@ -46,6 +46,12 @@ pub enum NexusEventKind {
     FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent),
     #[serde(rename = "GasSettlementUpdateEvent")]
     GasSettlementUpdate(GasSettlementUpdateEvent),
+    #[serde(rename = "PreKeyVaultCreatedEvent")]
+    PreKeyVaultCreated(PreKeyVaultCreatedEvent),
+    #[serde(rename = "PreKeyClaimedEvent")]
+    PreKeyClaimed(PreKeyClaimedEvent),
+    #[serde(rename = "PreKeyAssociatedEvent")]
+    PreKeyAssociated(PreKeyAssociatedEvent),
     // These events are unused for now.
     #[serde(rename = "ToolRegistryCreatedEvent")]
     ToolRegistryCreated(serde_json::Value),
@@ -55,6 +61,8 @@ pub enum NexusEventKind {
     DAGVertexAdded(serde_json::Value),
     #[serde(rename = "DAGEdgeAddedEvent")]
     DAGEdgeAdded(serde_json::Value),
+    #[serde(rename = "DAGOutputAddedEvent")]
+    DAGOutputAdded(serde_json::Value),
     #[serde(rename = "DAGEntryVertexInputPortAddedEvent")]
     DAGEntryVertexInputPortAdded(serde_json::Value),
     #[serde(rename = "DAGDefaultValueAddedEvent")]
@@ -204,6 +212,37 @@ pub struct GasSettlementUpdateEvent {
     pub was_settled: bool,
 }
 
+/// Fired by the Nexus Workflow when a new pre key vault is created. This happens
+/// on initial network setup.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PreKeyVaultCreatedEvent {
+    pub vault: sui::ObjectID,
+    pub crypto_cap: sui::ObjectID,
+}
+
+/// Fired by the Nexus Workflow when a pre key is claimed. Notifies about the
+/// remaining pre keys in the vault after the claim.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PreKeyClaimedEvent {
+    /// How many pre keys are left in the vault after this claim.
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub remaining: u64,
+}
+
+/// Fired by the Nexus Workflow when a pre key is associated with a user.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PreKeyAssociatedEvent {
+    /// The address of the user the pre key is associated with.
+    pub claimed_by: sui::ObjectID,
+    /// Bytes of the pre key.
+    pub pre_key: Vec<u8>,
+    /// Bytes of the initial message.
+    pub initial_message: Vec<u8>,
+}
+
 // == Parsing ==
 
 /// Parse [`sui::Event`] into [`NexusEvent`]. We check that the module and name
@@ -338,8 +377,8 @@ mod tests {
                 e.execution == execution &&
                 e.evaluations == evaluations &&
                 e.walk_index == 42 &&
-                e.next_vertex.name == "foo".to_string() &&
-                e.worksheet_from_type.name == "bar".to_string()
+                e.next_vertex.name == *"foo" &&
+                e.worksheet_from_type.name == *"bar"
         );
     }
 }

@@ -1,0 +1,93 @@
+{
+  "entry_groups": [
+    {
+      "name": "group_a",
+      "vertices": ["a", "b"]
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
+      "entry_ports": [{ "name": "input", "encrypted": false }]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "b",
+      "entry_ports": [{ "name": "input", "encrypted": false }]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "c"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "d"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "e"
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "1",
+        "output_port": "1.0"
+      },
+      "to": {
+        "vertex": "c",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "b",
+        "output_variant": "1",
+        "output_port": "1.0"
+      },
+      "to": {
+        "vertex": "c",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "c",
+        "output_variant": "1",
+        "output_port": "1.0"
+      },
+      "to": {
+        "vertex": "d",
+        "input_port": "1"
+      }
+    },
+    {
+      "from": {
+        "vertex": "c",
+        "output_variant": "1",
+        "output_port": "1.1"
+      },
+      "to": {
+        "vertex": "e",
+        "input_port": "1"
+      }
+    }
+  ]
+}
