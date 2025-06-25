@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON DAG now accepts `encrypted` field on `edges.[].from`
 - `nexus dag execute` now encrypts any `vertex.port` mentioned in the arguments
 - removed `--encrypt` flag in favour of storing the information in the JSON DAG definition
+- replaced all occurrences of `sap` with `tap`
 
 #### Removed
 
@@ -87,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `transactions::tool` register PTB template now accepts invocation cost
 - all transaction templates now accept an `objects` argument instead of accepting objects one by one
+- replaced all occurrences of `sap` with `tap`
 
 #### Fixed
 
