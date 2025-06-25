@@ -1,30 +1,29 @@
 use crate::{
     idents::{sui_framework::Address, ModuleAndNameIdent},
-    sui,
-    ToolFqn,
+    sui, ToolFqn,
 };
 
-// == `nexus_workflow::default_sap` ==
+// == `nexus_workflow::default_tap` ==
 
-pub struct DefaultSap;
+pub struct DefaultTap;
 
-const DEFAULT_SAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_sap");
+const DEFAULT_TAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_tap");
 
-impl DefaultSap {
+impl DefaultTap {
     /// This function is called when a DAG is to be executed using the default
-    /// SAP implementation.
+    /// TAP implementation.
     ///
-    /// `nexus_workflow::default_sap::begin_dag_execution`
+    /// `nexus_workflow::default_tap::begin_dag_execution`
     pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
+        module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
-    /// The DefaultSap struct type.
+    /// The DefaultTap struct type.
     ///
-    /// `nexus_workflow::default_sap::DefaultSAP`
-    pub const DEFAULT_SAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
-        name: sui::move_ident_str!("DefaultSAP"),
+    /// `nexus_workflow::default_tap::DefaultTAP`
+    pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("DefaultTAP"),
     };
 }
 

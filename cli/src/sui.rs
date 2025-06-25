@@ -691,7 +691,7 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [default_sap]
+                [default_tap]
                 objectId = "0x6"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
@@ -741,10 +741,10 @@ mod tests {
                 .parse()
                 .unwrap()
         );
-        assert_eq!(objects.default_sap.object_id, "0x6".parse().unwrap());
-        assert_eq!(objects.default_sap.version, 1.into());
+        assert_eq!(objects.default_tap.object_id, "0x6".parse().unwrap());
+        assert_eq!(objects.default_tap.version, 1.into());
         assert_eq!(
-            objects.default_sap.digest,
+            objects.default_tap.digest,
             "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
                 .parse()
                 .unwrap()
