@@ -1,6 +1,7 @@
 use crate::{
     idents::{sui_framework::Address, ModuleAndNameIdent},
-    sui, ToolFqn,
+    sui,
+    ToolFqn,
 };
 
 // == `nexus_workflow::default_tap` ==
