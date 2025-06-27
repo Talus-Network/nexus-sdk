@@ -40,11 +40,11 @@ pub trait PlaintextCodec: Default + Send + Sync + 'static {
 pub struct BincodeCodec;
 impl PlaintextCodec for BincodeCodec {
     fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, SecretStoreError> {
-        bincode::serialize(value).map_err(|e| SecretStoreError::Codec(e.to_string()))
+        bincode::serialize(value).map_err(|e| SecretStoreError::Codec(e.to_string().into()))
     }
 
     fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, SecretStoreError> {
-        bincode::deserialize(bytes).map_err(|e| SecretStoreError::Codec(e.to_string()))
+        bincode::deserialize(bytes).map_err(|e| SecretStoreError::Codec(e.to_string().into()))
     }
 }
 
