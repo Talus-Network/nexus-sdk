@@ -59,13 +59,13 @@ pub enum TwitterError {
     ParseError(#[from] serde_json::Error),
 
     #[error("Twitter API error: {0} (type: {1}){2}")]
-    ApiError(String, String, String),
+    ApiError(Box<str>, Box<str>, Box<str>),
 
     #[error("Twitter API status error: {0}")]
     StatusError(StatusCode),
 
     #[error("Unknown error: {0}")]
-    Other(String),
+    Other(Box<str>),
 }
 
 /// Standard error response structure for Twitter tools
@@ -88,7 +88,11 @@ impl TwitterError {
             .clone()
             .map_or_else(String::new, |d| format!(" - {}", d));
 
-        TwitterError::ApiError(error.title.clone(), error.error_type.clone(), detail)
+        TwitterError::ApiError(
+            error.title.as_str().into(),
+            error.error_type.as_str().into(),
+            detail.into(),
+        )
     }
 
     /// Convert the error to a standardized TwitterErrorResponse
@@ -214,12 +218,13 @@ fn parse_failed_twitter_response<T>(text: String, status: StatusCode) -> Twitter
         };
 
         return Err(TwitterError::ApiError(
-            title.to_string(),
-            error_type.to_string(),
+            title.into(),
+            error_type.into(),
             format!(
                 " - {} (Code: {})",
                 default_error.message, default_error.code
-            ),
+            )
+            .into(),
         ));
     }
 
@@ -268,7 +273,7 @@ fn parse_error_from_json(error: &Value) -> TwitterError {
         detail.push_str(&format!(" - {}", message));
     }
 
-    TwitterError::ApiError(title.to_string(), error_type.to_string(), detail)
+    TwitterError::ApiError(title.into(), error_type.into(), detail.into())
 }
 
 /// Helper function to parse Twitter API response

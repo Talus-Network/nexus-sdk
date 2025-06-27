@@ -8,9 +8,9 @@ pub enum SecretStoreError {
     #[error("base‑64 decode error: {0}")]
     Base64(#[from] base64::DecodeError),
     #[error("serialization codec error: {0}")]
-    Codec(String),
+    Codec(Box<str>),
     #[error("cryptography failure: {0}")]
     Crypto(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("provider failure: {0}")]
-    Provider(String),
+    Provider(Box<str>),
 }

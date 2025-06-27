@@ -12,6 +12,6 @@ impl KeyProvider for MasterKeyProvider {
     type Key = Zeroizing<[u8; KEY_LEN]>;
 
     fn key(&self) -> Result<Self::Key, SecretStoreError> {
-        master_key::get_master_key().map_err(|e| SecretStoreError::Provider(e.to_string()))
+        master_key::get_master_key().map_err(|e| SecretStoreError::Provider(e.to_string().into()))
     }
 }

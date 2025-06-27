@@ -27,7 +27,7 @@ pub(crate) const TWITTER_X_API_BASE: &str = "https://api.x.com/2";
 #[derive(Debug, thiserror::Error)]
 pub enum TwitterClientError {
     #[error("Unsupported HTTP method: {0}")]
-    UnsupportedMethod(String),
+    UnsupportedMethod(Box<str>),
 }
 
 impl TwitterClient {
@@ -155,7 +155,9 @@ impl TwitterClient {
             "PUT" => auth.generate_auth_header_for_put(&self.api_base),
             _ => {
                 return Err(TwitterError::Other(
-                    TwitterClientError::UnsupportedMethod(method.to_string()).to_string(),
+                    TwitterClientError::UnsupportedMethod(method.into())
+                        .to_string()
+                        .into(),
                 )
                 .to_error_response())
             }

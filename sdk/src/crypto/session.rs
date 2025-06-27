@@ -86,7 +86,7 @@ pub enum SessionError {
     DecryptionFailed,
     /// Any attempt to use a session in an impossible state.
     #[error("Session state error: {0}")]
-    InvalidState(String),
+    InvalidState(Box<str>),
     /// Message claims an unsupported protocol version.
     #[error("Unsupported protocol version {0}")]
     Version(u8),

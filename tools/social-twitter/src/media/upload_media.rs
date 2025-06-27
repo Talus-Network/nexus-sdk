@@ -204,10 +204,13 @@ async fn upload_media(
     // Validate number of chunks doesn't exceed Twitter's API limit of 999
     let total_chunks = media_data.len().div_ceil(optimal_chunk_size);
     if total_chunks > 999 {
-        return Err(TwitterError::Other(format!(
-            "Media would require {} chunks, which exceeds Twitter's limit of 999.",
-            total_chunks
-        )));
+        return Err(TwitterError::Other(
+            format!(
+                "Media would require {} chunks, which exceeds Twitter's limit of 999.",
+                total_chunks
+            )
+            .into(),
+        ));
     }
 
     // 1. INIT phase - Initialize upload
@@ -377,11 +380,12 @@ async fn init_upload(
         .await
         .map_err(|e| {
             TwitterError::ApiError(
-                e.reason,
-                format!("{:?}", e.kind),
+                e.reason.into(),
+                format!("{:?}", e.kind).into(),
                 e.status_code
                     .map(|code| code.to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .into(),
             )
         })
 }
@@ -396,10 +400,13 @@ async fn append_chunk(
 ) -> TwitterResult<()> {
     // Validate segment_index is within allowed range (0-999)
     if !(0..=999).contains(&segment_index) {
-        return Err(TwitterError::Other(format!(
-            "Invalid segment_index: {}. Must be between 0 and 999",
-            segment_index
-        )));
+        return Err(TwitterError::Other(
+            format!(
+                "Invalid segment_index: {}. Must be between 0 and 999",
+                segment_index
+            )
+            .into(),
+        ));
     }
 
     // Create part for the media chunk
@@ -418,11 +425,12 @@ async fn append_chunk(
         .await
         .map_err(|e| {
             TwitterError::ApiError(
-                e.reason,
-                format!("{:?}", e.kind),
+                e.reason.into(),
+                format!("{:?}", e.kind).into(),
                 e.status_code
                     .map(|code| code.to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .into(),
             )
         })
 }
@@ -443,11 +451,12 @@ async fn finalize_upload(
         .await
         .map_err(|e| {
             TwitterError::ApiError(
-                e.reason,
-                format!("{:?}", e.kind),
+                e.reason.into(),
+                format!("{:?}", e.kind).into(),
                 e.status_code
                     .map(|code| code.to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .into(),
             )
         })
 }
@@ -474,15 +483,13 @@ async fn wait_for_processing_completion(
                 }
                 super::models::ProcessingState::Failed => {
                     // Processing failed
-                    return Err(TwitterError::Other("Media processing failed".to_string()));
+                    return Err(TwitterError::Other("Media processing failed".into()));
                 }
                 _ => {
                     // Still processing
                     attempts += 1;
                     if attempts >= MAX_ATTEMPTS {
-                        return Err(TwitterError::Other(
-                            "Media processing timed out".to_string(),
-                        ));
+                        return Err(TwitterError::Other("Media processing timed out".into()));
                     }
 
                     // Wait for the recommended time or default to 2 seconds
@@ -513,11 +520,12 @@ async fn check_media_status(
         .await
         .map_err(|e| {
             TwitterError::ApiError(
-                e.reason,
-                format!("{:?}", e.kind),
+                e.reason.into(),
+                format!("{:?}", e.kind).into(),
                 e.status_code
                     .map(|code| code.to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .into(),
             )
         })
 }

@@ -198,7 +198,8 @@ where
             let key = provider.key()?;
 
             let pt_bytes = A::decrypt_with_key(&key, &nonce, &ct)?;
-            let value = C::decode(&pt_bytes).map_err(|e| SecretStoreError::Codec(e.to_string()))?;
+            let value =
+                C::decode(&pt_bytes).map_err(|e| SecretStoreError::Codec(e.to_string().into()))?;
 
             self.plain = Some(value);
         }
