@@ -1,0 +1,94 @@
+# codecov.yml
+
+# Coverage precision
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    # Overall project coverage
+    project:
+      default:
+        # Coverage can drop by 1% and still be green
+        threshold: 1%
+        target: auto # Compares to base branch
+        base: auto
+        if_ci_failed: error
+        informational: false
+        only_pulls: false
+
+    # Coverage for the patch (new/modified code)
+    patch:
+      default:
+        # New code should have at least 80% coverage
+        target: 80%
+        threshold: 10% # Allow 10% drop for edge cases
+        base: auto
+        if_ci_failed: error
+        informational: false
+
+# Component-specific coverage (optional)
+component_management:
+  individual_components:
+    - component_id: cli
+      name: CLI Module
+      paths:
+        - cli/**
+    - component_id: sdk
+      name: SDK Module
+      paths:
+        - sdk/**
+    - component_id: toolkit
+      name: Toolkit Rust
+      paths:
+        - toolkit-rust/**
+    - component_id: tools
+      name: Tools
+      paths:
+        - tools/**
+
+# Comment configuration
+comment:
+  layout: "header, diff, flags, components, files, footer"
+  behavior: default # Update comment as commits are pushed
+  require_changes: true # Only comment when coverage changes
+  require_base: true # Only comment if base coverage exists
+  require_head: true # Only comment if head coverage exists
+  hide_project_coverage: false
+  hide_patch_coverage: false
+  hide_complexity: false # Show cyclomatic complexity if available
+
+# File ignores
+ignore:
+  - "**/tests/**" # Test files themselves
+  - "**/test_*.rs"
+  - "**/mock_*.rs"
+  - "**/examples/**"
+  - "**/benches/**"
+  - "**/*.pb.rs" # Generated protobuf files
+  - "**/target/**"
+  - "**/build.rs"
+  - "**/main.rs" # Sometimes main.rs is just a thin entry point
+
+# Flag configuration (useful for different test types)
+flags:
+  unittests:
+    paths:
+      - cli/
+      - sdk/
+      - toolkit-rust/
+      - tools/
+    carryforward: true # Use coverage from base if tests don't run
+
+# GitHub Checks
+github_checks:
+  annotations: true # Show coverage annotations in PR files view
+
+# Codecov.io UI settings
+ui:
+  hide_density: false # Show line density graph
+  hide_complexity: false # Show code complexity
+  hide_contextual: false # Show contextual information
+  hide_sunburst: false # Show sunburst graph
+  hide_search: false # Show search functionality

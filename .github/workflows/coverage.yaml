@@ -16,64 +16,16 @@ env:
     -C codegen-units=1
 
 jobs:
-  base_branch_coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref }}
-          fetch-tags: false
-
-      - name: Set up Docker
-        uses: docker/setup-docker-action@v4
-
-      - name: Install Rust Toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          components: llvm-tools-preview
-
-      - name: Cache Cargo Registry and Build Artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.11.2
-
-      - name: Install cargo-llvm-cov
-        run: cargo binstall cargo-llvm-cov --force
-
-      - name: Generate Coverage (Base Branch)
-        run: |
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-        env:
-          CARGO_TERM_COLOR: always
-          CACHE_ON_FAILURE: true
-          CARGO_INCREMENTAL: 0
-
-      - name: Upload code coverage for ref branch
-        uses: actions/upload-artifact@v4
-        with:
-          name: ref-lcov
-          path: lcov.info
-
   coverage:
     runs-on: ubuntu-latest
-    needs: base_branch_coverage
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for better coverage tracking
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
-
-      - name: Download code coverage report from base branch
-        uses: actions/download-artifact@v4
-        with:
-          name: ref-lcov
-          path: ref-lcov
 
       - name: Install Rust Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -93,7 +45,7 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo binstall cargo-llvm-cov --force
 
-      - name: Generate Coverage (PR Branch)
+      - name: Generate Coverage
         run: |
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
         env:
@@ -101,13 +53,11 @@ jobs:
           CACHE_ON_FAILURE: true
           CARGO_INCREMENTAL: 0
 
-      - name: Generate Code Coverage report
-        id: code-coverage
-        uses: barecheck/code-coverage-action@v1
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          barecheck-github-app-token: ${{ secrets.BARECHECK_GITHUB_APP_TOKEN }}
-          lcov-file: "lcov.info"
-          base-lcov-file: "ref-lcov/lcov.info"
-          minimum-ratio: 1
-          send-summary-comment: true
-          show-annotations: "warning"
+          file: ./lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
