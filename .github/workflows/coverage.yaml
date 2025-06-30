@@ -18,6 +18,7 @@ env:
 jobs:
   base_branch_coverage:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,6 +63,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     needs: base_branch_coverage
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
