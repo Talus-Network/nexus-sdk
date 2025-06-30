@@ -74,7 +74,7 @@ async fn main() {
 
     JSON_MODE.store(cli.json, Ordering::Relaxed);
 
-    // Send each sub-command to the respective handler.
+    // Send each sub-command to the respective handler. Change
     let result = match cli.command {
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
