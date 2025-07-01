@@ -37,7 +37,7 @@ fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()>
             .neighbors_directed(node, petgraph::Direction::Outgoing)
             .collect::<Vec<NodeIndex>>();
 
-        // Check if the vertex has the correct number of edges.
+        // Check if the vertex has the correct number of edges
         match vertex {
             // Input ports must have exactly 1 outgoing edge.
             GraphNode::InputPort { .. } if neighbors.len() != 1 => {
