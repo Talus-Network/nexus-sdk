@@ -14,7 +14,7 @@ type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec
 /// <https://docs.talus.network/talus-documentation/devs/index/workflow#rules>
 /// <https://docs.talus.network/talus-documentation/devs/index-1/cli#nexus-dag>
 pub fn validate(dag: Dag) -> AnyResult<()> {
-    // Parse the dag into a petgraph DiGraph
+    // Parse the dag into a petgraph DiGraph.
     let (graph, vertex_entry_groups) = try_into_graph(dag)?;
 
     if !graph.is_directed() || petgraph::algo::is_cyclic_directed(&graph) {
