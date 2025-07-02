@@ -1,4 +1,4 @@
-//! See <https://github.com/Talus-Network/gitbook-docs/nexus-sdk/toolkit-rust.md>
+//! See <https://docs.talus.network/developer-docs/index-1/toolkit-rust>
 
 use {
     anyhow::Result as AnyResult,
