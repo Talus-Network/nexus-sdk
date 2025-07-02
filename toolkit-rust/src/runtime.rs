@@ -223,7 +223,7 @@ async fn meta_handler<T: NexusTool>(
     //
     // Ref: https://github.com/Talus-Network/nexus-sdk/issues/77
     let scheme = x_forwarded_proto.unwrap_or_else(|| "http".to_string());
-    
+
     // Validate scheme to prevent URL injection attacks
     if scheme != "http" && scheme != "https" {
         let reply = json!({
@@ -236,7 +236,7 @@ async fn meta_handler<T: NexusTool>(
             StatusCode::BAD_REQUEST,
         ));
     }
-    
+
     let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
         Ok(url) => url,
         Err(e) => {
