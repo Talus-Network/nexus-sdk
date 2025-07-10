@@ -575,6 +575,27 @@ impl DefaultGasExtension {
         module: DEFAULT_GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("enable_expiry"),
     };
+    /// Buy a limited invocations gas extension ticket.
+    ///
+    /// `nexus_workflow::gas_extension::buy_limited_invocations_gas_ticket`
+    pub const BUY_LIMITED_INVOCATIONS_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("buy_limited_invocations_gas_ticket"),
+    };
+    /// Disable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::disable_limited_invocations`
+    pub const DISABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_limited_invocations"),
+    };
+    /// Enable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::enable_limited_invocations`
+    pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_limited_invocations"),
+    };
 }
 
 // == `nexus_workflow::pre_key_vault` ==
