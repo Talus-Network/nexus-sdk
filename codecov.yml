@@ -51,8 +51,6 @@ comment:
   require_base: true
   require_head: true
   hide_project_coverage: false
-  hide_patch_coverage: false
-  hide_complexity: false
 
 ignore:
   - "**/tests/**"
@@ -75,10 +73,3 @@ flags:
 
 github_checks:
   annotations: true
-
-ui:
-  hide_density: false
-  hide_complexity: false
-  hide_contextual: false
-  hide_sunburst: false
-  hide_search: false
