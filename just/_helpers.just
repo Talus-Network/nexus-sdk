@@ -32,3 +32,15 @@ _check-markdownlint-cli2:
         echo "Install $exe from https://github.com/DavidAnson/$exe"
         exit 1
     fi
+
+[private]
+_check-typos:
+    #!/usr/bin/env bash
+
+    exe=typos
+    if ! command -v $exe &> /dev/null
+    then
+        echo "$exe could not be found"
+        echo "Install $exe from https://github.com/crate-ci/typos"
+        exit 1
+    fi

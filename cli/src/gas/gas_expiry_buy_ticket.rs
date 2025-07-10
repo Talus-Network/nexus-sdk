@@ -11,7 +11,7 @@ pub(crate) async fn buy_expiry_gas_ticket(
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Buying an expiry gas ticket for '{minutes}' minuites for tool '{tool_fqn}'");
+    command_title!("Buying an expiry gas ticket for '{minutes}' minutes for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
