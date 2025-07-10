@@ -1,14 +1,10 @@
 mod gas_add_budget;
-mod gas_expiry_buy_ticket;
-mod gas_expiry_disable;
-mod gas_expiry_enable;
+mod tickets;
 
 use {
     crate::prelude::*,
     gas_add_budget::*,
-    gas_expiry_buy_ticket::*,
-    gas_expiry_disable::*,
-    gas_expiry_enable::*,
+    tickets::expiry::*,
 };
 
 #[derive(Subcommand)]
