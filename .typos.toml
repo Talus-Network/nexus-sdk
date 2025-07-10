@@ -1,0 +1,10 @@
+[default]
+extend-ignore-re = [
+    # "pn" is used a lot in sdk/src/crypto, either bare or after a dot.
+    # e.g. `pn: 42` or `header.pn`
+    "([[:alpha:]]([[:alnum:]]|[-_])*.)?pn",
+]
+
+[default.extend-words]
+fo = "fo" # this "fo" thing appears a lot in IDs, like "b26v89c19zqg8o3fo7dpmyo3vz9wkxa5fiuds5yu3eewn"
+PN = "PN" # used in sdk/src/crypto
