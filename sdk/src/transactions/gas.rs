@@ -79,7 +79,7 @@ pub fn enable_expiry(
     // `fqn: ToolFqn`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
-    // `nexus_workflow::default_gas_extension::enable_expiry`
+    // `nexus_workflow::gas_extension::enable_expiry`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::DefaultGasExtension::ENABLE_EXPIRY.module.into(),
@@ -116,7 +116,7 @@ pub fn disable_expiry(
     // `fqn: ToolFqn`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
-    // `nexus_workflow::default_gas_extension::disable_expiry`
+    // `nexus_workflow::gas_extension::disable_expiry`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::DefaultGasExtension::DISABLE_EXPIRY.module.into(),
@@ -160,7 +160,7 @@ pub fn buy_expiry_gas_ticket(
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
-    // `nexus_workflow::default_gas_extension::buy_expiry_gas_ticket`
+    // `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
