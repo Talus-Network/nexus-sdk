@@ -216,10 +216,22 @@ pub fn enable_limited_invocations(
     // `nexus_workflow::gas_extension::enable_limited_invocations`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS.module.into(),
-        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS.name.into(),
+        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+            .module
+            .into(),
+        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+            .name
+            .into(),
         vec![],
-        vec![gas_service, tool_registry, owner_cap, cost_per_invocation, min_invocations, max_invocations, fqn],
+        vec![
+            gas_service,
+            tool_registry,
+            owner_cap,
+            cost_per_invocation,
+            min_invocations,
+            max_invocations,
+            fqn,
+        ],
     ))
 }
 
@@ -253,8 +265,12 @@ pub fn disable_limited_invocations(
     // `nexus_workflow::gas_extension::disable_limited_invocations`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS.module.into(),
-        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS.name.into(),
+        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+            .module
+            .into(),
+        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+            .name
+            .into(),
         vec![],
         vec![gas_service, tool_registry, owner_cap, fqn],
     ))
@@ -304,7 +320,14 @@ pub fn buy_limited_invocations_gas_ticket(
             .name
             .into(),
         vec![],
-        vec![gas_service, tool_registry, fqn, invocations, pay_with, clock],
+        vec![
+            gas_service,
+            tool_registry,
+            fqn,
+            invocations,
+            pay_with,
+            clock,
+        ],
     ))
 }
 
@@ -439,7 +462,16 @@ mod tests {
         let max_invocations = 100;
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        enable_limited_invocations(&mut tx, &objects, &tool_fqn, &owner_cap, cost_per_invocation, min_invocations, max_invocations).unwrap();
+        enable_limited_invocations(
+            &mut tx,
+            &objects,
+            &tool_fqn,
+            &owner_cap,
+            cost_per_invocation,
+            min_invocations,
+            max_invocations,
+        )
+        .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
@@ -498,7 +530,8 @@ mod tests {
         let invocations = 100;
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        buy_limited_invocations_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, invocations).unwrap();
+        buy_limited_invocations_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, invocations)
+            .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {

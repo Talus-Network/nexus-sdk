@@ -46,7 +46,15 @@ pub(crate) async fn enable_limited_invocations_extension(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::enable_limited_invocations(&mut tx, objects, &tool_fqn, &owner_cap, cost_per_invocation, min_invocations, max_invocations) {
+    if let Err(e) = gas::enable_limited_invocations(
+        &mut tx,
+        objects,
+        &tool_fqn,
+        &owner_cap,
+        cost_per_invocation,
+        min_invocations,
+        max_invocations,
+    ) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

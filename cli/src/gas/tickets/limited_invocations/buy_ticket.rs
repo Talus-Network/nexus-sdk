@@ -44,7 +44,13 @@ pub(crate) async fn buy_limited_invocations_gas_ticket(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::buy_limited_invocations_gas_ticket(&mut tx, objects, &tool_fqn, &pay_with_coin, invocations) {
+    if let Err(e) = gas::buy_limited_invocations_gas_ticket(
+        &mut tx,
+        objects,
+        &tool_fqn,
+        &pay_with_coin,
+        invocations,
+    ) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

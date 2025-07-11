@@ -550,8 +550,7 @@ impl Gas {
 
 pub struct DefaultGasExtension;
 
-const GAS_EXTENSION_MODULE: &sui::MoveIdentStr =
-    sui::move_ident_str!("gas_extension");
+const GAS_EXTENSION_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas_extension");
 
 impl DefaultGasExtension {
     /// Buy an expiry gas extension ticket.
@@ -561,20 +560,6 @@ impl DefaultGasExtension {
         module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("buy_expiry_gas_ticket"),
     };
-    /// Disable expiry gas extension for a tool.
-    ///
-    /// `nexus_workflow::gas_extension::disable_expiry`
-    pub const DISABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_EXTENSION_MODULE,
-        name: sui::move_ident_str!("disable_expiry"),
-    };
-    /// Enable expiry gas extension for a tool.
-    ///
-    /// `nexus_workflow::gas_extension::enable_expiry`
-    pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_EXTENSION_MODULE,
-        name: sui::move_ident_str!("enable_expiry"),
-    };
     /// Buy a limited invocations gas extension ticket.
     ///
     /// `nexus_workflow::gas_extension::buy_limited_invocations_gas_ticket`
@@ -582,12 +567,26 @@ impl DefaultGasExtension {
         module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("buy_limited_invocations_gas_ticket"),
     };
+    /// Disable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::disable_expiry`
+    pub const DISABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_expiry"),
+    };
     /// Disable limited invocations gas extension for a tool.
     ///
     /// `nexus_workflow::gas_extension::disable_limited_invocations`
     pub const DISABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("disable_limited_invocations"),
+    };
+    /// Enable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::enable_expiry`
+    pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_expiry"),
     };
     /// Enable limited invocations gas extension for a tool.
     ///

@@ -25,7 +25,10 @@ pub(crate) enum GasCommand {
     #[command(subcommand, about = "Manage the expiry gas ticket extension")]
     Expiry(ExpiryCommand),
 
-    #[command(subcommand, about = "Manage the limited invocations gas ticket extension")]
+    #[command(
+        subcommand,
+        about = "Manage the limited invocations gas ticket extension"
+    )]
     LimitedInvocations(LimitedInvocationsCommand),
 }
 
