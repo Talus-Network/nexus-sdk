@@ -1,16 +1,10 @@
-// Module providing logic for gas-related transactions.
 
-use {
-    crate::{
-        idents::{move_std, sui_framework, workflow},
-        sui,
-        types::NexusObjects,
-        ToolFqn,
-    },
+use crate::{
+    idents::{move_std, sui_framework, workflow},
+    sui,
+    types::NexusObjects,
+    ToolFqn,
 };
-
-/// Default cost per minute for gas expiry
-const DEFAULT_COST_PER_MINUTE: u64 = 100;
 
 /// PTB template to add gas budget to a transaction.
 pub fn add_budget(
@@ -187,6 +181,9 @@ mod tests {
         super::*,
         crate::{fqn, test_utils::sui_mocks},
     };
+
+    /// Default cost per minute for gas expiry
+    const DEFAULT_COST_PER_MINUTE: u64 = 100;
 
     #[test]
     fn test_add_budget() {
