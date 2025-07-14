@@ -112,8 +112,6 @@ To check the balance, run:
 sui client balance tally
 ```
 
-Certainly! Here’s an improved and slightly expanded version of your documentation. It maintains the original structure while enhancing clarity, flow, and technical precision:
-
 ---
 
 ## (Optional) Configure Encryption for Nexus workflows
