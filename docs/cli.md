@@ -50,7 +50,7 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch]`**
+**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
@@ -58,7 +58,7 @@ This returns 2 OwnerCap object IDs that can be used to manage the Tool and its G
 
 If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
 
-Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands.
+Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands. This happens unless the `--no-save` flag is passed, in which case the OwnerCaps are not saved.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
