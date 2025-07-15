@@ -13,10 +13,20 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Check for relevant file changes
+        uses: dorny/paths-filter@v3
+        id: filter
         with:
-          fetch-depth: 0
+          filters: |
+            src:
+              - 'cli/**'
+              - 'sdk/**'
+              - 'toolkit-rust/**'
+              - 'tools/**'
 
       - name: Run Coverage
+        if: ${{ steps.filter.outputs.src == 'true' }}
         uses: ./.github/actions/coverage
         with:
           codecov-token: ${{ secrets.CODECOV_TOKEN }}

@@ -7,14 +7,6 @@ on:
       - sdk/**
       - toolkit-rust/**
       - tools/**
-  push:
-    branches:
-      - main
-    paths:
-      - cli/**
-      - sdk/**
-      - toolkit-rust/**
-      - tools/**
   workflow_dispatch:
 
 jobs:
