@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CONTRIBUTING.md
 - CODE_OF_CONDUCT.md
+- `pre-commit` hook
 
 ### `nexus-cli`
 
@@ -41,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus gas limited-invocations enable` to enable the limited invocations gas extension for a tool
 - `nexus gas limited-invocations disable` to disable the limited invocations gas extension for a tool
 - `nexus gas limited-invocations buy-ticket` to buy a limited invocations gas ticket for a tool
+- `--no-save` flag to `nexus tool register` to not save the owner caps to the CLI config
 
 #### Changed
 

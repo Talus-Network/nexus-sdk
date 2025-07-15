@@ -9,13 +9,13 @@ Follow the [setup guide](setup.md) to get properly setup in case you haven't.
 The goal is to build a DAG that:
 
 1. Takes a single number `a` as input.
-2. Adds `-3` to `a`.
-3. Compares the result to `0`.
-4. Based on the comparison:
+1. Adds `-3` to `a`.
+1. Compares the result to `0`.
+1. Based on the comparison:
    - If the result is less than 0, multiply it by `-3`.
    - If the result is greater than 0, multiply it by `7`.
    - If the result is equal to 0, add `1`.
-5. Outputs the final calculated number.
+1. Outputs the final calculated number.
 
 ## DAG Overview
 

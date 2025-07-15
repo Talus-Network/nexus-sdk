@@ -31,8 +31,8 @@ Create a new Tool scaffolding in a folder called `<name>`. Which files are gener
 Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
 
 1. `GET /meta` contains Tool metadata that is later stored in our Tool Registry, this contains the `fqn`, the `url` which should match the one in the command and the Tool input and output schemas. Output schema is also validated to contain a top-level `oneOf` to adhere to Nexus output variant concept.
-2. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
-3. `POST /invoke` the CLI can check that the endpoint exists.
+1. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
+1. `POST /invoke` the CLI can check that the endpoint exists.
 
 {% hint style="success" %}
 As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
@@ -50,7 +50,7 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch]`**
+**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
@@ -58,7 +58,7 @@ This returns 2 OwnerCap object IDs that can be used to manage the Tool and its G
 
 If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
 
-Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands.
+Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands. This happens unless the `--no-save` flag is passed, in which case the OwnerCaps are not saved.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -137,10 +137,10 @@ If you're unsure about the terminology used below, please refer to the [glossary
 {% endhint %}
 
 1. For each entry group...
-2. Find all input ports
-3. For each input port...
-4. Find all paths from relevant entry vertices to this input port
-5. Ensure that net concurrency on that input port node is 0
+1. Find all input ports
+1. For each input port...
+1. Find all paths from relevant entry vertices to this input port
+1. Ensure that net concurrency on that input port node is 0
    - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
    - `N` output ports on an output variant increase the graph concurrency by `N - 1` because `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
    - If net concurrency is `< 0`, the input port can never be reached

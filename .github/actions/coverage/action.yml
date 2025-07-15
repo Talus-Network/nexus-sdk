@@ -1,0 +1,64 @@
+name: "Run Coverage"
+description: "Generate and upload test coverage to Codecov"
+inputs:
+  codecov-token:
+    description: "Codecov upload token"
+    required: true
+  codecov-flags:
+    description: "Flags for Codecov upload"
+    required: false
+    default: "unittests"
+  codecov-name:
+    description: "Name for Codecov upload"
+    required: false
+    default: "codecov-umbrella"
+  cache-key-suffix:
+    description: "Suffix for the cargo cache key"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker
+      uses: docker/setup-docker-action@v4
+
+    - name: Install Rust Toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        components: llvm-tools-preview
+
+    - name: Cache Cargo Registry and Build Artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: ${{ runner.os }}-cargo${{ inputs.cache-key-suffix }}
+
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@v1.12.5
+
+    - name: Install cargo-llvm-cov
+      shell: bash
+      run: cargo binstall cargo-llvm-cov --force
+
+    - name: Generate Coverage
+      shell: bash
+      run: |
+        cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      env:
+        CARGO_TERM_COLOR: always
+        CACHE_ON_FAILURE: true
+        CARGO_INCREMENTAL: 0
+        CARGO_BUILD_JOBS: 1
+        RUSTFLAGS: >
+          -C codegen-units=1
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: ./lcov.info
+        flags: ${{ inputs.codecov-flags }}
+        name: ${{ inputs.codecov-name }}
+        fail_ci_if_error: false
+        verbose: true
+        token: ${{ inputs.codecov-token }}

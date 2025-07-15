@@ -14,13 +14,17 @@ This project adheres to a [Code of Conduct]. By participating, you are expected 
 ## How to Contribute
 
 1. **Fork the repository** and create your branch from `main`.
-2. **Follow the coding style** used in the project.
-3. **Write clear, concise commit messages.**
-4. **Add tests** for any new functionality.
-5. **Ensure all tests pass** before submitting a pull request.
-6. **Ensure `rustfmt` and `clippy` are happy** before submitting a pull request.
-7. **Do not use unsafe Rust code**.
-8. **Update documentation** to complement code changes
+1. **Follow the coding style** used in the project.
+1. **Install the pre-commit hook** by running:
+
+   ```bash
+   ./.pre-commit/pre-commit --install
+   ```
+
+1. **Write clear, concise commit messages.**
+1. **Add tests** for any new functionality.
+1. **Do not use unsafe Rust code**.
+1. **Update documentation** to complement code changes
 
 ## Reporting Issues
 

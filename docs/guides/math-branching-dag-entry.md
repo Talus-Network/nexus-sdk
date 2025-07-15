@@ -34,8 +34,8 @@ The explanation above should allow you to understand why, given a certain DAG de
 We'll extend our original branching math DAG by:
 
 1. Adding a new vertex `mul_inputs` that takes two user-provided inputs and multiplies them
-2. Connecting this multiplication result to the same comparison step as the original addition result
-3. Creating two explicit entry groups to select between the addition path and the multiplication path
+1. Connecting this multiplication result to the same comparison step as the original addition result
+1. Creating two explicit entry groups to select between the addition path and the multiplication path
 
 Here's a visual representation of the extended workflow:
 
@@ -89,7 +89,7 @@ graph TD
 This diagram shows the extended workflow with two entry paths:
 
 1. The original addition path that takes one input and adds `-3` to it
-2. A new multiplication path that takes two inputs and multiplies them
+1. A new multiplication path that takes two inputs and multiplies them
 
 Both paths connect to the same comparison vertex, which then branches based on whether the result is negative, positive, or zero. Entry groups ensure only one path is active during execution.
 
@@ -568,7 +568,7 @@ nexus dag publish --path sdk/src/dag/_dags/math_branching_entry_group.json
 
 The key difference when executing this DAG is that you must specify which entry group to use:
 
-#### Using the Addition Entry Group:
+#### Using the Addition Entry Group
 
 ```bash
 # Execute using the 'add_entry' group with a=10
@@ -577,7 +577,7 @@ nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json 
 # Example flow: (10 + -3) = 7. 7 > 0 (gt). 7 * 7 = 49.
 ```
 
-#### Using the Multiplication Entry Group:
+#### Using the Multiplication Entry Group
 
 ```bash
 # Execute using the 'mul_entry' group with a=5, b=2
@@ -593,18 +593,18 @@ Note that with the `mul_entry` group, you must provide values for both input por
 This example demonstrates several key advantages of entry groups:
 
 1. **Multiple Entry Points**: The DAG now supports two different ways to start execution.
-2. **Explicit Control**: Each entry group clearly defines which values need to be provided.
-3. **Conflict Prevention**: Without entry groups, having both paths active could cause a race condition at the `is_negative.a` input port.
-4. **Runtime Selection**: Users can choose which entry point to use when executing the DAG.
+1. **Explicit Control**: Each entry group clearly defines which values need to be provided.
+1. **Conflict Prevention**: Without entry groups, having both paths active could cause a race condition at the `is_negative.a` input port.
+1. **Runtime Selection**: Users can choose which entry point to use when executing the DAG.
 
 ## Summary
 
 In this guide, we extended our original branching math DAG to support multiple entry points using entry groups. We:
 
 1. Added a new vertex that provides an alternative way to generate a value for comparison
-2. Connected this vertex to the same downstream processing flow
-3. Created explicit entry groups to control which entry path is active
-4. Demonstrated how to execute the DAG with different entry groups
+1. Connected this vertex to the same downstream processing flow
+1. Created explicit entry groups to control which entry path is active
+1. Demonstrated how to execute the DAG with different entry groups
 
 Entry groups are a powerful feature of Nexus DAGs that enable more flexible and modular workflows while maintaining the safety guarantees of the DAG execution model. They allow a single DAG to support multiple different starting states and input combinations while preventing potential race conditions.
 

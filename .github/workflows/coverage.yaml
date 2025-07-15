@@ -7,22 +7,7 @@ on:
       - sdk/**
       - toolkit-rust/**
       - tools/**
-  push:
-    branches:
-      - main
-    paths:
-      - cli/**
-      - sdk/**
-      - toolkit-rust/**
-      - tools/**
   workflow_dispatch:
-
-# Fix for OOM.
-env:
-  CARGO_BUILD_JOBS: 1
-  CARGO_INCREMENTAL: 0
-  RUSTFLAGS: >
-    -C codegen-units=1
 
 jobs:
   coverage:
@@ -33,40 +18,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker
-        uses: docker/setup-docker-action@v4
-
-      - name: Install Rust Toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Run Coverage
+        uses: ./.github/actions/coverage
         with:
-          toolchain: stable
-          components: llvm-tools-preview
-
-      - name: Cache Cargo Registry and Build Artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ runner.os }}-cargo-pr-${{ github.event.pull_request.number }}
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.12.5
-
-      - name: Install cargo-llvm-cov
-        run: cargo binstall cargo-llvm-cov --force
-
-      - name: Generate Coverage
-        run: |
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-        env:
-          CARGO_TERM_COLOR: always
-          CACHE_ON_FAILURE: true
-          CARGO_INCREMENTAL: 0
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./lcov.info
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-          verbose: true
-          token: ${{ secrets.CODECOV_TOKEN }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
+          cache-key-suffix: -pr-${{ github.event.pull_request.number }}
