@@ -163,12 +163,8 @@ pub fn buy_expiry_gas_ticket(
     // `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
-            .module
-            .into(),
-        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
-            .name
-            .into(),
+        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET.module.into(),
+        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET.name.into(),
         vec![],
         vec![gas_service, tool_registry, fqn, minutes, pay_with, clock],
     ))
@@ -381,15 +377,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::GasExtension::ENABLE_EXPIRY
-                .module
-                .to_string(),
+            workflow::GasExtension::ENABLE_EXPIRY.module.to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::GasExtension::ENABLE_EXPIRY
-                .name
-                .to_string()
+            workflow::GasExtension::ENABLE_EXPIRY.name.to_string()
         );
     }
 
@@ -410,15 +402,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::GasExtension::DISABLE_EXPIRY
-                .module
-                .to_string(),
+            workflow::GasExtension::DISABLE_EXPIRY.module.to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::GasExtension::DISABLE_EXPIRY
-                .name
-                .to_string()
+            workflow::GasExtension::DISABLE_EXPIRY.name.to_string()
         );
     }
 
