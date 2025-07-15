@@ -6,11 +6,9 @@ use {
 };
 
 /// Enable the limited invocations gas extension for the specified tool.
-/// 
 /// This function is marked as `#[cfg_attr(coverage_nightly, coverage(off))]` to
 /// disable coverage for the entire function. This is because `nexus-sdk`
 /// is not yet fully covered, and we don't want to fail the CI check.
-///
 /// TODO: Remove this once tests are added for this function.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) async fn enable_limited_invocations_extension(
