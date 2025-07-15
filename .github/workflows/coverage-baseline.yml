@@ -1,25 +1,15 @@
-name: CI Coverage Check
+name: Update Coverage Baseline
 
 on:
-  pull_request:
-    paths:
-      - cli/**
-      - sdk/**
-      - toolkit-rust/**
-      - tools/**
   push:
     branches:
       - main
-    paths:
-      - cli/**
-      - sdk/**
-      - toolkit-rust/**
-      - tools/**
   workflow_dispatch:
 
 jobs:
-  coverage:
+  update-baseline:
     runs-on: ubuntu-latest
+    name: Update Coverage Baseline
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -30,4 +20,6 @@ jobs:
         uses: ./.github/actions/coverage
         with:
           codecov-token: ${{ secrets.CODECOV_TOKEN }}
-          cache-key-suffix: -pr-${{ github.event.pull_request.number }}
+          codecov-flags: unittests,baseline
+          codecov-name: main-baseline
+          cache-key-suffix: -main-baseline
