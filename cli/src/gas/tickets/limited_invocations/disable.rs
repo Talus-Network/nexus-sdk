@@ -85,19 +85,13 @@ pub(crate) async fn disable_limited_invocations_extension(
 // These are temporary tests just to pass CI coverage.
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::str::FromStr;
+    use {super::*, std::str::FromStr};
 
     #[tokio::test]
     async fn test_disable_limited_invocations_extension() {
         let tool_fqn = ToolFqn::from_str("xyz.taluslabs.math.i64.add@1").unwrap();
-        let result = disable_limited_invocations_extension(
-            tool_fqn,
-            None,
-            None,
-            1000,
-        ).await;
-        
+        let result = disable_limited_invocations_extension(tool_fqn, None, None, 1000).await;
+
         assert!(result.is_ok());
     }
 }

@@ -93,21 +93,14 @@ pub(crate) async fn buy_limited_invocations_gas_ticket(
 // These are temporary tests just to pass CI coverage.
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::str::FromStr;
+    use {super::*, std::str::FromStr};
 
     #[tokio::test]
     async fn test_buy_limited_invocations_gas_ticket() {
         let tool_fqn = ToolFqn::from_str("xyz.taluslabs.math.i64.add@1").unwrap();
         let coin = sui::ObjectID::from_str("0x1234567890abcdef1234567890abcdef12345678").unwrap();
-        let result = buy_limited_invocations_gas_ticket(
-            tool_fqn,
-            10,
-            coin,
-            None,
-            1000,
-        ).await;
-        
+        let result = buy_limited_invocations_gas_ticket(tool_fqn, 10, coin, None, 1000).await;
+
         assert!(result.is_ok());
     }
 }
