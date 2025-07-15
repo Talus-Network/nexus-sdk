@@ -82,8 +82,8 @@ pub fn enable_expiry(
     // `nexus_workflow::gas_extension::enable_expiry`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::ENABLE_EXPIRY.module.into(),
-        workflow::DefaultGasExtension::ENABLE_EXPIRY.name.into(),
+        workflow::GasExtension::ENABLE_EXPIRY.module.into(),
+        workflow::GasExtension::ENABLE_EXPIRY.name.into(),
         vec![],
         vec![gas_service, tool_registry, owner_cap, cost_per_minute, fqn],
     ))
@@ -119,8 +119,8 @@ pub fn disable_expiry(
     // `nexus_workflow::gas_extension::disable_expiry`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::DISABLE_EXPIRY.module.into(),
-        workflow::DefaultGasExtension::DISABLE_EXPIRY.name.into(),
+        workflow::GasExtension::DISABLE_EXPIRY.module.into(),
+        workflow::GasExtension::DISABLE_EXPIRY.name.into(),
         vec![],
         vec![gas_service, tool_registry, owner_cap, fqn],
     ))
@@ -163,10 +163,10 @@ pub fn buy_expiry_gas_ticket(
     // `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
             .module
             .into(),
-        workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+        workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
             .name
             .into(),
         vec![],
@@ -216,10 +216,10 @@ pub fn enable_limited_invocations(
     // `nexus_workflow::gas_extension::enable_limited_invocations`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+        workflow::GasExtension::ENABLE_LIMITED_INVOCATIONS
             .module
             .into(),
-        workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+        workflow::GasExtension::ENABLE_LIMITED_INVOCATIONS
             .name
             .into(),
         vec![],
@@ -265,10 +265,10 @@ pub fn disable_limited_invocations(
     // `nexus_workflow::gas_extension::disable_limited_invocations`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+        workflow::GasExtension::DISABLE_LIMITED_INVOCATIONS
             .module
             .into(),
-        workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+        workflow::GasExtension::DISABLE_LIMITED_INVOCATIONS
             .name
             .into(),
         vec![],
@@ -313,10 +313,10 @@ pub fn buy_limited_invocations_gas_ticket(
     // `nexus_workflow::gas_extension::buy_limited_invocations_gas_ticket`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultGasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
+        workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
             .module
             .into(),
-        workflow::DefaultGasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
+        workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
             .name
             .into(),
         vec![],
@@ -381,13 +381,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::ENABLE_EXPIRY
+            workflow::GasExtension::ENABLE_EXPIRY
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::ENABLE_EXPIRY
+            workflow::GasExtension::ENABLE_EXPIRY
                 .name
                 .to_string()
         );
@@ -410,13 +410,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::DISABLE_EXPIRY
+            workflow::GasExtension::DISABLE_EXPIRY
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::DISABLE_EXPIRY
+            workflow::GasExtension::DISABLE_EXPIRY
                 .name
                 .to_string()
         );
@@ -440,13 +440,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+            workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::BUY_EXPIRY_GAS_TICKET
+            workflow::GasExtension::BUY_EXPIRY_GAS_TICKET
                 .name
                 .to_string()
         );
@@ -481,13 +481,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+            workflow::GasExtension::ENABLE_LIMITED_INVOCATIONS
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::ENABLE_LIMITED_INVOCATIONS
+            workflow::GasExtension::ENABLE_LIMITED_INVOCATIONS
                 .name
                 .to_string()
         );
@@ -510,13 +510,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+            workflow::GasExtension::DISABLE_LIMITED_INVOCATIONS
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::DISABLE_LIMITED_INVOCATIONS
+            workflow::GasExtension::DISABLE_LIMITED_INVOCATIONS
                 .name
                 .to_string()
         );
@@ -541,13 +541,13 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultGasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
+            workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
                 .module
                 .to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultGasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
+            workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET
                 .name
                 .to_string()
         );

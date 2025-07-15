@@ -548,11 +548,11 @@ impl Gas {
 
 // == `nexus_workflow::gas_extension` ==
 
-pub struct DefaultGasExtension;
+pub struct GasExtension;
 
 const GAS_EXTENSION_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas_extension");
 
-impl DefaultGasExtension {
+impl GasExtension {
     /// Buy an expiry gas extension ticket.
     ///
     /// `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
