@@ -1,5 +1,3 @@
-#![cfg_attr(coverage, feature(coverage_attribute))]
-
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
     nexus_sdk::transactions::gas,
@@ -10,7 +8,7 @@ use {
 /// disable coverage for the entire function. This is because `nexus-sdk`
 /// is not yet fully covered, and we don't want to fail the CI check.
 /// TODO: Remove this once tests are added for this function.
-#[cfg_attr(coverage, coverage(off))]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) async fn enable_limited_invocations_extension(
     tool_fqn: ToolFqn,
     owner_cap: Option<sui::ObjectID>,

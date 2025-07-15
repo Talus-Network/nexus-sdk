@@ -1,5 +1,3 @@
-#![cfg_attr(coverage, feature(coverage_attribute))]
-
 mod gas_add_budget;
 mod tickets;
 
@@ -208,7 +206,7 @@ pub(crate) enum LimitedInvocationsCommand {
 /// is not yet fully covered, and we don't want to fail the CI check.
 ///
 /// TODO: Remove this once tests are added for this function.
-#[cfg_attr(coverage, coverage(off))]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> {
     match command {
         // == `$ nexus gas add-budget` ==
