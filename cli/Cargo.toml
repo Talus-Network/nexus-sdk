@@ -81,3 +81,5 @@ x25519-dalek = "2"
 workspace = true
 features = ["full", "test_utils"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
