@@ -71,6 +71,7 @@ pub(crate) async fn disable_limited_invocations_extension(
 // TODO: Remove this test stub when we have a proper test suite for testing SDK functions.
 // Also remove the #[cfg(not(test))] from the main function above.
 // This is just a temporary fix to pass CI coverage tests.
+// https://github.com/Talus-Network/nexus/issues/418
 #[cfg(test)]
 pub(crate) async fn disable_limited_invocations_extension(
     _tool_fqn: ToolFqn,
@@ -83,6 +84,7 @@ pub(crate) async fn disable_limited_invocations_extension(
 
 // TODO: Replace with proper tests when we have a test suite for SDK functions.
 // These are temporary tests just to pass CI coverage.
+// https://github.com/Talus-Network/nexus/issues/418
 #[cfg(test)]
 mod tests {
     use {super::*, std::str::FromStr};
