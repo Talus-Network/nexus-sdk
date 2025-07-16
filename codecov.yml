@@ -25,6 +25,16 @@ coverage:
         if_ci_failed: error
         informational: false
 
+      cli:
+        # CLI patch coverage is informational only
+        target: 80%
+        threshold: 10%
+        base: auto
+        if_ci_failed: error
+        informational: true
+        paths:
+          - cli/**
+
 component_management:
   individual_components:
     - component_id: cli
