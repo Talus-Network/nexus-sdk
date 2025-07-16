@@ -99,10 +99,10 @@ check-shebang:
         # see if the first line is a shell shebang
         if [[ "$first_line" =~ ^(#! *) ]]; then
             if ! [[ "$first_line" =~ ^(#! */usr/bin/env *) ]]; then
-                echo "❌  [$first_line] $f"
+                echo "❌  [$first_line] $f" >&2
                 error=1
             else
-                echo "✅  [$first_line] $f"
+                echo "✅  [$first_line] $f" >&2
             fi
         fi
     done
@@ -132,10 +132,10 @@ check-just-shebang:
             # a shebang
             if [[ $line =~ ^( *#! *) ]] && [[ -n "$recipe" ]]; then
                 if [[ $line =~ ^( *#! */usr/bin/env +) ]]; then
-                    echo "   ✅  $justfile [$line] [$recipe]"
+                    echo "   ✅  $justfile [$line] [$recipe]" >&2
                 else
                     ((justfile_errors++))
-                    echo "   ❌  $justfile [$line] [$recipe]"
+                    echo "   ❌  $justfile [$line] [$recipe]" >&2
                 fi
 
                 recipe=""
@@ -144,10 +144,10 @@ check-just-shebang:
         done < "$justfile"
 
         if [[ $justfile_errors -gt 0 ]]; then
-            echo "❌  [$justfile_errors error(s)] $justfile"
+            echo "❌  [$justfile_errors error(s)] $justfile" >&2
             error=1
         else
-            echo "✅  $justfile"
+            echo "✅  $justfile" >&2
         fi
     done
 
