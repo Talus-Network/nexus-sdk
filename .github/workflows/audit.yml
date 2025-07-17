@@ -17,7 +17,7 @@ jobs:
   audit:
     name: Audit Dependencies
     needs: detect-changes
-    if: needs.detect-changes.outputs.changed == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: needs.detect-changes.outputs.changed == 'true' && ( github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
