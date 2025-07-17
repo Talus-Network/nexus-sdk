@@ -5,27 +5,6 @@ _default:
     @just --list pre-commit
 
 
-# cargo_version == toolchain_version
-check-toolchain-version: _check-cargo
-    #!/usr/bin/env bash
-
-    set -euo pipefail
-
-    cargo_version=$(cargo --version | awk '{print $2}')
-    toolchain_version=$(grep '^channel *= *"[^"]\+"' ../rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/')
-
-    echo "Cargo version: $cargo_version"
-    echo "Toolchain version: $toolchain_version"
-
-    # cargo_version is 1.86.0 and toolchain_version is 1.86, so we need to compare them
-    if [[ "$cargo_version" != "$toolchain_version"* ]]; then
-      echo "Cargo version ($cargo_version) does not match toolchain version ($toolchain_version)." >&2
-      exit 1
-    fi
-
-    echo "Cargo version matches toolchain version."
-
-
 # cargo check --locked --workspace --bins --examples
 cargo-check: _check-cargo
     cargo check --locked --workspace --bins --examples
@@ -36,7 +15,7 @@ cargo-nightly-fmt: _check-cargo
     #!/usr/bin/env bash
 
     cargo +nightly-2025-01-06 fmt --all --check || {
-        echo "== Formatting failed. Please run 'cargo +nightly fmt --all' to format the code." >&2
+        echo "❌ Formatting failed. Please run 'cargo +nightly fmt --all' to format the code." >&2
         exit 1
     }
 
@@ -60,6 +39,8 @@ cargo-nextest-build: _check-cargo-nextest
 # the failure, so there is no need to keep running the remaining tests...
 # cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 cargo-nextest-run: _check-cargo-nextest
+    # Note that tests require docker to be running.
+    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/254
     cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 
 
@@ -71,4 +52,90 @@ md-lint: _check-markdownlint-cli2
 
     # Ensure we are in the root of the repository, makes things easier.
     cd $(git rev-parse --show-toplevel)
+
     markdownlint-cli2 '**/*.md' '!.git/' --config .markdownlint.json
+
+
+check-shebang:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    error=0
+
+    cd $(git rev-parse --show-toplevel)
+
+    for f in $(git ls-files); do
+        # optimization: only check executable files
+        if [[ ! -x "$f" ]]; then
+            continue
+        fi
+
+        first_line=$(head -n 1 "$f")
+
+        # see if the first line is a shell shebang
+        if [[ "$first_line" =~ ^(#! *) ]]; then
+            if ! [[ "$first_line" =~ ^(#! */usr/bin/env *) ]]; then
+                echo "❌  [$first_line] $f" >&2
+                error=1
+            else
+                echo "✅  [$first_line] $f" >&2
+            fi
+        fi
+    done
+
+    exit $error
+
+
+check-just-shebang:
+    #!/usr/bin/env bash
+
+    error=0
+
+    cd $(git rev-parse --show-toplevel)
+
+    for justfile in $(git ls-files | grep -iE '(\.just|justfile)$'); do
+        justfile_errors=0
+        recipe=""
+
+        while IFS= read -r line; do
+            # a recipe
+            if [[ $line =~ ^([a-zA-Z0-9_-]+: *) ]]; then
+                recipe=$line
+                # skip the first line, which is the recipe
+                continue
+            fi
+
+            # a shebang
+            if [[ $line =~ ^( *#! *) ]] && [[ -n "$recipe" ]]; then
+                if [[ $line =~ ^( *#! */usr/bin/env +) ]]; then
+                    echo "   ✅  $justfile [$line] [$recipe]" >&2
+                else
+                    ((justfile_errors++))
+                    echo "   ❌  $justfile [$line] [$recipe]" >&2
+                fi
+
+                recipe=""
+
+            fi
+        done < "$justfile"
+
+        if [[ $justfile_errors -gt 0 ]]; then
+            echo "❌  [$justfile_errors error(s)] $justfile" >&2
+            error=1
+        else
+            echo "✅  $justfile" >&2
+        fi
+    done
+
+    exit $error
+
+
+typos: _check-typos
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    cd $(git rev-parse --show-toplevel)
+
+    typos

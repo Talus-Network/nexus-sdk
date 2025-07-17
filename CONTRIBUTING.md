@@ -42,8 +42,9 @@ This project adheres to a [Code of Conduct]. By participating, you are expected 
 
 ## Writing commit messages
 
-- Use the present tense ("Add feature" not "Added feature")
-- Use imperative tone ("Add feature" not "Adds feature" or "Adding feature")
+- Use [Conventional Commits] specification for the commit messages
+- Use the present tense (e.g., "feat: add command on cli" not "feat: added command on cli")
+- Use imperative tone ("add command" not "adds command" or "adding command")
 - Reference a ticket if applicable.
 - Add more context and an explanation for the contribution.
 
@@ -58,3 +59,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 [LICENSE]: LICENSE.txt
 [CLA]: https://gist.github.com/devops-talus/82cafc9752547baf4be140b6db1e8fd6
 [CLA Assistant]: https://cla-assistant.io/Talus-Network/nexus-sdk
+[Conventional Commits]: https://www.conventionalcommits.org/

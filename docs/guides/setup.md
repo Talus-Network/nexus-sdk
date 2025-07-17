@@ -112,7 +112,26 @@ To check the balance, run:
 sui client balance tally
 ```
 
-## Access Devnet Sui Explorer
+## (Optional) Configure Encryption for Nexus workflows
+
+To ensure end-to-end encryption of data flowing through workflows, Nexus employs a customized implementation of the [Signal Protocol](https://signal.org/docs/). To establish a secure communication channel, you must claim a pre-key from the on-chain Nexus module `pre_key_vault`, perform an X3DH (Extended Triple Diffie-Hellman) key exchange, and derive a session key used to send an initial encrypted message.
+
+The Nexus CLI abstracts away these cryptographic operations. You can initialize this process by simply running:
+
+```bash
+nexus crypto auth
+```
+
+This command generates two programmable transactions:
+
+- The first claims a pre-key from the `pre_key_vault` module.
+- The second, after performing the X3DH handshake, sends the initial message to finalize the secure channel setup.
+
+{% hint style="info" %}
+Keep in mind that the `claim_pre_key` operation is subject to rate limiting. Additionally, it requires a small gas budget to be deposited into Nexus. You can do this using the `nexus gas add-budget` command.
+{% endhint %}
+
+## (Optional) Access Devnet Sui Explorer
 
 Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/).
 
