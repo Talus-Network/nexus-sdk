@@ -7,25 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect_changes.yml
+    with:
+      files: |
+        cli/**
+        sdk/**
+        toolkit-rust/**
+        tools/**
+
   update-baseline:
     runs-on: ubuntu-latest
     name: Update Coverage Baseline
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Check for relevant file changes
-        uses: tj-actions/changed-files@v46
-        id: changed-files
-        with:
-          files: |
-            cli/**
-            sdk/**
-            toolkit-rust/**
-            tools/**
-
       - name: Run Coverage
-        if: steps.changed-files.outputs.any_changed == 'true'
         uses: ./.github/actions/coverage
         with:
           codecov-token: ${{ secrets.CODECOV_TOKEN }}

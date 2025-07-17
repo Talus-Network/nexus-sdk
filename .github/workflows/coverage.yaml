@@ -2,16 +2,21 @@ name: CI Coverage Check
 
 on:
   pull_request:
-    paths:
-      - cli/**
-      - sdk/**
-      - toolkit-rust/**
-      - tools/**
   workflow_dispatch:
 
 jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect_changes.yml
+    with:
+      files: |
+        cli/**
+        sdk/**
+        toolkit-rust/**
+        tools/**
   coverage:
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
