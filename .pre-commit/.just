@@ -21,8 +21,10 @@ check-toolchain-version: _check-cargo
 
     # cargo_version is 1.86.0 and toolchain_version is 1.86, so we need to compare them
     if [[ "$cargo_version" != "$toolchain_version"* ]]; then
-      echo "❌ Cargo version ($cargo_version) does not match toolchain version ($toolchain_version)." >&2
+      echo "❌  Cargo version ($cargo_version) does not match toolchain version ($toolchain_version)." >&2
       exit 1
+    else
+      echo "✅  Cargo version ($cargo_version) matches toolchain version ($toolchain_version)." >&2
     fi
 
     echo "Cargo version matches toolchain version."
