@@ -4,7 +4,6 @@ use {
 };
 
 /// Disable the limited invocations gas extension for the specified tool.
-#[cfg(not(test))]
 pub(crate) async fn disable_limited_invocations_extension(
     tool_fqn: ToolFqn,
     owner_cap: Option<sui::ObjectID>,
@@ -66,34 +65,4 @@ pub(crate) async fn disable_limited_invocations_extension(
     json_output(&json!({ "digest": response.digest }))?;
 
     Ok(())
-}
-
-// TODO: Remove this test stub when we have a proper test suite for testing SDK functions.
-// Also remove the #[cfg(not(test))] from the main function above.
-// This is just a temporary fix to pass CI coverage tests.
-// https://github.com/Talus-Network/nexus/issues/418
-#[cfg(test)]
-pub(crate) async fn disable_limited_invocations_extension(
-    _tool_fqn: ToolFqn,
-    _owner_cap: Option<sui::ObjectID>,
-    _sui_gas_coin: Option<sui::ObjectID>,
-    _sui_gas_budget: u64,
-) -> AnyResult<(), NexusCliError> {
-    Ok(())
-}
-
-// TODO: Replace with proper tests when we have a test suite for SDK functions.
-// These are temporary tests just to pass CI coverage.
-// https://github.com/Talus-Network/nexus/issues/418
-#[cfg(test)]
-mod tests {
-    use {super::*, std::str::FromStr};
-
-    #[tokio::test]
-    async fn test_disable_limited_invocations_extension() {
-        let tool_fqn = ToolFqn::from_str("xyz.taluslabs.math.i64.add@1").unwrap();
-        let result = disable_limited_invocations_extension(tool_fqn, None, None, 1000).await;
-
-        assert!(result.is_ok());
-    }
 }
