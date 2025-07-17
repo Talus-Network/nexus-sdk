@@ -4,6 +4,7 @@ use {
 };
 
 /// Enable the limited invocations gas extension for the specified tool.
+/// TODO: https://github.com/Talus-Network/nexus/issues/418
 pub(crate) async fn enable_limited_invocations_extension(
     tool_fqn: ToolFqn,
     owner_cap: Option<sui::ObjectID>,

@@ -4,6 +4,7 @@ use {
 };
 
 /// Buy a limited invocations gas ticket to pay for the specified tool.
+/// TODO: https://github.com/Talus-Network/nexus/issues/418
 pub(crate) async fn buy_limited_invocations_gas_ticket(
     tool_fqn: ToolFqn,
     invocations: u64,
