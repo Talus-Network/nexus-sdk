@@ -63,7 +63,7 @@ cargo-nextest-build: _check-cargo-nextest
 # cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 cargo-nextest-run: _check-cargo-nextest
     # Note that tests require docker to be running.
-    # TODO: Perhaps we should add a check for that?
+    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/254
     cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 
 
