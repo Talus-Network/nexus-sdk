@@ -85,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pre_key_vault` key to `NexusObjects`
 - pre key vault related Nexus events and their definitions
 - DAG validation (moved from `nexus-cli`)
+- `LinkedTable` support for object crawler
 
 #### Changed
 

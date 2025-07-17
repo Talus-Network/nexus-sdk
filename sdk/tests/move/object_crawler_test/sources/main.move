@@ -8,6 +8,7 @@ use std::ascii::String as AsciiString;
 use sui::object_bag::{Self, ObjectBag};
 use sui::object_table::{Self, ObjectTable};
 use sui::table::{Self, Table};
+use sui::linked_table::{Self, LinkedTable};
 use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
 use sui::bag::{Self, Bag};
@@ -27,6 +28,7 @@ public struct Guy has key, store {
     friends: ObjectBag,
     bag: Bag,
     heterogeneous: Bag,
+    linked_table: LinkedTable<Name, Name>,
 }
 
 public struct Name has copy, drop, store {
@@ -143,6 +145,9 @@ fun init(ctx: &mut TxContext) {
         another_value: b"Another Bag Data",
     });
 
+    let mut linked_table = linked_table::new(ctx);
+    linked_table.push_back(Name { name: b"Key 1".to_ascii_string() }, Name { name: b"Value 1".to_ascii_string() });
+
     let guy = Guy {
         id: guy_id,
         name,
@@ -154,6 +159,7 @@ fun init(ctx: &mut TxContext) {
         friends,
         bag,
         heterogeneous,
+        linked_table,
     };
 
     public_share_object(guy);
