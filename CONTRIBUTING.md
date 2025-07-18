@@ -14,13 +14,17 @@ This project adheres to a [Code of Conduct]. By participating, you are expected 
 ## How to Contribute
 
 1. **Fork the repository** and create your branch from `main`.
-2. **Follow the coding style** used in the project.
-3. **Write clear, concise commit messages.**
-4. **Add tests** for any new functionality.
-5. **Ensure all tests pass** before submitting a pull request.
-6. **Ensure `rustfmt` and `clippy` are happy** before submitting a pull request.
-7. **Do not use unsafe Rust code**.
-8. **Update documentation** to complement code changes
+1. **Follow the coding style** used in the project.
+1. **Install the pre-commit hook** by running:
+
+   ```bash
+   ./.pre-commit/pre-commit --install
+   ```
+
+1. **Write clear, concise commit messages.**
+1. **Add tests** for any new functionality.
+1. **Do not use unsafe Rust code**.
+1. **Update documentation** to complement code changes
 
 ## Reporting Issues
 
@@ -38,8 +42,9 @@ This project adheres to a [Code of Conduct]. By participating, you are expected 
 
 ## Writing commit messages
 
-- Use the present tense ("Add feature" not "Added feature")
-- Use imperative tone ("Add feature" not "Adds feature" or "Adding feature")
+- Use [Conventional Commits] specification for the commit messages
+- Use the present tense (e.g., "feat: add command on cli" not "feat: added command on cli")
+- Use imperative tone ("add command" not "adds command" or "adding command")
 - Reference a ticket if applicable.
 - Add more context and an explanation for the contribution.
 
@@ -54,3 +59,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 [LICENSE]: LICENSE.txt
 [CLA]: https://gist.github.com/devops-talus/82cafc9752547baf4be140b6db1e8fd6
 [CLA Assistant]: https://cla-assistant.io/Talus-Network/nexus-sdk
+[Conventional Commits]: https://www.conventionalcommits.org/

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CONTRIBUTING.md
 - CODE_OF_CONDUCT.md
+- `pre-commit` hook
 
 ### `nexus-cli`
 
@@ -35,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus crypto set-passphrase` prompts for and stores a passphrase securely in the keyring
 - `nexus crypto key-status` shows where the key was loaded from
 - automatically fetching devnet objects for user ergonomics
+- configured `cargo-deny` rules
+- not failing if a tool is already registered when registering a tool
+- not failing a whole tool registration batch if one of the tools fails to register
+- `nexus gas limited-invocations enable` to enable the limited invocations gas extension for a tool
+- `nexus gas limited-invocations disable` to disable the limited invocations gas extension for a tool
+- `nexus gas limited-invocations buy-ticket` to buy a limited invocations gas ticket for a tool
+- `--no-save` flag to `nexus tool register` to not save the owner caps to the CLI config
 
 #### Changed
 
@@ -47,16 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus dag execute` now takes `--encrypt` argument that accepts `vertex.port` pairs to encrypt before sending data on-chain
 - JSON DAG now accepts `encrypted` field on `edges.[].from`
 - `nexus dag execute` now encrypts any `vertex.port` mentioned in the arguments
+- removed `--encrypt` flag in favour of storing the information in the JSON DAG definition
+- replaced all occurrences of `sap` with `tap`
 
 #### Removed
 
 - automated faucet calls for gas and collateral coins
 - basic auth from the CLI configuration
+- DAG validation (moved to `nexus-sdk`)
 
 #### Fixed
 
 - `create_wallet_context` takes `SUI_RPC_URL` into consideration when checking active env
 - when `nexus conf get` fails to parse the config it shows the error instead of defaulting
+- `master-key` uses keyring platform specific dependencies
+- `nexus crypto auth` fetches a new gas coin now
 
 ### `nexus-sdk`
 
@@ -74,11 +87,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `idents::workflow::PreKeyVault` struct that contains pre key vault identifiers
 - `pre_key_vault` key to `NexusObjects`
 - pre key vault related Nexus events and their definitions
+- DAG validation (moved from `nexus-cli`)
+- `LinkedTable` support for object crawler
 
 #### Changed
 
 - `transactions::tool` register PTB template now accepts invocation cost
 - all transaction templates now accept an `objects` argument instead of accepting objects one by one
+- replaced all occurrences of `sap` with `tap`
 
 #### Fixed
 

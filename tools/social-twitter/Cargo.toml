@@ -3,6 +3,14 @@ name = "social-twitter"
 version = "0.1.0"
 edition = "2021"
 
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
 [dependencies]
 oauth1-request = "0.6.1"
 base64 = "0.13.0"

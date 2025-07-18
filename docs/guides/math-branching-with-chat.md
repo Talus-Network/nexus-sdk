@@ -3,9 +3,9 @@
 This guide builds on the [Math Branching DAG with Entry Groups][math-branching-entry-guide] by adding a chat completion tool that explains the mathematical results. You'll learn how to:
 
 1. Understand the need for a custom tool to bridge between math operations and chat completion
-2. Add the chat completion tool to the DAG
-3. Connect the math results to the chat completion tool
-4. Configure the chat completion tool for optimal results
+1. Add the chat completion tool to the DAG
+1. Connect the math results to the chat completion tool
+1. Configure the chat completion tool for optimal results
 
 {% hint style="info" %} Prerequisites
 Follow the [setup guide](setup.md) to get properly setup in case you haven't.
@@ -31,7 +31,12 @@ First, let's add both the number-to-message tool and the chat completion tool to
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -284,7 +289,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a"
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -292,7 +302,16 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.math.i64.mul@1"
       },
       "name": "mul_inputs",
-      "entry_ports": ["a", "b"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        },
+        {
+          "name": "b",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -328,7 +347,12 @@ Here's the complete DAG definition that combines all the components we've discus
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat_completion",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     },
     {
       "kind": {
@@ -554,7 +578,7 @@ Before you can execute the DAG, you need to publish it to the Nexus network. Thi
 
 ```bash
 # Publish the DAG definition
-nexus dag publish --path cli/src/dag/_dags/math_branching_with_chat.json
+nexus dag publish --path sdk/src/dag/_dags/math_branching_with_chat.json
 # Example output: DAG published successfully with Object ID: abc123...
 ```
 
@@ -569,13 +593,13 @@ For testing, you can use the Nexus CLI to execute the DAG:
 nexus dag execute --dag-id <dag_object_id> --entry-group add_entry --input-json '{
   "add_input_and_default": {"a": 10},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect --encrypt chat_completion.api_key
+}' --inspect chat_completion.api_key
 
 # Using the multiplication entry group
 nexus dag execute --dag-id <dag_object_id> --entry-group mul_entry --input-json '{
   "mul_inputs": {"a": 5, "b": 2},
   "chat_completion": {"api_key": "your-api-key"}
-}' --inspect --encrypt chat_completion.api_key
+}' --inspect chat_completion.api_key
 ```
 
 The `--inspect` flag will show you detailed information about the execution, including:
@@ -585,7 +609,7 @@ The `--inspect` flag will show you detailed information about the execution, inc
 - Any errors that occurred
 - The final chat completion response
 
-The `--encrypt` flag is used to encrypt sensitive information, such as the API key, before sending it to the Nexus network.
+The `api_key` entry port is defined as `encrypted` in the JSON structure, so the CLI will encrypt the data before sending it to the Nexus network.
 
 ### 2. Integration with Applications
 
@@ -593,14 +617,14 @@ To integrate this DAG into your application:
 
 1. **Store the DAG**: First, store the DAG JSON definition in your application's workspace.
 
-2. **Handle API Keys**: Securely manage the OpenAI API key. Consider using environment variables or a secrets management service.
+1. **Handle API Keys**: Securely manage the OpenAI API key. Consider using environment variables or a secrets management service.
 
-3. **Create Entry Points**: Implement the two entry points in your application:
+1. **Create Entry Points**: Implement the two entry points in your application:
 
    - Addition path: Takes a single number and adds -3
    - Multiplication path: Takes two numbers and multiplies them
 
-4. **Process Results**: Handle the chat completion response appropriately for your use case.
+1. **Process Results**: Handle the chat completion response appropriately for your use case.
 
 ### 3. Error Handling
 
@@ -615,14 +639,14 @@ The DAG includes built-in error handling:
 To monitor and debug the DAG:
 
 1. Use the `--inspect` flag with the CLI to see detailed execution information.
-2. Check the execution logs for any errors or unexpected behavior.
-3. Monitor the OpenAI API usage and costs through your OpenAI dashboard.
+1. Check the execution logs for any errors or unexpected behavior.
+1. Monitor the OpenAI API usage and costs through your OpenAI dashboard.
 
 ## Next Steps
 
 1. Try different system prompts in the chat completion context to get different types of responses
-2. Experiment with different temperature values to control the creativity of the responses
-3. Consider adding more sophisticated formatting to the numbers before sending them to the chat completion tool
+1. Experiment with different temperature values to control the creativity of the responses
+1. Consider adding more sophisticated formatting to the numbers before sending them to the chat completion tool
 
 This extended DAG demonstrates how to combine mathematical computation with natural language processing, creating a more interactive and engaging experience for users.
 
@@ -630,17 +654,17 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 
 1. **Type Safety**: Always ensure proper type conversion between tools. In this case, we needed a custom tool to convert numbers to messages.
 
-2. **Entry Groups**: When adding new required inputs (like the API key), remember to update all entry groups.
+1. **Entry Groups**: When adding new required inputs (like the API key), remember to update all entry groups.
 
-3. **Default Values**: Set appropriate default values for the chat completion tool to ensure consistent behavior.
+1. **Default Values**: Set appropriate default values for the chat completion tool to ensure consistent behavior.
 
-4. **Error Handling**: The DAG will handle errors gracefully at each step, whether from math operations, number formatting, or chat completion.
+1. **Error Handling**: The DAG will handle errors gracefully at each step, whether from math operations, number formatting, or chat completion.
 
 ## Next Steps
 
 1. Try different system prompts in the chat completion context to get different types of responses
-2. Experiment with different temperature values to control the creativity of the responses
-3. Consider adding more sophisticated formatting to the numbers before sending them to the chat completion tool
+1. Experiment with different temperature values to control the creativity of the responses
+1. Consider adding more sophisticated formatting to the numbers before sending them to the chat completion tool
 
 This extended DAG demonstrates how to combine mathematical computation with natural language processing, creating a more interactive and engaging experience for users.
 

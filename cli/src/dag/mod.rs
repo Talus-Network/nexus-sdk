@@ -2,7 +2,6 @@ mod dag_execute;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
-mod validator;
 
 use {
     crate::prelude::*,
@@ -73,13 +72,6 @@ pub(crate) enum DagCommand {
             value_name = "DATA"
         )]
         input_json: serde_json::Value,
-        #[arg(
-            long = "encrypt",
-            help = "Which entry ports to encrypt in the format `<vertex_name1>.<port_name1> <vertex_name2>.<port_name2>`.",
-            num_args = 0..,
-            value_name = "VERTEX.PORT"
-        )]
-        encrypt: Vec<String>,
         /// Whether to inspect the DAG execution process.
         #[arg(
             long = "inspect",
@@ -131,7 +123,6 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             entry_group,
             input_json,
-            encrypt,
             inspect,
             gas,
         } => {
@@ -142,7 +133,6 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 dag_id,
                 entry_group,
                 input_json,
-                encrypt,
                 inspect,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,

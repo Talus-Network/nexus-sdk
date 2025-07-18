@@ -4,27 +4,27 @@ use crate::{
     ToolFqn,
 };
 
-// == `nexus_workflow::default_sap` ==
+// == `nexus_workflow::default_tap` ==
 
-pub struct DefaultSap;
+pub struct DefaultTap;
 
-const DEFAULT_SAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_sap");
+const DEFAULT_TAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_tap");
 
-impl DefaultSap {
+impl DefaultTap {
     /// This function is called when a DAG is to be executed using the default
-    /// SAP implementation.
+    /// TAP implementation.
     ///
-    /// `nexus_workflow::default_sap::begin_dag_execution`
+    /// `nexus_workflow::default_tap::begin_dag_execution`
     pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
+        module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
-    /// The DefaultSap struct type.
+    /// The DefaultTap struct type.
     ///
-    /// `nexus_workflow::default_sap::DefaultSAP`
-    pub const DEFAULT_SAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
-        name: sui::move_ident_str!("DefaultSAP"),
+    /// `nexus_workflow::default_tap::DefaultTAP`
+    pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("DefaultTAP"),
     };
 }
 
@@ -48,6 +48,13 @@ impl Dag {
     pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAGExecution"),
+    };
+    /// Create an encrypted InputPort from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::encrypted_input_port_from_string`
+    pub const ENCRYPTED_INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("encrypted_input_port_from_string"),
     };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
@@ -259,6 +266,23 @@ impl Dag {
             workflow_pkg_id,
             Self::INPUT_PORT_FROM_STRING.module.into(),
             Self::INPUT_PORT_FROM_STRING.name.into(),
+            vec![],
+            vec![str],
+        ))
+    }
+
+    /// Create an encrypted InputPort from a string.
+    pub fn encrypted_input_port_from_str<T: AsRef<str>>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        str: T,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module.into(),
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.name.into(),
             vec![],
             vec![str],
         ))
@@ -522,34 +546,54 @@ impl Gas {
     }
 }
 
-// == `nexus_workflow::default_gas_extension` ==
+// == `nexus_workflow::gas_extension` ==
 
-pub struct DefaultGasExtension;
+pub struct GasExtension;
 
-const DEFAULT_GAS_EXTENSION_MODULE: &sui::MoveIdentStr =
-    sui::move_ident_str!("default_gas_extension");
+const GAS_EXTENSION_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas_extension");
 
-impl DefaultGasExtension {
+impl GasExtension {
     /// Buy an expiry gas extension ticket.
     ///
-    /// `nexus_workflow::default_gas_extension::buy_expiry_gas_ticket`
+    /// `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
     pub const BUY_EXPIRY_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_GAS_EXTENSION_MODULE,
+        module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("buy_expiry_gas_ticket"),
+    };
+    /// Buy a limited invocations gas extension ticket.
+    ///
+    /// `nexus_workflow::gas_extension::buy_limited_invocations_gas_ticket`
+    pub const BUY_LIMITED_INVOCATIONS_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("buy_limited_invocations_gas_ticket"),
     };
     /// Disable expiry gas extension for a tool.
     ///
-    /// `nexus_workflow::default_gas_extension::disable_expiry`
+    /// `nexus_workflow::gas_extension::disable_expiry`
     pub const DISABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_GAS_EXTENSION_MODULE,
+        module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("disable_expiry"),
+    };
+    /// Disable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::disable_limited_invocations`
+    pub const DISABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_limited_invocations"),
     };
     /// Enable expiry gas extension for a tool.
     ///
-    /// `nexus_workflow::default_gas_extension::enable_expiry`
+    /// `nexus_workflow::gas_extension::enable_expiry`
     pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_GAS_EXTENSION_MODULE,
+        module: GAS_EXTENSION_MODULE,
         name: sui::move_ident_str!("enable_expiry"),
+    };
+    /// Enable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::enable_limited_invocations`
+    pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_limited_invocations"),
     };
 }
 

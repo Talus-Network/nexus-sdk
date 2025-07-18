@@ -4028,7 +4028,12 @@ version = "3.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1961983669d57bdfe6c0f3ef8e4c229b5ef751afcc7d87e4271d2f71f6ccfa8b"
 dependencies = [
+ "byteorder",
+ "linux-keyutils",
  "log",
+ "security-framework 2.11.1",
+ "security-framework 3.2.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4099,6 +4104,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
+name = "linux-keyutils"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "761e49ec5fd8a5a463f9b84e877c373d888935b71c6be78f3767fe2ae6bed18e"
+dependencies = [
+ "bitflags 2.9.0",
+ "libc",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4112,7 +4127,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -4208,7 +4223,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -4917,7 +4932,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4940,8 +4955,8 @@ dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
  "openssl",
- "petgraph 0.7.1",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "rpassword",
  "rstest",
@@ -4954,12 +4969,13 @@ dependencies = [
  "tokio",
  "toml 0.8.20",
  "warp",
+ "x25519-dalek",
  "zeroize",
 ]
 
 [[package]]
 name = "nexus-sdk"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -4981,6 +4997,7 @@ dependencies = [
  "lru 0.12.5",
  "mockito",
  "move-core-types",
+ "petgraph 0.7.1",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "regex",
@@ -5010,7 +5027,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -9087,7 +9104,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 dependencies = [
  "anyhow",
  "jsonschema",

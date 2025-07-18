@@ -33,7 +33,13 @@ A DAG JSON file consists of sections defining the graph's components:
     "tool_fqn": "namespace.tool.name@version"
   },
   "name": "unique_vertex_name",
-  "entry_ports": ["entry_port_name", "another_entry_port_name", ...]
+  "entry_ports": [
+    {
+      "name": "input_port_name", // Must match the tool's input schema
+      "encrypted": false // Optional, default is false
+    }
+    // ... potentially more entry ports
+  ]
 }
 ```
 
@@ -43,8 +49,8 @@ A DAG JSON file consists of sections defining the graph's components:
 The input ports of a tool are specified by the tool's output schema saved in the Nexus tool registry. Each input port must have exactly one of:
 
 1. An edge leading to it
-2. A default value
-3. Be part of `entry_ports`
+1. A default value
+1. Be part of `entry_ports`
 
 {% endhint %}
 
@@ -160,18 +166,18 @@ The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to en
 
    - Use descriptive names for vertices.
 
-2. **Organization**:
+1. **Organization**:
 
    - Keep the DAG as simple as possible. (But no simpler! For example, branching and entry groups can make powerful composite DAG structures. )
    - Use entry groups to provide different ways of starting DAG execution.
 
-3. **Error Handling**:
+1. **Error Handling**:
 
    - Consider all possible `output_variant`s (e.g., `ok`, `err`) from tools.
    - Explicitly handle error paths or ensure they lead to acceptable end states.
    - Use appropriate comparison/logic tools for branching.
 
-4. **Documentation**:
+1. **Documentation**:
    - Provide documentation alongside the DAG, alongside a flowchart outlining it.
    - Document the purpose of each vertex.
    - Refer to the tool documentation for the expected input/output formats for each vertex.
@@ -186,29 +192,29 @@ Here's a step-by-step process to create a DAG:
    - What outputs are expected?
    - What processing steps are required?
 
-2. **Design the Flow**:
+1. **Design the Flow**:
 
    - Map out the vertices (tools) needed
    - Determine the connections
    - Identify branching points
 
-3. **Create Entry Points**:
+1. **Create Entry Points**:
 
    - Specify entry ports and default values
    - Set up entry groups if needed
 
-4. **Add Processing Vertices**:
+1. **Add Processing Vertices**:
 
    - Define intermediate vertices (tools)
    - Set up default values
 
-5. **Connect the Dots**:
+1. **Connect the Dots**:
 
    - Create edges between vertices
    - Handle all output variants
    - Ensure proper data flow
 
-6. **Validate**:
+1. **Validate**:
    - Check for cycles
    - Verify all connections
    - Test with sample inputs

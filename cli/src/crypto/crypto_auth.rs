@@ -123,6 +123,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     crypto_secret.sessions.insert(session_id, session);
 
     let save_handle = loading!("Saving session to configuration...");
+
     match conf.save().await {
         Ok(()) => {
             save_handle.success();
@@ -132,6 +133,8 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
             return Err(NexusCliError::Any(e));
         }
     }
+
+    let gas_coin = fetch_gas_coin(&sui, address, gas.sui_gas_coin).await?;
 
     // Make borrow checker happy
     let objects = &get_nexus_objects(&mut conf).await?;
@@ -169,4 +172,82 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     }))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        rand::rngs::OsRng,
+        std::{collections::HashMap, env},
+        tempfile::TempDir,
+        x25519_dalek::StaticSecret,
+    };
+
+    #[tokio::test]
+    #[serial_test::serial(master_key_env)]
+    async fn test_crypto_auth_offline_session_persistence() {
+        // Arrange
+        // Isolate the filesystem & environment so the test is self-contained.
+        let tmp = TempDir::new().expect("temp dir");
+        let conf_path = tmp.path().join("conf.toml");
+
+        env::set_var("XDG_CONFIG_HOME", tmp.path());
+
+        // Supply the master-key via environment variable.
+        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
+
+        // Sanity-check that the master key can now be derived.
+        crate::utils::secrets::master_key::get_master_key()
+            .expect("master key should be available");
+
+        // Generate Receiver (network side) pre-key material.
+        let receiver_identity = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
+        let bundle = PreKeyBundle::new(&receiver_identity, 1, &spk_secret, None, None);
+
+        // Generate Sender (CLI side) identity key.
+        let sender_identity = IdentityKey::generate();
+
+        // Run the X3DH Sender flow directly.
+        let first_message = b"nexus auth";
+        let (_initial_msg, session) =
+            Session::initiate(&sender_identity, &bundle, first_message).expect("X3DH initiate");
+        let session_id = *session.id();
+
+        // Build a CryptoConf with the freshly created session and wrap it in a Secret.
+        let mut sessions = HashMap::new();
+        sessions.insert(session_id, session);
+        let crypto_conf = CryptoConf {
+            identity_key: Some(sender_identity),
+            sessions,
+        };
+        let secret_crypto = Secret::new(crypto_conf);
+
+        // Compose full CLI configuration and persist to disk.
+        let cli_conf = CliConf {
+            sui: SuiConf::default(),
+            nexus: None,
+            tools: HashMap::new(),
+            crypto: Some(secret_crypto),
+        };
+
+        cli_conf.save_to_path(&conf_path).await.expect("save conf");
+
+        // Reload and check that the session is still present & decrypts cleanly.
+        let loaded_conf = CliConf::load_from_path(&conf_path)
+            .await
+            .expect("load conf");
+        let loaded_crypto = loaded_conf.crypto.expect("crypto section");
+        let saved_session = loaded_crypto
+            .sessions
+            .get(&session_id)
+            .expect("session stored");
+
+        // Basic sanity: session IDs match.
+        assert_eq!(saved_session.id(), &session_id);
+
+        // Clean-up env so other tests are unaffected.
+        env::remove_var("XDG_CONFIG_HOME");
+    }
 }
