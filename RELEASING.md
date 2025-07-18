@@ -10,7 +10,7 @@ This guide outlines the release and versioning strategy for the `nexus` and `nex
 
 - **Development Branch:** `main` (always latest development state)
 - **Release Branches:** `release/v{major}.{minor}.x` (e.g., `release/v0.2.x`)
-	- ⚠️ Those branches should have the same protection rules as `main`
+  - ⚠️ Those branches should have the same protection rules as `main`
 
 ### Tags
 
@@ -33,7 +33,7 @@ This guide outlines the release and versioning strategy for the `nexus` and `nex
 
 - Create a new `release/v*` branch.
 - Create a release PR targeting the respective `release/v*` branch.
-- The release PR titles must follow the [Conventional Commits](conventional-commits) specification: `chore: release v{major}.{minor}.{patch}(-{suffix})`.
+- The release PR titles must follow the [Conventional Commits][conventional-commits] specification: `chore: release v{major}.{minor}.{patch}(-{suffix})`.
 - In the PR, bump the crates versions for the release.
 - Review the `CHANGELOG` updating the version from `Unreleased` accordingly, including the release date, and make sure that breaking changes, new features, and bug fixes are clearly documented.
 - After **squash merging** the PR to the `release/v*` branch, tag the last commit in the `release/v*` branch with the expected tag.
@@ -42,6 +42,8 @@ This guide outlines the release and versioning strategy for the `nexus` and `nex
 
 > [!IMPORTANT]
 > Since we need to update the `version` field in the `Cargo.toml` file for every release, **a commit hash cannot have more than 1 tag associated to it**. For example, if we want to promote a deployment from `devnet` to `testnet` without any source code changes (new features, bug fixes, etc), we should still create a new release PR just to update the `version` in the `Cargo.toml` file.
+
+Also:
 
 > [!NOTE]
 > All highlighted merge commits will trigger a deployment to the respective environment for that tag.
@@ -178,4 +180,3 @@ Since `nexus` has a direct dependency on `nexus-sdk` crates, we should follow th
   - Deploy immediately to all environments connected to the version (`devnet`, `testnet`, and/or `mainnet`).
 
 [conventional-commits]: https://www.conventionalcommits.org/
-
