@@ -22,7 +22,7 @@ test: _check-cargo
 
 # Run rustfmt on the Nexus SDK
 fmt-check: _check-cargo
-    cargo +nightly fmt --package {{ package }} --check
+    cargo +nightly-2025-01-06 fmt --package {{ package }} --check
 
 # Run clippy on the Nexus SDK
 clippy: _check-cargo

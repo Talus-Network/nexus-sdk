@@ -6,29 +6,29 @@ This documentation aims to document the Nexus SDK, a combination of a CLI tool a
 
 For the purposes of this documentation we make distinction between different user roles within the ecosystem:
 
-* **Nexus maintainer.** Core team member that maintains the Nexus codebase.
-* **Tool developer.** Outside contributor that develops Tools to be used by Agents.
-* **Agent developer.** Outside contributor that creates DAGs and subsequently deploys the Agent smart contract.
-* **Agent user.** End-user that interacts with the ecosystem through clients built by us or outside contributors.
+- **Nexus maintainer.** Core team member that maintains the Nexus codebase.
+- **Tool developer.** Outside contributor that develops Tools to be used by Agents.
+- **Agent developer.** Outside contributor that creates DAGs and subsequently deploys the Agent smart contract.
+- **Agent user.** End-user that interacts with the ecosystem through clients built by us or outside contributors.
 
 ## [Glossary](../nexus-next/glossary.md)
 
-Ubiquitously used terms. Often these terms reference specific parts of the project so it is crucial that they be clearly defined. Find them [here](../nexus-next/glossary.md).
+Ubiquitously used terms. Often these terms reference specific parts of the project so it is crucial that they be clearly defined. Find them [in the glossary](../nexus-next/glossary.md).
 
 ## [CLI](cli.md)
 
 This CLI can be used by both Agent Developers and Tool Developers for various tasks. Those tasks include:
 
 1. registering Tools in the on-chain Tool Registry
-2. static analysis of Nexus workflow DAGs
-3. deployment of smart contracts that represent the Agent and holds its DAG
+1. static analysis of Nexus workflow DAGs
+1. deployment of smart contracts that represent the Agent and holds its DAG
 
 The codebase resides in [this repository](https://github.com/Talus-Network/nexus-sdk).
 
 Docs:
 
-* [Nexus CLI](cli.md)
-* [DAG Construction Guide](guides/dag-construction.md)
+- [Nexus CLI](cli.md)
+- [DAG Construction Guide](guides/dag-construction.md)
 
 ## Toolkit
 
@@ -38,6 +38,5 @@ The codebase resides in [this repository](https://github.com/Talus-Network/nexus
 
 Docs:
 
-* [Tool Development Guidelines](tool-development.md)
-* [Nexus Toolkit Rust](toolkit-rust.md)
-
+- [Tool Development Guidelines](tool-development.md)
+- [Nexus Toolkit Rust](toolkit-rust.md)

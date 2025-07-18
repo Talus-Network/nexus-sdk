@@ -17,8 +17,8 @@
 
 pub mod move_std;
 pub mod primitives;
-pub mod sap;
 pub mod sui_framework;
+pub mod tap;
 pub mod workflow;
 
 use crate::sui;

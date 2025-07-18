@@ -45,6 +45,8 @@ pub async fn crypto_init_key(force: bool) -> AnyResult<(), NexusCliError> {
     {
         Ok(()) => {
             generate_handle.success();
+            // Remove any stale pass-phrase entry so that key-status reports the new raw key.
+            let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
             notify_success!("32-byte master key saved to the OS key-ring");
             Ok(())
         }

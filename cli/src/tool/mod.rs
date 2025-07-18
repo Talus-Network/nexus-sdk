@@ -76,6 +76,11 @@ pub(crate) enum ToolCommand {
             help = "Should all tools on a webserver be registered at once?"
         )]
         batch: bool,
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
@@ -202,6 +207,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             collateral_coin,
             invocation_cost,
             batch,
+            no_save,
             gas,
         } => {
             register_tool(
@@ -209,6 +215,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 collateral_coin,
                 invocation_cost,
                 batch,
+                no_save,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )

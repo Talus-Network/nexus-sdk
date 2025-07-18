@@ -3,15 +3,16 @@ use {
     nexus_sdk::transactions::gas,
 };
 
-/// Buy an expiry gas ticket to pay for the specified tool.
-pub(crate) async fn buy_expiry_gas_ticket(
+/// Buy a limited invocations gas ticket to pay for the specified tool.
+/// TODO: https://github.com/Talus-Network/nexus/issues/418
+pub(crate) async fn buy_limited_invocations_gas_ticket(
     tool_fqn: ToolFqn,
-    minutes: u64,
+    invocations: u64,
     coin: sui::ObjectID,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Buying an expiry gas ticket for '{minutes}' minuites for tool '{tool_fqn}'");
+    command_title!("Buying a limited invocations gas ticket for '{invocations}' invocations for tool '{tool_fqn}'");
 
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
@@ -44,8 +45,13 @@ pub(crate) async fn buy_expiry_gas_ticket(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = gas::buy_expiry_gas_ticket(&mut tx, objects, &tool_fqn, &pay_with_coin, minutes)
-    {
+    if let Err(e) = gas::buy_limited_invocations_gas_ticket(
+        &mut tx,
+        objects,
+        &tool_fqn,
+        &pay_with_coin,
+        invocations,
+    ) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

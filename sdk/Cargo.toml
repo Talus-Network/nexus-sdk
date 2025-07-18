@@ -7,7 +7,6 @@ version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
-license-file.workspace = true
 readme.workspace = true
 authors.workspace = true
 keywords.workspace = true
@@ -61,6 +60,9 @@ transactions = ["sui_idents", "bincode"]
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
+# Provides DAG-related utilities.
+dag = ["petgraph"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -85,6 +87,7 @@ full = [
     "object_crawler",
     "transactions",
     "walrus",
+    "dag",
 ]
 
 
@@ -140,6 +143,10 @@ optional = true
 
 [dependencies.hex]
 version = "0.4"
+optional = true
+
+[dependencies.petgraph]
+workspace = true
 optional = true
 
 [dependencies.rand]

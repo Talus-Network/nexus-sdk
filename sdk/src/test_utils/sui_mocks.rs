@@ -37,7 +37,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         interface_pkg_id: sui::ObjectID::random(),
         network_id: sui::ObjectID::random(),
         tool_registry: mock_sui_object_ref(),
-        default_sap: mock_sui_object_ref(),
+        default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
         pre_key_vault: mock_sui_object_ref(),
     }

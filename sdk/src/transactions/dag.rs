@@ -372,10 +372,10 @@ pub fn execute(
     input_json: serde_json::Value,
     encrypt: &HashMap<String, Vec<String>>,
 ) -> anyhow::Result<sui::Argument> {
-    // `self: &mut DefaultSAP`
-    let default_sap = tx.obj(sui::ObjectArg::SharedObject {
-        id: objects.default_sap.object_id,
-        initial_shared_version: objects.default_sap.version,
+    // `self: &mut DefaultTAP`
+    let default_tap = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.default_tap.object_id,
+        initial_shared_version: objects.default_tap.version,
         mutable: true,
     })?;
 
@@ -492,14 +492,14 @@ pub fn execute(
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
-    // `workflow::default_sap::begin_dag_execution()`
+    // `workflow::default_tap::begin_dag_execution()`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.into(),
-        workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.into(),
+        workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.into(),
+        workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.into(),
         vec![],
         vec![
-            default_sap,
+            default_tap,
             dag,
             gas_service,
             network,
@@ -751,11 +751,11 @@ mod tests {
         assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultSap::BEGIN_DAG_EXECUTION.module.to_string(),
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultSap::BEGIN_DAG_EXECUTION.name.to_string()
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.to_string()
         );
     }
 

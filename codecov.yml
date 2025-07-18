@@ -1,0 +1,86 @@
+# codecov.yml
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        # Coverage can drop by 1% and still be green
+        threshold: 1%
+        target: auto # Compares to base branch
+        base: auto
+        if_ci_failed: error
+        informational: false
+        only_pulls: false
+
+    patch:
+      cli:
+        # CLI patch coverage is informational only
+        target: 80%
+        threshold: 10%
+        base: auto
+        if_ci_failed: error
+        informational: true
+        paths:
+          - "cli/"
+      default:
+        # New code should have at least 80% coverage
+        target: 80%
+        threshold: 10% # Allow 10% drop for edge cases
+        base: auto
+        if_ci_failed: error
+        informational: false
+        paths:
+          - "!cli/"
+
+component_management:
+  individual_components:
+    - component_id: cli
+      name: CLI Module
+      paths:
+        - cli/**
+    - component_id: sdk
+      name: SDK Module
+      paths:
+        - sdk/**
+    - component_id: toolkit
+      name: Toolkit Rust
+      paths:
+        - toolkit-rust/**
+    - component_id: tools
+      name: Tools
+      paths:
+        - tools/**
+
+comment:
+  layout: "header, diff, flags, components, files, footer"
+  behavior: default
+  require_changes: true
+  require_base: true
+  require_head: true
+  hide_project_coverage: false
+
+ignore:
+  - "**/tests/**"
+  - "**/test_*.rs"
+  - "**/mock_*.rs"
+  - "**/examples/**"
+  - "**/benches/**"
+  - "**/*.pb.rs"
+  - "**/target/**"
+  - "**/build.rs"
+
+flags:
+  unittests:
+    paths:
+      - cli/
+      - sdk/
+      - toolkit-rust/
+      - tools/
+    carryforward: true
+
+github_checks:
+  annotations: true

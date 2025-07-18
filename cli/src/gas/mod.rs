@@ -1,14 +1,10 @@
 mod gas_add_budget;
-mod gas_expiry_buy_ticket;
-mod gas_expiry_disable;
-mod gas_expiry_enable;
+mod tickets;
 
 use {
     crate::prelude::*,
     gas_add_budget::*,
-    gas_expiry_buy_ticket::*,
-    gas_expiry_disable::*,
-    gas_expiry_enable::*,
+    tickets::{expiry::*, limited_invocations::*},
 };
 
 #[derive(Subcommand)]
@@ -28,6 +24,12 @@ pub(crate) enum GasCommand {
 
     #[command(subcommand, about = "Manage the expiry gas ticket extension")]
     Expiry(ExpiryCommand),
+
+    #[command(
+        subcommand,
+        about = "Manage the limited invocations gas ticket extension"
+    )]
+    LimitedInvocations(LimitedInvocationsCommand),
 }
 
 #[derive(Subcommand)]
@@ -107,6 +109,95 @@ pub(crate) enum ExpiryCommand {
     },
 }
 
+#[derive(Subcommand)]
+pub(crate) enum LimitedInvocationsCommand {
+    #[command(about = "Enable the limited invocations gas ticket extension")]
+    Enable {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::ObjectID>,
+        #[arg(
+            long = "cost-per-invocation",
+            short = 'c',
+            help = "The cost per invocation in MIST.",
+            value_name = "MIST"
+        )]
+        cost_per_invocation: u64,
+        #[arg(
+            long = "min-invocations",
+            help = "The minimum number of invocations required for a ticket.",
+            value_name = "COUNT"
+        )]
+        min_invocations: u64,
+        #[arg(
+            long = "max-invocations",
+            help = "The maximum number of invocations allowed for a ticket.",
+            value_name = "COUNT"
+        )]
+        max_invocations: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Disable the limited invocations gas ticket extension")]
+    Disable {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::ObjectID>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Buy a limited invocations gas ticket for the specified tool")]
+    BuyTicket {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "invocations",
+            short = 'i',
+            help = "The number of invocations the ticket should cover.",
+            value_name = "COUNT"
+        )]
+        invocations: u64,
+        #[arg(
+            long = "coin",
+            short = 'c',
+            help = "Owned SUI coin object ID to use to pay for the ticket",
+            value_name = "OBJECT_ID"
+        )]
+        coin: sui::ObjectID,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
 /// Handle the provided gas command. The [GasCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> {
@@ -148,7 +239,6 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
             // == `$ nexus gas expiry buy-ticket` ==
             ExpiryCommand::BuyTicket {
                 tool_fqn,
-
                 minutes,
                 coin,
                 gas,
@@ -156,6 +246,62 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
                 buy_expiry_gas_ticket(
                     tool_fqn,
                     minutes,
+                    coin,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+        },
+
+        // == `$ nexus gas limited-invocations` ==
+        GasCommand::LimitedInvocations(command) => match command {
+            // == `$ nexus gas limited-invocations enable` ==
+            LimitedInvocationsCommand::Enable {
+                tool_fqn,
+                owner_cap,
+                cost_per_invocation,
+                min_invocations,
+                max_invocations,
+                gas,
+            } => {
+                enable_limited_invocations_extension(
+                    tool_fqn,
+                    owner_cap,
+                    cost_per_invocation,
+                    min_invocations,
+                    max_invocations,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+
+            // == `$ nexus gas limited-invocations disable` ==
+            LimitedInvocationsCommand::Disable {
+                tool_fqn,
+                owner_cap,
+                gas,
+            } => {
+                disable_limited_invocations_extension(
+                    tool_fqn,
+                    owner_cap,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+
+            // == `$ nexus gas limited-invocations buy-ticket` ==
+            LimitedInvocationsCommand::BuyTicket {
+                tool_fqn,
+                invocations,
+                coin,
+                gas,
+            } => {
+                buy_limited_invocations_gas_ticket(
+                    tool_fqn,
+                    invocations,
                     coin,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,

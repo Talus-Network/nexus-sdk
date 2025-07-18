@@ -20,6 +20,7 @@ struct Guy {
     friends: ObjectBag<Name, Structure<PlainValue>>,
     bag: Bag<Name, Structure<PlainValue>>,
     heterogeneous: Bag<HeterogeneousKey, Structure<HeterogeneousValue>>,
+    linked_table: LinkedTable<Name, Structure<Name>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -334,4 +335,22 @@ async fn test_object_crawler() {
             }
         }
     }
+
+    // Fetch linked table.
+    let linked_table = guy.linked_table.fetch_all(&sui).await.unwrap();
+    assert_eq!(linked_table.len(), 1);
+
+    // Fetch first value from linked table.
+    let linked_item = guy
+        .linked_table
+        .fetch_one(
+            &sui,
+            Name {
+                name: "Key 1".to_string(),
+            },
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(linked_item.name, "Value 1");
 }

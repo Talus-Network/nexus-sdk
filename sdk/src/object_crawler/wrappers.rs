@@ -85,6 +85,97 @@ impl<'de, K, V> Deserialize<'de> for ObjectTable<K, V> {
     }
 }
 
+/// Move's `LinkedTable` wrapper. This wraps objects that are not stored
+/// directly on the fetched object - one must fetch them separately.
+///
+/// If one value is fetched based on its name then the result is `Response<V>`
+/// where `V` is the generic of `LinkedTable`.
+///
+/// If multiple values are fetched, then the result is `HashMap<K, V>`.
+#[derive(Clone, Debug)]
+pub struct LinkedTable<K, V> {
+    /// The ID of the dynamic object.
+    id: sui::UID,
+    /// Fetching an LinkedTable automatically gives us the key type.
+    tag: sui::MoveTypeTag,
+    _marker: PhantomData<(K, V)>,
+}
+
+impl<K, V> LinkedTable<K, V>
+where
+    K: Eq + Hash + DeserializeOwned + Serialize,
+    V: DeserializeOwned,
+{
+    /// Fetch a single object from the linked table by its key.
+    pub async fn fetch_one(&self, sui: &sui::Client, key: K) -> anyhow::Result<V> {
+        let field_name = sui::DynamicFieldName {
+            type_: self.tag.clone(),
+            value: serde_json::to_value(key).map_err(anyhow::Error::new)?,
+        };
+
+        Ok(
+            dynamic_fetch_one::<ObjectFields<ObjectValue<ObjectFields<ObjectValue<V>>>>>(
+                sui,
+                *self.id.object_id(),
+                field_name,
+            )
+            .await?
+            .fields
+            .value
+            .fields
+            .value,
+        )
+    }
+
+    /// Fetch all objects from the linked table.
+    pub async fn fetch_all(&self, sui: &sui::Client) -> anyhow::Result<HashMap<K, V>> {
+        let response = dynamic_fetch_many::<
+            K,
+            ObjectFields<ObjectValue<ObjectFields<ObjectValue<V>>>>,
+        >(sui, *self.id.object_id())
+        .await?;
+
+        Ok(response
+            .into_iter()
+            .map(|(key, ObjectFields { fields })| (key, fields.value.fields.value))
+            .collect())
+    }
+}
+
+impl<'de, K, V> Deserialize<'de> for LinkedTable<K, V> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[serde(rename = "type")]
+            type_: String,
+            fields: ObjectId,
+        }
+
+        let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
+
+        let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
+            serde::de::Error::custom(format!(
+                "Could not parse sui::MoveStructTag from String: {e}"
+            ))
+        })?;
+
+        let Some(tag) = struct_tag.type_params.into_iter().next() else {
+            return Err(serde::de::Error::custom(
+                "Could not get type parameter from `type_`",
+            ));
+        };
+
+        Ok(Self {
+            tag,
+            id: fields.id,
+            _marker: PhantomData,
+        })
+    }
+}
+
 /// Move's `Table` wrapper. This wraps objects that are not stored directly on
 /// the fetched object - one must fetch them separately.
 ///

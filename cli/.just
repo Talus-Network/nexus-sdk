@@ -32,7 +32,7 @@ test-completions: build
 
 # Run rustfmt on the CLI project
 fmt-check: _check-cargo
-    cargo +nightly fmt --package {{ package }} --check
+    cargo +nightly-2025-01-06 fmt --package {{ package }} --check
 
 # Run clippy on the CLI project
 clippy: _check-cargo

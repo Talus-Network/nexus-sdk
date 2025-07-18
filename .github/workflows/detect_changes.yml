@@ -1,0 +1,44 @@
+name: Detect Changes
+
+on:
+  workflow_call:
+    inputs:
+      files:
+        description: "File patterns to check for changes"
+        required: true
+        type: string
+    outputs:
+      changed:
+        description: "Whether any of the specified files changed"
+        value: ${{ jobs.detect-changes.outputs.changed }}
+      all_changed_files:
+        description: "Space-separated list of all changed files"
+        value: ${{ jobs.detect-changes.outputs.all_changed_files }}
+
+jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changed-files.outputs.any_changed }}
+      all_changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Print input file patterns
+        run: |
+          echo "Checking for changes in files matching:"
+          echo "${{ inputs.files }}"
+
+      - name: Check for relevant file changes
+        uses: tj-actions/changed-files@v46
+        id: changed-files
+        with:
+          files: ${{ inputs.files }}
+
+      - name: Print changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Changed files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
