@@ -95,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `transactions::tool` register PTB template now accepts invocation cost
 - all transaction templates now accept an `objects` argument instead of accepting objects one by one
 - replaced all occurrences of `sap` with `tap`
+- standardized array and single value serialization of `NexusData` in `serde_parsers`
 
 #### Fixed
 

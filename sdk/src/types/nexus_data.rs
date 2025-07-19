@@ -73,7 +73,7 @@ mod parser {
                 data: data.data,
                 encrypted: data.encrypted,
             }),
-            _ => todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>"),
+            _ => todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"),
         }
     }
 
@@ -91,7 +91,7 @@ mod parser {
                 encrypted: *encrypted,
             },
             NexusData::Remote {} => {
-                todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+                todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>")
             }
         };
 
@@ -138,9 +138,11 @@ mod parser {
                 [105, 110, 108, 105, 110, 101]
             );
 
+            // This byte array corresponds to the JSON string
+            // '{"value":{"key":"value"},"__nexus_single_value":true}'.
             assert_eq!(
                 serialized,
-                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#
+                r#"{"storage":[105,110,108,105,110,101],"data":[[123,34,118,97,108,117,101,34,58,123,34,107,101,121,34,58,34,118,97,108,117,101,34,125,44,34,95,95,110,101,120,117,115,95,115,105,110,103,108,101,95,118,97,108,117,101,34,58,116,114,117,101,125]],"encrypted":false}"#
             );
 
             let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -170,6 +172,24 @@ mod parser {
             let deserialized = serde_json::from_str(&serialized).unwrap();
 
             assert_eq!(dag_data, deserialized);
+        }
+
+        #[test]
+        #[should_panic(
+            expected = "not yet implemented: TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"
+        )]
+        fn test_dag_data_only_supports_inline_ser() {
+            let data = NexusData::Remote {};
+            let _ = serde_json::to_string(&data);
+        }
+
+        #[test]
+        #[should_panic(
+            expected = "not yet implemented: TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"
+        )]
+        fn test_dag_data_only_supports_inline_deser() {
+            let data = r#"{"storage":[1,2,3],"data":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#;
+            let _ = serde_json::from_str::<NexusData>(&data);
         }
     }
 }

@@ -1,4 +1,9 @@
-use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use {
+    serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
+    serde_json::Map,
+};
+
+const SINGLE_VALUE_MARKER: &str = "__nexus_single_value";
 
 /// Deserialize a `Vec<u8>` into a [reqwest::Url].
 pub fn deserialize_bytes_to_url<'de, D>(deserializer: D) -> Result<reqwest::Url, D::Error>
@@ -51,8 +56,9 @@ where
 
 /// Deserialize a `Vec<Vec<u8>>` into a `serde_json::Value`.
 ///
-/// If the outer `Vec` is len 1, it will be deserialized as a single JSON value.
-/// Otherwise it will be deserialized as a JSON array.
+/// If the outer `Vec` is len 1 and marked with [`SINGLE_VALUE_MARKER`], it will
+/// be deserialized as a single JSON value. Otherwise it will be deserialized
+/// as a JSON array.
 #[allow(dead_code)]
 pub fn deserialize_array_of_bytes_to_json_value<'de, D>(
     deserializer: D,
@@ -65,24 +71,22 @@ where
 
     for bytes in array_of_bytes {
         let value = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
-
-        // TODO: This is temporarily added here to automatically fallback to
-        // a JSON String if we can't parse the bytes as JSON. In the future,
-        // this should fail the execution.
-        //
-        // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
-        let value = match serde_json::from_str(&value) {
-            Ok(value) => value,
-            Err(_) => serde_json::Value::String(value),
-        };
+        let value = serde_json::from_str(&value).map_err(serde::de::Error::custom)?;
 
         result.push(value);
     }
 
-    match result.len() {
-        1 => Ok(result.pop().expect("Len is 1")),
-        _ => Ok(serde_json::Value::Array(result)),
+    if result.len() == 1 {
+        // Look for a `SINGLE_VALUE_MARKER` marker to indicate that this should
+        // be deserialized as a single JSON value.
+        if let serde_json::Value::Object(map) = &result[0] {
+            if map.contains_key(SINGLE_VALUE_MARKER) {
+                return Ok(map.get("value").cloned().unwrap_or_default());
+            }
+        }
     }
+
+    Ok(serde_json::Value::Array(result))
 }
 
 /// Inverse of [deserialize_array_of_bytes_to_json_value].
@@ -94,12 +98,26 @@ pub fn serialize_json_value_to_array_of_bytes<S>(
 where
     S: Serializer,
 {
-    // The structure of the data here is TBD.
-    //
-    // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
+    // When serializing for the purposes of `NexusData`, we need to adhere to
+    // the `Vec<Vec<u8>>` format. If the value to serialize is not an array,
+    // we wrap it in an array with a single element.
     let array = match value {
         serde_json::Value::Array(array) => array,
-        value => &vec![value.clone()],
+        value => {
+            // When wrapping a single value, we need to add a marker that
+            // indicates the value should be deserialized as a single JSON
+            // value. Otherwise, it is indistinguishable from a JSON array of 1
+            // element.
+            let mut map = Map::new();
+
+            map.insert("value".to_string(), value.clone());
+            map.insert(
+                SINGLE_VALUE_MARKER.to_string(),
+                serde_json::Value::Bool(true),
+            );
+
+            &vec![serde_json::Value::Object(map)]
+        }
     };
 
     let mut result = Vec::with_capacity(array.len());
@@ -214,60 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn test_single_valid_json_number() {
-        // This test supplies a single element.
-        // The inner array [49, 50, 51] corresponds to the UTF-8 string "123".
-        // "123" is valid JSON and parses to the number 123.
-        let input = r#"{"value":[[49,50,51]]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!(123));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
-    }
-
-    #[test]
-    fn test_multiple_valid_json() {
-        // Two elements:
-        // First element: [34,118,97,108,117,101,34] corresponds to "\"value\""
-        //   which is valid JSON and becomes the string "value".
-        // Second element: [49,50,51] corresponds to "123" and becomes the number 123.
-        // Since there is more than one element, the deserializer returns a JSON array.
-        let input = r#"{"value":[[34,118,97,108,117,101,34],[49,50,51]]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!(["value", 123]));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
-    }
-
-    #[test]
-    fn test_single_invalid_json_fallback() {
-        // Single element with bytes for "hello": [104,101,108,108,111].
-        // "hello" is not valid JSON (missing quotes), so the fallback
-        // returns the string "hello" as a JSON string.
-        let input = r#"{"value":[[104,101,108,108,111]]}"#;
-
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!("hello"));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        // Quotes are added when ser'd.
-        assert_eq!(ser, r#"{"value":[[34,104,101,108,108,111,34]]}"#);
-    }
-
-    #[test]
-    fn test_empty_array() {
-        // An empty outer array should result in an empty JSON array.
-        let input = r#"{"value":[]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!([]));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
-    }
-
-    #[test]
     fn test_url_deser_ser() {
         let bytes = b"https://example.com/";
         let input = format!(r#"{{"url":{}}}"#, serde_json::to_string(&bytes).unwrap());
@@ -291,5 +255,117 @@ mod tests {
 
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_single_element_valid_json_number() {
+        // This test supplies a single element.
+        // The inner array [49, 50, 51] corresponds to the UTF-8 string "123".
+        // "123" is valid JSON and parses to the number 123.
+        let input = r#"{"value":[[49,50,51]]}"#;
+        let result: TestStruct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, json!([123]));
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_single_element_valid_json_object() {
+        let test = TestStruct {
+            value: json!([{"key": "value"}]),
+        };
+
+        let ser = serde_json::to_string(&test).unwrap();
+        // This byte array corresponds to the JSON string
+        // '{"value":[{"key":"value"}]}'.
+        assert_eq!(
+            ser,
+            r#"{"value":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]]}"#
+        );
+
+        let result: TestStruct = serde_json::from_str(&ser).unwrap();
+        assert_eq!(test.value, result.value);
+    }
+
+    #[test]
+    fn test_multiple_elements_valid_json() {
+        // Two elements:
+        // First element: [34,118,97,108,117,101,34] corresponds to "\"value\""
+        //   which is valid JSON and becomes the string "value".
+        // Second element: [49,50,51] corresponds to "123" and becomes the number 123.
+        // Since there is more than one element, the deserializer returns a JSON array.
+        let input = r#"{"value":[[34,118,97,108,117,101,34],[49,50,51]]}"#;
+        let result: TestStruct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, json!(["value", 123]));
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_single_invalid_json_fallback() {
+        // Single element with bytes for "hello": [104,101,108,108,111].
+        // "hello" is not valid JSON (missing quotes).
+        let input = r#"{"value":[[104,101,108,108,111]]}"#;
+
+        let result = serde_json::from_str::<TestStruct>(input);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_array() {
+        // An empty outer array should result in an empty JSON array.
+        let input = r#"{"value":[]}"#;
+        let result: TestStruct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, json!([]));
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_empty_array_inner() {
+        // Empty byte arrays should error.
+        let input = r#"{"value":[[]]}"#;
+        let result = serde_json::from_str::<TestStruct>(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_single_value() {
+        let test = TestStruct {
+            value: json!({"key": "value"}),
+        };
+
+        let ser = serde_json::to_string(&test).unwrap();
+        // This byte array corresponds to the JSON string
+        // '{"value":{"key":"value"},"__nexus_single_value":true}'.
+        assert_eq!(
+            ser,
+            r#"{"value":[[123,34,118,97,108,117,101,34,58,123,34,107,101,121,34,58,34,118,97,108,117,101,34,125,44,34,95,95,110,101,120,117,115,95,115,105,110,103,108,101,95,118,97,108,117,101,34,58,116,114,117,101,125]]}"#
+        );
+
+        let result: TestStruct = serde_json::from_str(&ser).unwrap();
+        assert_eq!(test.value, result.value);
+    }
+
+    #[test]
+    fn test_single_null_value() {
+        let test = TestStruct {
+            value: serde_json::Value::Null,
+        };
+
+        let ser = serde_json::to_string(&test).unwrap();
+        // This byte array corresponds to the JSON string
+        // '{"value":null,"__nexus_single_value":true}'.
+        assert_eq!(
+            ser,
+            r#"{"value":[[123,34,118,97,108,117,101,34,58,110,117,108,108,44,34,95,95,110,101,120,117,115,95,115,105,110,103,108,101,95,118,97,108,117,101,34,58,116,114,117,101,125]]}"#
+        );
+
+        let result: TestStruct = serde_json::from_str(&ser).unwrap();
+        assert_eq!(test.value, result.value);
     }
 }
