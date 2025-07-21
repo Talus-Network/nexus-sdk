@@ -2,7 +2,6 @@ mod dag_execute;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
-mod validator;
 
 use {
     crate::prelude::*,
@@ -124,16 +123,19 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             entry_group,
             input_json,
-            gas,
             inspect,
+            gas,
         } => {
+            // Optional: Check auth at CLI level instead of inside execute_dag
+            // validate_cli_authentication().await?;
+
             execute_dag(
                 dag_id,
                 entry_group,
                 input_json,
+                inspect,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
-                inspect,
             )
             .await
         }

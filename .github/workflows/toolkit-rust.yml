@@ -3,15 +3,9 @@
 name: Nexus Toolkit for Rust
 on:
   pull_request:
-    paths:
-      - "toolkit-rust/**"
-      - ".github/workflows/toolkit-rust.yml"
   push:
     branches:
       - main
-    paths:
-      - "toolkit-rust/**"
-      - ".github/workflows/toolkit-rust.yml"
 
 # Fix for OOM.
 env:
@@ -21,6 +15,11 @@ env:
     -C codegen-units=1
 
 jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect_changes.yml
+    with:
+      files: |
+        toolkit-rust/**
   # 1. Install Rust
   # 2. Install Rust cache
   # 3. Install just
@@ -28,6 +27,8 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed == 'true'
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -36,7 +37,7 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable, nightly
+          toolchain: stable, nightly-2025-01-06
           override: true
           components: rustfmt, clippy
 
@@ -51,7 +52,7 @@ jobs:
 
       # 4
       - run: cargo +stable --version
-      - run: cargo +nightly --version
+      - run: cargo +nightly-2025-01-06 --version
       - run: just toolkit-rust check
       - run: just toolkit-rust fmt-check
       - run: just toolkit-rust clippy

@@ -1,19 +1,31 @@
 pub(crate) use {
-    crate::error::NexusCliError,
+    crate::{error::NexusCliError, utils::secrets::Secret},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{sui::traits::*, *},
+    nexus_sdk::{
+        crypto::{session::Session, x3dh::IdentityKey},
+        sui::traits::*,
+        types::NexusObjects,
+        *,
+    },
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
+        collections::HashMap,
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
     },
 };
 
-// Where to find config file.
+/// Where to find config file.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+
+/// objects.toml locations for each network.
+pub(crate) const DEVNET_OBJECTS_TOML: &str =
+    "https://storage.googleapis.com/production-talus-sui-packages/objects.devnet.toml";
+pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
+pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
@@ -36,10 +48,13 @@ impl std::fmt::Display for SuiNet {
 }
 
 /// Struct holding the config structure.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
+    #[serde(default)]
+    pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
+    pub(crate) crypto: Option<Secret<CryptoConf>>,
 }
 
 impl CliConf {
@@ -55,7 +70,13 @@ impl CliConf {
         Ok(toml::from_str(&conf)?)
     }
 
-    pub(crate) async fn save(&self, path: &PathBuf) -> AnyResult<()> {
+    pub(crate) async fn save(&self) -> AnyResult<()> {
+        let conf_path = expand_tilde(CLI_CONF_PATH)?;
+
+        self.save_to_path(&conf_path).await
+    }
+
+    pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
         let parent_folder = path.parent().expect("Parent folder must exist.");
         let conf = toml::to_string_pretty(&self)?;
 
@@ -66,16 +87,14 @@ impl CliConf {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SuiConf {
     #[serde(default)]
     pub(crate) net: SuiNet,
     #[serde(default = "default_sui_wallet_path")]
     pub(crate) wallet_path: PathBuf,
     #[serde(default)]
-    pub(crate) auth_user: Option<String>,
-    #[serde(default)]
-    pub(crate) auth_password: Option<String>,
+    pub(crate) rpc_url: Option<reqwest::Url>,
 }
 
 impl Default for SuiConf {
@@ -83,22 +102,45 @@ impl Default for SuiConf {
         Self {
             net: SuiNet::Localnet,
             wallet_path: default_sui_wallet_path(),
-            auth_user: None,
-            auth_password: None,
+            rpc_url: None,
         }
     }
 }
 
-/// Struct holding the Nexus object IDs and refs.
+#[derive(Serialize, Deserialize, Default)]
+pub(crate) struct CryptoConf {
+    /// User's long-term identity key (None until first generated)
+    pub(crate) identity_key: Option<IdentityKey>,
+    /// Stored Double-Ratchet sessions keyed by their 32-byte session-id.
+    #[serde(default)]
+    pub(crate) sessions: HashMap<[u8; 32], Session>,
+}
+
+// Custom implementations because `IdentityKey` does not implement common traits.
+
+impl std::fmt::Debug for CryptoConf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CryptoConf")
+            // Avoid printing sensitive material.
+            .field("identity_key", &self.identity_key.is_some())
+            .field("sessions", &self.sessions.len())
+            .finish()
+    }
+}
+
+impl PartialEq for CryptoConf {
+    fn eq(&self, _other: &Self) -> bool {
+        // All equal for now
+        true
+    }
+}
+
+impl Eq for CryptoConf {}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NexusObjects {
-    pub(crate) workflow_pkg_id: sui::ObjectID,
-    pub(crate) primitives_pkg_id: sui::ObjectID,
-    pub(crate) interface_pkg_id: sui::ObjectID,
-    pub(crate) network_id: sui::ObjectID,
-    pub(crate) tool_registry: sui::ObjectRef,
-    pub(crate) default_sap: sui::ObjectRef,
-    pub(crate) gas_service: sui::ObjectRef,
+pub(crate) struct ToolOwnerCaps {
+    pub(crate) over_tool: sui::ObjectID,
+    pub(crate) over_gas: sui::ObjectID,
 }
 
 /// Reusable Sui gas command args.

@@ -6,7 +6,7 @@ edition.workspace = true
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
-license-file.workspace = true
+license.workspace = true
 readme.workspace = true
 authors.workspace = true
 keywords.workspace = true
@@ -24,15 +24,41 @@ clap_complete.workspace = true
 colored.workspace = true
 convert_case.workspace = true
 home.workspace = true
+indicatif.workspace = true
 minijinja.workspace = true
 openssl.workspace = true
-petgraph.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
+regex.workspace = true
+
+# crypto helpers
+rand.workspace = true
+# Encryption helpers
+aes-gcm.workspace = true
+bincode.workspace = true
+argon2.workspace = true
+directories.workspace = true
+hex.workspace = true
+zeroize.workspace = true
+rpassword.workspace = true
+
+# Add platform-specific keyring dependencies so that the correct backend feature is enabled per operating system.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
+# Use the native keyutils backend on Unix-like systems.
+keyring = { workspace = true, features = ["linux-native"] }
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]
@@ -42,12 +68,14 @@ features = ["full"]
 [dev-dependencies]
 assert_fs = "1.1"
 assert_matches = "1.5.0"
-schemars.workspace = true
-warp = "0.3.7"
-rstest.workspace = true
-tempfile.workspace = true
-serial_test.workspace = true
+mockito.workspace = true
 nexus-toolkit.workspace = true
+rstest.workspace = true
+schemars.workspace = true
+serial_test.workspace = true
+tempfile.workspace = true
+warp = "0.3.7"
+x25519-dalek = "2"
 
 [dev-dependencies.nexus-sdk]
 workspace = true

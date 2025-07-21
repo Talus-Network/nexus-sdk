@@ -4,27 +4,27 @@ use crate::{
     ToolFqn,
 };
 
-// == `nexus_workflow::default_sap` ==
+// == `nexus_workflow::default_tap` ==
 
-pub struct DefaultSap;
+pub struct DefaultTap;
 
-const DEFAULT_SAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_sap");
+const DEFAULT_TAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_tap");
 
-impl DefaultSap {
+impl DefaultTap {
     /// This function is called when a DAG is to be executed using the default
-    /// SAP implementation.
+    /// TAP implementation.
     ///
-    /// `nexus_workflow::default_sap::begin_dag_execution`
+    /// `nexus_workflow::default_tap::begin_dag_execution`
     pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
+        module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
-    /// The DefaultSap struct type.
+    /// The DefaultTap struct type.
     ///
-    /// `nexus_workflow::default_sap::DefaultSAP`
-    pub const DEFAULT_SAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_SAP_MODULE,
-        name: sui::move_ident_str!("DefaultSAP"),
+    /// `nexus_workflow::default_tap::DefaultTAP`
+    pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("DefaultTAP"),
     };
 }
 
@@ -48,6 +48,13 @@ impl Dag {
     pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAGExecution"),
+    };
+    /// Create an encrypted InputPort from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::encrypted_input_port_from_string`
+    pub const ENCRYPTED_INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("encrypted_input_port_from_string"),
     };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
@@ -179,6 +186,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_edge"),
     };
+    /// Add an encrypted Edge to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_encrypted_edge`
+    pub const WITH_ENCRYPTED_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_encrypted_edge"),
+    };
+    /// Add an encrypted output to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_encrypted_output`
+    pub const WITH_ENCRYPTED_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_encrypted_output"),
+    };
     /// Mark a vertex as an entry vertex and assign it to a group.
     ///
     /// `nexus_workflow::dag::with_entry_in_group`
@@ -200,6 +221,13 @@ impl Dag {
     pub const WITH_ENTRY_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("with_entry_vertex"),
+    };
+    /// Add an output to a DAG.
+    ///
+    /// `nexus_workflow::dag::with_output`
+    pub const WITH_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("with_output"),
     };
     /// Add a Vertex to a DAG.
     ///
@@ -238,6 +266,23 @@ impl Dag {
             workflow_pkg_id,
             Self::INPUT_PORT_FROM_STRING.module.into(),
             Self::INPUT_PORT_FROM_STRING.name.into(),
+            vec![],
+            vec![str],
+        ))
+    }
+
+    /// Create an encrypted InputPort from a string.
+    pub fn encrypted_input_port_from_str<T: AsRef<str>>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        str: T,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module.into(),
+            Self::ENCRYPTED_INPUT_PORT_FROM_STRING.name.into(),
             vec![],
             vec![str],
         ))
@@ -499,6 +544,108 @@ impl Gas {
             vec![address],
         ))
     }
+}
+
+// == `nexus_workflow::gas_extension` ==
+
+pub struct GasExtension;
+
+const GAS_EXTENSION_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("gas_extension");
+
+impl GasExtension {
+    /// Buy an expiry gas extension ticket.
+    ///
+    /// `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
+    pub const BUY_EXPIRY_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("buy_expiry_gas_ticket"),
+    };
+    /// Buy a limited invocations gas extension ticket.
+    ///
+    /// `nexus_workflow::gas_extension::buy_limited_invocations_gas_ticket`
+    pub const BUY_LIMITED_INVOCATIONS_GAS_TICKET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("buy_limited_invocations_gas_ticket"),
+    };
+    /// Disable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::disable_expiry`
+    pub const DISABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_expiry"),
+    };
+    /// Disable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::disable_limited_invocations`
+    pub const DISABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("disable_limited_invocations"),
+    };
+    /// Enable expiry gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::enable_expiry`
+    pub const ENABLE_EXPIRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_expiry"),
+    };
+    /// Enable limited invocations gas extension for a tool.
+    ///
+    /// `nexus_workflow::gas_extension::enable_limited_invocations`
+    pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::move_ident_str!("enable_limited_invocations"),
+    };
+}
+
+// == `nexus_workflow::pre_key_vault` ==
+
+pub struct PreKeyVault;
+
+const PRE_KEY_VAULT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("pre_key_vault");
+
+impl PreKeyVault {
+    /// Associate a pre key with the sender and fire an initial message.
+    ///
+    /// `nexus_workflow::pre_key_vault::associate_pre_key`
+    pub const ASSOCIATE_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("associate_pre_key"),
+    };
+    /// Claim a pre key for the tx sender.
+    ///
+    /// `nexus_workflow::pre_key_vault::claim_pre_key_for_self`
+    pub const CLAIM_PRE_KEY_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("claim_pre_key_for_self"),
+    };
+    /// PreKey struct type. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::pre_key_vault::PreKey`
+    pub const PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("PreKey"),
+    };
+    /// Create a new pre key from bytes.
+    ///
+    /// `nexus_workflow::pre_key_vault::pre_key_from_bytes`
+    pub const PRE_KEY_FROM_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("pre_key_from_bytes"),
+    };
+    /// PreKeyVault type for lookups.
+    ///
+    /// `nexus_workflow::pre_key_vault::PreKeyVault`
+    pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("PreKeyVault"),
+    };
+    /// Replenish the pre key vault with public pre_keys.
+    ///
+    /// `nexus_workflow::pre_key_vault::replenish_pre_keys`
+    pub const REPLENISH_PRE_KEYS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::move_ident_str!("replenish_pre_keys"),
+    };
 }
 
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for

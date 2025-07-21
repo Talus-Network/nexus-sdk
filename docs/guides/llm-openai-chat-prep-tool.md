@@ -3,9 +3,10 @@
 This guide walks through the development of a tool that converts numbers into a message format compatible with the OpenAI chat completion tool. This is particularly useful when you want to use the results of mathematical operations from the [math tool](../../tools/math/README.md) as input for the [chat completion tool](../../tools/llm-openai-chat-completion/README.md).
 
 {% hint style="info" %} Prerequisites
-* Follow the [setup guide](setup.md) to make sure you've got the [Nexus CLI](../cli.md) installed.
-* Read the [Toolkit Rust](../toolkit-rust.md) and [Tool development](../tool-development.md) docs that provide more context.
-{% endhint %}
+
+- Follow the [setup guide](setup.md) to make sure you've got the [Nexus CLI](../cli.md) installed.
+- Read the [Toolkit Rust](../toolkit-rust.md) and [Tool development](../tool-development.md) docs that provide more context.
+  {% endhint %}
 
 ## Project Setup
 
@@ -159,12 +160,12 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
 1. **Input Structure**:
    - `number`: The i64 number to convert
    - `role`: Optional role for the message (defaults to "user" via the `Role` enum's `Default` implementation)
-2. **Output Structure**:
+1. **Output Structure**:
    - `Ok` variant with a `Message` containing:
      - `role`: The message role
      - `value`: The string representation of the number
    - `Err` variant with an error reason
-3. **Error Handling**:
+1. **Error Handling**:
    - Following the Nexus Tool development guidelines:
      - Error variants are named with `err` prefix (e.g., `Err`)
      - Error messages are descriptive and include the invalid value
@@ -172,7 +173,7 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
      - Errors are returned as part of the output enum rather than using `Result`
    - The tool uses the `Role` enum to ensure only valid roles can be used
    - All error cases are handled gracefully with descriptive error messages
-4. **Testing Strategy**:
+1. **Testing Strategy**:
    - Unit tests verify both default and custom role scenarios
    - Tests verify error handling for invalid roles
    - Tests check that error messages contain relevant information
@@ -182,10 +183,10 @@ Note that if you want to specify the host at runtime with `BIND_ADDR` env variab
 Every Nexus tool must include a README.md file that documents the tool's functionality, inputs, outputs, and provides usage examples. At minimum, the README should include:
 
 1. A clear description of what the tool does
-2. All input parameters with their types and descriptions
-3. All output variants and ports with their types and descriptions
-4. Error handling details
-5. (Optional) Example usage in a DAG
+1. All input parameters with their types and descriptions
+1. All output variants and ports with their types and descriptions
+1. Error handling details
+1. (Optional) Example usage in a DAG
 
 <details>
 
@@ -255,7 +256,12 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         "tool_fqn": "xyz.taluslabs.llm.openai.chat-completion@1"
       },
       "name": "chat",
-      "entry_ports": ["api_key"]
+      "entry_ports": [
+        {
+          "name": "api_key",
+          "encrypted": true
+        }
+      ]
     }
   ],
   "edges": [
@@ -318,6 +324,14 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
         }
       }
     }
+  ],
+  "outputs": [
+    {
+      "vertex": "chat",
+      "output_variant": "ok",
+      "output_port": "message",
+      "encrypted": false
+    }
   ]
 }
 ```
@@ -328,25 +342,25 @@ Note that you'll have to add the chat completion api key still. It is recommende
 
 ## Build, Run, Register your Tool
 
-1.  Build the tool:
+1. Build the tool:
 
     ```bash
     cargo build
     ```
 
-2.  Start the tool server:
+1. Start the tool server:
 
     ```bash
     cargo run
     ```
 
-3.  Validate the tool:
+1. Validate the tool:
 
     ```bash
     nexus tool validate --off-chain http://localhost:8080
     ```
 
-4.  Register the tool:
+1. Register the tool:
 
     ```bash
     nexus tool register --off-chain http://localhost:8080

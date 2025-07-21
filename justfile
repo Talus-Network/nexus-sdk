@@ -17,6 +17,9 @@ mod sdk 'sdk/.just'
 # Commands concerning native Nexus Tools
 mod tools 'tools/.just'
 
+# Pre-commit hooks
+mod pre-commit '.pre-commit/.just'
+
 [private]
 _default:
     @just --list

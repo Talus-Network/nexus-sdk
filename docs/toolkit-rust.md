@@ -174,6 +174,7 @@ impl NexusTool for HttpStatus {
     // ...
 }
 ```
+
 {% hint style="info" %}
 Notice that the `invoke` function does not return a `Result`. This is because errors are valid output variants of a Nexus Tool. The `invoke` function should handle any errors and return them as part of the output.
 {% endhint %}

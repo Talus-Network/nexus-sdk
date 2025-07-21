@@ -33,16 +33,25 @@ A DAG JSON file consists of sections defining the graph's components:
     "tool_fqn": "namespace.tool.name@version"
   },
   "name": "unique_vertex_name",
-  "entry_ports": ["entry_port_name", "another_entry_port_name", ...]
+  "entry_ports": [
+    {
+      "name": "input_port_name", // Must match the tool's input schema
+      "encrypted": false // Optional, default is false
+    }
+    // ... potentially more entry ports
+  ]
 }
 ```
 
 - The `name` must be unique within the DAG.
+
 {% hint style="success" %}
 The input ports of a tool are specified by the tool's output schema saved in the Nexus tool registry. Each input port must have exactly one of:
-  1. An edge leading to it
-  2. A default value
-  3. Be part of `entry_ports`
+
+1. An edge leading to it
+1. A default value
+1. Be part of `entry_ports`
+
 {% endhint %}
 
 - Add the input port as part of `entry_ports` only if it does not have an edge leading into it nor has a default value.
@@ -60,7 +69,8 @@ Edges define the flow of data between vertices, connecting an output port of a s
   "from": {
     "vertex": "source_vertex_name", // Name from the "vertices" list
     "output_variant": "ok", // e.g., ok, err, gt, lt, eq
-    "output_port": "output_port_name"
+    "output_port": "output_port_name",
+    "encrypted": true // Optional, default is false
   },
   "to": {
     "vertex": "target_vertex_name", // Name from the "vertices" list
@@ -71,6 +81,7 @@ Edges define the flow of data between vertices, connecting an output port of a s
 
 - The `source_vertex_name` and `target_vertex_name` refer to the `name` field of vertices defined in the `vertices` list.
 - The `target_input_port_name` must be a valid input port for the tool used by the `target_vertex_name`.
+- If the `encrypted` field is set to `true`, the data will be encrypted before being sent on-chain. This is useful for sensitive data that should not be exposed in plaintext.
 
 ## 4. Default Values
 
@@ -78,11 +89,11 @@ Default values provide static inputs to vertices:
 
 ```json
 {
-  "vertex": "vertex_name",  // References a name from the "vertices" list
+  "vertex": "vertex_name", // References a name from the "vertices" list
   "input_port": "port_name",
   "value": {
     "storage": "inline",
-    "data": value           // This is a JSON value
+    "data": value, // This is a JSON value
   }
 }
 ```
@@ -114,8 +125,27 @@ Being part of an entry group does not imply that all vertices in the group get e
 {% endhint %}
 
 Practically speaking, this means that you'll need to add all vertices to the entry group that either (non-exclusive):
+
 - will immediately start execution
 - need to be provided client input for entry ports
+
+## 6. Outputs (Optional)
+
+Outputs can be defined on vertices that have no outgoing edges. These can be thought of as the return values of a DAG execution. Only ports that are specified here will be part of the `EndStateReachedEvent` emitted by the DAG execution.
+
+```json
+{
+  "vertex": "vertex_name", // Name must exist in the `vertices` list
+  "output_variant": "ok", // e.g., ok, err, gt, lt, eq
+  "output_port": "output_port_name", // e.g., result
+  "encrypted": true // Optional, default is false
+}
+```
+
+**Important Constraints:**
+
+- DAG construction will fail if you attempt to add an output on a vertex that has outgoing edges.
+- Only data from ports that are specified here or in the `edges` field will flow onchain.
 
 ### Summary
 
@@ -126,33 +156,33 @@ Practically speaking, this means that you'll need to add all vertices to the ent
 - A default entry group can be named `_default_group`. This group is used when no `--entry-group` flag is provided during execution.
 - If no _entry group_ is specified, all vertices that have _entry ports_ are considered part of the `_default_group`.
 
-## 6. Validation Rules
+## 7. Validation Rules
 
 The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to enforce the critical rules defined in [workflow rules][nexus-next-workflow].
 
-## 7. Best Practices
+## 8. Best Practices
 
 1. **Naming Conventions**:
 
    - Use descriptive names for vertices.
 
-2. **Organization**:
+1. **Organization**:
 
    - Keep the DAG as simple as possible. (But no simpler! For example, branching and entry groups can make powerful composite DAG structures. )
    - Use entry groups to provide different ways of starting DAG execution.
 
-3. **Error Handling**:
+1. **Error Handling**:
 
    - Consider all possible `output_variant`s (e.g., `ok`, `err`) from tools.
    - Explicitly handle error paths or ensure they lead to acceptable end states.
    - Use appropriate comparison/logic tools for branching.
 
-4. **Documentation**:
+1. **Documentation**:
    - Provide documentation alongside the DAG, alongside a flowchart outlining it.
    - Document the purpose of each vertex.
    - Refer to the tool documentation for the expected input/output formats for each vertex.
 
-## 8. Example Workflow
+## 9. Example Workflow
 
 Here's a step-by-step process to create a DAG:
 
@@ -162,34 +192,34 @@ Here's a step-by-step process to create a DAG:
    - What outputs are expected?
    - What processing steps are required?
 
-2. **Design the Flow**:
+1. **Design the Flow**:
 
    - Map out the vertices (tools) needed
    - Determine the connections
    - Identify branching points
 
-3. **Create Entry Points**:
+1. **Create Entry Points**:
 
    - Specify entry ports and default values
    - Set up entry groups if needed
 
-4. **Add Processing Vertices**:
+1. **Add Processing Vertices**:
 
    - Define intermediate vertices (tools)
    - Set up default values
 
-5. **Connect the Dots**:
+1. **Connect the Dots**:
 
    - Create edges between vertices
    - Handle all output variants
    - Ensure proper data flow
 
-6. **Validate**:
+1. **Validate**:
    - Check for cycles
    - Verify all connections
    - Test with sample inputs
 
-## 9. Examples
+## 10. Examples
 
 For working examples, see the following files in the `cli/src/dag/_dags` directory:
 

@@ -20,6 +20,7 @@ struct Guy {
     friends: ObjectBag<Name, Structure<PlainValue>>,
     bag: Bag<Name, Structure<PlainValue>>,
     heterogeneous: Bag<HeterogeneousKey, Structure<HeterogeneousValue>>,
+    linked_table: LinkedTable<Name, Structure<Name>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -108,16 +109,15 @@ async fn test_object_crawler() {
         .object_changes
         .expect("TX response must have object changes");
 
-    let pkg_id = changes
+    let pkg_id = *changes
         .iter()
         .find_map(|c| match c {
             sui::ObjectChange::Published { package_id, .. } => Some(package_id),
             _ => None,
         })
-        .expect("Move package must be published")
-        .clone();
+        .expect("Move package must be published");
 
-    let guy = changes
+    let guy = *changes
         .iter()
         .find_map(|c| match c {
             sui::ObjectChange::Created {
@@ -127,8 +127,7 @@ async fn test_object_crawler() {
             } if object_type.name == sui::move_ident_str!("Guy").into() => Some(object_id),
             _ => None,
         })
-        .expect("Guy object must be created")
-        .clone();
+        .expect("Guy object must be created");
 
     // Name type tag.
     let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
@@ -161,8 +160,8 @@ async fn test_object_crawler() {
     // Contains book club with the correct people.
     let group = groups.clone().into_iter().find(|(group, people)| {
         group.clone().into_inner().name == "Book Club"
-            && people.iter().find(|p| p.inner().name == "Alice").is_some()
-            && people.iter().find(|p| p.inner().name == "Bob").is_some()
+            && people.iter().any(|p| p.inner().name == "Alice")
+            && people.iter().any(|p| p.inner().name == "Bob")
     });
 
     assert!(group.is_some());
@@ -170,11 +169,8 @@ async fn test_object_crawler() {
     // Contains swimming club with the correct people.
     let group = groups.clone().into_iter().find(|(group, people)| {
         group.clone().into_inner().name == "Swimming Club"
-            && people
-                .iter()
-                .find(|p| p.inner().name == "Charlie")
-                .is_some()
-            && people.iter().find(|p| p.inner().name == "David").is_some()
+            && people.iter().any(|p| p.inner().name == "Charlie")
+            && people.iter().any(|p| p.inner().name == "David")
     });
 
     assert!(group.is_some());
@@ -339,4 +335,22 @@ async fn test_object_crawler() {
             }
         }
     }
+
+    // Fetch linked table.
+    let linked_table = guy.linked_table.fetch_all(&sui).await.unwrap();
+    assert_eq!(linked_table.len(), 1);
+
+    // Fetch first value from linked table.
+    let linked_item = guy
+        .linked_table
+        .fetch_one(
+            &sui,
+            Name {
+                name: "Key 1".to_string(),
+            },
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(linked_item.name, "Value 1");
 }

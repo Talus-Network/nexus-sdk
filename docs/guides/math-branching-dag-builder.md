@@ -1,6 +1,6 @@
 # Build the Quickstart
 
-This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/v0.1.0/cli/src/dag/_dags/math_branching.json) DAG that was used in the [quickstart example](math-branching-quickstart.md) step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
+This guide walks through the process of constructing a Directed Acyclic Graph (DAG) that demonstrates conditional logic using standard Nexus math tools. We will build the [`math_branching.json`](https://github.com/Talus-Network/nexus-sdk/blob/main/sdk/src/dag/_dags/math_branching.json) DAG that was used in the [quickstart example](math-branching-quickstart.md) step-by-step, applying the concepts outlined in the main [Nexus DAG Construction Guide](dag-construction.md).
 
 {% hint style="info" %} Prerequisites
 Follow the [setup guide](setup.md) to get properly setup in case you haven't.
@@ -9,13 +9,13 @@ Follow the [setup guide](setup.md) to get properly setup in case you haven't.
 The goal is to build a DAG that:
 
 1. Takes a single number `a` as input.
-2. Adds `-3` to `a`.
-3. Compares the result to `0`.
-4. Based on the comparison:
+1. Adds `-3` to `a`.
+1. Compares the result to `0`.
+1. Based on the comparison:
    - If the result is less than 0, multiply it by `-3`.
    - If the result is greater than 0, multiply it by `7`.
    - If the result is equal to 0, add `1`.
-5. Outputs the final calculated number.
+1. Outputs the final calculated number.
 
 ## DAG Overview
 
@@ -99,7 +99,12 @@ First, we define all the nodes (steps) in our graph. Each vertex needs a unique 
       "name": "add_input_and_default",
       // Declares 'a' as an input port that needs to be provided.
       // 'b' will be provided by a default value.
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       // Comparison step
@@ -255,7 +260,34 @@ We provide the constant values needed for the operations.
 - Each entry specifies the `vertex` and `input_port` to receive the value.
 - `"storage": "inline"` means the `data` is directly embedded in the DAG definition.
 
-### 4. Entry Points (Implicit Default)
+### 4. Specify outputs (`outputs` list)
+
+In order to access the final result of the DAG, we need to define outputs for the vertices that do not have outgoing edges. In this case, all our math operations have an output port named `result`, so we can define them as follows:
+
+```json
+{
+  // ... other sections ...
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
+    }
+  ]
+}
+```
+
+### 5. Entry Points (Implicit Default)
 
 Since we haven't defined an `entry_groups` section, Nexus uses the default entry mechanism, i.e. `_default_group`. It identifies vertices that have entry ports specified.
 
@@ -325,7 +357,12 @@ Combining these sections gives us the complete `math_branching.json`:
         "tool_fqn": "xyz.taluslabs.math.i64.add@1"
       },
       "name": "add_input_and_default",
-      "entry_ports": ["a"]
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
     },
     {
       "kind": {
@@ -400,6 +437,23 @@ Combining these sections gives us the complete `math_branching.json`:
         "vertex": "add_1",
         "input_port": "a"
       }
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "mul_by_neg_3",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "mul_by_7",
+      "output_variant": "ok",
+      "output_port": "result"
+    },
+    {
+      "vertex": "add_1",
+      "output_variant": "ok",
+      "output_port": "result"
     }
   ]
   // No "entry_groups" section needed, default mechanism applies.

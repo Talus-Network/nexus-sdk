@@ -69,4 +69,4 @@ Each Nexus Tool should have a clear and publicly accessible README file that des
 
 If using Rust, the `main.rs` file should include this documentation via `#![doc = include_str!("../path/to/README.md")]`.
 
-An example README file can be found [here](../tools/llm-openai-chat-completion/README.md).
+See also [an example README file](../tools/llm-openai-chat-completion/README.md).

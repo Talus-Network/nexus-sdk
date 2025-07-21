@@ -31,8 +31,8 @@ Create a new Tool scaffolding in a folder called `<name>`. Which files are gener
 Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
 
 1. `GET /meta` contains Tool metadata that is later stored in our Tool Registry, this contains the `fqn`, the `url` which should match the one in the command and the Tool input and output schemas. Output schema is also validated to contain a top-level `oneOf` to adhere to Nexus output variant concept.
-2. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
-3. `POST /invoke` the CLI can check that the endpoint exists.
+1. `GET /health` simple health check endpoint that needs to return a `200 OK` in order for the validation to pass.
+1. `POST /invoke` the CLI can check that the endpoint exists.
 
 {% hint style="success" %}
 As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
@@ -50,11 +50,15 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id]`**
+**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
 This returns 2 OwnerCap object IDs that can be used to manage the Tool and its Gas settlement methods.
+
+If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
+
+Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands. This happens unless the `--no-save` flag is passed, in which case the OwnerCaps are not saved.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -70,11 +74,11 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool unregister --tool-fqn <fqn> --owner-cap <object_id>`**
+**`nexus tool unregister --tool-fqn <fqn> --owner-cap [object_id]`**
 
 Command that sends a TX to our Tool Registry and unregisters a Tool with the provided `<fqn>`. This command requires confirmation as unregistering a Tool will render all DAGs using it unusable.
 
-Owned OwnerCap object must be passed to this command for authorization.
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -82,15 +86,31 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tool claim-collateral --tool-fqn <fqn> --owner-cap <object_id>`**
+**`nexus tool claim-collateral --tool-fqn <fqn> --owner-cap [object_id]`**
 
 After the period of time configured in our Tool Registry, let the Tool developer claim the collateral, transferring the amount back to their wallet.
 
-Owned OwnerCap object must be passed to this command for authorization.
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
+
+---
+
+**`nexus tool set-invocation-cost --tool-fqn <fqn> --owner-cap [object_id] --invocation-cost <mist>`**
+
+Tool owners can change the invocation cost of their Tools specified by the FQN. This operation requires that the `OwnerCap<OverGas>` object is passed to the command and owned by the transaction sender.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
+
+<!-- TODO: <https://github.com/Talus-Network/nexus-next/issues/283> -->
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
 
 **`nexus tool list`**
 
@@ -117,10 +137,10 @@ If you're unsure about the terminology used below, please refer to the [glossary
 {% endhint %}
 
 1. For each entry group...
-2. Find all input ports
-3. For each input port...
-4. Find all paths from relevant entry vertices to this input port
-5. Ensure that net concurrency on that input port node is 0
+1. Find all input ports
+1. For each input port...
+1. Find all paths from relevant entry vertices to this input port
+1. Ensure that net concurrency on that input port node is 0
    - `N` input ports on a tool reduce the graph concurrency by `N - 1` because walks are consumed if they are waiting for more input port data
    - `N` output ports on an output variant increase the graph concurrency by `N - 1` because `N` concurrent walks are spawned, while the 1 leading into the output variant is consumed
    - If net concurrency is `< 0`, the input port can never be reached
@@ -148,6 +168,8 @@ The input `<data>` is a JSON string with the following structure:
 - Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
+Data for encrypted ports are automatically encrypted before being sent on-chain.
+
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 
 {% hint style="info" %}
@@ -171,6 +193,86 @@ Set of commands to manage Nexus gas budgets and tickets.
 **`nexus gas add-budget --coin <object_id>`**
 
 Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry enable --tool-fqn <fqn> --owner-cap [object_id] --cost-per-minute <mist>`**
+
+The tool owners can enable the expiry gas extension for their tools specified by the FQN. This allows users to buy expiry gas tickets that can be used to pay for the tool usage for a limited amount of time.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
+
+Calling this command again with a different `cost-per-minute` value will update the cost of the tickets.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry disable --tool-fqn <fqn> --owner-cap [object_id]`**
+
+Disables the expiry gas extension for the tool specified by the FQN.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas expiry buy-ticket --tool-fqn <fqn> --minutes <minutes> --coin <object_id>`**
+
+Buy an expiry gas ticket for the tool specified by the FQN. This ticket can then be used to pay for the tool usage for the specified amount of `minutes` if a DAG is executed from the same address that was used to buy this ticket. The ticket is paid for with the provided `coin` object.
+
+This transaction fails if the tool does not have the expiry gas extension enabled.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas limited-invocations enable --tool-fqn <fqn> --owner-cap [object_id] --cost-per-invocation <mist> --min-invocations <count> --max-invocations <count>`**
+
+The tool owners can enable the limited invocations gas extension for their tools specified by the FQN. This allows users to buy limited invocations gas tickets that can be used to pay for a specific number of tool invocations.
+
+The `cost-per-invocation` parameter sets the price in MIST for each invocation. The `min-invocations` and `max-invocations` parameters define the allowed range for ticket purchases.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
+
+Calling this command again with different parameters will update the cost and limits for new tickets.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas limited-invocations disable --tool-fqn <fqn> --owner-cap [object_id]`**
+
+Disables the limited invocations gas extension for the tool specified by the FQN.
+
+If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas limited-invocations buy-ticket --tool-fqn <fqn> --invocations <count> --coin <object_id>`**
+
+Buy a limited invocations gas ticket for the tool specified by the FQN. This ticket can then be used to pay for the specified number of tool `invocations` if a DAG is executed from the same address that was used to buy this ticket. The ticket is paid for with the provided `coin` object.
+
+The number of invocations must be within the min/max range configured by the tool owner when enabling the extension.
+
+This transaction fails if the tool does not have the limited invocations gas extension enabled.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
