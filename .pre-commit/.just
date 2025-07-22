@@ -19,6 +19,21 @@ cargo-nightly-fmt: _check-cargo
         exit 1
     }
 
+
+check-docker: _check-docker
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    # Ensure we are in the root of the repository, makes things easier.
+    cd $(git rev-parse --show-toplevel)
+
+    if ! docker info > /dev/null 2>&1; then
+        echo "❌ Docker is not running. Please start Docker and try again." >&2
+        exit 1
+    fi
+
+
 # cargo clippy --all-targets --all-features
 cargo-clippy: _check-cargo
     cargo clippy --all-targets --all-features
