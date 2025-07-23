@@ -20,13 +20,47 @@ cargo-nightly-fmt: _check-cargo
     }
 
 
-check-docker: _check-docker
+check-container-runtime:
     #!/usr/bin/env bash
 
-    if ! docker info > /dev/null 2>&1; then
-        echo "❌ Docker is not running. Please start Docker and try again." >&2
-        exit 1
-    fi
+    declare -A check_commands
+
+    # We try to find if there is a container runtime available
+    # and if there is one we run its specific command that
+    # checks if the container runtime is running.
+    #
+    # We of course assume the (test) code is written in a
+    # container runtime agnostic way but this will require some
+    # investigation, so:
+    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/262
+
+    runtimes=(docker podman) # colima etc ...
+    check_commands=(
+        [docker]="docker info > /dev/null 2>&1"
+        [podman]="podman info > /dev/null 2>&1"
+    )
+
+    # sanity check to make sure the dictionary has all the runtimes
+    for runtime in "${runtimes[@]}"; do
+        if [[ -z "${check_commands[$runtime]+x}" ]]; then
+            echo "Internal error: No check command found for runtime: $runtime" >&2
+            exit 3
+        fi
+    done
+
+    for runtime in "${runtimes[@]}"; do
+        echo "Checking for: $runtime"
+        if command -v $runtime &> /dev/null; then
+            check_command="${check_commands[$runtime]}"
+            eval "$check_command" && {
+                echo "✅  $runtime [$check_command]"
+                exit 0
+            }
+        fi
+    done
+
+    echo "❌  No compatible container runtime found running." >&2
+    exit 1
 
 
 # cargo clippy --all-targets --all-features

@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-exec just pre-commit::check-docker

@@ -11,17 +11,6 @@ _check-cargo:
     fi
 
 [private]
-_check-docker:
-    #!/usr/bin/env bash
-
-    if ! command -v docker &> /dev/null
-    then
-        echo "docker could not be found"
-        echo "Install docker from https://docs.docker.com/get-docker/"
-        exit 1
-    fi
-
-[private]
 _check-cargo-nextest: _check-cargo
     #!/usr/bin/env bash
 
