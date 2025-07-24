@@ -24,6 +24,7 @@ where
         Err(e) => bail!("Could not fetch object {object_id}: {e}"),
     };
 
+    eprintln!("response: {response:#?}");
     parse_object_response(response)
 }
 

@@ -109,6 +109,8 @@ async fn test_object_crawler() {
         .object_changes
         .expect("TX response must have object changes");
 
+    // eprintln!("Object changes: {changes:#?}");
+
     let pkg_id = *changes
         .iter()
         .find_map(|c| match c {
@@ -116,6 +118,8 @@ async fn test_object_crawler() {
             _ => None,
         })
         .expect("Move package must be published");
+
+    eprintln!("Package ID   : {pkg_id}");
 
     let guy = *changes
         .iter()
@@ -129,6 +133,8 @@ async fn test_object_crawler() {
         })
         .expect("Guy object must be created");
 
+    eprintln!("Guy object ID: {guy}");
+
     // Name type tag.
     let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
         address: *pkg_id,
@@ -136,6 +142,8 @@ async fn test_object_crawler() {
         name: sui::move_ident_str!("Name").into(),
         type_params: vec![],
     }));
+
+    eprintln!("Name type tag: {name_tag}");
 
     // Fetch the base object.
     let guy = fetch_one::<Structure<Guy>>(&sui, guy)

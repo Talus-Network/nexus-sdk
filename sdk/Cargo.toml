@@ -217,7 +217,7 @@ optional = true
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util"]
+features = ["io-util", "macros"]
 optional = true
 
 [dependencies.tokio-retry]
