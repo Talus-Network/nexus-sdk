@@ -217,7 +217,7 @@ optional = true
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util"] # include "macros" to run #[tokio::test] from the IDE
+features = ["io-util"]
 optional = true
 
 [dependencies.tokio-retry]
@@ -277,7 +277,7 @@ optional = true
 # === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = ["full", "macros"] }
 serde_json = { workspace = true }
 mockito.workspace = true
 tempfile = "3"
