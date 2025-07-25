@@ -40,6 +40,12 @@ check-container-runtime:
         [podman]="podman info > /dev/null 2>&1"
     )
 
+    # If DOCKER_HOST is set print it.
+    # Sometimes it has the wrong value, so it's good to know.
+    if [[ -n "${DOCKER_HOST:-}" ]]; then
+        echo "DOCKER_HOST=$DOCKER_HOST"
+    fi
+
     # sanity check to make sure the dictionary has all the runtimes
     for runtime in "${runtimes[@]}"; do
         if [[ -z "${check_commands[$runtime]+x}" ]]; then

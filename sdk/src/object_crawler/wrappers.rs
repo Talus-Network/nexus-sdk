@@ -1,7 +1,6 @@
 //! This module defines wrapper around Move structures so that they can be
 //! correctly deserialized into these structures.
 
-use std::fmt::Debug;
 use {
     crate::{object_crawler::fetching::*, sui},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
@@ -52,11 +51,13 @@ where
     }
 }
 
-fn parse_tag_and_fields_object_id<'de, D: Deserializer<'de>>(
+fn new_from_tag_and_fields_id<'de, D, T>(
     deserializer: D,
-) -> Result<(sui::MoveTypeTag, sui::UID), D::Error> {
-
-    eprintln!("parse_tag_and_fields_object_id()");
+    constructor: impl FnOnce(sui::MoveTypeTag, sui::UID) -> T,
+) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+{
     #[derive(Deserialize)]
     struct Wrapper {
         #[serde(rename = "type")]
@@ -65,39 +66,37 @@ fn parse_tag_and_fields_object_id<'de, D: Deserializer<'de>>(
     }
 
     let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
-    eprintln!("  type_: {type_}");
-    eprintln!("  fields: {fields:#?}");
+
     let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
         serde::de::Error::custom(format!(
             "Could not parse sui::MoveStructTag from String: {e}"
         ))
     })?;
-    eprintln!("  struct_tag: {struct_tag:#?}");
 
     let Some(tag) = struct_tag.type_params.into_iter().next() else {
         return Err(serde::de::Error::custom(
             "Could not get type parameter from `type_`",
         ));
     };
-    eprintln!("  tag: {tag:#?}");
 
-    Ok((tag, fields.id))
+    Ok(constructor(tag, fields.id))
 }
 
-fn parse_fields_object_id<'de, D: Deserializer<'de>>(
+fn new_from_fields_id<'de, D, T>(
     deserializer: D,
-) -> Result<sui::UID, D::Error> {
-    eprintln!("parse_fields_object_id()");
+    constructor: impl FnOnce(sui::UID) -> T,
+) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+{
     #[derive(Deserialize)]
     struct Wrapper {
-        #[serde(rename = "type")]
         fields: ObjectId,
     }
 
     let Wrapper { fields } = Wrapper::deserialize(deserializer)?;
-    eprintln!("  fields: {fields:#?}");
 
-    Ok(fields.id)
+    Ok(constructor(fields.id))
 }
 
 impl<'de, K, V> Deserialize<'de> for ObjectTable<K, V> {
@@ -105,14 +104,11 @@ impl<'de, K, V> Deserialize<'de> for ObjectTable<K, V> {
     where
         D: Deserializer<'de>,
     {
-        eprintln!("ObjectTable::deserialize()");
-        let (tag, id) = parse_tag_and_fields_object_id(deserializer)?;
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -178,14 +174,11 @@ impl<'de, K, V> Deserialize<'de> for LinkedTable<K, V> {
     where
         D: Deserializer<'de>,
     {
-        eprintln!("LinkedTable::deserialize()");
-        let (tag, id) = parse_tag_and_fields_object_id(deserializer)?;
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -251,14 +244,11 @@ impl<'de, K, V> Deserialize<'de> for Table<K, V> {
     where
         D: Deserializer<'de>,
     {
-        eprintln!("Table::deserialize()");
-        let (tag, id) = parse_tag_and_fields_object_id(deserializer)?;
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -314,13 +304,10 @@ impl<'de, K, V> Deserialize<'de> for ObjectBag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        eprintln!("ObjectBag::deserialize()");
-        let id = parse_fields_object_id::<D>(deserializer)?;
-
-        Ok(Self {
+        Ok(new_from_fields_id(deserializer, |id| Self {
             id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -393,22 +380,10 @@ impl<'de, K, V> Deserialize<'de> for Bag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        eprintln!("Bag::deserialize()");
-        eprintln!("parse_fields_object_id()");
-        #[derive(Deserialize)]
-        struct Wrapper {
-            #[serde(rename = "type")]
-            fields: ObjectId,
-        }
-
-        let Wrapper { fields } = Wrapper::deserialize(deserializer)?;
-        eprintln!("  fields: {fields:#?}");
-        let id = fields.id;
-
-        Ok(Self {
+        Ok(new_from_fields_id(deserializer, |id| Self {
             id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -441,7 +416,6 @@ where
     where
         D: Deserializer<'de>,
     {
-        eprintln!("VecMap::deserialize()");
         #[derive(Deserialize)]
         struct Wrapper<K, V> {
             fields: ObjectContents<Vec<ObjectFields<ObjectKV<K, V>>>>,
@@ -487,7 +461,6 @@ where
     where
         D: Deserializer<'de>,
     {
-        eprintln!("VecSet::deserialize()");
         #[derive(Deserialize)]
         struct Wrapper<T>
         where
