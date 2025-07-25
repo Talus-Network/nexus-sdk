@@ -217,7 +217,7 @@ optional = true
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util", "macros"]
+features = ["io-util"] # include "macros" to run #[tokio::test] from the IDE
 optional = true
 
 [dependencies.tokio-retry]
