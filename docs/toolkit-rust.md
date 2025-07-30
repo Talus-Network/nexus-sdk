@@ -132,7 +132,7 @@ This defaults to the root route.
 
 Defines the Tool's health check. This is a simple function that returns a `anyhow::Result<warp::http::StatusCode>`. The Tool is considered healthy if this function returns `Ok(StatusCode::OK)`.
 
-The health check **should check for the health of dependant** services and return an error if they are not healthy.
+The health check **should check for the health of dependent** services and return an error if they are not healthy.
 
 ```rs
 use nexus_toolkit::*;
