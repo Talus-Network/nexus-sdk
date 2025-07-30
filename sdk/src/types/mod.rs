@@ -1,12 +1,20 @@
 mod json_dag;
+#[cfg(feature = "types")]
 mod nexus_data;
+#[cfg(feature = "types")]
 mod nexus_objects;
+#[cfg(feature = "types")]
 mod serde_parsers;
+#[cfg(feature = "types")]
 mod tool_meta;
+#[cfg(feature = "types")]
 mod type_name;
 
+// Always export json_dag for both types and wasm_types features
+pub use json_dag::*;
+// Only export these for full types feature
+#[cfg(feature = "types")]
 pub use {
-    json_dag::*,
     nexus_data::NexusData,
     nexus_objects::NexusObjects,
     serde_parsers::*,
