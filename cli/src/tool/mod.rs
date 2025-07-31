@@ -2,6 +2,7 @@ mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
 mod tool_register;
+mod tool_register_onchain;
 mod tool_set_invocation_cost;
 mod tool_unregister;
 mod tool_validate;
@@ -12,6 +13,7 @@ use {
     tool_list::*,
     tool_new::*,
     tool_register::*,
+    tool_register_onchain::*,
     tool_set_invocation_cost::*,
     tool_unregister::*,
     tool_validate::*,
@@ -84,6 +86,59 @@ pub(crate) enum ToolCommand {
         /// The ident of the Tool to register.
         #[command(flatten)]
         ident: ToolIdent,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Register an onchain tool.")]
+    RegisterOnchain {
+        #[arg(
+            long = "package-address",
+            short = 'p',
+            help = "The address of the published package containing the tool.",
+            value_name = "OBJECT_ID"
+        )]
+        package_address: sui::ObjectID,
+        #[arg(
+            long = "module-name",
+            short = 'm',
+            help = "The module name containing the tool's execute function.",
+            value_name = "MODULE"
+        )]
+        module_name: String,
+        #[arg(
+            long = "input-schema",
+            short = 's',
+            help = "JSON schema describing the tool's input parameters.",
+            value_name = "SCHEMA"
+        )]
+        input_schema: String,
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) for this tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "description",
+            short = 'd',
+            help = "Description of what the tool does.",
+            value_name = "DESCRIPTION"
+        )]
+        description: String,
+        #[arg(
+            long = "witness-id",
+            short = 'w',
+            help = "The witness object ID that proves the tool's identity.",
+            value_name = "OBJECT_ID"
+        )]
+        witness_id: sui::ObjectID,
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -215,6 +270,31 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 collateral_coin,
                 invocation_cost,
                 batch,
+                no_save,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        // == `$ nexus tool register-onchain` ==
+        ToolCommand::RegisterOnchain {
+            package_address,
+            module_name,
+            input_schema,
+            tool_fqn,
+            description,
+            witness_id,
+            no_save,
+            gas,
+        } => {
+            register_onchain_tool(
+                package_address,
+                module_name,
+                input_schema,
+                tool_fqn,
+                description,
+                witness_id,
                 no_save,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,

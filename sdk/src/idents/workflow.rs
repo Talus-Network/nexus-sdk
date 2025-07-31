@@ -408,6 +408,21 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool_for_self"),
     };
+    /// Register an on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool`
+    pub const REGISTER_ON_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool"),
+    };
+    /// Register an on-chain tool and transfer the tool's owner cap to the ctx
+    /// sender.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool_for_self`
+    pub const REGISTER_ON_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool_for_self"),
+    };
     /// The ToolRegistry struct type.
     ///
     /// `nexus_workflow::tool_registry::ToolRegistry`
