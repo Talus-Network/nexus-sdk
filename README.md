@@ -99,7 +99,7 @@ Learn more about `just` in the [official manual][just-manual].
 
 <!-- List of references -->
 
-[talus-agents]: https://docs.talus.network/talus-documentation/developer-docs/index/index
+[talus-agents]: https://docs.talus.network/staging/talus-overview/ai-agent-whats-in-a-name#talus-agents
 [talus-tools]: https://docs.talus.network/talus-documentation/developer-docs/index/tool
 [nexus-cli-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/cli
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
