@@ -90,7 +90,7 @@ pub(crate) enum ToolCommand {
         gas: GasArgs,
     },
 
-    #[command(about = "Register an onchain tool.")]
+    #[command(about = "Register an onchain tool")]
     RegisterOnchain {
         #[arg(
             long = "package-address",
@@ -106,13 +106,6 @@ pub(crate) enum ToolCommand {
             value_name = "MODULE"
         )]
         module_name: String,
-        #[arg(
-            long = "input-schema",
-            short = 's',
-            help = "JSON schema describing the tool's input parameters.",
-            value_name = "SCHEMA"
-        )]
-        input_schema: String,
         #[arg(
             long = "tool-fqn",
             short = 't',
@@ -281,7 +274,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         ToolCommand::RegisterOnchain {
             package_address,
             module_name,
-            input_schema,
             tool_fqn,
             description,
             witness_id,
@@ -291,7 +283,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             register_onchain_tool(
                 package_address,
                 module_name,
-                input_schema,
                 tool_fqn,
                 description,
                 witness_id,
