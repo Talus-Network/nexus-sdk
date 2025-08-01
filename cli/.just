@@ -4,7 +4,7 @@
 # Commands related the Nexus CLI
 #
 
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 package := 'nexus-cli'
 

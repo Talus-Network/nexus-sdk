@@ -1,0 +1,69 @@
+# GitHub workflow to run the pre-commit hook.
+
+name: Pre-commit hook
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# NOTE: The following values seem to be a fix for OOM, in case they are needed again.
+#
+#   RUST_CACHE_VERBOSE: true
+#   CARGO_BUILD_JOBS: 1
+#   CARGO_INCREMENTAL: 0
+#   RUSTFLAGS: >
+#     -C codegen-units=1
+#
+# but we have reverted CARGO_INCREMENTAL to 1 to speed up builds.
+env:
+  RUST_CACHE_VERBOSE: true
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 1
+  RUSTFLAGS: >
+    -C codegen-units=1
+
+jobs:
+  build-and-test:
+    name: Run pre-commit checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # Set up Docker for tests
+      - name: Set up Docker for tests
+        uses: docker/setup-docker-action@v4
+
+      # Install Rust
+      # See: https://github.com/actions-rust-lang/setup-rust-toolchain
+      # Note that it can handle the Rust cache automatically (via Swatinem/rust-cache),
+      # but we use a custom cache for NPM stuff.
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
+        with:
+          toolchain: stable, nightly-2025-01-06
+          override: true
+          components: rustfmt, clippy
+          cache-directories: |
+            ~/.npm
+            /usr/local/bin
+
+      # Install Rust tools
+      # For more tools, see: https://github.com/taiki-e/install-action/blob/main/TOOLS.md
+      - name: Install Rust tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall,just,cargo-nextest,typos
+
+      # Install NPM stuff from helpers/npm-install-g.txt
+      - name: Install NPM stuff from helpers/npm-install-g.txt
+        run: |
+          while read -r tool; do
+            if ! command -v "$tool" &> /dev/null; then
+              npm install -g "$tool"
+            fi
+          done < helpers/npm-install-g.txt
+
+      - run: cargo +stable --version && cargo +nightly-2025-01-06 --version
+      - run: ./.pre-commit/pre-commit
