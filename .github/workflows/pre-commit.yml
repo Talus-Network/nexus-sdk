@@ -27,7 +27,9 @@ env:
 jobs:
   run-pre-commit:
     name: Run pre-commit checks
-    runs-on: ubuntu-latest
+    # arm64 runners are faster
+    # See: https://github.blog/changelog/2025-01-16-linux-arm64-hosted-runners-now-available-for-free-in-public-repositories-public-preview/
+    runs-on: ubuntu-latest-arm64
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -39,15 +41,14 @@ jobs:
       - name: Install Rust and setup Rust cache
         uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
         with:
-          toolchain: stable, nightly-2025-01-06
+          toolchain: nightly-2025-01-06, stable
           override: true
           components: rustfmt, clippy
-          cache-shared-key: v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          cache-shared-key: v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
 
       # Install Rust tools
       #
       # For more tools, see: https://github.com/taiki-e/install-action/blob/main/TOOLS.md
-      
       - name: Install Rust tools
         uses: taiki-e/install-action@v2
         with:

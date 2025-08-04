@@ -71,13 +71,13 @@ check-container-runtime:
 
 # cargo clippy --all-targets --all-features
 cargo-clippy: _check-cargo
-    cargo clippy --all-targets --all-features
+    cargo clippy --locked --all-targets --all-features
 
 
 # TODO: Perhaps consider this stricter version in the future.
 # cargo clippy --all-targets --all-features -- -D warnings
 cargo-clippy-strict: _check-cargo
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --locked --all-targets --all-features -- -D warnings
 
 
 # cargo nextest run --locked --no-run --workspace --all-features --bins --examples --tests
@@ -193,7 +193,7 @@ typos: _check-typos
 test-cli-completions:
     #!/usr/bin/env bash
 
-    source <(cargo +stable run --package nexus-cli completion bash)
+    source <(cargo +stable run --locked --package nexus-cli completion bash)
 
 executable-scripts:
     #!/usr/bin/env bash
