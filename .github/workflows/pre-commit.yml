@@ -26,10 +26,8 @@ env:
 
 jobs:
   run-pre-commit:
-    name: Run pre-commit checks
-    # arm64 runners are faster
-    # See: https://github.blog/changelog/2025-01-16-linux-arm64-hosted-runners-now-available-for-free-in-public-repositories-public-preview/
-    runs-on: ubuntu-latest-arm64
+    name: Run pre-commit hook
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -44,7 +42,13 @@ jobs:
           toolchain: nightly-2025-01-06, stable
           override: true
           components: rustfmt, clippy
-          cache-shared-key: v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          cache-shared-key: v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}
+          cache-directories: |
+            ~/.cache/sccache
+
+      # Print cache key
+      - name: Print cache key
+        run: echo "v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}"
 
       # Install Rust tools
       #
@@ -52,14 +56,25 @@ jobs:
       - name: Install Rust tools
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-binstall,just,cargo-nextest,typos
+          tool: sccache,cargo-binstall,just,cargo-nextest,typos
+
+      # Enable sccache
+      - name: Enable sccache
+        run: |
+          echo "export RUSTC_WRAPPER=$(command -v sccache)" >> $GITHUB_ENV
+          echo "export CARGO_TARGET_DIR=target" >> $GITHUB_ENV
+          echo "export SCCACHE_DIR=~/.cache/sccache" >> $GITHUB_ENV
+
 
       # Install NPM stuff from helpers/npm-install-g.txt
       - name: Install NPM stuff from helpers/npm-install-g.txt
         run: ./helpers/npm-install-g.sh
 
-      # Just print some versions
+      # Just print some versions & stuff
       - run: cargo +stable --version && cargo +nightly-2025-01-06 --version
+      - run: |
+          echo "Contents of: $$GITHUB_ENV"
+          cat $GITHUB_ENV
 
       # Finally, run the pre-commit hook
       - run: ./.pre-commit/pre-commit
