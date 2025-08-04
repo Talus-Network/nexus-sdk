@@ -42,13 +42,9 @@ jobs:
           toolchain: nightly-2025-01-06, stable
           override: true
           components: rustfmt, clippy
-          cache-shared-key: v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}
+          cache-shared-key: v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}
           cache-directories: |
-            $HOME/.cache/sccache
-
-      # Print cache key
-      - name: Print cache key
-        run: echo "v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}"
+            ~/.cache/sccache
 
       # Install Rust tools
       #
@@ -69,11 +65,16 @@ jobs:
       - name: Install NPM stuff from helpers/npm-install-g.txt
         run: ./helpers/npm-install-g.sh
 
-      # Just print some versions & stuff
+      # Print stable,nightly versions
       - run: cargo +stable --version && cargo +nightly-2025-01-06 --version
-      - run: |
-          echo "Contents of: $GITHUB_ENV"
-          cat $GITHUB_ENV
 
       # Finally, run the pre-commit hook
-      - run: ./.pre-commit/pre-commit
+      - run: |
+          echo $RUSTC_WRAPPER
+          echo $SCCACHE_DIR
+          echo "Running pre-commit hook..."
+          ./.pre-commit/pre-commit
+
+      # Show sccache stats
+      - name: Show sccache stats
+        run: sccache --show-stats
