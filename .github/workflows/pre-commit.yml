@@ -42,7 +42,7 @@ jobs:
           toolchain: nightly-2025-01-06, stable
           override: true
           components: rustfmt, clippy
-          cache-shared-key: v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}
+          cache-shared-key: v4-${{ hashFiles('**/build.rs') }}
           cache-directories: |
             ~/.cache/sccache
 
