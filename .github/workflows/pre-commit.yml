@@ -44,7 +44,7 @@ jobs:
           components: rustfmt, clippy
           cache-shared-key: v2-${{ github.repository_id }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml', '**/build.rs') }}
           cache-directories: |
-            ~/.cache/sccache
+            $HOME/.cache/sccache
 
       # Print cache key
       - name: Print cache key
