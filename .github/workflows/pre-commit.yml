@@ -62,7 +62,6 @@ jobs:
       - name: Enable sccache
         run: |
           echo "export RUSTC_WRAPPER=$(command -v sccache)" >> $GITHUB_ENV
-          echo "export CARGO_TARGET_DIR=target" >> $GITHUB_ENV
           echo "export SCCACHE_DIR=~/.cache/sccache" >> $GITHUB_ENV
 
 
@@ -73,10 +72,8 @@ jobs:
       # Just print some versions & stuff
       - run: cargo +stable --version && cargo +nightly-2025-01-06 --version
       - run: |
-          echo "Contents of: $$GITHUB_ENV"
+          echo "Contents of: $GITHUB_ENV"
           cat $GITHUB_ENV
 
       # Finally, run the pre-commit hook
       - run: ./.pre-commit/pre-commit
-        env:
-          CARGO_INCREMENTAL: 1
