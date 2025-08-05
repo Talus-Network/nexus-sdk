@@ -44,7 +44,7 @@ jobs:
           components: rustfmt, clippy
           cache-shared-key: v4-${{ hashFiles('**/build.rs') }}
           cache-directories: |
-            /home/runner/.cache/sccache
+            ${{ env.HOME }}/.cache/sccache
 
       # Install Rust tools
       #
