@@ -52,12 +52,12 @@ pub(crate) async fn register_onchain_tool(
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
-    // Generate input schema by introspecting the Move module's "execute" function
+    // Generate input schema by introspecting the Move module's "execute" function.
     notify_success!("Auto-generating input schema from Move module...");
-    let input_schema = match generate_input_schema(&sui, package_address, &module_name, "execute").await {
+    let base_input_schema = match generate_input_schema(&sui, package_address, &module_name, "execute").await {
         Ok(schema) => {
             notify_success!(
-                "Generated input schema: {}",
+                "Generated base input schema: {}",
                 schema.truecolor(100, 255, 100)
             );
             schema
@@ -68,6 +68,18 @@ pub(crate) async fn register_onchain_tool(
                 fqn = fqn.to_string().truecolor(100, 100, 100),
                 error = e
             );
+            return Err(e);
+        }
+    };
+
+    // Allow user to customize parameter descriptions.
+    let input_schema = match customize_parameter_descriptions(base_input_schema) {
+        Ok(schema) => {
+            notify_success!("Parameter descriptions customized successfully!");
+            schema
+        }
+        Err(e) => {
+            notify_error!("Failed to customize parameter descriptions: {}", e);
             return Err(e);
         }
     };
@@ -281,7 +293,7 @@ async fn generate_input_schema(
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for (i, param_type) in execute_func.parameters.iter().enumerate() {
+    for param_type in execute_func.parameters.iter() {
         // Skip the last parameter (TxContext).
         if is_tx_context_param(param_type) {
             continue;
@@ -439,4 +451,89 @@ fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
     } else {
         false
     }
+}
+
+/// Allow the user to customize parameter descriptions interactively.
+fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
+    use std::io::{self, Write};
+    use serde_json::{Map, Value};
+
+    // Skip interactive prompts in JSON mode.
+    if JSON_MODE.load(Ordering::Relaxed) {
+        return Ok(schema_json);
+    }
+
+    // Parse the schema.
+    let mut schema: Map<String, Value> = serde_json::from_str(&schema_json)
+        .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse schema JSON: {}", e)))?;
+
+    if schema.is_empty() {
+        println!("\n{info} No parameters to customize.",
+            info = "▶".cyan().bold());
+        return Ok(schema_json);
+    }
+
+    println!("\n{title}",
+        title = "Parameter Descriptions".bold().cyan());
+    println!("Customize descriptions for each parameter (press Enter to keep current)");
+
+    // Sort parameter keys to ensure consistent order.
+    let mut param_keys: Vec<String> = schema.keys().cloned().collect();
+    param_keys.sort_by(|a, b| {
+        let a_num: i32 = a.parse().unwrap_or(i32::MAX);
+        let b_num: i32 = b.parse().unwrap_or(i32::MAX);
+        a_num.cmp(&b_num)
+    });
+
+    for param_key in param_keys {
+        if let Some(param_obj) = schema.get_mut(&param_key) {
+            if let Some(param_map) = param_obj.as_object_mut() {
+                let param_type = param_map.get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                
+                let current_description = param_map.get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No description");
+
+                let is_mutable = param_map.get("mutable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let type_display = if is_mutable {
+                    format!("&mut {}", param_type)
+                } else {
+                    param_type.to_string()
+                };
+
+                println!(" ");
+                println!("{} Parameter {}: {} {}",
+                    "▶".purple().bold(),
+                    param_key.bold(),
+                    type_display.blue().bold(),
+                    if is_mutable { "(mutable)".yellow() } else { "".normal() }
+                );
+                println!("Current: {}", current_description.truecolor(150, 150, 150));
+                print!("Custom description (Enter to keep): ");
+                io::stdout().flush().unwrap();
+
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                let custom_description = input.trim();
+
+                if !custom_description.is_empty() {
+                    param_map.insert("description".to_string(), Value::String(custom_description.to_string()));
+                    println!("{} Updated description", "✓".green().bold());
+                } else {
+                    println!("{} Kept current description", "→".truecolor(150, 150, 150));
+                }
+            }
+        }
+    }
+
+    println!(" ");
+
+    // Convert back to JSON string.
+    serde_json::to_string(&schema)
+        .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize schema: {}", e)))
 } 
