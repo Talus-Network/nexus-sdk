@@ -32,7 +32,7 @@ check-container-runtime:
     # We of course assume the (test) code is written in a
     # container runtime agnostic way but this will require some
     # investigation, so:
-    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/262
+    # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
 
     runtimes=(docker podman) # colima etc ...
     check_commands=(
