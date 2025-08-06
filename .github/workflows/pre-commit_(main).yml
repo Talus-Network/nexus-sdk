@@ -1,0 +1,87 @@
+name: Pre-commit hook (main)
+on:
+  push:
+    branches:
+      - main
+
+# Fix for OOM.
+env:
+  RUST_CACHE_VERBOSE: true
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: >
+    -C codegen-units=1
+
+jobs:
+  run-pre-commit:
+    name: Run pre-commit hook (main branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get architecture
+        id: get-arch
+        run: echo "ARCH=$(uname -m)" >> $GITHUB_OUTPUT
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Compute cache keys
+        id: cache-keys
+        run: |
+          echo "MAIN_CACHE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-main-${{ hashFiles('**/Cargo.lock') }}" >> $GITHUB_OUTPUT
+          echo "MAIN_CACHE_RESTORE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-main-" >> $GITHUB_OUTPUT
+          # Older key -- Delete once this PR is in main and the cache is updated according to MAIN_CACHE_KEY
+          echo "MAIN_CACHE_RESTORE_KEY0=v6-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-" >> $GITHUB_OUTPUT
+
+      # Useful docs:
+      #   - https://github.com/actions/cache/blob/main/caching-strategies.md
+      - name: Restore cache (main)
+        id: cache-restore
+        uses: actions/cache/restore@v4.2.3
+        with:
+          key: ${{ steps.cache-keys.outputs.MAIN_CACHE_KEY }}
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.MAIN_CACHE_RESTORE_KEY }}
+            ${{ steps.cache-keys.outputs.MAIN_CACHE_RESTORE_KEY0 }}
+          path: |
+            ~/.cache/sccache
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/work/**/target
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.13.0
+        with:
+          toolchain: nightly-2025-01-06, stable
+          override: true
+          components: rustfmt, clippy
+          cache: 'false'
+
+      # For more tools, see: https://github.com/taiki-e/install-action/blob/main/TOOLS.md
+      - name: Install Rust tools
+        uses: taiki-e/install-action@v2.57.8
+        with:
+          tool: cargo-binstall,just,cargo-nextest,typos
+
+      - name: Install NPM stuff from helpers/npm-install-g.txt
+        run: ./helpers/npm-install-g.sh
+
+      # Here it is ...
+      - name: Run pre-commit hook
+        run: ./.pre-commit/pre-commit
+
+      - name: Save cache (main)
+        uses: actions/cache/save@v4.2.3
+        if: ${{ always() }}
+        with:
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+          path: |
+            ~/.cache/sccache
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/work/**/target
