@@ -79,6 +79,24 @@ pub enum Data {
 pub struct Edge {
     pub from: FromPort,
     pub to: ToPort,
+    /// The kind of the edge. This is used to determine how the edge is
+    /// processed in the workflow. Defaults to [`EdgeKind::Normal`].
+    #[serde(default)]
+    pub kind: EdgeKind,
+}
+
+// TODO: validator changes and tests
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKind {
+    #[default]
+    Normal,
+    /// For-each and collect control edges.
+    ForEach,
+    Collect,
+    /// Do-while and break control edges.
+    DoWhile,
+    Break,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -88,6 +106,7 @@ pub struct FromPort {
     pub output_port: String,
     /// Whether the output port data should be encrypted before being sent to
     /// the workflow. Defaults to `false`.
+    // TODO: maybe move this to `Edge`?
     #[serde(default)]
     pub encrypted: bool,
 }

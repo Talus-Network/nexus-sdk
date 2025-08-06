@@ -92,7 +92,7 @@ pub(crate) async fn inspect_dag_execution(
                 NexusEventKind::WalkAdvanced(e) if e.execution == dag_execution_id => {
                     notify_success!(
                         "Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        vertex = e.vertex.name.truecolor(100, 100, 100),
+                        vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
                         variant = e.variant.name.truecolor(100, 100, 100),
                     );
 
@@ -128,7 +128,7 @@ pub(crate) async fn inspect_dag_execution(
 
                     json_trace.push(json!({
                         "end_state": false,
-                        "vertex": e.vertex.name,
+                        "vertex": e.vertex,
                         "variant": e.variant.name,
                         "data": json_data,
                     }));
@@ -137,7 +137,7 @@ pub(crate) async fn inspect_dag_execution(
                 NexusEventKind::EndStateReached(e) if e.execution == dag_execution_id => {
                     notify_success!(
                         "{end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        vertex = e.vertex.name.truecolor(100, 100, 100),
+                        vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
                         variant = e.variant.name.truecolor(100, 100, 100),
                         end_state = "END STATE".truecolor(100, 100, 100)
                     );
@@ -174,7 +174,7 @@ pub(crate) async fn inspect_dag_execution(
 
                     json_trace.push(json!({
                         "end_state": true,
-                        "vertex": e.vertex.name,
+                        "vertex": e.vertex,
                         "variant": e.variant.name,
                         "data": json_data,
                     }));

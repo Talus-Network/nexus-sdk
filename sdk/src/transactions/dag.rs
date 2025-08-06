@@ -228,6 +228,9 @@ pub fn create_edge(
     let to_port =
         workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
 
+    // `kind: EdgeKind`
+    let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
+
     if edge.from.encrypted {
         // `dag.with_encrypted_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
         return Ok(tx.programmable_move_call(
@@ -242,6 +245,7 @@ pub fn create_edge(
                 from_port,
                 to_vertex,
                 to_port,
+                kind,
             ],
         ));
     }
@@ -259,6 +263,7 @@ pub fn create_edge(
             from_port,
             to_vertex,
             to_port,
+            kind,
         ],
     ))
 }
@@ -517,7 +522,7 @@ mod tests {
         crate::{
             fqn,
             test_utils::sui_mocks,
-            types::{FromPort, ToPort},
+            types::{EdgeKind, FromPort, ToPort},
         },
     };
 
@@ -642,6 +647,7 @@ mod tests {
                 vertex: "vertex2".to_string(),
                 input_port: "port2".to_string(),
             },
+            kind: EdgeKind::Normal,
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
