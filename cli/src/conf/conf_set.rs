@@ -79,6 +79,7 @@ mod tests {
             interface_pkg_id: sui::ObjectID::random(),
             network_id: sui::ObjectID::random(),
             tool_registry: sui_mocks::mock_sui_object_ref(),
+            over_slashing: sui_mocks::mock_sui_object_ref(),
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
             pre_key_vault: sui_mocks::mock_sui_object_ref(),
