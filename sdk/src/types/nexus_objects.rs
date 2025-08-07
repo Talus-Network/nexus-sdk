@@ -12,7 +12,6 @@ pub struct NexusObjects {
     pub interface_pkg_id: sui::ObjectID,
     pub network_id: sui::ObjectID,
     pub tool_registry: sui::ObjectRef,
-    pub over_slashing: sui::ObjectRef,
     pub default_tap: sui::ObjectRef,
     pub gas_service: sui::ObjectRef,
     pub pre_key_vault: sui::ObjectRef,

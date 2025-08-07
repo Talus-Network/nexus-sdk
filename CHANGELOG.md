@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pre key vault related Nexus events and their definitions
 - DAG validation (moved from `nexus-cli`)
 - `LinkedTable` support for object crawler
-- added `over_slashing` object identifier to `NexusObjects`
+- added identifiers to `tool_registry`'s allow list functions
 
 #### Changed
 

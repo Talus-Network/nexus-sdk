@@ -690,11 +690,6 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [over_slashing]
-                objectId = "0x1337"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-
                 [default_tap]
                 objectId = "0x6"
                 version = 1
