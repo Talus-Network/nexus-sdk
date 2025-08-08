@@ -4,7 +4,7 @@
 # Commands related the Nexus Toolkit for Rust
 #
 
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 package := 'nexus-toolkit'
 

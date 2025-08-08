@@ -1,0 +1,60 @@
+name: Pre-commit hook (PR)
+on:
+  pull_request:
+
+# Fix for OOM.
+env:
+  RUST_CACHE_VERBOSE: true
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: >
+    -C codegen-units=1
+
+
+jobs:
+  run-pre-commit:
+    name: Run pre-commit hook (PR branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get architecture
+        id: get-arch
+        run: echo "ARCH=$(uname -m)" >> $GITHUB_OUTPUT
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Compute cache keys
+        id: cache-keys
+        run: |
+          # `main` branch cache keys
+          echo "MAIN_CACHE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-main-${{ hashFiles('**/Cargo.lock') }}" >> $GITHUB_OUTPUT
+          echo "MAIN_CACHE_RESTORE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-main-" >> $GITHUB_OUTPUT
+          # PR branch cache keys
+          echo "PR_CACHE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-PR-${{ hashFiles('**/Cargo.lock') }}" >> $GITHUB_OUTPUT
+          echo "PR_CACHE_RESTORE_KEY=v7-${{ runner.os }}-${{ steps.get-arch.outputs.ARCH }}-PR-" >> $GITHUB_OUTPUT
+
+      # Restoring the PR cache takes into account:
+      #
+      #   1. The PR cache itself, which is used to speed up the PR development cycle.
+      #   2. In case the above is missing, the main branch cache, which is used to bootstrap the PR cache.
+      - name: Restore cache (PR)
+        id: cache-restore
+        uses: ./.github/actions/cache/restore
+        with:
+          key: ${{ steps.cache-keys.outputs.PR_CACHE_KEY }}
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.PR_CACHE_RESTORE_KEY }}
+            ${{ steps.cache-keys.outputs.MAIN_CACHE_RESTORE_KEY }}
+
+      - name: Install pre-commit dependencies
+        uses: ./.github/actions/pre-commit/dependencies
+
+      # Here it is ...
+      - name: Run pre-commit hook
+        run: ./.pre-commit/pre-commit
+
+      - name: Save cache (PR)
+        uses: ./.github/actions/cache/save
+        if: ${{ always() }}
+        with:
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

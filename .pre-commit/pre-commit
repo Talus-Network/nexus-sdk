@@ -4,7 +4,7 @@
 # Source: https://github.com/loverdos/pre-commit
 
 # shellcheck disable=SC2034
-SCRIPT_VERSION=14
+SCRIPT_VERSION=16
 
 # shellcheck disable=SC2034
 SCRIPT_ID=AF13AE47-34E0-41FA-8FF8-AF660A922C6A
@@ -100,6 +100,14 @@ function backup_file() {
     mv "$file" "$new_location"
 }
 
+function sec_to_mmss() {
+    local time_sec=$1
+    local time_min=$((time_sec / 60))
+    time_sec=$((time_sec % 60))
+
+    printf "%02d:%02d" $time_min $time_sec
+}
+
 function install() {
     LOG "Begin installation process from $MY_PATH to $git_root"
 
@@ -169,9 +177,9 @@ function run() {
     local successes=0
     local failures=0
     local mark=""
-    local time_sec=0
-    local time_min=0
-    local time=""
+    local script_seconds=0
+    local script_time=""
+    local script_times=()
 
     LOG "Running pre-commit hook"
     SECONDS=0 # bash builtin ;)
@@ -188,11 +196,18 @@ function run() {
         LOG
         LOG "Run: $script"
 
+        script_seconds=$SECONDS
+        
         $script
         status=$?
+        
+        script_seconds=$((SECONDS - script_seconds))
 
         cmds+=("$script")
         cmd_statuses+=("$status")
+
+        script_time=$(sec_to_mmss $script_seconds)
+        script_times+=("$script_time")
 
         if ((status == 0)); then
             ((successes++))
@@ -206,23 +221,20 @@ function run() {
     done
     set -e
 
-    time_sec=$SECONDS
-    time_min=$((time_sec / 60))
-    time_sec=$((time_sec % 60))
-    time=$(printf "%02d:%02d" $time_min $time_sec)
+    time=$(sec_to_mmss $SECONDS)
 
     LOG
     LOG "Results: $successes success(es), $failures failure(s)"
-    LOG "     In: $time (min:sec)"
+    LOG "     In: $time [min:sec]"
     LOG
 
     local result=0
 
     for i in "${!cmds[@]}"; do
         if ((cmd_statuses[i] == 0)); then
-            LOG "✅ ${cmds[i]}"
+            LOG "✅ [${script_times[i]}] ${cmds[i]}"
         else
-            LOG "❌ ${cmds[i]}"
+            LOG "❌ [${script_times[i]}] ${cmds[i]}"
             result=1
         fi
     done

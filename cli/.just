@@ -4,7 +4,7 @@
 # Commands related the Nexus CLI
 #
 
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 package := 'nexus-cli'
 
@@ -23,12 +23,6 @@ check: _check-cargo
 # Run all tests in the CLI project
 test: _check-cargo
     cargo +stable test --package {{ package }}
-
-# Test completions (bash for now)
-test-completions: build
-    #!/usr/bin/env bash
-
-    source <(cargo +stable run --package {{ package }} completion bash)
 
 # Run rustfmt on the CLI project
 fmt-check: _check-cargo

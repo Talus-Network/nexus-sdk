@@ -1,4 +1,4 @@
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 [private]
 _default:
@@ -32,7 +32,7 @@ check-container-runtime:
     # We of course assume the (test) code is written in a
     # container runtime agnostic way but this will require some
     # investigation, so:
-    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/262
+    # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
 
     runtimes=(docker podman) # colima etc ...
     check_commands=(
@@ -71,13 +71,13 @@ check-container-runtime:
 
 # cargo clippy --all-targets --all-features
 cargo-clippy: _check-cargo
-    cargo clippy --all-targets --all-features
+    cargo clippy --locked --all-targets --all-features
 
 
 # TODO: Perhaps consider this stricter version in the future.
 # cargo clippy --all-targets --all-features -- -D warnings
 cargo-clippy-strict: _check-cargo
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --locked --all-targets --all-features -- -D warnings
 
 
 # cargo nextest run --locked --no-run --workspace --all-features --bins --examples --tests
@@ -90,7 +90,6 @@ cargo-nextest-build: _check-cargo-nextest
 # cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 cargo-nextest-run: _check-cargo-nextest
     # Note that tests require docker to be running.
-    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/254
     cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 
 
@@ -189,3 +188,37 @@ typos: _check-typos
     cd $(git rev-parse --show-toplevel)
 
     typos
+
+# Test completions (bash for now)
+test-cli-completions:
+    #!/usr/bin/env bash
+
+    source <(cargo +stable run --locked --package nexus-cli completion bash)
+
+executable-scripts:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    error=0
+
+    cd $(git rev-parse --show-toplevel)
+
+    for f in $(git ls-files); do
+        first_line=$(head -n 1 "$f")
+
+        # see if the first line is a shell shebang
+        if [[ "$first_line" =~ ^(#! *) ]]; then
+            # ... of the correct format, we checked that in another script.
+            if [[ "$first_line" =~ ^(#! */usr/bin/env *) ]]; then
+                if [[ ! -x "$f" ]]; then
+                  echo "❌  $f is not executable" >&2
+                  error=1
+                else
+                  echo "✅  $f" >&2
+                fi
+            fi
+        fi
+    done
+
+    exit $error
