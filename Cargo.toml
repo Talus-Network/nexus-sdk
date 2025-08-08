@@ -9,7 +9,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-version = "0.2.0"
+version = "0.2.0-rc.9"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
