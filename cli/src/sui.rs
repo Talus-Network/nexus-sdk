@@ -247,7 +247,7 @@ pub(crate) async fn get_nexus_objects(
         objects_handle.success();
 
         conf.nexus = Some(objects.clone());
-        conf.save().await.map_err(|e| NexusCliError::Any(e))?;
+        conf.save().await.map_err(NexusCliError::Any)?;
 
         return Ok(objects);
     }
@@ -679,8 +679,7 @@ mod tests {
     async fn test_fetch_devnet_objects() {
         let mut server = Server::new_async().await;
 
-        let response_body = format!(
-            r#"
+        let response_body = r#"
                 primitives_pkg_id = "0x1"
                 workflow_pkg_id = "0x2"
                 interface_pkg_id = "0x3"
@@ -706,7 +705,7 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
-        );
+        .to_string();
 
         // Create a mock for the devnet objects endpoint.
         let mock = server

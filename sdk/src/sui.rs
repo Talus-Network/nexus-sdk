@@ -46,6 +46,7 @@ pub use {
             SuiObjectResponse as ObjectResponse,
             SuiObjectResponseQuery as ObjectResponseQuery,
             SuiParsedData as ParsedData,
+            SuiParsedMoveObject as ParsedMoveObject,
             SuiTransactionBlockEffects as TransactionBlockEffects,
             SuiTransactionBlockResponse as TransactionBlockResponse,
             SuiTransactionBlockResponseOptions as TransactionBlockResponseOptions,

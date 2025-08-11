@@ -8,3 +8,6 @@ sdk/tests/move/object_crawler_test/Move.lock
 
 # IDEs
 .idea
+
+# macOS
+.DS_Store

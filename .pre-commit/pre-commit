@@ -4,7 +4,7 @@
 # Source: https://github.com/loverdos/pre-commit
 
 # shellcheck disable=SC2034
-SCRIPT_VERSION=9
+SCRIPT_VERSION=14
 
 # shellcheck disable=SC2034
 SCRIPT_ID=AF13AE47-34E0-41FA-8FF8-AF660A922C6A
@@ -18,16 +18,15 @@ SCRIPT_ID=AF13AE47-34E0-41FA-8FF8-AF660A922C6A
 # The script serves both as an installer for itself and a hook runner.
 #
 # To install, you need to be in a `git` working tree already, and run
-# the following from a `bash` shell.
+# the following:
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/loverdos/pre-commit/main/pre-commit) --install
+#   curl -fsSL https://raw.githubusercontent.com/loverdos/pre-commit/main/pre-commit -o pre-commit && chmod +x pre-commit && ./pre-commit --install
 #
-# If you are not using bash, you can just call it twice :)
-#
-#   bash -c "bash <(curl -fsSL https://raw.githubusercontent.com/loverdos/pre-commit/main/pre-commit) --install"
+# Of course, you have the opportunity to first inspect the downloaded file and then execute it.
 #
 # This does the following:
-#   - Creates a `.pre-commit` folder in the repo, and places the current script there.
+#   - Creates a `.pre-commit/` folder in the repo, and places the downloaded script there.
+#     A pre-existing `.pre-commit/pre-commit` is backed up in `.pre-commit/`
 #   - Makes sure that `.git/hooks/pre-commit` links to the above.
 #     A pre-existing `.git/hooks/pre-commit` is backed up in `.git/hooks`.
 #
@@ -36,101 +35,189 @@ SCRIPT_ID=AF13AE47-34E0-41FA-8FF8-AF660A922C6A
 # That's it.
 #
 # Developing the script itself:
-#   1. ... make changes
-#   2. `./pre-commit --install`
-#   3. `git commit`
+#   1. # ... make changes
+#   2. ./pre-commit --install
+#   3. git commit -m 'new version'
+#
 # We assume `shellcheck` is installed.
 
 set -euo pipefail
 
 MY_URL=https://raw.githubusercontent.com/loverdos/pre-commit/main/pre-commit
+MY_PATH="$0"
 
 pre_commit=pre-commit
+
+org=loverdos
+repo=$pre_commit
+
 dot_pre_commit=.$pre_commit
 dot_pre_commit_pre_commit=$dot_pre_commit/$pre_commit
+
 dot_git_hooks=.git/hooks
 dot_git_hooks_pre_commit=$dot_git_hooks/$pre_commit
 
-cmds=()
-cmd_statuses=()
-successes=0
-failures=0
-
-git_root="$(git rev-parse --show-toplevel)"
 dot_script_id=.script_id
 
 function LOG() {
     echo "== $*" >&2
 }
 
-function mk-id() {
+# We must always be in a git work tree.
+git_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    LOG "Error: $(pwd) is not a Git work tree"
+    exit 1
+}
+
+function is_it_me() {
+    [[ -f $dot_script_id ]] && [[ $(<"$dot_script_id") == "$SCRIPT_ID" ]] && {
+        # remote=$(git remote get-url origin)
+        # [[ $remote == https://github.com/$org/$repo.git || $remote == git@github.com:$org/$repo.git ]]
+        true
+    }
+}
+
+function mk_id() {
     echo "$(date -u +%F).$$.$RANDOM"
 }
 
-function is-it-me() {
-    [[ -f $dot_script_id ]] && [[ $(cat $dot_script_id) == "$SCRIPT_ID" ]]
+function is_file_or_link() {
+    [[ -f "$1" || -L "$1" ]]
+}
+
+function is_tracked_in_git() {
+    git ls-files --error-unmatch "$1" >/dev/null 2>&1
+}
+
+function backup_file() {
+    file="$1"
+    [[ -z "$2" ]] && suffix=$(mk_id) || suffix="$2"
+
+    new_location="$file.$suffix"
+
+    LOG "Backing up $file to $new_location"
+
+    mv "$file" "$new_location"
 }
 
 function install() {
-    LOG "git root is at: $git_root"
+    LOG "Begin installation process from $MY_PATH to $git_root"
+
+    if [[ "$MY_PATH" == /dev/*/* ]]; then
+        # We use the previous installation method:
+        #   bash -c "bash <(curl -fsSL https://raw.githubusercontent.com/loverdos/pre-commit/main/pre-commit) --install"
+        # which will not work.
+
+        LOG "You appear to be installing using the old installation recipe"
+        LOG "  https://github.com/loverdos/pre-commit/blob/fdfb0a7b38e7175f45de69c2bd92eac2e342805e/pre-commit#L23"
+        LOG "which is not compatible with newer versions of the script"
+        LOG ""
+        LOG "Please use the newer installation method."
+
+        return 2
+    fi
+
     cd "$git_root"
 
-    # Make sure all the needed folders are there
+    local script=$dot_pre_commit_pre_commit
+
+    local script_exists=0
+    is_file_or_link $script && script_exists=1 # normally it should not be a link ...
+
+    local script_is_tracked=0
+    is_tracked_in_git $script && script_is_tracked=1
+
+    if ((script_is_tracked == 1)); then
+        LOG "$script exists and is tracked by git"
+    elif ((script_exists == 1)); then
+        LOG "$script exists and is not being tracked by git"
+    else
+        LOG "$script does not exist, first time installation"
+    fi
+
+    # Make sure all the needed folders exist
     mkdir -p $dot_pre_commit
     mkdir -p $dot_git_hooks
 
-    if is-it-me; then
-        # We are just developing ourselves
-        LOG "Hey, I noticed you are messing around with me :)"
-        cp $pre_commit $dot_pre_commit_pre_commit
+    # Back up the previous version and install the new one.
+    backup_id=$(mk_id)
+    if ((script_is_tracked == 0 && script_exists == 1)); then
+        backup_file $script "$backup_id"
+    fi
+
+    if is_it_me; then
+        cp "$MY_PATH" $script
     else
-        # This is being installed on a random work tree ...
-        #
-        # Get a fresh version of ourselves from the internet.
-        # (yeah, redundant the first time you install it but self-updates next time you call it with --install...)
-        # This will override any file already residing there.
-        curl -fsSL $MY_URL -o $dot_pre_commit_pre_commit
-        chmod +x $dot_pre_commit_pre_commit
+        mv "$MY_PATH" $script
     fi
 
-    if git ls-files --error-unmatch $dot_pre_commit_pre_commit >/dev/null 2>&1; then
-        # file is tracked
-        if ! git diff --quiet -- $dot_pre_commit_pre_commit; then
-            # ... and we just downloaded a new version
-            LOG "Installed a new version of: $dot_pre_commit_pre_commit"
-            LOG "To see what's new: git diff $dot_pre_commit_pre_commit"
-            LOG "To add it:         git add $dot_pre_commit_pre_commit"
-        fi
-    else
-        LOG "Installed for the first time: $dot_pre_commit_pre_commit"
-        LOG "To add it: git add $dot_pre_commit_pre_commit"
+    # Back up the hook and install the new one
+    if is_file_or_link $dot_git_hooks_pre_commit; then
+        backup_file $dot_git_hooks_pre_commit "$backup_id"
     fi
+    ln -s "$git_root"/$script $dot_git_hooks_pre_commit
 
-    ls -al $dot_pre_commit_pre_commit
-
-    # Set the pre-commit hook to link here, save any old version.
-    # cp $dot_pre_commit_pre_commit $dot_git_hooks_pre_commit
-    if [[ -f $dot_git_hooks_pre_commit || -L $dot_git_hooks_pre_commit ]]; then
-        suffix=$(mk-id)
-        new_location=$dot_git_hooks_pre_commit."$suffix"
-
-        LOG "$dot_git_hooks_pre_commit exists, moving to $new_location"
-
-        mv $dot_git_hooks_pre_commit "$new_location"
-    fi
-
-    ln -s "$git_root"/$dot_pre_commit_pre_commit $dot_git_hooks_pre_commit
-
-    LOG "Installed $dot_git_hooks_pre_commit"
-    ls -al $dot_git_hooks_pre_commit
-    LOG "You may want to see all your hooks: ls -al $dot_git_hooks"
+    LOG "Installed version: $SCRIPT_VERSION "
+    LOG "               of: $MY_URL"
+    LOG "               to: $script"
+    LOG "End installation process from $MY_PATH to $git_root"
 }
 
-function check_statuses() {
+function run() {
+    local cmds=()
+    local cmd_statuses=()
+    local successes=0
+    local failures=0
+    local mark=""
+    local time_sec=0
+    local time_min=0
+    local time=""
+
+    LOG "Running pre-commit hook"
+    SECONDS=0 # bash builtin ;)
+
+    cd "$git_root"
+
+    set +e
+    for script in "$dot_pre_commit"/*; do
+        # We do not want to run ourselves recursively ...
+        if [[ "$script" == "$dot_pre_commit_pre_commit" || "$script" == "$dot_pre_commit_pre_commit".* ]]; then
+            continue
+        fi
+
+        LOG
+        LOG "Run: $script"
+
+        $script
+        status=$?
+
+        cmds+=("$script")
+        cmd_statuses+=("$status")
+
+        if ((status == 0)); then
+            ((successes++))
+            mark="✅"
+        else
+            ((failures++))
+            mark="❌"
+        fi
+
+        LOG "Exit: $mark [= $status] $script"
+    done
+    set -e
+
+    time_sec=$SECONDS
+    time_min=$((time_sec / 60))
+    time_sec=$((time_sec % 60))
+    time=$(printf "%02d:%02d" $time_min $time_sec)
+
     LOG
     LOG "Results: $successes success(es), $failures failure(s)"
+    LOG "     In: $time (min:sec)"
+    LOG
 
-    result=0
+    local result=0
+
     for i in "${!cmds[@]}"; do
         if ((cmd_statuses[i] == 0)); then
             LOG "✅ ${cmds[i]}"
@@ -142,52 +229,8 @@ function check_statuses() {
 
     LOG
 
-    exit $result
+    return $result
 }
-
-function run() {
-    local mark=""
-
-    LOG "Running pre-commit hook(s) from $(pwd)"
-    set +e
-
-    cd "$git_root"
-
-    for hook in "$dot_pre_commit"/*; do
-        # We do not want to run ourselves recursively ...
-        if [[ "$hook" == "$dot_pre_commit_pre_commit" ]]; then
-            continue
-        fi
-
-        LOG
-        LOG "Run: $hook"
-
-        $hook
-
-        status=$?
-        cmds+=("$hook")
-        cmd_statuses+=("$status")
-
-        if ((status == 0)); then
-            ((successes++))
-            mark="✅"
-        else
-            ((failures++))
-            mark="❌"
-        fi
-
-        LOG "Exit: $mark [= $status] $hook"
-    done
-
-    set -e
-    check_statuses
-}
-
-# We must always be in a git work tree.
-if [[ -z "$git_root" ]]; then
-    LOG "Error: not inside a Git repository"
-    exit 1
-fi
 
 # Install ourselves if that is what was requested.
 if [[ $# -eq 1 && $1 == "--install" ]]; then

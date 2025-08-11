@@ -51,37 +51,64 @@ where
     }
 }
 
+fn new_from_tag_and_fields_id<'de, D, T>(
+    deserializer: D,
+    constructor: impl FnOnce(sui::MoveTypeTag, sui::UID) -> T,
+) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrapper {
+        #[serde(rename = "type")]
+        type_: String,
+        fields: ObjectId,
+    }
+
+    let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
+
+    let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
+        serde::de::Error::custom(format!(
+            "Could not parse sui::MoveStructTag from String: {e}"
+        ))
+    })?;
+
+    let Some(tag) = struct_tag.type_params.into_iter().next() else {
+        return Err(serde::de::Error::custom(
+            "Could not get type parameter from `type_`",
+        ));
+    };
+
+    Ok(constructor(tag, fields.id))
+}
+
+fn new_from_fields_id<'de, D, T>(
+    deserializer: D,
+    constructor: impl FnOnce(sui::UID) -> T,
+) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrapper {
+        fields: ObjectId,
+    }
+
+    let Wrapper { fields } = Wrapper::deserialize(deserializer)?;
+
+    Ok(constructor(fields.id))
+}
+
 impl<'de, K, V> Deserialize<'de> for ObjectTable<K, V> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Wrapper {
-            #[serde(rename = "type")]
-            type_: String,
-            fields: ObjectId,
-        }
-
-        let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
-
-        let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
-            serde::de::Error::custom(format!(
-                "Could not parse sui::MoveStructTag from String: {e}"
-            ))
-        })?;
-
-        let Some(tag) = struct_tag.type_params.into_iter().next() else {
-            return Err(serde::de::Error::custom(
-                "Could not get type parameter from `type_`",
-            ));
-        };
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
-            id: fields.id,
+            id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -147,32 +174,11 @@ impl<'de, K, V> Deserialize<'de> for LinkedTable<K, V> {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Wrapper {
-            #[serde(rename = "type")]
-            type_: String,
-            fields: ObjectId,
-        }
-
-        let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
-
-        let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
-            serde::de::Error::custom(format!(
-                "Could not parse sui::MoveStructTag from String: {e}"
-            ))
-        })?;
-
-        let Some(tag) = struct_tag.type_params.into_iter().next() else {
-            return Err(serde::de::Error::custom(
-                "Could not get type parameter from `type_`",
-            ));
-        };
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
-            id: fields.id,
+            id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -238,32 +244,11 @@ impl<'de, K, V> Deserialize<'de> for Table<K, V> {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Wrapper {
-            #[serde(rename = "type")]
-            type_: String,
-            fields: ObjectId,
-        }
-
-        let Wrapper { type_, fields } = Wrapper::deserialize(deserializer)?;
-
-        let struct_tag = sui::MoveStructTag::from_str(type_.as_str()).map_err(|e| {
-            serde::de::Error::custom(format!(
-                "Could not parse sui::MoveStructTag from String: {e}"
-            ))
-        })?;
-
-        let Some(tag) = struct_tag.type_params.into_iter().next() else {
-            return Err(serde::de::Error::custom(
-                "Could not get type parameter from `type_`",
-            ));
-        };
-
-        Ok(Self {
+        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
-            id: fields.id,
+            id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -319,17 +304,10 @@ impl<'de, K, V> Deserialize<'de> for ObjectBag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Wrapper {
-            fields: ObjectId,
-        }
-
-        let Wrapper { fields } = Wrapper::deserialize(deserializer)?;
-
-        Ok(Self {
-            id: fields.id,
+        Ok(new_from_fields_id(deserializer, |id| Self {
+            id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
@@ -402,17 +380,10 @@ impl<'de, K, V> Deserialize<'de> for Bag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Wrapper {
-            fields: ObjectId,
-        }
-
-        let Wrapper { fields } = Wrapper::deserialize(deserializer)?;
-
-        Ok(Self {
-            id: fields.id,
+        Ok(new_from_fields_id(deserializer, |id| Self {
+            id,
             _marker: PhantomData,
-        })
+        })?)
     }
 }
 
