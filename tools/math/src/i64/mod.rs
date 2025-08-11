@@ -5,3 +5,4 @@
 pub(crate) mod add;
 pub(crate) mod cmp;
 pub(crate) mod mul;
+pub(crate) mod sum;

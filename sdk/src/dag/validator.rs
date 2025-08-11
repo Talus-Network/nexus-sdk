@@ -1,5 +1,5 @@
 use {
-    crate::types::{Dag, DEFAULT_ENTRY_GROUP},
+    crate::types::{Dag, EdgeKind, DEFAULT_ENTRY_GROUP},
     anyhow::{bail, Result as AnyResult},
     petgraph::graph::{DiGraph, NodeIndex},
     std::collections::{HashMap, HashSet},
@@ -294,6 +294,11 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
 
     for edge in &dag.edges {
+        // Ignore do-whlie edges.
+        if edge.kind == EdgeKind::DoWhile {
+            continue;
+        }
+
         let origin_vertex = GraphNode::Vertex {
             name: edge.from.vertex.clone(),
         };

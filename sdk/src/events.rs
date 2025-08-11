@@ -84,7 +84,7 @@ pub struct RequestWalkExecutionEvent {
         serialize_with = "serialize_sui_u64"
     )]
     pub walk_index: u64,
-    pub next_vertex: TypeName,
+    pub next_vertex: RuntimeVertex,
     pub evaluations: sui::ObjectID,
     /// This field defines the package ID, module and name of the Agent that
     /// holds the DAG. Used to confirm the tool evaluation with the Agent.
@@ -156,7 +156,7 @@ pub struct WalkAdvancedEvent {
     )]
     pub walk_index: u64,
     /// Which vertex was just executed.
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
@@ -175,7 +175,7 @@ pub struct EndStateReachedEvent {
     )]
     pub walk_index: u64,
     /// Which vertex was just executed.
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
@@ -208,7 +208,7 @@ pub struct FoundingLeaderCapCreatedEvent {
 pub struct GasSettlementUpdateEvent {
     pub execution: sui::ObjectID,
     pub tool_fqn: ToolFqn,
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     pub was_settled: bool,
 }
 
@@ -358,7 +358,8 @@ mod tests {
                     "execution": execution.to_string(),
                     "walk_index": "42",
                     "next_vertex": {
-                        "name": "foo",
+                        "_variant_name": "Plain",
+                        "vertex": { "name": "foo" },
                     },
                     "evaluations": evaluations.to_string(),
                     "worksheet_from_type": {
@@ -377,7 +378,7 @@ mod tests {
                 e.execution == execution &&
                 e.evaluations == evaluations &&
                 e.walk_index == 42 &&
-                e.next_vertex.name == *"foo" &&
+                matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
                 e.worksheet_from_type.name == *"bar"
         );
     }
