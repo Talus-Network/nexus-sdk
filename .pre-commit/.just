@@ -32,7 +32,6 @@ check-container-runtime:
     # investigation, so:
     # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
 
-    # Avoid bash associative arrays to support macOS default bash (3.2)
     runtimes="docker podman" # colima etc ...
 
     # If DOCKER_HOST is set print it.
