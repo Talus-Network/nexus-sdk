@@ -1,4 +1,7 @@
-use crate::{prelude::*, Cli};
+use {
+    crate::{prelude::*, Cli},
+    std::io::Write,
+};
 
 #[derive(Args)]
 pub(crate) struct CompletionCommand {
@@ -10,12 +13,12 @@ pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError>
     let mut cli_command = Cli::command();
     let bin_name = env!("CARGO_CRATE_NAME").to_string();
 
-    clap_complete::generate(
-        command.shell,
-        &mut cli_command,
-        bin_name,
-        &mut std::io::stdout(),
-    );
+    // Generate into an in-memory buffer to avoid panicking on BrokenPipe when writing directly to stdout.
+    let mut buffer: Vec<u8> = Vec::new();
+    clap_complete::generate(command.shell, &mut cli_command, bin_name, &mut buffer);
+
+    // Best-effort write to stdout; ignore EPIPE/BrokenPipe to avoid crashing when the reader closes early.
+    let _ = std::io::stdout().write_all(&buffer);
 
     Ok(())
 }
