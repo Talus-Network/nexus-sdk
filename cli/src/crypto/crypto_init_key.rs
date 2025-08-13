@@ -11,7 +11,7 @@ use {
 };
 
 /// Generate and store a new 32-byte key in the OS key-ring.
-/// This will also wipe any crypto configuration from the CLI configuration file.
+/// Important: This will also wipe any crypto configuration from the CLI configuration file.
 pub async fn crypto_init_key(force: bool) -> AnyResult<(), NexusCliError> {
     command_title!("Generating and storing a new 32-byte master key");
 
@@ -171,7 +171,7 @@ mod tests {
         let content_after = fs::read_to_string(&conf_path).expect("read conf after");
         let parsed: toml::Value = toml::from_str(&content_after).expect("parse toml after");
         assert!(
-            !parsed.as_table().and_then(|t| t.get("crypto")).is_some(),
+            parsed.as_table().and_then(|t| t.get("crypto")).is_none(),
             "crypto section should be removed after rotation"
         );
 

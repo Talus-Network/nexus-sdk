@@ -104,11 +104,11 @@ impl<'de, K, V> Deserialize<'de> for ObjectTable<K, V> {
     where
         D: Deserializer<'de>,
     {
-        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
+        new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })?)
+        })
     }
 }
 
@@ -174,11 +174,11 @@ impl<'de, K, V> Deserialize<'de> for LinkedTable<K, V> {
     where
         D: Deserializer<'de>,
     {
-        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
+        new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })?)
+        })
     }
 }
 
@@ -244,11 +244,11 @@ impl<'de, K, V> Deserialize<'de> for Table<K, V> {
     where
         D: Deserializer<'de>,
     {
-        Ok(new_from_tag_and_fields_id(deserializer, |tag, id| Self {
+        new_from_tag_and_fields_id(deserializer, |tag, id| Self {
             tag,
             id,
             _marker: PhantomData,
-        })?)
+        })
     }
 }
 
@@ -304,10 +304,10 @@ impl<'de, K, V> Deserialize<'de> for ObjectBag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        Ok(new_from_fields_id(deserializer, |id| Self {
+        new_from_fields_id(deserializer, |id| Self {
             id,
             _marker: PhantomData,
-        })?)
+        })
     }
 }
 
@@ -380,10 +380,10 @@ impl<'de, K, V> Deserialize<'de> for Bag<K, V> {
     where
         D: Deserializer<'de>,
     {
-        Ok(new_from_fields_id(deserializer, |id| Self {
+        new_from_fields_id(deserializer, |id| Self {
             id,
             _marker: PhantomData,
-        })?)
+        })
     }
 }
 

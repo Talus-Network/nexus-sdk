@@ -140,8 +140,8 @@ fn encrypt_entry_ports_once(
         for port in ports {
             // Take the plaintext for ownership
             let slot = input
-                .get_mut(&vertex)
-                .and_then(|v| v.get_mut(&port))
+                .get_mut(vertex)
+                .and_then(|v| v.get_mut(port))
                 .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
 
             let plaintext = slot.take();

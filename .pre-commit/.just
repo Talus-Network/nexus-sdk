@@ -23,8 +23,6 @@ cargo-nightly-fmt: _check-cargo
 check-container-runtime:
     #!/usr/bin/env bash
 
-    declare -A check_commands
-
     # We try to find if there is a container runtime available
     # and if there is one we run its specific command that
     # checks if the container runtime is running.
@@ -34,11 +32,8 @@ check-container-runtime:
     # investigation, so:
     # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
 
-    runtimes=(docker podman) # colima etc ...
-    check_commands=(
-        [docker]="docker info > /dev/null 2>&1"
-        [podman]="podman info > /dev/null 2>&1"
-    )
+    # Avoid bash associative arrays to support macOS default bash (3.2)
+    runtimes="docker podman" # colima etc ...
 
     # If DOCKER_HOST is set print it.
     # Sometimes it has the wrong value, so it's good to know.
@@ -46,22 +41,13 @@ check-container-runtime:
         echo "DOCKER_HOST=$DOCKER_HOST"
     fi
 
-    # sanity check to make sure the dictionary has all the runtimes
-    for runtime in "${runtimes[@]}"; do
-        if [[ -z "${check_commands[$runtime]+x}" ]]; then
-            echo "Internal error: No check command found for runtime: $runtime" >&2
-            exit 3
-        fi
-    done
-
-    for runtime in "${runtimes[@]}"; do
+    for runtime in $runtimes; do
         echo "Checking for: $runtime"
-        if command -v $runtime &> /dev/null; then
-            check_command="${check_commands[$runtime]}"
-            eval "$check_command" && {
-                echo "✅  $runtime [$check_command]"
+        if command -v "$runtime" &> /dev/null; then
+            if "$runtime" info > /dev/null 2>&1; then
+                echo "✅  $runtime [$runtime info > /dev/null 2>&1]"
                 exit 0
-            }
+            fi
         fi
     done
 
