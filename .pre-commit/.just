@@ -19,32 +19,43 @@ cargo-nightly-fmt: _check-cargo
         exit 1
     }
 
-
 check-container-runtime:
-    #!/usr/bin/env bash
+    #!/usr/bin/env sh
 
-    # We try to find if there is a container runtime available
-    # and if there is one we run its specific command that
-    # checks if the container runtime is running.
-    #
-    # We of course assume the (test) code is written in a
-    # container runtime agnostic way but this will require some
-    # investigation, so:
-    # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
+    set -eu
 
-    runtimes="docker podman" # colima etc ...
+    # Allow override: RUNTIMES="docker podman nerdctl colima" just check-container-runtime
+    RUNTIMES="${RUNTIMES:-docker podman}"
 
-    # If DOCKER_HOST is set print it.
-    # Sometimes it has the wrong value, so it's good to know.
-    if [[ -n "${DOCKER_HOST:-}" ]]; then
-        echo "DOCKER_HOST=$DOCKER_HOST"
-    fi
+    # Helps diagnose misconfig
+    [ -n "${DOCKER_HOST:-}" ] && echo "DOCKER_HOST=$DOCKER_HOST"
 
-    for runtime in $runtimes; do
-        echo "Checking for: $runtime"
-        if command -v "$runtime" &> /dev/null; then
-            if "$runtime" info > /dev/null 2>&1; then
-                echo "✅  $runtime [$runtime info > /dev/null 2>&1]"
+    # Map runtime -> probe command 
+    get_check_cmd() {
+        case "$1" in
+            docker)  printf '%s\n' "docker info" ;;
+            podman)  printf '%s\n' "podman info" ;;
+            # nerdctl) printf '%s\n' "nerdctl info" ;;
+            # colima)  printf '%s\n' "colima status | grep -q 'Running'" ;;
+            *)       return 1 ;;
+        esac
+    }
+
+    # Sanity check: ensure each runtime has a mapping
+    for r in $RUNTIMES; do
+        if ! get_check_cmd "$r" >/dev/null 2>&1; then
+            echo "Internal error: no check command for runtime: $r" >&2
+            exit 3
+        fi
+    done
+
+    for r in $RUNTIMES; do
+        echo "Checking for: $r"
+        if command -v "$r" >/dev/null 2>&1; then
+            cmd="$(get_check_cmd "$r")"
+            # Run the mapped probe.
+            if sh -c "$cmd" >/dev/null 2>&1; then
+                echo "✅  $r [$cmd]"
                 exit 0
             fi
         fi
