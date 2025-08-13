@@ -20,44 +20,47 @@ cargo-nightly-fmt: _check-cargo
     }
 
 check-container-runtime:
-    #!/usr/bin/env sh
+    #!/usr/bin/env bash
 
-    set -eu
+    declare -A check_commands
 
-    # Allow override: RUNTIMES="docker podman nerdctl colima" just check-container-runtime
-    RUNTIMES="${RUNTIMES:-docker podman}"
+    # We try to find if there is a container runtime available
+    # and if there is one we run its specific command that
+    # checks if the container runtime is running.
+    #
+    # We of course assume the (test) code is written in a
+    # container runtime agnostic way but this will require some
+    # investigation, so:
+    # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
 
-    # Helps diagnose misconfig
-    [ -n "${DOCKER_HOST:-}" ] && echo "DOCKER_HOST=$DOCKER_HOST"
+    runtimes=(docker podman) # colima etc ...
+    check_commands=(
+        [docker]="docker info > /dev/null 2>&1"
+        [podman]="podman info > /dev/null 2>&1"
+    )
 
-    # Map runtime -> probe command 
-    get_check_cmd() {
-        case "$1" in
-            docker)  printf '%s\n' "docker info" ;;
-            podman)  printf '%s\n' "podman info" ;;
-            # nerdctl) printf '%s\n' "nerdctl info" ;;
-            # colima)  printf '%s\n' "colima status | grep -q 'Running'" ;;
-            *)       return 1 ;;
-        esac
-    }
+    # If DOCKER_HOST is set print it.
+    # Sometimes it has the wrong value, so it's good to know.
+    if [[ -n "${DOCKER_HOST:-}" ]]; then
+        echo "DOCKER_HOST=$DOCKER_HOST"
+    fi
 
-    # Sanity check: ensure each runtime has a mapping
-    for r in $RUNTIMES; do
-        if ! get_check_cmd "$r" >/dev/null 2>&1; then
-            echo "Internal error: no check command for runtime: $r" >&2
+    # sanity check to make sure the dictionary has all the runtimes
+    for runtime in "${runtimes[@]}"; do
+        if [[ -z "${check_commands[$runtime]+x}" ]]; then
+            echo "Internal error: No check command found for runtime: $runtime" >&2
             exit 3
         fi
     done
 
-    for r in $RUNTIMES; do
-        echo "Checking for: $r"
-        if command -v "$r" >/dev/null 2>&1; then
-            cmd="$(get_check_cmd "$r")"
-            # Run the mapped probe.
-            if sh -c "$cmd" >/dev/null 2>&1; then
-                echo "✅  $r [$cmd]"
+    for runtime in "${runtimes[@]}"; do
+        echo "Checking for: $runtime"
+        if command -v $runtime &> /dev/null; then
+            check_command="${check_commands[$runtime]}"
+            eval "$check_command" && {
+                echo "✅  $runtime [$check_command]"
                 exit 0
-            fi
+            }
         fi
     done
 
