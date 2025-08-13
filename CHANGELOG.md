@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-cli`
 
+#### Added
+
+- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
+
+
+
 
 ## [`0.2.0`] - 2025-08-12
 
