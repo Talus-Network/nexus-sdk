@@ -28,9 +28,9 @@ test: _check-cargo
 fmt-check: _check-cargo
     #!/usr/bin/env bash
 
-    nightly=$(just helpers::get-nightly-version)
+    nightly="$(just helpers::get-nightly-version)"
 
-    cargo +$nightly fmt --package {{ package }} --check
+    cargo +"$nightly" fmt --package {{ package }} --check
 
 # Run clippy on the Toolkit for Rust project
 clippy: _check-cargo

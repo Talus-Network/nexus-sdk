@@ -29,10 +29,10 @@ test: _check-cargo
 fmt-check: _check-cargo
     #!/usr/bin/env bash
 
-    nightly=$(just helpers::get-nightly-version)
+    nightly="$(just helpers::get-nightly-version)"
 
-    cargo +$nightly fmt --package math --check
-    cargo +$nightly fmt --package llm-openai-chat-completion --check
+    cargo +"$nightly" fmt --package math --check
+    cargo +"$nightly" fmt --package llm-openai-chat-completion --check
 
 # Run clippy on all native Nexus Tools
 clippy: _check-cargo
