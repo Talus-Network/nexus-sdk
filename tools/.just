@@ -27,8 +27,12 @@ test: _check-cargo
 
 # Run rustfmt on all native Nexus Tools
 fmt-check: _check-cargo
-    cargo +nightly-2025-01-06 fmt --package math --check
-    cargo +nightly-2025-01-06 fmt --package llm-openai-chat-completion --check
+    #!/usr/bin/env bash
+
+    nightly="$(just helpers::get-nightly-version)"
+
+    cargo +"$nightly" fmt --package math --check
+    cargo +"$nightly" fmt --package llm-openai-chat-completion --check
 
 # Run clippy on all native Nexus Tools
 clippy: _check-cargo

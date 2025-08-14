@@ -26,7 +26,11 @@ test: _check-cargo
 
 # Run rustfmt on the Toolkit for Rust project
 fmt-check: _check-cargo
-    cargo +nightly-2025-01-06 fmt --package {{ package }} --check
+    #!/usr/bin/env bash
+
+    nightly="$(just helpers::get-nightly-version)"
+
+    cargo +"$nightly" fmt --package {{ package }} --check
 
 # Run clippy on the Toolkit for Rust project
 clippy: _check-cargo
