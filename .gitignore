@@ -3,6 +3,11 @@ target
 sdk/tests/move/object_crawler_test/build
 sdk/tests/move/object_crawler_test/Move.lock
 
+# WASM build outputs
+cli-wasm/pkg/
+cli-wasm/pkg-node/
+cli-wasm/pkg-bundler/
+
 # Environment
 .env
 
