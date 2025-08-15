@@ -60,3 +60,7 @@ pub mod secret_core;
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
+
+/// Groth16 provides a generic implementation of the Groth16 proof system.
+#[cfg(feature = "groth16")]
+pub mod groth16;
