@@ -293,9 +293,12 @@ async fn generate_input_schema(
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for param_type in execute_func.parameters.iter() {
-        // Skip the last parameter (TxContext).
-        if is_tx_context_param(param_type) {
+    for (i, param_type) in execute_func.parameters.iter().enumerate() {
+        let is_tx_context = is_tx_context_param(param_type);
+        println!("DEBUG: Parameter {}: type={:?}, is_tx_context={}", i, param_type, is_tx_context);
+        
+        // Skip the first parameter (Promise/ProofOfUID) and the last parameter (TxContext).
+        if i == 0 || is_tx_context {
             continue;
         }
 
@@ -432,24 +435,34 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
 fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
     use sui::MoveNormalizedType;
     
-    if let MoveNormalizedType::MutableReference(inner_type) = move_type {
-        if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
-            address == &sui::FRAMEWORK_PACKAGE_ID.to_string()
+    match move_type {
+        MoveNormalizedType::Struct { address, module, name, .. } => {
+            // TxContext
+            (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
                 && module == "tx_context"
                 && name == "TxContext"
-        } else {
-            false
         }
-    } else if let MoveNormalizedType::Reference(inner_type) = move_type {
-        if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
-            address == &sui::FRAMEWORK_PACKAGE_ID.to_string()
-                && module == "tx_context"
-                && name == "TxContext"
-        } else {
-            false
+        MoveNormalizedType::MutableReference(inner_type) => {
+            // &mut TxContext
+            if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
+                (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
+                    && module == "tx_context"
+                    && name == "TxContext"
+            } else {
+                false
+            }
         }
-    } else {
-        false
+        MoveNormalizedType::Reference(inner_type) => {
+            // &TxContext
+            if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
+                (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
+                    && module == "tx_context"
+                    && name == "TxContext"
+            } else {
+                false
+            }
+        }
+        _ => false
     }
 }
 
