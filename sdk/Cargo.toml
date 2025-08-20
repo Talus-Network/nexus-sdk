@@ -29,6 +29,29 @@ crypto = [
 # Secret core feature provides a generic secret type
 secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "zeroize"]
 
+
+# Groth16 proof system feature and curve selections
+groth16 = [
+    "ark-groth16",
+    "ark-snark",
+    "ark-ff",
+    "ark-ec",
+    "ark-relations",
+    "ark-r1cs-std",
+    "ark-bls12-381",
+    "ark-serialize",
+    "ark-std",
+    "rand",
+    "thiserror",
+    "phase2",
+    "bellman",
+    "pairing",
+    "rand_04",
+    "blake2",
+    "digest"
+]
+
+
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
     "sui_sdk",
@@ -88,14 +111,77 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "groth16"
 ]
-
 
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
 dirs = "6.0.0"
 serde.workspace = true
+
+# Arkworks deps for Groth16 
+[dependencies.ark-ff]
+version = "0.5"
+optional = true
+
+[dependencies.ark-ec]
+version = "0.5"
+optional = true
+
+[dependencies.ark-relations]
+version = "0.5.1"
+optional = true
+
+[dependencies.ark-r1cs-std]
+version = "0.5"
+optional = true
+
+[dependencies.ark-groth16]
+version = "0.5"
+optional = true
+
+[dependencies.ark-serialize]
+version = "0.5"
+optional = true
+
+[dependencies.ark-snark]
+version = "0.5"
+optional = true
+
+[dependencies.ark-bn254]
+version = "0.5"
+optional = true
+
+[dependencies.ark-bls12-381]
+version = "0.5"
+optional = true
+
+[dependencies.ark-std]
+version = "0.5"
+optional = true
+
+[dependencies.phase2]
+version = "0.2.2"
+optional = true
+
+[dependencies.bellman]
+version = "0.1"
+optional = true
+
+[dependencies.pairing]
+version = "0.14"
+optional = true
+
+[dependencies.rand_04]
+package = "rand"
+version = "0.4"
+optional = true
+
+[dependencies.rand07]
+package = "rand"
+version = "0.7"
+optional = true
 
 # === Optional deps for features ===
 [dependencies.base64]
@@ -158,6 +244,14 @@ version = "0.6.4"
 optional = true
 
 [dependencies.sha2]
+version = "0.10"
+optional = true
+
+[dependencies.blake2]
+version = "0.10"
+optional = true
+
+[dependencies.digest]
 version = "0.10"
 optional = true
 
