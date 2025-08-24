@@ -452,7 +452,7 @@ pub fn execute(
         for (port, value) in data {
             let encrypted = encrypt
                 .get(vertex_name)
-                .map_or(false, |ports| ports.contains(port));
+                .is_some_and(|ports| ports.contains(port));
 
             // `port: InputPort`
             let port = if encrypted {
