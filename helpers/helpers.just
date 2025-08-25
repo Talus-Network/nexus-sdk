@@ -113,3 +113,10 @@ detect-changes +GLOBS:
     LOG ""
 
     grep -E "$BIG_REGEX" <<< "$changed_files"
+
+# Contents of .nightly-version
+get-nightly-version:
+    #!/usr/bin/env bash
+
+    # This file should contain the version of the nightly toolchain to use.
+    cat ../.nightly-version
