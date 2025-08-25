@@ -1,0 +1,52 @@
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.taluslabs.example.big@23"
+      },
+      "name": "counter_increment_first",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
+        },
+        {
+          "name": "1",
+          "encrypted": false
+        }
+      ]
+    },
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.taluslabs.example.big@23"
+      },
+      "name": "counter_increment_second",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
+        },
+        {
+          "name": "1",
+          "encrypted": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "counter_increment_first",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "counter_increment_second",
+        "input_port": "empty_port"
+      }
+    }
+  ]
+}
+  
