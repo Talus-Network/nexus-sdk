@@ -145,10 +145,10 @@ assignees: ''
 
 **Epic is considered complete when:**
 1. ✅ All pre-release gates passed
-2. ✅ Release successfully deployed to production  
-3. ✅ All handover tasks completed
-4. ✅ Post-release monitoring established
-5. ✅ This epic marked as closed
+1. ✅ Release successfully deployed to production  
+1. ✅ All handover tasks completed
+1. ✅ Post-release monitoring established
+1. ✅ This epic marked as closed
 
 ---
 
