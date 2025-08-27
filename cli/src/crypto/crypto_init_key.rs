@@ -77,7 +77,6 @@ pub async fn crypto_init_key(force: bool) -> AnyResult<(), NexusCliError> {
                 cleanup_handle.error();
                 return Err(NexusCliError::Io(e));
             }
-
         }
         Ok(false) => {
             // No config file yet; nothing to clear
