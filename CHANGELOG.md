@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.3.0`] - unreleased
 
-#### Added
-
-- .nightly-version
-
 ### Repository
 
 ### `nexus-cli`
@@ -18,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
+
+#### Added
+
+- .nightly-version
 
 ## [`0.2.0`] - 2025-08-12
 
