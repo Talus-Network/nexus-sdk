@@ -78,11 +78,9 @@ pub async fn crypto_init_key(force: bool) -> AnyResult<(), NexusCliError> {
                 return Err(NexusCliError::Io(e));
             }
 
-            cleanup_handle.success();
         }
         Ok(false) => {
             // No config file yet; nothing to clear
-            cleanup_handle.success();
         }
         Err(e) => {
             cleanup_handle.error();
@@ -92,6 +90,7 @@ pub async fn crypto_init_key(force: bool) -> AnyResult<(), NexusCliError> {
         }
     }
 
+    cleanup_handle.success();
     // 3. Generate and store a new 32-byte key
     let generate_handle = loading!("Generating and storing master key...");
 
