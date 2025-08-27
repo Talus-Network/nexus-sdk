@@ -96,6 +96,7 @@ pub async fn publish_move_package(
     OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&lock_file)
         .expect("Failed to create lock file.");
 
