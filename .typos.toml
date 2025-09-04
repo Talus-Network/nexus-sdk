@@ -3,6 +3,11 @@ extend-ignore-re = [
     # "pn" is used a lot in sdk/src/crypto, either bare or after a dot.
     # e.g. `pn: 42` or `header.pn`
     "([[:alpha:]]([[:alnum:]]|[-_])*.)?pn",
+    # This is a commit message rendered in CHANGELOG.md, which is incorrect.
+    # See also how we completely ingore CHANGELOG.md from other checks:
+    #
+    #   `grep CHANGELOG.md -r .pre-commit/`
+    "Json schema for sercret struct",
 ]
 
 [default.extend-words]
