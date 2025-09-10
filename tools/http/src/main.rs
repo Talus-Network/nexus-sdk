@@ -3,7 +3,6 @@
 use nexus_toolkit::bootstrap;
 
 mod http;
-mod models;
 
 #[tokio::main]
 async fn main() {
