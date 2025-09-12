@@ -41,7 +41,7 @@
     {
       "kind": {
         "variant": "on_chain",
-        "tool_fqn": "xyz.taluslabs.example.big@1"
+        "tool_fqn": "xyz.taluslabs.example@1"
       },
       "name": "counter_increment",
       "entry_ports": [

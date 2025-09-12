@@ -3,7 +3,7 @@
     {
       "kind": {
         "variant": "on_chain",
-        "tool_fqn": "xyz.taluslabs.example.big@1"
+        "tool_fqn": "xyz.taluslabs.example@1"
       },
       "name": "counter_increment_first",
       "entry_ports": [
@@ -20,16 +20,12 @@
     {
       "kind": {
         "variant": "on_chain",
-        "tool_fqn": "xyz.taluslabs.example.big@1"
+        "tool_fqn": "xyz.taluslabs.example@1"
       },
       "name": "counter_increment_second",
       "entry_ports": [
         {
           "name": "0",
-          "encrypted": false
-        },
-        {
-          "name": "1",
           "encrypted": false
         }
       ]
@@ -39,12 +35,12 @@
     {
       "from": {
         "vertex": "counter_increment_first",
-        "output_variant": "ok",
-        "output_port": "result"
+        "output_variant": "success",
+        "output_port": "increment"
       },
       "to": {
         "vertex": "counter_increment_second",
-        "input_port": "empty_port"
+        "input_port": "1"
       }
     }
   ]
