@@ -158,6 +158,12 @@ pub struct OnChainToolRegisteredEvent {
         serialize_with = "serialize_json_value_to_bytes"
     )]
     pub input_schema: serde_json::Value,
+    /// Output schema of the execute function.
+    #[serde(
+        deserialize_with = "deserialize_bytes_to_json_value",
+        serialize_with = "serialize_json_value_to_bytes"
+    )]
+    pub output_schema: serde_json::Value,
     /// Description of the tool.
     #[serde(
         deserialize_with = "deserialize_bytes_to_string",

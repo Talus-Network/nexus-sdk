@@ -155,6 +155,7 @@ pub fn register_on_chain_for_self(
     package_address: sui::ObjectID,
     module_name: String,
     input_schema: String,
+    output_schema: String,
     fqn: &ToolFqn,
     description: String,
     witness_id: sui::ObjectID,
@@ -179,6 +180,9 @@ pub fn register_on_chain_for_self(
 
     // `input_schema: vector<u8>`
     let input_schema = tx.pure(input_schema.as_bytes())?;
+
+    // `output_schema: vector<u8>`
+    let output_schema = tx.pure(output_schema.as_bytes())?;
 
     // `fqn: AsciiString`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
@@ -205,6 +209,7 @@ pub fn register_on_chain_for_self(
             package_addr,
             module_name,
             input_schema,
+            output_schema,
             fqn,
             description,
             witness_id,

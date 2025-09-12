@@ -14,6 +14,7 @@ use {
         transactions::tool,
     },
     serde_json::{json, Map, Value},
+    std::io::{self, Write},
 };
 
 /// Register a new onchain tool with automatic schema generation.
@@ -73,14 +74,46 @@ pub(crate) async fn register_onchain_tool(
         }
     };
 
-    // Allow user to customize parameter descriptions.
-    let input_schema = match customize_parameter_descriptions(base_input_schema) {
+    // Generate output schema by introspecting the Move module's "Output" enum.
+    notify_success!("Auto-generating output schema from Move module...");
+    let base_output_schema = match generate_output_schema(&sui, package_address, &module_name, "Output").await {
         Ok(schema) => {
-            notify_success!("Parameter descriptions customized successfully!");
+            notify_success!(
+                "Generated base output schema: {}",
+                schema.truecolor(100, 255, 100)
+            );
             schema
         }
         Err(e) => {
-            notify_error!("Failed to customize parameter descriptions: {}", e);
+            notify_error!(
+                "Failed to generate output schema for tool '{fqn}': {error}",
+                fqn = fqn.to_string().truecolor(100, 100, 100),
+                error = e
+            );
+            return Err(e);
+        }
+    };
+
+    // Allow user to customize parameter descriptions.
+    let input_schema = match customize_parameter_descriptions(base_input_schema) {
+        Ok(schema) => {
+            notify_success!("Input parameter descriptions customized successfully!");
+            schema
+        }
+        Err(e) => {
+            notify_error!("Failed to customize input parameter descriptions: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Allow user to customize output variant and field descriptions.
+    let output_schema = match customize_output_variant_and_field_descriptions(base_output_schema) {
+        Ok(schema) => {
+            notify_success!("Output variant and field descriptions customized successfully!");
+            schema
+        }
+        Err(e) => {
+            notify_error!("Failed to customize output variant and field descriptions: {}", e);
             return Err(e);
         }
     };
@@ -96,6 +129,7 @@ pub(crate) async fn register_onchain_tool(
         package_address,
         module_name.clone(),
         input_schema.clone(),
+        output_schema.clone(),
         &fqn,
         description.clone(),
         witness_id,
@@ -228,6 +262,7 @@ pub(crate) async fn register_onchain_tool(
         "witness_id": witness_id.to_string(),
         "description": description,
         "input_schema": input_schema,
+        "output_schema": output_schema,
         "owner_cap_over_tool_id": over_tool_id,
         "owner_cap_over_gas_id": null,
         "already_registered": false,
@@ -397,6 +432,22 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
                         "description": format!("{}::{}", module, name)
                     }))
                 }
+            } else if address == "0x1" {
+                // Handle standard library types.
+                match (module.as_str(), name.as_str()) {
+                    ("string", "String") => Ok(json!({
+                        "type": "string",
+                        "description": "UTF-8 string"
+                    })),
+                    ("ascii", "String") => Ok(json!({
+                        "type": "string", 
+                        "description": "ASCII string"
+                    })),
+                    _ => Ok(json!({
+                        "type": "object",
+                        "description": format!("{}::{}::{}", address, module, name)
+                    }))
+                }
             } else {
                 // Custom struct types are treated as object references.
                 Ok(json!({
@@ -489,8 +540,8 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
     }
 
     println!("\n{title}",
-        title = "Parameter Descriptions".bold().cyan());
-    println!("Customize descriptions for each parameter (press Enter to keep current)");
+        title = "Input Schema Descriptions".bold().cyan());
+    println!("Customize descriptions for each input parameter (press Enter to keep current)");
 
     // Sort parameter keys to ensure consistent order.
     let mut param_keys: Vec<String> = schema.keys().cloned().collect();
@@ -551,4 +602,187 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
     // Convert back to JSON string.
     serde_json::to_string(&schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize schema: {}", e)))
+}
+
+/// Generate output schema by introspecting the Move module's `Output`` enum.
+async fn generate_output_schema(
+    sui: &sui::Client,
+    package_address: sui::ObjectID,
+    module_name: &str,
+    output_enum_name: &str,
+) -> AnyResult<String, NexusCliError> {
+    let fetching_handle = loading!("Fetching Move module information for output schema...");
+
+    // Fetch all normalized Move modules for the package.
+    let all_modules = match sui
+        .read_api()
+        .get_normalized_move_modules_by_package(package_address)
+        .await
+    {
+        Ok(modules) => {
+            fetching_handle.success();
+            modules
+        }
+        Err(e) => {
+            fetching_handle.error();
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to fetch Move modules for package {}: {}",
+                package_address,
+                e
+            )));
+        }
+    };
+
+    // Find the specific module.
+    let normalized_module = all_modules
+        .get(module_name)
+        .ok_or_else(|| {
+            NexusCliError::Any(anyhow!(
+                "Module '{}' not found in package '{}'",
+                module_name,
+                package_address
+            ))
+        })?;
+
+    let parsing_handle = loading!("Parsing Output enum definition...");
+
+    // Find the Output enum.
+    let output_enum = normalized_module
+        .enums
+        .get(output_enum_name)
+        .ok_or_else(|| {
+            NexusCliError::Any(anyhow!(
+                "Enum '{}' not found in module '{}'",
+                output_enum_name,
+                module_name
+            ))
+        })?;
+
+
+    
+    // Parse the enum variants from the normalized enum.
+    let mut schema_map = Map::new();
+
+    // Iterate through each variant in the enum.
+    for (variant_name, variant_fields) in &output_enum.variants {
+        let mut fields_schema = Map::new();
+        
+        // Convert each field in the variant to schema.
+        for field in variant_fields {
+            let field_schema = convert_move_type_to_schema(&field.type_)?;
+            fields_schema.insert(field.name.clone(), field_schema);
+        }
+        
+        // Create the variant schema.
+        let variant_schema = json!({
+            "type": "variant",
+            "description": format!("{} variant", variant_name),
+            "fields": fields_schema
+        });
+        
+        schema_map.insert(variant_name.to_lowercase(), variant_schema);
+    }
+
+    parsing_handle.success();
+
+    let schema_json = Value::Object(schema_map);
+    let schema_string = serde_json::to_string(&schema_json)
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to serialize output schema: {}", e)))?;
+
+    Ok(schema_string)
+}
+
+/// Allow the user to customize output variant and field descriptions through an interactive prompt.
+fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyResult<String, NexusCliError> {
+    use std::io::{self, Write};
+    
+    // Skip interactive prompts in JSON mode.
+    if JSON_MODE.load(Ordering::Relaxed) {
+        return Ok(base_schema);
+    }
+
+    // Parse the schema to modify descriptions.
+    let mut schema: Value = serde_json::from_str(&base_schema)
+        .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse output schema: {}", e)))?;
+
+    let schema_obj = schema.as_object_mut()
+        .ok_or_else(|| NexusCliError::Any(anyhow::anyhow!("Output schema is not an object")))?;
+
+    // Display header.
+    println!("\n{title}",
+        title = "Output Schema Descriptions".bold().cyan());
+    println!("Customize descriptions for output variants and their fields (press Enter to keep current)");
+
+    // Iterate over each variant.
+    for (variant_name, variant_value) in schema_obj.iter_mut() {
+        if let Some(variant_obj) = variant_value.as_object_mut() {
+            // Customize variant description.
+            if let Some(current_desc) = variant_obj.get("description").and_then(|d| d.as_str()) {
+                println!(" ");
+                println!("{} Variant {}: {}",
+                    "▶".purple().bold(),
+                    variant_name.bold(),
+                    "variant".blue().bold()
+                );
+                println!("Current: {}", current_desc.truecolor(150, 150, 150));
+                print!("Custom description (Enter to keep): ");
+                io::stdout().flush().unwrap();
+
+                let mut new_desc = String::new();
+                if io::stdin().read_line(&mut new_desc).is_ok() {
+                    let new_desc = new_desc.trim();
+                    if !new_desc.is_empty() {
+                        variant_obj["description"] = Value::String(new_desc.to_string());
+                        println!("{} Updated description", "✓".green().bold());
+                    } else {
+                        println!("{} Kept current description", "→".truecolor(150, 150, 150));
+                    }
+                }
+            }
+
+            // Customize field descriptions within this variant.
+            if let Some(fields_obj) = variant_obj.get_mut("fields").and_then(|f| f.as_object_mut()) {
+                if !fields_obj.is_empty() {
+                    for (field_name, field_value) in fields_obj.iter_mut() {
+                        if let Some(field_obj) = field_value.as_object_mut() {
+                            let field_type = field_obj.get("type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown");
+                            
+                            let current_field_desc = field_obj.get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("No description");
+
+                            println!(" ");
+                            println!("{} Field {}: {}",
+                                "▶".purple().bold(),
+                                field_name.bold(),
+                                field_type.blue().bold()
+                            );
+                            println!("Current: {}", current_field_desc.truecolor(150, 150, 150));
+                            print!("Custom description (Enter to keep): ");
+                            io::stdout().flush().unwrap();
+
+                            let mut field_input = String::new();
+                            if io::stdin().read_line(&mut field_input).is_ok() {
+                                let custom_field_desc = field_input.trim();
+                                if !custom_field_desc.is_empty() {
+                                    field_obj.insert("description".to_string(), Value::String(custom_field_desc.to_string()));
+                                    println!("{} Updated description", "✓".green().bold());
+                                } else {
+                                    println!("{} Kept current description", "→".truecolor(150, 150, 150));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    println!(" ");
+
+    // Convert back to JSON string.
+    serde_json::to_string(&schema)
+        .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize output schema: {}", e)))
 } 
