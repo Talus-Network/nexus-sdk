@@ -1,7 +1,6 @@
 use crate::{
     idents::{sui_framework::Address, ModuleAndNameIdent},
-    sui,
-    ToolFqn,
+    sui, ToolFqn,
 };
 
 // == `nexus_workflow::default_tap` ==
@@ -394,6 +393,71 @@ impl Dag {
             vec![str, witness_id],
         ))
     }
+}
+
+// == `nexus_workflow::tool_output` ==
+
+pub struct ToolOutput;
+
+const TOOL_OUTPUT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_output");
+
+impl ToolOutput {
+    /// The ToolOutput struct type.
+    ///
+    /// `nexus_workflow::tool_output::ToolOutput`
+    pub const TOOL_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("ToolOutput"),
+    };
+    /// Create a new empty tool output with the specified variant.
+    ///
+    /// `nexus_workflow::tool_output::new`
+    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("new"),
+    };
+    /// Create a success output variant.
+    ///
+    /// `nexus_workflow::tool_output::success`
+    pub const SUCCESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("success"),
+    };
+    /// Create an error output variant with a reason.
+    ///
+    /// `nexus_workflow::tool_output::error`
+    pub const ERROR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("error"),
+    };
+    /// Create a custom variant output.
+    ///
+    /// `nexus_workflow::tool_output::variant`
+    pub const VARIANT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("variant"),
+    };
+    /// Add a field to the output.
+    ///
+    /// `nexus_workflow::tool_output::with_field`
+    pub const WITH_FIELD: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("with_field"),
+    };
+    /// Add multiple fields at once from vectors.
+    ///
+    /// `nexus_workflow::tool_output::with_fields`
+    pub const WITH_FIELDS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("with_fields"),
+    };
+    /// Convert ToolOutput to DAG types.
+    ///
+    /// `nexus_workflow::tool_output::to_dag_types`
+    pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("to_dag_types"),
+    };
 }
 
 // == `nexus_workflow::tool_registry` ==
