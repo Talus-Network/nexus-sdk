@@ -1,11 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
         sui::*,
     },
     nexus_sdk::{
@@ -14,7 +9,6 @@ use {
         transactions::tool,
     },
     serde_json::{json, Map, Value},
-    std::io::{self, Write},
 };
 
 /// Register a new onchain tool with automatic schema generation.
@@ -56,43 +50,45 @@ pub(crate) async fn register_onchain_tool(
 
     // Generate input schema by introspecting the Move module's "execute" function.
     notify_success!("Auto-generating input schema from Move module...");
-    let base_input_schema = match generate_input_schema(&sui, package_address, &module_name, "execute").await {
-        Ok(schema) => {
-            notify_success!(
-                "Generated base input schema: {}",
-                schema.truecolor(100, 255, 100)
-            );
-            schema
-        }
-        Err(e) => {
-            notify_error!(
-                "Failed to generate input schema for tool '{fqn}': {error}",
-                fqn = fqn.to_string().truecolor(100, 100, 100),
-                error = e
-            );
-            return Err(e);
-        }
-    };
+    let base_input_schema =
+        match generate_input_schema(&sui, package_address, &module_name, "execute").await {
+            Ok(schema) => {
+                notify_success!(
+                    "Generated base input schema: {}",
+                    schema.truecolor(100, 255, 100)
+                );
+                schema
+            }
+            Err(e) => {
+                notify_error!(
+                    "Failed to generate input schema for tool '{fqn}': {error}",
+                    fqn = fqn.to_string().truecolor(100, 100, 100),
+                    error = e
+                );
+                return Err(e);
+            }
+        };
 
     // Generate output schema by introspecting the Move module's "Output" enum.
     notify_success!("Auto-generating output schema from Move module...");
-    let base_output_schema = match generate_output_schema(&sui, package_address, &module_name, "Output").await {
-        Ok(schema) => {
-            notify_success!(
-                "Generated base output schema: {}",
-                schema.truecolor(100, 255, 100)
-            );
-            schema
-        }
-        Err(e) => {
-            notify_error!(
-                "Failed to generate output schema for tool '{fqn}': {error}",
-                fqn = fqn.to_string().truecolor(100, 100, 100),
-                error = e
-            );
-            return Err(e);
-        }
-    };
+    let base_output_schema =
+        match generate_output_schema(&sui, package_address, &module_name, "Output").await {
+            Ok(schema) => {
+                notify_success!(
+                    "Generated base output schema: {}",
+                    schema.truecolor(100, 255, 100)
+                );
+                schema
+            }
+            Err(e) => {
+                notify_error!(
+                    "Failed to generate output schema for tool '{fqn}': {error}",
+                    fqn = fqn.to_string().truecolor(100, 100, 100),
+                    error = e
+                );
+                return Err(e);
+            }
+        };
 
     // Allow user to customize parameter descriptions.
     let input_schema = match customize_parameter_descriptions(base_input_schema) {
@@ -113,7 +109,10 @@ pub(crate) async fn register_onchain_tool(
             schema
         }
         Err(e) => {
-            notify_error!("Failed to customize output variant and field descriptions: {}", e);
+            notify_error!(
+                "Failed to customize output variant and field descriptions: {}",
+                e
+            );
             return Err(e);
         }
     };
@@ -193,8 +192,7 @@ pub(crate) async fn register_onchain_tool(
             } if object_type.address == *objects.primitives_pkg_id
                 && object_type.module
                     == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
-                && object_type.name
-                    == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
+                && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
             {
                 Some((object_id, object_type))
             }
@@ -301,15 +299,13 @@ async fn generate_input_schema(
     };
 
     // Find the specific module.
-    let normalized_module = all_modules
-        .get(module_name)
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!(
-                "Module '{}' not found in package '{}'",
-                module_name,
-                package_address
-            ))
-        })?;
+    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
+        NexusCliError::Any(anyhow!(
+            "Module '{}' not found in package '{}'",
+            module_name,
+            package_address
+        ))
+    })?;
 
     let parsing_handle = loading!("Parsing execute function signature...");
 
@@ -331,15 +327,36 @@ async fn generate_input_schema(
 
     for (i, param_type) in execute_func.parameters.iter().enumerate() {
         let is_tx_context = is_tx_context_param(param_type);
-        println!("DEBUG: Parameter {}: type={:?}, is_tx_context={}", i, param_type, is_tx_context);
-        
+        println!(
+            "DEBUG: Parameter {}: type={:?}, is_tx_context={}",
+            i, param_type, is_tx_context
+        );
+
         // Skip the first parameter (Promise/ProofOfUID) and the last parameter (TxContext).
         if i == 0 || is_tx_context {
             continue;
         }
 
         let param_schema = convert_move_type_to_schema(param_type)?;
-        schema_map.insert(param_index.to_string(), param_schema);
+
+        // Store parameter information with index as the default name.
+        let mut param_obj = match param_schema {
+            Value::Object(obj) => obj,
+            other => {
+                let mut new_obj = Map::new();
+                new_obj.insert("type".to_string(), other);
+                new_obj
+            }
+        };
+
+        // Add metadata for parameter customization.
+        param_obj.insert(
+            "parameter_index".to_string(),
+            Value::Number(param_index.into()),
+        );
+        param_obj.insert("custom_name".to_string(), Value::Null);
+
+        schema_map.insert(param_index.to_string(), Value::Object(param_obj));
         param_index += 1;
     }
 
@@ -355,9 +372,11 @@ async fn generate_input_schema(
 /// Convert a Sui Move normalized type to a JSON schema representation.
 /// todo: check for all types and add test.
 /// https://github.com/Talus-Network/nexus/issues/502
-fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult<Value, NexusCliError> {
+fn convert_move_type_to_schema(
+    move_type: &sui::MoveNormalizedType,
+) -> AnyResult<Value, NexusCliError> {
     use sui::MoveNormalizedType;
-    
+
     match move_type {
         MoveNormalizedType::Bool => Ok(json!({
             "type": "bool",
@@ -368,7 +387,7 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
             "description": "8-bit unsigned integer"
         })),
         MoveNormalizedType::U16 => Ok(json!({
-            "type": "u16", 
+            "type": "u16",
             "description": "16-bit unsigned integer"
         })),
         MoveNormalizedType::U32 => Ok(json!({
@@ -403,11 +422,11 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
                 "element_type": inner_schema
             }))
         }
-        MoveNormalizedType::Struct { 
-            address, 
-            module, 
-            name, 
-            type_arguments: _ 
+        MoveNormalizedType::Struct {
+            address,
+            module,
+            name,
+            type_arguments: _,
         } => {
             if address == &sui::FRAMEWORK_PACKAGE_ID.to_string() {
                 match (module.as_str(), name.as_str()) {
@@ -430,7 +449,7 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
                     _ => Ok(json!({
                         "type": "object",
                         "description": format!("{}::{}", module, name)
-                    }))
+                    })),
                 }
             } else if address == "0x1" {
                 // Handle standard library types.
@@ -440,13 +459,13 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
                         "description": "UTF-8 string"
                     })),
                     ("ascii", "String") => Ok(json!({
-                        "type": "string", 
+                        "type": "string",
                         "description": "ASCII string"
                     })),
                     _ => Ok(json!({
                         "type": "object",
                         "description": format!("{}::{}::{}", address, module, name)
-                    }))
+                    })),
                 }
             } else {
                 // Custom struct types are treated as object references.
@@ -487,9 +506,14 @@ fn convert_move_type_to_schema(move_type: &sui::MoveNormalizedType) -> AnyResult
 /// Check if a parameter is TxContext (should be excluded from schema).
 fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
     use sui::MoveNormalizedType;
-    
+
     match move_type {
-        MoveNormalizedType::Struct { address, module, name, .. } => {
+        MoveNormalizedType::Struct {
+            address,
+            module,
+            name,
+            ..
+        } => {
             // TxContext
             (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
                 && module == "tx_context"
@@ -497,7 +521,13 @@ fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
         }
         MoveNormalizedType::MutableReference(inner_type) => {
             // &mut TxContext
-            if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
+            if let MoveNormalizedType::Struct {
+                address,
+                module,
+                name,
+                ..
+            } = inner_type.as_ref()
+            {
                 (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
                     && module == "tx_context"
                     && name == "TxContext"
@@ -507,7 +537,13 @@ fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
         }
         MoveNormalizedType::Reference(inner_type) => {
             // &TxContext
-            if let MoveNormalizedType::Struct { address, module, name, .. } = inner_type.as_ref() {
+            if let MoveNormalizedType::Struct {
+                address,
+                module,
+                name,
+                ..
+            } = inner_type.as_ref()
+            {
                 (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
                     && module == "tx_context"
                     && name == "TxContext"
@@ -515,14 +551,14 @@ fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
                 false
             }
         }
-        _ => false
+        _ => false,
     }
 }
 
 /// Allow the user to customize parameter descriptions interactively.
 fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
-    use std::io::{self, Write};
     use serde_json::{Map, Value};
+    use std::io::{self, Write};
 
     // Skip interactive prompts in JSON mode.
     if JSON_MODE.load(Ordering::Relaxed) {
@@ -534,14 +570,20 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse schema JSON: {}", e)))?;
 
     if schema.is_empty() {
-        println!("\n{info} No parameters to customize.",
-            info = "▶".cyan().bold());
+        println!(
+            "\n{info} No parameters to customize.",
+            info = "▶".cyan().bold()
+        );
         return Ok(schema_json);
     }
 
-    println!("\n{title}",
-        title = "Input Schema Descriptions".bold().cyan());
-    println!("Customize descriptions for each input parameter (press Enter to keep current)");
+    println!(
+        "\n{title}",
+        title = "Input Schema Customization".bold().cyan()
+    );
+    println!(
+        "Customize names and descriptions for each input parameter (press Enter to keep current)"
+    );
 
     // Sort parameter keys to ensure consistent order.
     let mut param_keys: Vec<String> = schema.keys().cloned().collect();
@@ -554,15 +596,27 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
     for param_key in param_keys {
         if let Some(param_obj) = schema.get_mut(&param_key) {
             if let Some(param_map) = param_obj.as_object_mut() {
-                let param_type = param_map.get("type")
+                let param_type = param_map
+                    .get("type")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown");
-                
-                let current_description = param_map.get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No description");
 
-                let is_mutable = param_map.get("mutable")
+                let current_description = param_map
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No description")
+                    .to_string();
+
+                // The default name is the parameter index (0, 1, 2, etc.)
+                let default_name = param_key.clone();
+
+                let current_custom_name = param_map
+                    .get("custom_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                let is_mutable = param_map
+                    .get("mutable")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
@@ -573,22 +627,69 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
                 };
 
                 println!(" ");
-                println!("{} Parameter {}: {} {}",
+                println!(
+                    "{} Parameter {}: {} {}",
                     "▶".purple().bold(),
                     param_key.bold(),
                     type_display.blue().bold(),
-                    if is_mutable { "(mutable)".yellow() } else { "".normal() }
+                    if is_mutable {
+                        "(mutable)".yellow()
+                    } else {
+                        "".normal()
+                    }
                 );
-                println!("Current: {}", current_description.truecolor(150, 150, 150));
+
+                // Customize parameter name.
+                println!("Current name: {}", default_name.truecolor(150, 150, 150));
+                if let Some(ref custom_name) = current_custom_name {
+                    println!("Current custom name: {}", custom_name.green());
+                }
+                print!("Custom name (Enter to keep '{}'): ", default_name);
+                io::stdout().flush().unwrap();
+
+                let mut name_input = String::new();
+                io::stdin().read_line(&mut name_input).unwrap();
+                let custom_name = name_input.trim();
+
+                if !custom_name.is_empty() {
+                    param_map.insert(
+                        "custom_name".to_string(),
+                        Value::String(custom_name.to_string()),
+                    );
+                    println!(
+                        "{} Updated parameter name to: {}",
+                        "✓".green().bold(),
+                        custom_name.green().bold()
+                    );
+                } else {
+                    // Clear any existing custom name to use the default (integer index).
+                    if current_custom_name.is_some() {
+                        param_map.insert("custom_name".to_string(), Value::Null);
+                    }
+                    println!(
+                        "{} Using default name: {}",
+                        "→".truecolor(150, 150, 150),
+                        default_name.truecolor(150, 150, 150)
+                    );
+                }
+
+                // Customize parameter description.
+                println!(
+                    "Current description: {}",
+                    current_description.truecolor(150, 150, 150)
+                );
                 print!("Custom description (Enter to keep): ");
                 io::stdout().flush().unwrap();
 
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
-                let custom_description = input.trim();
+                let mut desc_input = String::new();
+                io::stdin().read_line(&mut desc_input).unwrap();
+                let custom_description = desc_input.trim();
 
                 if !custom_description.is_empty() {
-                    param_map.insert("description".to_string(), Value::String(custom_description.to_string()));
+                    param_map.insert(
+                        "description".to_string(),
+                        Value::String(custom_description.to_string()),
+                    );
                     println!("{} Updated description", "✓".green().bold());
                 } else {
                     println!("{} Kept current description", "→".truecolor(150, 150, 150));
@@ -599,9 +700,43 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
 
     println!(" ");
 
+    // Convert the schema to use custom names as keys if provided.
+    let final_schema = convert_schema_to_named_ports(schema)?;
+
     // Convert back to JSON string.
-    serde_json::to_string(&schema)
+    serde_json::to_string(&final_schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize schema: {}", e)))
+}
+
+/// Convert schema from integer keys to custom parameter names.
+fn convert_schema_to_named_ports(
+    schema: Map<String, Value>,
+) -> AnyResult<Map<String, Value>, NexusCliError> {
+    let mut final_schema = Map::new();
+
+    for (param_index, param_value) in schema {
+        if let Some(param_obj) = param_value.as_object() {
+            // Create a clean parameter schema without the metadata.
+            let mut clean_param = param_obj.clone();
+            clean_param.remove("parameter_index");
+            clean_param.remove("custom_name");
+
+            // Use custom name if provided, otherwise use the integer index.
+            if let Some(custom_name) = param_obj.get("custom_name").and_then(|v| v.as_str()) {
+                final_schema.insert(custom_name.to_string(), Value::Object(clean_param));
+            } else {
+                // If no custom name, use the integer index.
+                final_schema.insert(param_index, Value::Object(clean_param));
+            }
+        } else {
+            // Means something went wrong.
+            return Err(NexusCliError::Any(anyhow!(
+                "Parameter value is not an object."
+            )));
+        }
+    }
+
+    Ok(final_schema)
 }
 
 /// Generate output schema by introspecting the Move module's `Output`` enum.
@@ -634,15 +769,13 @@ async fn generate_output_schema(
     };
 
     // Find the specific module.
-    let normalized_module = all_modules
-        .get(module_name)
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!(
-                "Module '{}' not found in package '{}'",
-                module_name,
-                package_address
-            ))
-        })?;
+    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
+        NexusCliError::Any(anyhow!(
+            "Module '{}' not found in package '{}'",
+            module_name,
+            package_address
+        ))
+    })?;
 
     let parsing_handle = loading!("Parsing Output enum definition...");
 
@@ -658,28 +791,26 @@ async fn generate_output_schema(
             ))
         })?;
 
-
-    
     // Parse the enum variants from the normalized enum.
     let mut schema_map = Map::new();
 
     // Iterate through each variant in the enum.
     for (variant_name, variant_fields) in &output_enum.variants {
         let mut fields_schema = Map::new();
-        
+
         // Convert each field in the variant to schema.
         for field in variant_fields {
             let field_schema = convert_move_type_to_schema(&field.type_)?;
             fields_schema.insert(field.name.clone(), field_schema);
         }
-        
+
         // Create the variant schema.
         let variant_schema = json!({
             "type": "variant",
             "description": format!("{} variant", variant_name),
             "fields": fields_schema
         });
-        
+
         schema_map.insert(variant_name.to_lowercase(), variant_schema);
     }
 
@@ -693,9 +824,11 @@ async fn generate_output_schema(
 }
 
 /// Allow the user to customize output variant and field descriptions through an interactive prompt.
-fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyResult<String, NexusCliError> {
+fn customize_output_variant_and_field_descriptions(
+    base_schema: String,
+) -> AnyResult<String, NexusCliError> {
     use std::io::{self, Write};
-    
+
     // Skip interactive prompts in JSON mode.
     if JSON_MODE.load(Ordering::Relaxed) {
         return Ok(base_schema);
@@ -705,13 +838,18 @@ fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyRe
     let mut schema: Value = serde_json::from_str(&base_schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse output schema: {}", e)))?;
 
-    let schema_obj = schema.as_object_mut()
+    let schema_obj = schema
+        .as_object_mut()
         .ok_or_else(|| NexusCliError::Any(anyhow::anyhow!("Output schema is not an object")))?;
 
     // Display header.
-    println!("\n{title}",
-        title = "Output Schema Descriptions".bold().cyan());
-    println!("Customize descriptions for output variants and their fields (press Enter to keep current)");
+    println!(
+        "\n{title}",
+        title = "Output Schema Descriptions".bold().cyan()
+    );
+    println!(
+        "Customize descriptions for output variants and their fields (press Enter to keep current)"
+    );
 
     // Iterate over each variant.
     for (variant_name, variant_value) in schema_obj.iter_mut() {
@@ -719,7 +857,8 @@ fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyRe
             // Customize variant description.
             if let Some(current_desc) = variant_obj.get("description").and_then(|d| d.as_str()) {
                 println!(" ");
-                println!("{} Variant {}: {}",
+                println!(
+                    "{} Variant {}: {}",
                     "▶".purple().bold(),
                     variant_name.bold(),
                     "variant".blue().bold()
@@ -741,20 +880,26 @@ fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyRe
             }
 
             // Customize field descriptions within this variant.
-            if let Some(fields_obj) = variant_obj.get_mut("fields").and_then(|f| f.as_object_mut()) {
+            if let Some(fields_obj) = variant_obj
+                .get_mut("fields")
+                .and_then(|f| f.as_object_mut())
+            {
                 if !fields_obj.is_empty() {
                     for (field_name, field_value) in fields_obj.iter_mut() {
                         if let Some(field_obj) = field_value.as_object_mut() {
-                            let field_type = field_obj.get("type")
+                            let field_type = field_obj
+                                .get("type")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("unknown");
-                            
-                            let current_field_desc = field_obj.get("description")
+
+                            let current_field_desc = field_obj
+                                .get("description")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("No description");
 
                             println!(" ");
-                            println!("{} Field {}: {}",
+                            println!(
+                                "{} Field {}: {}",
                                 "▶".purple().bold(),
                                 field_name.bold(),
                                 field_type.blue().bold()
@@ -767,10 +912,16 @@ fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyRe
                             if io::stdin().read_line(&mut field_input).is_ok() {
                                 let custom_field_desc = field_input.trim();
                                 if !custom_field_desc.is_empty() {
-                                    field_obj.insert("description".to_string(), Value::String(custom_field_desc.to_string()));
+                                    field_obj.insert(
+                                        "description".to_string(),
+                                        Value::String(custom_field_desc.to_string()),
+                                    );
                                     println!("{} Updated description", "✓".green().bold());
                                 } else {
-                                    println!("{} Kept current description", "→".truecolor(150, 150, 150));
+                                    println!(
+                                        "{} Kept current description",
+                                        "→".truecolor(150, 150, 150)
+                                    );
                                 }
                             }
                         }
@@ -783,6 +934,7 @@ fn customize_output_variant_and_field_descriptions(base_schema: String) -> AnyRe
     println!(" ");
 
     // Convert back to JSON string.
-    serde_json::to_string(&schema)
-        .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize output schema: {}", e)))
-} 
+    serde_json::to_string(&schema).map_err(|e| {
+        NexusCliError::Any(anyhow::anyhow!("Failed to serialize output schema: {}", e))
+    })
+}
