@@ -129,12 +129,25 @@ impl HttpClient {
         }
     }
 
+    /// Check if HTTP method supports request body
+    fn method_supports_body(method: &reqwest::Method) -> bool {
+        match *method {
+            reqwest::Method::GET | reqwest::Method::HEAD | reqwest::Method::OPTIONS => false,
+            _ => true,
+        }
+    }
+
     /// Builds request body
     pub fn build_body(
         &self,
         request: reqwest::RequestBuilder,
         body: &RequestBody,
+        method: &reqwest::Method,
     ) -> Result<reqwest::RequestBuilder, HttpToolError> {
+        // Skip body for methods that don't support it
+        if !Self::method_supports_body(method) {
+            return Ok(request);
+        }
         match body {
             RequestBody::Json { data } => Ok(request.json(data)),
             RequestBody::Form { data } => Ok(request.form(data)),
@@ -200,7 +213,7 @@ impl HttpClient {
     }
 
     /// Executes a single request without retry logic
-    pub async fn execute_once(
+    pub async fn execute(
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, HttpToolError> {
@@ -215,7 +228,7 @@ impl HttpClient {
     ) -> Result<reqwest::Response, HttpToolError> {
         if retries == 0 {
             // No retries needed, execute once
-            return self.execute_once(request).await;
+            return self.execute(request).await;
         }
 
         let mut last_error = None;

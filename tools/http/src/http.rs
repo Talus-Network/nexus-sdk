@@ -245,7 +245,7 @@ impl NexusTool for Http {
 
         // Build request with authentication, headers, and query parameters
         let request = match http_client.build_request(
-            method,
+            method.clone(),
             resolved_url.clone(),
             input.auth.as_ref(),
             input.headers.as_ref(),
@@ -257,7 +257,7 @@ impl NexusTool for Http {
 
         // Build request body if provided
         let request = if let Some(body) = &input.body {
-            match http_client.build_body(request, body) {
+            match http_client.build_body(request, body, &method) {
                 Ok(request) => request,
                 Err(e) => return e.to_output(),
             }
@@ -270,7 +270,7 @@ impl NexusTool for Http {
         let response = if retries > 0 {
             http_client.execute_with_retry(request, retries).await
         } else {
-            http_client.execute_once(request).await
+            http_client.execute(request).await
         };
 
         match response {
@@ -1460,6 +1460,143 @@ mod tests {
                 assert!(reason.contains("HTTP error"));
             }
             _ => panic!("Expected Err with 404 status"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_method_ignores_body() {
+        let tool = Http::new().await;
+
+        // Create mock server
+        let mut server = Server::new_async().await;
+        let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
+        let _mock = server
+            .mock("GET", "/get")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mock_response)
+            .create();
+
+        // Test GET with body - body should be ignored
+        let input = Input {
+            method: HttpMethod::Get,
+            url: UrlInput::FullUrl(format!("{}/get", server.url())),
+            headers: None,
+            query: None,
+            auth: None,
+            body: Some(RequestBody::Json {
+                data: serde_json::json!({
+                    "name": "test",
+                    "value": 123
+                }),
+            }),
+            expect_json: Some(true),
+            json_schema: None,
+            timeout_ms: None,
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Ok { status, .. } => {
+                assert_eq!(status, 200);
+                // Body should be ignored for GET, request should succeed
+            }
+            _ => panic!("Expected successful response even with body in GET request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_head_method_ignores_body() {
+        let tool = Http::new().await;
+
+        // Create mock server
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("HEAD", "/head")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("content-length", "0")
+            .create();
+
+        // Test HEAD with body - body should be ignored
+        let input = Input {
+            method: HttpMethod::Head,
+            url: UrlInput::FullUrl(format!("{}/head", server.url())),
+            headers: None,
+            query: None,
+            auth: None,
+            body: Some(RequestBody::Json {
+                data: serde_json::json!({
+                    "name": "test",
+                    "value": 123
+                }),
+            }),
+            expect_json: None,
+            json_schema: None,
+            timeout_ms: None,
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Ok { status, .. } => {
+                assert_eq!(status, 200);
+                // Body should be ignored for HEAD, request should succeed
+            }
+            _ => panic!("Expected successful response even with body in HEAD request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_post_method_uses_body() {
+        let tool = Http::new().await;
+
+        // Create mock server
+        let mut server = Server::new_async().await;
+        let mock_response = r#"{"method": "POST", "url": "http://example.com/post", "data": {"name": "test", "value": 123}}"#;
+        let _mock = server
+            .mock("POST", "/post")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mock_response)
+            .create();
+
+        // Test POST with body - body should be used
+        let input = Input {
+            method: HttpMethod::Post,
+            url: UrlInput::FullUrl(format!("{}/post", server.url())),
+            headers: None,
+            query: None,
+            auth: None,
+            body: Some(RequestBody::Json {
+                data: serde_json::json!({
+                    "name": "test",
+                    "value": 123
+                }),
+            }),
+            expect_json: Some(true),
+            json_schema: None,
+            timeout_ms: None,
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Ok { status, .. } => {
+                assert_eq!(status, 200);
+                // Body should be used for POST
+            }
+            _ => panic!("Expected successful response with body in POST request"),
         }
     }
 
