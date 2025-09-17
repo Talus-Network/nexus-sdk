@@ -3,174 +3,29 @@
 //! Generic HTTP tool that can make requests to any API endpoint.
 
 use {
+    crate::{
+        errors::HttpToolError,
+        helpers::validate_schema_detailed,
+        models::{
+            AuthConfig,
+            HttpJsonSchema,
+            HttpMethod,
+            RequestBody,
+            SchemaValidationDetails,
+            UrlInput,
+        },
+    },
+    base64::Engine,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     reqwest::Client,
-    warp::http::StatusCode,
-    base64::Engine,
-    std::collections::HashMap,
-    serde_json::Value,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
+    serde_json::Value,
+    std::collections::HashMap,
+    url::Url,
+    warp::http::StatusCode,
 };
-
-/// JSON Schema definition for validation
-#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HttpJsonSchema {
-    /// The name of the schema
-    pub name: String,
-    /// The JSON schema for validation
-    pub schema: schemars::Schema,
-    /// Description of the expected format
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Whether to enable strict schema adherence
-    #[serde(default)]
-    pub strict: Option<bool>,
-}
-
-/// Schema validation details returned in response
-#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SchemaValidationDetails {
-    /// Name of the schema that was used
-    pub name: String,
-    /// Description of the schema
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Whether strict mode was enabled
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub strict: Option<bool>,
-    /// Validation result
-    pub valid: bool,
-    /// Validation errors (if any)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub errors: Vec<String>,
-}
-
-/// HTTP Method enum for type-safe method handling
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum HttpMethod {
-    Get,
-    Post,
-    Put,
-    Delete,
-    Patch,
-    Head,
-    Options,
-}
-
-/// URL input - either complete URL or split into base_url + path
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(untagged)]
-pub enum UrlInput {
-    /// Complete URL (e.g., "https://api.example.com/users")
-    FullUrl(String),
-    /// Split URL into base_url and path
-    SplitUrl {
-        /// Base URL (e.g., "https://api.example.com")
-        base_url: String,
-        /// Path (e.g., "/users")
-        path: String,
-    },
-}
-
-/// Authentication configuration
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(untagged)]
-pub enum AuthConfig {
-    /// No authentication
-    None,
-    /// Bearer token authentication
-    BearerToken {
-        /// The bearer token
-        token: String,
-    },
-    /// API key in header
-    ApiKeyHeader {
-        /// The API key
-        key: String,
-        /// Custom header name (default: "X-API-Key")
-        #[serde(default)]
-        header_name: Option<String>,
-    },
-    /// API key in query parameter
-    ApiKeyQuery {
-        /// The API key
-        key: String,
-        /// Custom parameter name (default: "api_key")
-        #[serde(default)]
-        param_name: Option<String>,
-    },
-    /// Basic authentication
-    BasicAuth {
-        /// Username
-        username: String,
-        /// Password
-        password: String,
-    },
-}
-
-/// Convert HttpMethod to reqwest::Method
-impl From<HttpMethod> for reqwest::Method {
-    fn from(method: HttpMethod) -> Self {
-        match method {
-            HttpMethod::Get => reqwest::Method::GET,
-            HttpMethod::Post => reqwest::Method::POST,
-            HttpMethod::Put => reqwest::Method::PUT,
-            HttpMethod::Delete => reqwest::Method::DELETE,
-            HttpMethod::Patch => reqwest::Method::PATCH,
-            HttpMethod::Head => reqwest::Method::HEAD,
-            HttpMethod::Options => reqwest::Method::OPTIONS,
-        }
-    }
-}
-
-/// Request body configuration
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum RequestBody {
-    /// JSON request body
-    Json {
-        /// JSON data as serde_json::Value
-        data: Value,
-    },
-    /// Form URL encoded request body
-    Form {
-        /// Form data as key-value pairs
-        data: HashMap<String, String>,
-    },
-    /// Multipart form data (for file uploads)
-    Multipart {
-        /// Multipart fields
-        fields: Vec<MultipartField>,
-    },
-    /// Raw bytes request body
-    Raw {
-        /// Raw data as base64 encoded string
-        data: String,
-        /// Optional content type (default: application/octet-stream)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content_type: Option<String>,
-    },
-}
-
-/// Multipart field for file uploads and form data
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub struct MultipartField {
-    /// Field name
-    pub name: String,
-    /// Field value (text) or base64 encoded data (for files)
-    pub value: String,
-    /// Optional filename for file uploads
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filename: Option<String>,
-    /// Optional content type (default: text/plain)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content_type: Option<String>,
-}
 
 /// Input model for the HTTP Generic tool
 #[derive(Deserialize, JsonSchema)]
@@ -178,45 +33,49 @@ pub struct MultipartField {
 pub(crate) struct Input {
     /// HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
     pub method: HttpMethod,
-    
+
     /// URL input - either complete URL or split into base_url + path
     pub url: UrlInput,
-    
+
     /// HTTP headers to include in the request
     #[serde(default)]
     pub headers: Option<HashMap<String, String>>,
-    
+
     /// Query parameters to include in the request
     #[serde(default)]
     pub query: Option<HashMap<String, String>>,
-    
+
     /// Authentication configuration
     #[serde(default)]
     pub auth: Option<AuthConfig>,
-    
+
     /// Request body configuration
     #[serde(default)]
     pub body: Option<RequestBody>,
-    
+
     /// Whether to expect JSON response
     #[serde(default)]
     pub expect_json: Option<bool>,
-    
+
     /// Optional JSON schema to validate the response against
     #[serde(default)]
     pub json_schema: Option<HttpJsonSchema>,
-    
+
     /// Request timeout in milliseconds (default: 30000)
     #[serde(default)]
     pub timeout_ms: Option<u64>,
-    
+
     /// Number of retries on failure (default: 0)
     #[serde(default)]
     pub retries: Option<u32>,
-    
+
     /// Whether to follow redirects (default: true)
     #[serde(default)]
     pub follow_redirects: Option<bool>,
+
+    /// If true, tolerate empty body when JSON is expected (e.g., 204 No Content)
+    #[serde(default)]
+    pub allow_empty_json: Option<bool>,
 }
 
 impl Input {
@@ -226,8 +85,12 @@ impl Input {
         if self.json_schema.is_some() {
             match self.expect_json {
                 Some(true) => Ok(()),
-                Some(false) => Err("expect_json must be true when json_schema is provided".to_string()),
-                None => Err("expect_json must be set to true when json_schema is provided".to_string()),
+                Some(false) => {
+                    Err("expect_json must be true when json_schema is provided".to_string())
+                }
+                None => {
+                    Err("expect_json must be set to true when json_schema is provided".to_string())
+                }
             }
         } else {
             Ok(())
@@ -251,7 +114,10 @@ impl Input {
                         return Err("Raw body data cannot be empty".to_string());
                     }
                     // Validate base64 encoding
-                    if base64::engine::general_purpose::STANDARD.decode(data).is_err() {
+                    if base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .is_err()
+                    {
                         return Err("Raw body data must be valid base64".to_string());
                     }
                 }
@@ -274,7 +140,8 @@ impl Input {
             if timeout_ms == 0 {
                 return Err("timeout_ms must be greater than 0".to_string());
             }
-            if timeout_ms > 300000 { // 5 minutes max
+            if timeout_ms > 300000 {
+                // 5 minutes max
                 return Err("timeout_ms cannot exceed 300000ms (5 minutes)".to_string());
             }
         }
@@ -336,6 +203,11 @@ pub(crate) enum Output {
         /// Error message
         msg: String,
     },
+    /// Input validation error
+    ErrInput {
+        /// Error message
+        msg: String,
+    },
 }
 
 /// HTTP Generic tool implementation
@@ -368,16 +240,30 @@ impl NexusTool for Http {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         // Validate input parameters
         if let Err(msg) = input.validate() {
-            return Output::ErrNetwork {
-                msg: format!("Input validation failed: {}", msg),
-            };
+            return HttpToolError::Input(format!("Input validation failed: {}", msg)).to_output();
         }
 
-        // Resolve URL from input
+        // Resolve URL from input with proper validation
         let resolved_url = match &input.url {
-            UrlInput::FullUrl(url) => url.clone(),
+            UrlInput::FullUrl(url) => match Url::parse(url) {
+                Ok(url) => url,
+                Err(e) => {
+                    return HttpToolError::UrlParse(e).to_output();
+                }
+            },
             UrlInput::SplitUrl { base_url, path } => {
-                format!("{}{}", base_url.trim_end_matches('/'), path)
+                let base = match Url::parse(base_url) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        return HttpToolError::UrlParse(e).to_output();
+                    }
+                };
+                match base.join(path.trim_start_matches('/')) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        return HttpToolError::UrlParse(e).to_output();
+                    }
+                }
             }
         };
 
@@ -397,18 +283,16 @@ impl NexusTool for Http {
         {
             Ok(client) => client,
             Err(e) => {
-                return Output::ErrNetwork {
-                    msg: format!("Failed to build HTTP client: {}", e),
-                };
+                return HttpToolError::Network(e).to_output();
             }
         };
 
         // Execute with retry logic
         let retries = input.retries.unwrap_or(0);
         let mut last_error = None;
-        
+
         for attempt in 0..=retries {
-            let mut request = client.request(input.method.clone().into(), &resolved_url);
+            let mut request = client.request(input.method.clone().into(), resolved_url.as_str());
 
             // Add headers if provided
             if let Some(headers) = &input.headers {
@@ -443,9 +327,7 @@ impl NexusTool for Http {
                         request = request.query(&query_params);
                     }
                     AuthConfig::BasicAuth { username, password } => {
-                        let credentials = base64::engine::general_purpose::STANDARD
-                            .encode(format!("{}:{}", username, password));
-                        request = request.header("Authorization", format!("Basic {}", credentials));
+                        request = request.basic_auth(username, Some(password));
                     }
                 }
             }
@@ -453,24 +335,47 @@ impl NexusTool for Http {
             // Handle request body
             if let Some(body) = &input.body {
                 request = match body {
-                    RequestBody::Json { data } => {
-                        request.json(data)
-                    }
-                    RequestBody::Form { data } => {
-                        request.form(data)
-                    }
+                    RequestBody::Json { data } => request.json(data),
+                    RequestBody::Form { data } => request.form(data),
                     RequestBody::Multipart { fields } => {
                         let mut form = reqwest::multipart::Form::new();
                         for field in fields {
-                            let value = field.value.clone();
-                            let filename = field.filename.clone().unwrap_or_default();
-                            let content_type = field.content_type.clone().unwrap_or_else(|| "text/plain".to_string());
-                            
-                            let part = reqwest::multipart::Part::text(value)
-                                .file_name(filename)
-                                .mime_str(&content_type)
-                                .unwrap_or_else(|_| reqwest::multipart::Part::text(field.value.clone()));
-                            
+                            // Try to decode as base64 to decide whether it's a file upload
+                            let maybe_bytes: Option<Vec<u8>> =
+                                base64::engine::general_purpose::STANDARD
+                                    .decode(&field.value)
+                                    .ok();
+
+                            // Build initial part
+                            let mut part = if let Some(ref bytes) = maybe_bytes {
+                                // Treat as file bytes
+                                reqwest::multipart::Part::bytes(bytes.clone())
+                            } else {
+                                // Treat as text field
+                                reqwest::multipart::Part::text(field.value.clone())
+                            };
+
+                            // Apply content type if provided; handle consume semantics safely
+                            if let Some(ref ct) = field.content_type {
+                                let applied = part.mime_str(ct);
+                                part = match applied {
+                                    Ok(p) => p,
+                                    Err(_) => {
+                                        // Rebuild base part on failure
+                                        if let Some(ref bytes) = maybe_bytes {
+                                            reqwest::multipart::Part::bytes(bytes.clone())
+                                        } else {
+                                            reqwest::multipart::Part::text(field.value.clone())
+                                        }
+                                    }
+                                };
+                            }
+
+                            // Apply filename if provided
+                            if let Some(ref fname) = field.filename {
+                                part = part.file_name(fname.clone());
+                            }
+
                             form = form.part(field.name.clone(), part);
                         }
                         request.multipart(form)
@@ -479,225 +384,199 @@ impl NexusTool for Http {
                         let bytes = match base64::engine::general_purpose::STANDARD.decode(data) {
                             Ok(bytes) => bytes,
                             Err(e) => {
-                                return Output::ErrNetwork {
-                                    msg: format!("Invalid base64 data: {}", e),
-                                };
+                                return HttpToolError::Base64Decode(format!(
+                                    "Invalid base64 data in multipart field: {}",
+                                    e
+                                ))
+                                .to_output();
                             }
                         };
-                        
+
                         let mut request = request.body(bytes);
-                        
+
                         if let Some(ct) = content_type {
                             request = request.header("Content-Type", ct);
                         }
-                        
+
                         request
                     }
                 };
             }
 
             match request.send().await {
-            Ok(response) => {
-                let status = response.status().as_u16();
+                Ok(response) => {
+                    let status = response.status().as_u16();
 
-                // Check if it's an HTTP error status
-                if status >= 400 {
-                    // Only retry on 5xx server errors, do not retry on 4xx client errors
-                    if status >= 500 && attempt < retries {
-                        let delay_ms = 1000 * (attempt + 1) as u64; // 1s, 2s, 3s...
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue; // Retry
-                    }
-                    
-                    let body = response.text().await.unwrap_or_default();
-                    let snippet = if body.len() > 200 {
-                        format!("{}...", &body[..200])
-                    } else {
-                        body
-                    };
-                    
-                    return Output::ErrHttp {
-                        status,
-                        reason: format!("HTTP error: {}", status),
-                        snippet,
-                    };
-                }
-
-                // Get response headers
-                let headers: HashMap<String, String> = response
-                    .headers()
-                    .iter()
-                    .map(|(name, value)| {
-                        (
-                            name.to_string(),
-                            value.to_str().unwrap_or("").to_string(),
-                        )
-                    })
-                    .collect();
-
-                // Get raw response body as bytes
-                let body_bytes = match response.bytes().await {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        return Output::ErrNetwork {
-                            msg: format!("Failed to read response body: {}", e),
-                        };
-                    }
-                };
-
-                // Encode raw body as base64
-                let raw_base64 = base64::engine::general_purpose::STANDARD.encode(&body_bytes);
-
-                // Try to decode as UTF-8 text
-                let text = String::from_utf8(body_bytes.to_vec()).ok();
-
-                // Try to parse as JSON
-                let json = if let Some(ref text_content) = text {
-                    // Special handling for HEAD and OPTIONS methods
-                    if text_content.trim().is_empty() {
-                        // Empty body but expect_json=true -> return ErrJsonParse
-                        if input.expect_json.unwrap_or(false) {
-                            return Output::ErrJsonParse {
-                                msg: "Empty response body but JSON expected".to_string(),
-                            };
+                    // Check if it's an HTTP error status
+                    if status >= 400 {
+                        // Only retry on 5xx server errors, do not retry on 4xx client errors
+                        if status >= 500 && attempt < retries {
+                            let delay_ms = 1000 * (attempt + 1) as u64; // 1s, 2s, 3s...
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue; // Retry
                         }
-                        None // Empty body, no JSON parsing
-                    } else {
-                        match serde_json::from_str(text_content) {
-                            Ok(json_data) => Some(json_data),
-                            Err(e) => {
-                                // JSON parsing error - Returns ErrJsonParse
-                                return Output::ErrJsonParse {
-                                    msg: format!("Failed to parse JSON: {}", e),
-                                };
-                            }
-                        }
-                    }
-                } else {
-                    // No text content (binary data) but expect_json=true -> return ErrJsonParse
-                    if input.expect_json.unwrap_or(false) {
-                        return Output::ErrJsonParse {
-                            msg: "Non-text response body but JSON expected".to_string(),
-                        };
-                    }
-                    None
-                };
 
-                // Schema validation (if schema provided)
-                let schema_validation = if let Some(schema_def) = &input.json_schema {
-                    if let Some(ref json_data) = json {
-                        Some(validate_schema_detailed(schema_def, json_data))
-                    } else {
-                        // JSON could not be parsed, schema validation failed
-                        Some(SchemaValidationDetails {
-                            name: schema_def.name.clone(),
-                            description: schema_def.description.clone(),
-                            strict: schema_def.strict,
-                            valid: false,
-                            errors: vec!["JSON could not be parsed".to_string()],
+                        let reason_phrase = response.status().canonical_reason().unwrap_or("");
+                        let body = response.text().await.unwrap_or_default();
+                        let snippet = if body.len() > 200 {
+                            format!("{}...", &body[..200])
+                        } else {
+                            body
+                        };
+
+                        return HttpToolError::Http {
+                            status,
+                            reason: if reason_phrase.is_empty() {
+                                format!("HTTP error: {}", status)
+                            } else {
+                                format!("HTTP error: {} ({})", status, reason_phrase)
+                            },
+                            snippet,
+                        }
+                        .to_output();
+                    }
+
+                    // Get response headers
+                    let headers: HashMap<String, String> = response
+                        .headers()
+                        .iter()
+                        .map(|(name, value)| {
+                            (name.to_string(), value.to_str().unwrap_or("").to_string())
                         })
-                    }
-                } else {
-                    None // No schema, no validation performed
-                };
+                        .collect();
 
-                // If schema validation failed, handle based on strict mode
-                if let Some(ref validation) = schema_validation {
-                    if !validation.valid {
-                        if validation.strict.unwrap_or(false) {
-                            // Strict mode: Return error immediately
-                            return Output::ErrSchemaValidation {
-                                errors: validation.errors.clone(),
-                            };
+                    // Get raw response body as bytes
+                    let body_bytes = match response.bytes().await {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            return HttpToolError::Network(e).to_output();
                         }
-                        // Non-strict mode: Continue with validation details in response
-                        // (validation.valid = false, errors filled, but return Output::Ok)
+                    };
+
+                    // Encode raw body as base64
+                    let raw_base64 = base64::engine::general_purpose::STANDARD.encode(&body_bytes);
+
+                    // Try to decode as UTF-8 text
+                    let text = String::from_utf8(body_bytes.to_vec()).ok();
+
+                    // Detect JSON content-type from collected headers
+                    let is_json_content_type = headers
+                        .get("content-type")
+                        .map(|s| {
+                            let s_lower = s.to_ascii_lowercase();
+                            s_lower.contains("application/json") || s_lower.contains("+json")
+                        })
+                        .unwrap_or(false);
+
+                    // Parse JSON only if expected or content-type signals JSON
+                    let should_try_parse_json =
+                        input.expect_json.unwrap_or(false) || is_json_content_type;
+                    let json = if should_try_parse_json {
+                        if let Some(ref text_content) = text {
+                            if text_content.trim().is_empty() {
+                                // If expect_json=true but we tolerate empty body (e.g., 204)
+                                if input.expect_json.unwrap_or(false)
+                                    && !input.allow_empty_json.unwrap_or(false)
+                                {
+                                    return HttpToolError::Input(
+                                        "Empty response body but JSON expected".to_string(),
+                                    )
+                                    .to_output();
+                                }
+                                None
+                            } else {
+                                match serde_json::from_str(text_content) {
+                                    Ok(json_data) => Some(json_data),
+                                    Err(e) => {
+                                        if input.expect_json.unwrap_or(false)
+                                            || is_json_content_type
+                                        {
+                                            return HttpToolError::JsonParse(e).to_output();
+                                        }
+                                        None
+                                    }
+                                }
+                            }
+                        } else {
+                            if input.expect_json.unwrap_or(false)
+                                && !input.allow_empty_json.unwrap_or(false)
+                            {
+                                return HttpToolError::Input(
+                                    "Non-text response body but JSON expected".to_string(),
+                                )
+                                .to_output();
+                            }
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Schema validation (if schema provided)
+                    let schema_validation = if let Some(schema_def) = &input.json_schema {
+                        if let Some(ref json_data) = json {
+                            Some(validate_schema_detailed(schema_def, json_data))
+                        } else {
+                            // JSON could not be parsed, schema validation failed
+                            Some(SchemaValidationDetails {
+                                name: schema_def.name.clone(),
+                                description: schema_def.description.clone(),
+                                strict: schema_def.strict,
+                                valid: false,
+                                errors: vec!["JSON could not be parsed".to_string()],
+                            })
+                        }
+                    } else {
+                        None // No schema, no validation performed
+                    };
+
+                    // If schema validation failed, handle based on strict mode
+                    if let Some(ref validation) = schema_validation {
+                        if !validation.valid {
+                            if validation.strict.unwrap_or(false) {
+                                // Strict mode: Return error immediately
+                                return HttpToolError::SchemaValidation {
+                                    errors: validation.errors.clone(),
+                                }
+                                .to_output();
+                            }
+                            // Non-strict mode: Continue with validation details in response
+                            // (validation.valid = false, errors filled, but return Output::Ok)
+                        }
+                    }
+
+                    return Output::Ok {
+                        status,
+                        headers,
+                        raw_base64,
+                        text,
+                        json,
+                        schema_validation,
+                    };
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < retries {
+                        // Exponential backoff: 100ms, 200ms, 400ms, etc.
+                        let delay_ms = 100 * (2_u64.pow(attempt));
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                     }
                 }
+            }
+        }
 
-                return Output::Ok {
-                    status,
-                    headers,
-                    raw_base64,
-                    text,
-                    json,
-                    schema_validation,
-                };
-            }
-            Err(e) => {
-                last_error = Some(e);
-                if attempt < retries {
-                    // Exponential backoff: 100ms, 200ms, 400ms, etc.
-                    let delay_ms = 100 * (2_u64.pow(attempt));
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                }
-            }
-        }
-        }
-        
         // If we get here, all retries failed
-        Output::ErrNetwork {
-            msg: format!("Request failed after {} retries: {:?}", retries, last_error),
-        }
-    }
-}
-
-/// Validate JSON data against a schema and return detailed results
-fn validate_schema_detailed(schema_def: &HttpJsonSchema, json_data: &Value) -> SchemaValidationDetails {
-    // Convert schema to JSON value for validation
-    let schema_value = match serde_json::to_value(&schema_def.schema) {
-        Ok(val) => val,
-        Err(_) => {
-            return SchemaValidationDetails {
-                name: schema_def.name.clone(),
-                description: schema_def.description.clone(),
-                strict: schema_def.strict,
-                valid: false,
-                errors: vec!["Schema serialization failed".to_string()],
-            };
-        }
-    };
-
-    // Validate using jsonschema
-    let compiled = match jsonschema::JSONSchema::compile(&schema_value) {
-        Ok(schema) => schema,
-        Err(e) => {
-            return SchemaValidationDetails {
-                name: schema_def.name.clone(),
-                description: schema_def.description.clone(),
-                strict: schema_def.strict,
-                valid: false,
-                errors: vec![format!("Schema compilation failed: {}", e)],
-            };
-        }
-    };
-    
-    let validation_result = compiled.validate(json_data);
-    match validation_result {
-        Ok(_) => SchemaValidationDetails {
-            name: schema_def.name.clone(),
-            description: schema_def.description.clone(),
-            strict: schema_def.strict,
-            valid: true,
-            errors: vec![],
-        },
-        Err(errors) => {
-            let error_messages: Vec<String> = errors.map(|e| e.to_string()).collect();
-            SchemaValidationDetails {
-                name: schema_def.name.clone(),
-                description: schema_def.description.clone(),
-                strict: schema_def.strict,
-                valid: false,
-                errors: error_messages,
-            }
-        }
+        HttpToolError::Input(format!(
+            "Request failed after {} retries: {:?}",
+            retries, last_error
+        ))
+        .to_output()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use mockito::Server;
+    use {super::*, mockito::Server};
 
     #[tokio::test]
     async fn test_http_get() {
@@ -725,12 +604,20 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Ok { status, headers, raw_base64, text, json, schema_validation } => {
+            Output::Ok {
+                status,
+                headers,
+                raw_base64,
+                text,
+                json,
+                schema_validation,
+            } => {
                 assert_eq!(status, 200);
                 assert!(!headers.is_empty());
                 assert!(!raw_base64.is_empty()); // GET should have body
@@ -738,10 +625,18 @@ mod tests {
                 assert!(json.is_some()); // Should be JSON parseable
                 assert!(schema_validation.is_none());
             }
-            Output::ErrHttp { reason, .. } => panic!("Expected success, got HTTP error: {}", reason),
+            Output::ErrHttp { reason, .. } => {
+                panic!("Expected success, got HTTP error: {}", reason)
+            }
             Output::ErrNetwork { msg } => panic!("Expected success, got network error: {}", msg),
-            Output::ErrJsonParse { msg } => panic!("Expected success, got JSON parse error: {}", msg),
-            Output::ErrSchemaValidation { errors } => panic!("Expected success, got schema validation error: {:?}", errors),
+            Output::ErrJsonParse { msg } => {
+                panic!("Expected success, got JSON parse error: {}", msg)
+            }
+            Output::ErrSchemaValidation { errors } => panic!(
+                "Expected success, got schema validation error: {:?}",
+                errors
+            ),
+            Output::ErrInput { msg } => panic!("Expected success, got input error: {}", msg),
         }
     }
 
@@ -770,21 +665,37 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Ok { status, headers, raw_base64: _, text: _, json: _, schema_validation } => {
+            Output::Ok {
+                status,
+                headers,
+                raw_base64: _,
+                text: _,
+                json: _,
+                schema_validation,
+            } => {
                 assert_eq!(status, 200);
                 assert!(!headers.is_empty());
                 // raw_base64 can be empty for HEAD requests
                 assert!(schema_validation.is_none());
             }
-            Output::ErrHttp { reason, .. } => panic!("Expected success, got HTTP error: {}", reason),
+            Output::ErrHttp { reason, .. } => {
+                panic!("Expected success, got HTTP error: {}", reason)
+            }
             Output::ErrNetwork { msg } => panic!("Expected success, got network error: {}", msg),
-            Output::ErrJsonParse { msg } => panic!("Expected success, got JSON parse error: {}", msg),
-            Output::ErrSchemaValidation { errors } => panic!("Expected success, got schema validation error: {:?}", errors),
+            Output::ErrJsonParse { msg } => {
+                panic!("Expected success, got JSON parse error: {}", msg)
+            }
+            Output::ErrSchemaValidation { errors } => panic!(
+                "Expected success, got schema validation error: {:?}",
+                errors
+            ),
+            Output::ErrInput { msg } => panic!("Expected success, got input error: {}", msg),
         }
     }
 
@@ -813,12 +724,17 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrHttp { status, reason, snippet } => {
+            Output::ErrHttp {
+                status,
+                reason,
+                snippet,
+            } => {
                 assert_eq!(status, 404);
                 assert!(reason.contains("HTTP error"));
                 // Snippet might be empty for 404 responses, that's ok
@@ -879,6 +795,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -910,7 +827,8 @@ mod tests {
 
         // Create mock server
         let mut server = Server::new_async().await;
-        let mock_response = r#"{"method": "GET", "url": "http://example.com/api/users", "args": {}}"#;
+        let mock_response =
+            r#"{"method": "GET", "url": "http://example.com/api/users", "args": {}}"#;
         let _mock = server
             .mock("GET", "/api/users")
             .with_status(200)
@@ -934,12 +852,20 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Ok { status, headers, raw_base64, text, json, schema_validation } => {
+            Output::Ok {
+                status,
+                headers,
+                raw_base64,
+                text,
+                json,
+                schema_validation,
+            } => {
                 assert_eq!(status, 200);
                 assert!(!headers.is_empty());
                 assert!(!raw_base64.is_empty());
@@ -960,7 +886,9 @@ mod tests {
         let mock_response = r#"{"method": "GET", "url": "http://example.com/api/users?page=1&limit=10", "headers": {"Authorization": "Bearer token123", "Content-Type": "application/json"}}"#;
         let _mock = server
             .mock("GET", "/api/users")
-            .match_query(mockito::Matcher::Regex(r"page=1.*limit=10|limit=10.*page=1".to_string()))
+            .match_query(mockito::Matcher::Regex(
+                r"page=1.*limit=10|limit=10.*page=1".to_string(),
+            ))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(mock_response)
@@ -988,12 +916,20 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::Ok { status, headers, raw_base64, text, json, schema_validation } => {
+            Output::Ok {
+                status,
+                headers,
+                raw_base64,
+                text,
+                json,
+                schema_validation,
+            } => {
                 assert_eq!(status, 200);
                 assert!(!headers.is_empty());
                 assert!(!raw_base64.is_empty());
@@ -1037,6 +973,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1079,6 +1016,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1122,6 +1060,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1164,6 +1103,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1202,6 +1142,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
         assert!(valid_input.validate().is_ok());
 
@@ -1223,6 +1164,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
         assert!(invalid_input.validate().is_err());
 
@@ -1244,6 +1186,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
         assert!(invalid_input2.validate().is_err());
 
@@ -1260,6 +1203,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
         assert!(valid_input2.validate().is_ok());
     }
@@ -1286,15 +1230,16 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrNetwork { msg } => {
+            Output::ErrInput { msg } => {
                 assert!(msg.contains("expect_json must be true when json_schema is provided"));
             }
-            _ => panic!("Expected ErrNetwork with validation error"),
+            _ => panic!("Expected ErrInput with validation error"),
         }
     }
 
@@ -1329,6 +1274,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1347,7 +1293,8 @@ mod tests {
 
         // Create mock server
         let mut server = Server::new_async().await;
-        let mock_response = r#"{"method": "POST", "url": "http://example.com/post", "data": "binary data"}"#;
+        let mock_response =
+            r#"{"method": "POST", "url": "http://example.com/post", "data": "binary data"}"#;
         let _mock = server
             .mock("POST", "/post")
             .with_status(200)
@@ -1370,6 +1317,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1392,7 +1340,7 @@ mod tests {
             query: None,
             auth: None,
             body: Some(RequestBody::Multipart {
-                fields: vec![MultipartField {
+                fields: vec![crate::models::MultipartField {
                     name: "".to_string(),
                     value: "test".to_string(),
                     filename: None,
@@ -1404,6 +1352,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         assert!(input.validate().is_err());
@@ -1424,6 +1373,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         assert!(input2.validate().is_err());
@@ -1444,6 +1394,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         assert!(input3.validate().is_err());
@@ -1476,6 +1427,7 @@ mod tests {
             timeout_ms: Some(5000), // 5 second timeout
             retries: None,
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1515,6 +1467,7 @@ mod tests {
             timeout_ms: None,
             retries: Some(2), // 2 retries
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1534,7 +1487,7 @@ mod tests {
         // Create mock server that returns 500 error first, then 200
         let mut server = Server::new_async().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
-        
+
         // First request returns 500
         let _error_mock = server
             .mock("GET", "/retry-test")
@@ -1543,7 +1496,7 @@ mod tests {
             .with_body(r#"{"error": "Internal Server Error"}"#)
             .expect(1) // Expect exactly 1 call
             .create();
-            
+
         // Second request returns 200
         let _success_mock = server
             .mock("GET", "/retry-test")
@@ -1566,6 +1519,7 @@ mod tests {
             timeout_ms: None,
             retries: Some(1), // 1 retry
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1605,6 +1559,7 @@ mod tests {
             timeout_ms: None,
             retries: Some(2), // 2 retries available
             follow_redirects: None,
+            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1624,14 +1579,14 @@ mod tests {
         // Create mock server with redirect
         let mut server = Server::new_async().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
-        
+
         // Mock redirect endpoint
         let _redirect_mock = server
             .mock("GET", "/redirect")
             .with_status(302)
             .with_header("location", "/get")
             .create();
-            
+
         // Mock final endpoint
         let _final_mock = server
             .mock("GET", "/get")
@@ -1653,6 +1608,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: Some(true),
+            allow_empty_json: None,
         };
 
         let result = tool.invoke(input).await;
@@ -1676,6 +1632,7 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: Some(false),
+            allow_empty_json: None,
         };
 
         let result_no_redirect = tool.invoke(input_no_redirect).await;
