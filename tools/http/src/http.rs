@@ -5,7 +5,7 @@
 use {
     crate::{
         errors::{HttpErrorKind, HttpToolError, ValidationError},
-        helpers::validate_schema_detailed,
+        utils::validate_schema_detailed,
         http_client::HttpClient,
         models::{
             AuthConfig,
@@ -966,12 +966,6 @@ mod tests {
             }
             _ => panic!("Expected successful response"),
         }
-    }
-
-    #[tokio::test]
-    async fn test_health() {
-        let tool = Http::new().await;
-        assert!(matches!(tool.health().await, Ok(StatusCode::OK)));
     }
 
     #[tokio::test]

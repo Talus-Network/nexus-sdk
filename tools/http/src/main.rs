@@ -3,7 +3,7 @@
 use nexus_toolkit::bootstrap;
 
 mod errors;
-mod helpers;
+mod utils;
 mod http;
 mod http_client;
 mod models;
