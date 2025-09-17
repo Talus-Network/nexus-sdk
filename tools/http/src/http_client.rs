@@ -212,14 +212,6 @@ impl HttpClient {
             .map_err(HttpToolError::from_network_error)
     }
 
-    /// Executes a single request without retry logic
-    pub async fn execute(
-        &self,
-        request: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, HttpToolError> {
-        self.execute(request).await
-    }
-
     /// Executes a request with retry logic
     pub async fn execute_with_retry(
         &self,
