@@ -31,6 +31,7 @@ use {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
     /// HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
+    #[serde(default)]
     pub method: HttpMethod,
 
     /// URL input - either complete URL or split into base_url + path
@@ -468,6 +469,64 @@ mod tests {
                 assert!(!raw_base64.is_empty()); // GET should have body
                 assert!(text.is_some()); // Should be UTF-8 decodable
                 assert!(json.is_some()); // Should be JSON parseable
+                assert!(schema_validation.is_none());
+            }
+            Output::Err { reason, kind, .. } => {
+                panic!(
+                    "Expected success, got {} error: {}",
+                    format!("{:?}", kind).to_lowercase(),
+                    reason
+                )
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_default_http_method() {
+        let tool = Http::new().await;
+
+        // Create mock server
+        let mut server = Server::new_async().await;
+        let mock_response = r#"{"method": "GET", "url": "http://example.com/default", "args": {}}"#;
+        let _mock = server
+            .mock("GET", "/default")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mock_response)
+            .create();
+
+        // Test with no method specified - should default to GET
+        let input = Input {
+            method: HttpMethod::default(), // This should be GET
+            url: UrlInput::FullUrl(format!("{}/default", server.url())),
+            headers: None,
+            query: None,
+            auth: None,
+            body: None,
+            expect_json: None,
+            json_schema: None,
+            timeout_ms: None,
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Ok {
+                status,
+                headers,
+                raw_base64,
+                text,
+                json,
+                schema_validation,
+            } => {
+                assert_eq!(status, 200);
+                assert!(!headers.is_empty());
+                assert!(!raw_base64.is_empty());
+                assert!(text.is_some());
+                assert!(json.is_some());
                 assert!(schema_validation.is_none());
             }
             Output::Err { reason, kind, .. } => {

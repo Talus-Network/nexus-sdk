@@ -52,6 +52,12 @@ pub enum HttpMethod {
     Options,
 }
 
+impl Default for HttpMethod {
+    fn default() -> Self {
+        HttpMethod::Get
+    }
+}
+
 /// Convert HttpMethod to reqwest::Method
 impl From<HttpMethod> for reqwest::Method {
     fn from(method: HttpMethod) -> Self {
