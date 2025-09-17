@@ -2,65 +2,153 @@
 
 use {
     reqwest::Error as ReqwestError,
+    schemars::JsonSchema,
+    serde::{Deserialize, Serialize},
     serde_json::Error as JsonError,
     thiserror::Error,
     url::ParseError as UrlParseError,
 };
 
-/// HTTP tool errors
-#[derive(Error, Debug)]
+/// HTTP error kinds for external API
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum HttpErrorKind {
+    /// HTTP error response (4xx, 5xx)
+    #[serde(rename = "err_http")]
+    Http,
+    /// JSON parsing error
+    #[serde(rename = "err_json_parse")]
+    JsonParse,
+    /// Schema validation error
+    #[serde(rename = "err_schema_validation")]
+    SchemaValidation,
+    /// Network connectivity error
+    #[serde(rename = "err_network")]
+    Network,
+    /// Input validation error
+    #[serde(rename = "err_input")]
+    Input,
+    /// URL parsing error
+    #[serde(rename = "err_url_parse")]
+    UrlParse,
+    /// Base64 decoding error
+    #[serde(rename = "err_base64_decode")]
+    Base64Decode,
+}
+
+/// Input validation errors
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    #[error("Schema validation requires expect_json=true")]
+    SchemaRequiresJson,
+    #[error("Invalid timeout: {0}")]
+    InvalidTimeout(String),
+    #[error("Invalid retries: {0}")]
+    InvalidRetries(String),
+    #[error("Multipart field name cannot be empty")]
+    EmptyMultipartFieldName,
+    #[error("Multipart field value cannot be empty")]
+    EmptyMultipartFieldValue,
+    #[error("Raw body data cannot be empty")]
+    EmptyRawBody,
+    #[error("Raw body data must be valid base64")]
+    InvalidBase64Data,
+    #[error("Form body data cannot be empty")]
+    EmptyFormData,
+    #[error("JSON body data cannot be null")]
+    NullJsonData,
+}
+
+/// HTTP tool errors (internal)
+#[derive(Error, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum HttpToolError {
     #[error("HTTP error {status}: {reason}")]
-    Http {
+    ErrHttp {
         status: u16,
         reason: String,
         snippet: String,
     },
 
     #[error("JSON parse error: {0}")]
-    JsonParse(#[from] JsonError),
+    ErrJsonParse(String),
 
     #[error("Schema validation failed: {errors:?}")]
-    SchemaValidation { errors: Vec<String> },
+    ErrSchemaValidation { errors: Vec<String> },
 
     #[error("Network error: {0}")]
-    Network(#[from] ReqwestError),
+    ErrNetwork(String),
 
     #[error("Input validation error: {0}")]
-    Input(String),
+    ErrInput(String),
 
     #[error("URL parse error: {0}")]
-    UrlParse(#[from] UrlParseError),
+    ErrUrlParse(String),
 
     #[error("Base64 decode error: {0}")]
-    Base64Decode(String),
+    ErrBase64Decode(String),
 }
 
 impl HttpToolError {
     /// Convert HttpToolError to Output enum for API compatibility
     pub fn to_output(self) -> crate::http::Output {
         match self {
-            HttpToolError::Http {
+            HttpToolError::ErrHttp {
                 status,
                 reason,
-                snippet,
-            } => crate::http::Output::ErrHttp {
-                status,
-                reason,
-                snippet,
+                snippet: _,
+            } => crate::http::Output::Err {
+                reason: format!("HTTP error {}: {}", status, reason),
+                kind: HttpErrorKind::Http,
+                status_code: Some(status),
             },
-            HttpToolError::JsonParse(e) => crate::http::Output::ErrJsonParse { msg: e.to_string() },
-            HttpToolError::SchemaValidation { errors } => {
-                crate::http::Output::ErrSchemaValidation { errors }
-            }
-            HttpToolError::Network(e) => crate::http::Output::ErrNetwork { msg: e.to_string() },
-            HttpToolError::Input(msg) => crate::http::Output::ErrInput { msg },
-            HttpToolError::UrlParse(e) => crate::http::Output::ErrInput {
-                msg: format!("URL parse error: {}", e),
+            HttpToolError::ErrJsonParse(msg) => crate::http::Output::Err {
+                reason: format!("JSON parse error: {}", msg),
+                kind: HttpErrorKind::JsonParse,
+                status_code: None,
             },
-            HttpToolError::Base64Decode(msg) => crate::http::Output::ErrInput {
-                msg: format!("Base64 decode error: {}", msg),
+            HttpToolError::ErrSchemaValidation { errors } => crate::http::Output::Err {
+                reason: format!("Schema validation failed: {} errors", errors.len()),
+                kind: HttpErrorKind::SchemaValidation,
+                status_code: None,
+            },
+            HttpToolError::ErrNetwork(msg) => crate::http::Output::Err {
+                reason: format!("Network error: {}", msg),
+                kind: HttpErrorKind::Network,
+                status_code: None,
+            },
+            HttpToolError::ErrInput(msg) => crate::http::Output::Err {
+                reason: format!("Input validation error: {}", msg),
+                kind: HttpErrorKind::Input,
+                status_code: None,
+            },
+            HttpToolError::ErrUrlParse(msg) => crate::http::Output::Err {
+                reason: format!("URL parse error: {}", msg),
+                kind: HttpErrorKind::UrlParse,
+                status_code: None,
+            },
+            HttpToolError::ErrBase64Decode(msg) => crate::http::Output::Err {
+                reason: format!("Base64 decode error: {}", msg),
+                kind: HttpErrorKind::Base64Decode,
+                status_code: None,
             },
         }
+    }
+
+    /// Create HttpToolError from external error types
+    pub fn from_json_error(e: JsonError) -> Self {
+        Self::ErrJsonParse(e.to_string())
+    }
+
+    pub fn from_network_error(e: ReqwestError) -> Self {
+        Self::ErrNetwork(e.to_string())
+    }
+
+    pub fn from_url_parse_error(e: UrlParseError) -> Self {
+        Self::ErrUrlParse(e.to_string())
+    }
+
+    pub fn from_validation_error(e: ValidationError) -> Self {
+        Self::ErrInput(e.to_string())
     }
 }

@@ -4,8 +4,9 @@
 
 use {
     crate::{
-        errors::HttpToolError,
+        errors::{HttpErrorKind, HttpToolError, ValidationError},
         helpers::validate_schema_detailed,
+        http_client::HttpClient,
         models::{
             AuthConfig,
             HttpJsonSchema,
@@ -18,12 +19,10 @@ use {
     base64::Engine,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
-    reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::Value,
     std::collections::HashMap,
-    url::Url,
     warp::http::StatusCode,
 };
 
@@ -80,17 +79,13 @@ pub(crate) struct Input {
 
 impl Input {
     /// Validate input parameters
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         // If json_schema is provided, expect_json must be true
         if self.json_schema.is_some() {
             match self.expect_json {
                 Some(true) => Ok(()),
-                Some(false) => {
-                    Err("expect_json must be true when json_schema is provided".to_string())
-                }
-                None => {
-                    Err("expect_json must be set to true when json_schema is provided".to_string())
-                }
+                Some(false) => Err(ValidationError::SchemaRequiresJson),
+                None => Err(ValidationError::SchemaRequiresJson),
             }
         } else {
             Ok(())
@@ -102,34 +97,34 @@ impl Input {
                 RequestBody::Multipart { fields } => {
                     for field in fields {
                         if field.name.is_empty() {
-                            return Err("Multipart field name cannot be empty".to_string());
+                            return Err(ValidationError::EmptyMultipartFieldName);
                         }
                         if field.value.is_empty() {
-                            return Err("Multipart field value cannot be empty".to_string());
+                            return Err(ValidationError::EmptyMultipartFieldValue);
                         }
                     }
                 }
                 RequestBody::Raw { data, .. } => {
                     if data.is_empty() {
-                        return Err("Raw body data cannot be empty".to_string());
+                        return Err(ValidationError::EmptyRawBody);
                     }
                     // Validate base64 encoding
                     if base64::engine::general_purpose::STANDARD
                         .decode(data)
                         .is_err()
                     {
-                        return Err("Raw body data must be valid base64".to_string());
+                        return Err(ValidationError::InvalidBase64Data);
                     }
                 }
                 RequestBody::Form { data } => {
                     if data.is_empty() {
-                        return Err("Form body data cannot be empty".to_string());
+                        return Err(ValidationError::EmptyFormData);
                     }
                 }
                 RequestBody::Json { data } => {
                     // JSON validation is handled by serde
                     if data.is_null() {
-                        return Err("JSON body data cannot be null".to_string());
+                        return Err(ValidationError::NullJsonData);
                     }
                 }
             }
@@ -138,18 +133,24 @@ impl Input {
         // Validate timeout_ms
         if let Some(timeout_ms) = self.timeout_ms {
             if timeout_ms == 0 {
-                return Err("timeout_ms must be greater than 0".to_string());
+                return Err(ValidationError::InvalidTimeout(
+                    "timeout_ms must be greater than 0".to_string(),
+                ));
             }
             if timeout_ms > 300000 {
                 // 5 minutes max
-                return Err("timeout_ms cannot exceed 300000ms (5 minutes)".to_string());
+                return Err(ValidationError::InvalidTimeout(
+                    "timeout_ms cannot exceed 300000ms (5 minutes)".to_string(),
+                ));
             }
         }
 
         // Validate retries
         if let Some(retries) = self.retries {
             if retries > 10 {
-                return Err("retries cannot exceed 10".to_string());
+                return Err(ValidationError::InvalidRetries(
+                    "retries cannot exceed 10".to_string(),
+                ));
             }
         }
 
@@ -159,7 +160,7 @@ impl Input {
 
 /// Output model for the HTTP Generic tool
 #[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Output {
     /// Successful response
     Ok {
@@ -179,34 +180,15 @@ pub(crate) enum Output {
         #[serde(skip_serializing_if = "Option::is_none")]
         schema_validation: Option<SchemaValidationDetails>,
     },
-    /// HTTP error response
-    ErrHttp {
-        /// HTTP status code
-        status: u16,
-        /// Error reason
+    /// Error response
+    Err {
+        /// Detailed error message
         reason: String,
-        /// Response snippet for debugging
-        snippet: String,
-    },
-    /// JSON parsing error
-    ErrJsonParse {
-        /// Error message
-        msg: String,
-    },
-    /// Schema validation error
-    ErrSchemaValidation {
-        /// List of validation errors
-        errors: Vec<String>,
-    },
-    /// Network error
-    ErrNetwork {
-        /// Error message
-        msg: String,
-    },
-    /// Input validation error
-    ErrInput {
-        /// Error message
-        msg: String,
+        /// Type of error
+        kind: HttpErrorKind,
+        /// HTTP status code if available
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status_code: Option<u16>,
     },
 }
 
@@ -239,52 +221,22 @@ impl NexusTool for Http {
 
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         // Validate input parameters
-        if let Err(msg) = input.validate() {
-            return HttpToolError::Input(format!("Input validation failed: {}", msg)).to_output();
+        if let Err(validation_error) = input.validate() {
+            return HttpToolError::from_validation_error(validation_error).to_output();
         }
 
-        // Resolve URL from input with proper validation
-        let resolved_url = match &input.url {
-            UrlInput::FullUrl(url) => match Url::parse(url) {
-                Ok(url) => url,
-                Err(e) => {
-                    return HttpToolError::UrlParse(e).to_output();
-                }
-            },
-            UrlInput::SplitUrl { base_url, path } => {
-                let base = match Url::parse(base_url) {
-                    Ok(url) => url,
-                    Err(e) => {
-                        return HttpToolError::UrlParse(e).to_output();
-                    }
-                };
-                match base.join(path.trim_start_matches('/')) {
-                    Ok(url) => url,
-                    Err(e) => {
-                        return HttpToolError::UrlParse(e).to_output();
-                    }
-                }
-            }
-        };
-
-        // Build client with timeout and redirect configuration
+        // Create HTTP client with configuration
         let timeout_ms = input.timeout_ms.unwrap_or(30000);
         let follow_redirects = input.follow_redirects.unwrap_or(true);
-        let client = match Client::builder()
-            .timeout(std::time::Duration::from_millis(timeout_ms))
-            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
-                if follow_redirects {
-                    attempt.follow()
-                } else {
-                    attempt.stop()
-                }
-            }))
-            .build()
-        {
+        let http_client = match HttpClient::with_config(Some(timeout_ms), Some(follow_redirects)) {
             Ok(client) => client,
-            Err(e) => {
-                return HttpToolError::Network(e).to_output();
-            }
+            Err(e) => return e.to_output(),
+        };
+
+        // Resolve URL from input with proper validation
+        let resolved_url = match http_client.resolve_url(&input.url) {
+            Ok(url) => url,
+            Err(e) => return e.to_output(),
         };
 
         // Execute with retry logic
@@ -292,118 +244,32 @@ impl NexusTool for Http {
         let mut last_error = None;
 
         for attempt in 0..=retries {
-            let mut request = client.request(input.method.clone().into(), resolved_url.as_str());
+            // Build HTTP method
+            let method = http_client.build_method(&input.method);
 
-            // Add headers if provided
-            if let Some(headers) = &input.headers {
-                for (key, value) in headers {
-                    request = request.header(key, value);
+            // Build request with authentication, headers, and query parameters
+            let request = match http_client.build_request(
+                method,
+                resolved_url.clone(),
+                input.auth.as_ref(),
+                input.headers.as_ref(),
+                input.query.as_ref(),
+            ) {
+                Ok(request) => request,
+                Err(e) => return e.to_output(),
+            };
+
+            // Build request body if provided
+            let request = if let Some(body) = &input.body {
+                match http_client.build_body(request, body) {
+                    Ok(request) => request,
+                    Err(e) => return e.to_output(),
                 }
-            }
+            } else {
+                request
+            };
 
-            // Add query parameters if provided
-            if let Some(query) = &input.query {
-                request = request.query(query);
-            }
-
-            // Handle authentication
-            if let Some(auth) = &input.auth {
-                match auth {
-                    AuthConfig::None => {
-                        // No authentication needed
-                    }
-                    AuthConfig::BearerToken { token } => {
-                        request = request.header("Authorization", format!("Bearer {}", token));
-                    }
-                    AuthConfig::ApiKeyHeader { key, header_name } => {
-                        let header = header_name.as_deref().unwrap_or("X-API-Key");
-                        request = request.header(header, key);
-                    }
-                    AuthConfig::ApiKeyQuery { key, param_name } => {
-                        let param = param_name.as_deref().unwrap_or("api_key");
-                        // Add to existing query parameters or create new ones
-                        let mut query_params = input.query.clone().unwrap_or_default();
-                        query_params.insert(param.to_string(), key.clone());
-                        request = request.query(&query_params);
-                    }
-                    AuthConfig::BasicAuth { username, password } => {
-                        request = request.basic_auth(username, Some(password));
-                    }
-                }
-            }
-
-            // Handle request body
-            if let Some(body) = &input.body {
-                request = match body {
-                    RequestBody::Json { data } => request.json(data),
-                    RequestBody::Form { data } => request.form(data),
-                    RequestBody::Multipart { fields } => {
-                        let mut form = reqwest::multipart::Form::new();
-                        for field in fields {
-                            // Try to decode as base64 to decide whether it's a file upload
-                            let maybe_bytes: Option<Vec<u8>> =
-                                base64::engine::general_purpose::STANDARD
-                                    .decode(&field.value)
-                                    .ok();
-
-                            // Build initial part
-                            let mut part = if let Some(ref bytes) = maybe_bytes {
-                                // Treat as file bytes
-                                reqwest::multipart::Part::bytes(bytes.clone())
-                            } else {
-                                // Treat as text field
-                                reqwest::multipart::Part::text(field.value.clone())
-                            };
-
-                            // Apply content type if provided; handle consume semantics safely
-                            if let Some(ref ct) = field.content_type {
-                                let applied = part.mime_str(ct);
-                                part = match applied {
-                                    Ok(p) => p,
-                                    Err(_) => {
-                                        // Rebuild base part on failure
-                                        if let Some(ref bytes) = maybe_bytes {
-                                            reqwest::multipart::Part::bytes(bytes.clone())
-                                        } else {
-                                            reqwest::multipart::Part::text(field.value.clone())
-                                        }
-                                    }
-                                };
-                            }
-
-                            // Apply filename if provided
-                            if let Some(ref fname) = field.filename {
-                                part = part.file_name(fname.clone());
-                            }
-
-                            form = form.part(field.name.clone(), part);
-                        }
-                        request.multipart(form)
-                    }
-                    RequestBody::Raw { data, content_type } => {
-                        let bytes = match base64::engine::general_purpose::STANDARD.decode(data) {
-                            Ok(bytes) => bytes,
-                            Err(e) => {
-                                return HttpToolError::Base64Decode(format!(
-                                    "Invalid base64 data in multipart field: {}",
-                                    e
-                                ))
-                                .to_output();
-                            }
-                        };
-
-                        let mut request = request.body(bytes);
-
-                        if let Some(ct) = content_type {
-                            request = request.header("Content-Type", ct);
-                        }
-
-                        request
-                    }
-                };
-            }
-
-            match request.send().await {
+            match http_client.execute(request).await {
                 Ok(response) => {
                     let status = response.status().as_u16();
 
@@ -424,7 +290,7 @@ impl NexusTool for Http {
                             body
                         };
 
-                        return HttpToolError::Http {
+                        return HttpToolError::ErrHttp {
                             status,
                             reason: if reason_phrase.is_empty() {
                                 format!("HTTP error: {}", status)
@@ -449,7 +315,7 @@ impl NexusTool for Http {
                     let body_bytes = match response.bytes().await {
                         Ok(bytes) => bytes,
                         Err(e) => {
-                            return HttpToolError::Network(e).to_output();
+                            return HttpToolError::from_network_error(e).to_output();
                         }
                     };
 
@@ -478,7 +344,7 @@ impl NexusTool for Http {
                                 if input.expect_json.unwrap_or(false)
                                     && !input.allow_empty_json.unwrap_or(false)
                                 {
-                                    return HttpToolError::Input(
+                                    return HttpToolError::ErrInput(
                                         "Empty response body but JSON expected".to_string(),
                                     )
                                     .to_output();
@@ -491,7 +357,7 @@ impl NexusTool for Http {
                                         if input.expect_json.unwrap_or(false)
                                             || is_json_content_type
                                         {
-                                            return HttpToolError::JsonParse(e).to_output();
+                                            return HttpToolError::from_json_error(e).to_output();
                                         }
                                         None
                                     }
@@ -501,7 +367,7 @@ impl NexusTool for Http {
                             if input.expect_json.unwrap_or(false)
                                 && !input.allow_empty_json.unwrap_or(false)
                             {
-                                return HttpToolError::Input(
+                                return HttpToolError::ErrInput(
                                     "Non-text response body but JSON expected".to_string(),
                                 )
                                 .to_output();
@@ -535,7 +401,7 @@ impl NexusTool for Http {
                         if !validation.valid {
                             if validation.strict.unwrap_or(false) {
                                 // Strict mode: Return error immediately
-                                return HttpToolError::SchemaValidation {
+                                return HttpToolError::ErrSchemaValidation {
                                     errors: validation.errors.clone(),
                                 }
                                 .to_output();
@@ -566,7 +432,7 @@ impl NexusTool for Http {
         }
 
         // If we get here, all retries failed
-        HttpToolError::Input(format!(
+        HttpToolError::ErrInput(format!(
             "Request failed after {} retries: {:?}",
             retries, last_error
         ))
@@ -625,18 +491,13 @@ mod tests {
                 assert!(json.is_some()); // Should be JSON parseable
                 assert!(schema_validation.is_none());
             }
-            Output::ErrHttp { reason, .. } => {
-                panic!("Expected success, got HTTP error: {}", reason)
+            Output::Err { reason, kind, .. } => {
+                panic!(
+                    "Expected success, got {} error: {}",
+                    format!("{:?}", kind).to_lowercase(),
+                    reason
+                )
             }
-            Output::ErrNetwork { msg } => panic!("Expected success, got network error: {}", msg),
-            Output::ErrJsonParse { msg } => {
-                panic!("Expected success, got JSON parse error: {}", msg)
-            }
-            Output::ErrSchemaValidation { errors } => panic!(
-                "Expected success, got schema validation error: {:?}",
-                errors
-            ),
-            Output::ErrInput { msg } => panic!("Expected success, got input error: {}", msg),
         }
     }
 
@@ -684,18 +545,13 @@ mod tests {
                 // raw_base64 can be empty for HEAD requests
                 assert!(schema_validation.is_none());
             }
-            Output::ErrHttp { reason, .. } => {
-                panic!("Expected success, got HTTP error: {}", reason)
+            Output::Err { reason, kind, .. } => {
+                panic!(
+                    "Expected success, got {} error: {}",
+                    format!("{:?}", kind).to_lowercase(),
+                    reason
+                )
             }
-            Output::ErrNetwork { msg } => panic!("Expected success, got network error: {}", msg),
-            Output::ErrJsonParse { msg } => {
-                panic!("Expected success, got JSON parse error: {}", msg)
-            }
-            Output::ErrSchemaValidation { errors } => panic!(
-                "Expected success, got schema validation error: {:?}",
-                errors
-            ),
-            Output::ErrInput { msg } => panic!("Expected success, got input error: {}", msg),
         }
     }
 
@@ -730,17 +586,16 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrHttp {
-                status,
+            Output::Err {
                 reason,
-                snippet,
+                kind,
+                status_code,
             } => {
-                assert_eq!(status, 404);
+                assert!(matches!(kind, HttpErrorKind::Http));
+                assert_eq!(status_code, Some(404));
                 assert!(reason.contains("HTTP error"));
-                // Snippet might be empty for 404 responses, that's ok
-                assert!(snippet.len() <= 200); // Should be truncated if long
             }
-            _ => panic!("Expected ErrHttp, got different output"),
+            _ => panic!("Expected Err, got different output"),
         }
     }
 
@@ -801,9 +656,10 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrJsonParse { msg } => {
-                assert!(msg.contains("Failed to parse JSON"));
-                println!("JSON parse error message: {}", msg);
+            Output::Err { reason, kind, .. } => {
+                assert!(matches!(kind, HttpErrorKind::JsonParse));
+                assert!(reason.contains("Failed to parse JSON"));
+                println!("JSON parse error message: {}", reason);
             }
             Output::Ok { text, .. } => {
                 // If response is not JSON but text, we should not get a JSON parse error
@@ -813,10 +669,6 @@ mod tests {
                         println!("Got text response (not JSON): {}", text_content);
                     }
                 }
-            }
-            _ => {
-                // Other cases might also be possible (network error vs.)
-                println!("Got different output type");
             }
         }
     }
@@ -1236,10 +1088,11 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrInput { msg } => {
-                assert!(msg.contains("expect_json must be true when json_schema is provided"));
+            Output::Err { reason, kind, .. } => {
+                assert!(matches!(kind, HttpErrorKind::Input));
+                assert!(reason.contains("Schema validation requires expect_json=true"));
             }
-            _ => panic!("Expected ErrInput with validation error"),
+            _ => panic!("Expected Err with validation error"),
         }
     }
 
@@ -1565,10 +1418,16 @@ mod tests {
         let output = tool.invoke(input).await;
 
         match output {
-            Output::ErrHttp { status, .. } => {
-                assert_eq!(status, 404); // Should return 404 without retry
+            Output::Err {
+                reason,
+                kind,
+                status_code,
+            } => {
+                assert!(matches!(kind, HttpErrorKind::Http));
+                assert_eq!(status_code, Some(404)); // Should return 404 without retry
+                assert!(reason.contains("HTTP error"));
             }
-            _ => panic!("Expected ErrHttp with 404 status"),
+            _ => panic!("Expected Err with 404 status"),
         }
     }
 
