@@ -198,6 +198,65 @@ impl HttpClient {
             .await
             .map_err(HttpToolError::from_network_error)
     }
+
+    /// Executes a single request without retry logic
+    pub async fn execute_once(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, HttpToolError> {
+        self.execute(request).await
+    }
+
+    /// Executes a request with retry logic
+    pub async fn execute_with_retry(
+        &self,
+        request: reqwest::RequestBuilder,
+        retries: u32,
+    ) -> Result<reqwest::Response, HttpToolError> {
+        if retries == 0 {
+            // No retries needed, execute once
+            return self.execute_once(request).await;
+        }
+
+        let mut last_error = None;
+
+        for attempt in 0..=retries {
+            match self
+                .execute(request.try_clone().ok_or_else(|| {
+                    HttpToolError::ErrInput("Request cannot be cloned for retry".to_string())
+                })?)
+                .await
+            {
+                Ok(response) => {
+                    let status = response.status().as_u16();
+
+                    // Check if it's a retryable error (5xx server errors)
+                    if status >= 500 && attempt < retries {
+                        // Server error, retry with linear backoff
+                        let delay_ms = 1000 * (attempt + 1) as u64; // 1s, 2s, 3s...
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+
+                    // Success or non-retryable error (4xx), return response
+                    return Ok(response);
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < retries {
+                        // Network error, retry with exponential backoff
+                        let delay_ms = 100 * (2_u64.pow(attempt));
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    }
+                }
+            }
+        }
+
+        // All retries failed
+        Err(last_error.unwrap_or_else(|| {
+            HttpToolError::ErrInput("Request failed after all retries".to_string())
+        }))
+    }
 }
 
 impl Default for HttpClient {
