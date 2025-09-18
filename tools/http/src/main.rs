@@ -3,10 +3,10 @@
 use nexus_toolkit::bootstrap;
 
 mod errors;
-mod utils;
 mod http;
 mod http_client;
 mod models;
+mod utils;
 
 #[tokio::main]
 async fn main() {
