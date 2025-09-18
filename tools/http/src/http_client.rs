@@ -20,14 +20,9 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    /// Creates a new HTTP client instance
+    /// Creates a new HTTP client instance with default configuration
     pub fn new() -> Result<Self, HttpToolError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(HttpToolError::from_network_error)?;
-
-        Ok(Self { client })
+        Self::with_config(None, None) // Default: 30s timeout, follow redirects
     }
 
     /// Creates a new HTTP client with custom configuration
@@ -37,21 +32,16 @@ impl HttpClient {
     ) -> Result<Self, HttpToolError> {
         let mut builder = Client::builder();
 
-        // Set timeout
-        if let Some(timeout_ms) = timeout_ms {
-            builder = builder.timeout(std::time::Duration::from_millis(timeout_ms));
-        }
+        // Set timeout with default (30 seconds = 30000ms)
+        let timeout_ms = timeout_ms.unwrap_or(30000);
+        builder = builder.timeout(std::time::Duration::from_millis(timeout_ms));
 
-        // Set redirect policy
-        if let Some(follow_redirects) = follow_redirects {
-            if follow_redirects {
-                builder = builder.redirect(reqwest::redirect::Policy::limited(10));
-            } else {
-                builder = builder.redirect(reqwest::redirect::Policy::none());
-            }
-        } else {
-            // Default: follow redirects
+        // Set redirect policy with default (follow redirects)
+        let follow_redirects = follow_redirects.unwrap_or(true);
+        if follow_redirects {
             builder = builder.redirect(reqwest::redirect::Policy::limited(10));
+        } else {
+            builder = builder.redirect(reqwest::redirect::Policy::none());
         }
 
         let client = builder.build().map_err(HttpToolError::from_network_error)?;
