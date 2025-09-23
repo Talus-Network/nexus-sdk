@@ -1,4 +1,4 @@
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 [private]
 _default:
@@ -10,24 +10,78 @@ cargo-check: _check-cargo
     cargo check --locked --workspace --bins --examples
 
 
-# cargo +nightly-2025-01-06 fmt --all --check
+# cargo +nightly fmt --all --check
 cargo-nightly-fmt: _check-cargo
     #!/usr/bin/env bash
 
-    cargo +nightly-2025-01-06 fmt --all --check || {
-        echo "❌ Formatting failed. Please run 'cargo +nightly fmt --all' to format the code." >&2
+    set -euo pipefail
+
+    nightly="$(just helpers::get-nightly-version)"
+
+    cargo +"$nightly" fmt --all --check || {
+        echo "❌ Formatting failed. Please run 'cargo +$nightly fmt --all' to format the code." >&2
         exit 1
     }
 
+
+check-container-runtime:
+    #!/usr/bin/env bash
+
+    declare -A check_commands
+
+    # We try to find if there is a container runtime available
+    # and if there is one we run its specific command that
+    # checks if the container runtime is running.
+    #
+    # We of course assume the (test) code is written in a
+    # container runtime agnostic way but this will require some
+    # investigation, so:
+    # NOTE: https://github.com/Talus-Network/nexus-sdk/issues/262
+
+    runtimes=(docker podman) # colima etc ...
+    check_commands=(
+        [docker]="docker info > /dev/null 2>&1"
+        [podman]="podman info > /dev/null 2>&1"
+    )
+
+    # If DOCKER_HOST is set print it.
+    # Sometimes it has the wrong value, so it's good to know.
+    if [[ -n "${DOCKER_HOST:-}" ]]; then
+        echo "DOCKER_HOST=$DOCKER_HOST"
+    fi
+
+    # sanity check to make sure the dictionary has all the runtimes
+    for runtime in "${runtimes[@]}"; do
+        if [[ -z "${check_commands[$runtime]+x}" ]]; then
+            echo "Internal error: No check command found for runtime: $runtime" >&2
+            exit 3
+        fi
+    done
+
+    for runtime in "${runtimes[@]}"; do
+        echo "Checking for: $runtime"
+        if command -v $runtime &> /dev/null; then
+            check_command="${check_commands[$runtime]}"
+            eval "$check_command" && {
+                echo "✅  $runtime [$check_command]"
+                exit 0
+            }
+        fi
+    done
+
+    echo "❌  No compatible container runtime found running." >&2
+    exit 1
+
+
 # cargo clippy --all-targets --all-features
 cargo-clippy: _check-cargo
-    cargo clippy --all-targets --all-features
+    cargo clippy --locked --all-targets --all-features
 
 
 # TODO: Perhaps consider this stricter version in the future.
 # cargo clippy --all-targets --all-features -- -D warnings
 cargo-clippy-strict: _check-cargo
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --locked --all-targets --all-features -- -D warnings
 
 
 # cargo nextest run --locked --no-run --workspace --all-features --bins --examples --tests
@@ -40,7 +94,6 @@ cargo-nextest-build: _check-cargo-nextest
 # cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 cargo-nextest-run: _check-cargo-nextest
     # Note that tests require docker to be running.
-    # TODO: https://github.com/Talus-Network/nexus-sdk/issues/254
     cargo nextest run --locked --fail-fast --workspace --all-features --bins --examples --tests
 
 
@@ -139,3 +192,82 @@ typos: _check-typos
     cd $(git rev-parse --show-toplevel)
 
     typos
+
+# Test completions (bash for now)
+test-cli-completions:
+    #!/usr/bin/env bash
+
+    source <(cargo +stable run --locked --package nexus-cli completion bash)
+
+executable-scripts:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    error=0
+
+    cd $(git rev-parse --show-toplevel)
+
+    for f in $(git ls-files); do
+        first_line=$(head -n 1 "$f")
+
+        # see if the first line is a shell shebang
+        if [[ "$first_line" =~ ^(#! *) ]]; then
+            # ... of the correct format, we checked that in another script.
+            if [[ "$first_line" =~ ^(#! */usr/bin/env *) ]]; then
+                if [[ ! -x "$f" ]]; then
+                  echo "❌  $f is not executable" >&2
+                  error=1
+                else
+                  echo "✅  $f" >&2
+                fi
+            fi
+        fi
+    done
+
+    exit $error
+
+nightly-version:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    # With 'nullglob', if a glob pattern does not match any files,
+    # it expands to nothing instead of itself.
+    # `globstar` allows `**` to match all files and directories recursively.
+    shopt -s nullglob globstar
+
+    error=0
+    nightly="$(just helpers::get-nightly-version)"
+
+    # 1. Check the version itself
+    if [[ -z "$nightly" ]]; then
+        echo "❌  nightly version not found" >&2
+        exit 1
+    else
+        echo "✅  Found nightly version: $nightly" >&2
+    fi
+
+    # 2. Check what we have in .github workflows and actions.
+    # Anything that looks like a "toolchain: nightly" must have the exact version
+
+    for yml in ../.github/{workflows,actions}/**/*.yml; do
+        echo "Checking: $yml" >&2
+
+        for match in "$(grep -E "^\s+toolchain:\s+.*nightly.*" "$yml")"; do
+            if [[ -n "$match" ]]; then
+                simple_match="${match#"${match%%[![:space:]]*}"}"
+
+                if [[ "$match" != *"$nightly"* ]]; then
+                    # Remove leading spaces for better error message
+
+                    echo "❌  Toolchain mismatch. Found: '$simple_match', which does not have: '$nightly'" >&2
+                    error=1
+                else
+                    echo "✅  Found '$simple_match'" >&2
+                fi
+            fi
+        done
+    done
+
+    exit $error

@@ -20,6 +20,9 @@ mod tools 'tools/.just'
 # Pre-commit hooks
 mod pre-commit '.pre-commit/.just'
 
+# Helpers
+mod helpers 'helpers/helpers.just'
+
 [private]
 _default:
     @just --list

@@ -402,6 +402,14 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
             name: vertex.name.clone(),
         };
 
+        // If the dag has no edges and only 1 vertex, we add this vertex as a
+        // graph node.
+        if dag.edges.is_empty() && dag.vertices.len() == 1 {
+            let node = graph.add_node(vertex_ident.clone());
+
+            graph_nodes.insert(vertex_ident.clone(), node);
+        }
+
         if !graph_nodes.contains_key(&vertex_ident) {
             bail!("'{vertex_ident}' is not connected to the DAG.",);
         }

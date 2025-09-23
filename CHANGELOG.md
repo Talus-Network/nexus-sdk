@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.2.0`] - Unreleased
+## [`0.3.0`] - Unreleased
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
+
+### `nexus-sdk`
+
+#### Changed
+
+- standardized array and single value serialization of `NexusData` in `serde_parsers`
+
+#### Added
+
+- .nightly-version
+
+## [`0.2.0`] - 2025-08-12
 
 ### Repository
 
@@ -13,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CONTRIBUTING.md
 - CODE_OF_CONDUCT.md
-- `pre-commit` hook
+- `pre-commit` hook (also in CI)
 
 ### `nexus-cli`
 
@@ -89,13 +107,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pre key vault related Nexus events and their definitions
 - DAG validation (moved from `nexus-cli`)
 - `LinkedTable` support for object crawler
+- added identifiers to `tool_registry`'s allow list functions
 
 #### Changed
 
 - `transactions::tool` register PTB template now accepts invocation cost
 - all transaction templates now accept an `objects` argument instead of accepting objects one by one
 - replaced all occurrences of `sap` with `tap`
-- standardized array and single value serialization of `NexusData` in `serde_parsers`
 
 #### Fixed
 
