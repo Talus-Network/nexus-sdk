@@ -64,6 +64,10 @@ Upon successful registration, both OwnerCap object IDs are saved to the CLI conf
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
+{% hint style="info" %}
+Tool registration is currently restricted during the beta phase. To register your tool, please contact the team to be added to the allow list.
+{% endhint %}
+
 ---
 
 **`nexus tool register --on-chain <ident>`**

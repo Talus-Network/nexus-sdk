@@ -69,6 +69,10 @@ pub enum NexusEventKind {
     DAGDefaultValueAdded(serde_json::Value),
     #[serde(rename = "LeaderClaimedGasEvent")]
     LeaderClaimedGas(serde_json::Value),
+    #[serde(rename = "AllowedOwnerAddedEvent")]
+    AllowedOwnerAdded(serde_json::Value),
+    #[serde(rename = "AllowedOwnerRemovedEvent")]
+    AllowedOwnerRemoved(serde_json::Value),
 }
 
 // == Event definitions ==
