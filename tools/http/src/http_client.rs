@@ -256,3 +256,231 @@ impl Default for HttpClient {
         Self::new().expect("Failed to create HTTP client")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::models::{AuthConfig, HttpMethod, RequestBody, UrlInput},
+        std::collections::HashMap,
+    };
+
+    #[test]
+    fn test_http_client_new() {
+        let client = HttpClient::new();
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_http_client_with_config() {
+        let client = HttpClient::with_config(Some(5000), Some(true));
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_url_full() {
+        let client = HttpClient::new().unwrap();
+        let url_input = UrlInput::FullUrl("https://example.com/api".to_string());
+        let result = client.resolve_url(&url_input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().as_str(), "https://example.com/api");
+    }
+
+    #[test]
+    fn test_resolve_url_split() {
+        let client = HttpClient::new().unwrap();
+        let url_input = UrlInput::SplitUrl {
+            base_url: "https://example.com".to_string(),
+            path: "/api/users".to_string(),
+        };
+        let result = client.resolve_url(&url_input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().as_str(), "https://example.com/api/users");
+    }
+
+    #[test]
+    fn test_resolve_url_invalid() {
+        let client = HttpClient::new().unwrap();
+        let url_input = UrlInput::FullUrl("invalid-url".to_string());
+        let result = client.resolve_url(&url_input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_method() {
+        let client = HttpClient::new().unwrap();
+
+        assert_eq!(client.build_method(&HttpMethod::Get), reqwest::Method::GET);
+        assert_eq!(
+            client.build_method(&HttpMethod::Post),
+            reqwest::Method::POST
+        );
+        assert_eq!(client.build_method(&HttpMethod::Put), reqwest::Method::PUT);
+        assert_eq!(
+            client.build_method(&HttpMethod::Delete),
+            reqwest::Method::DELETE
+        );
+        assert_eq!(
+            client.build_method(&HttpMethod::Patch),
+            reqwest::Method::PATCH
+        );
+        assert_eq!(
+            client.build_method(&HttpMethod::Head),
+            reqwest::Method::HEAD
+        );
+        assert_eq!(
+            client.build_method(&HttpMethod::Options),
+            reqwest::Method::OPTIONS
+        );
+    }
+
+    #[test]
+    fn test_build_request_with_auth() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let method = reqwest::Method::GET;
+
+        let auth = Some(AuthConfig::BearerToken {
+            token: "test-token".to_string(),
+        });
+
+        let result = client.build_request(method, url, auth.as_ref(), None, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_request_with_headers() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let method = reqwest::Method::GET;
+
+        let headers = Some(HashMap::from([
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Authorization".to_string(), "Bearer token".to_string()),
+        ]));
+
+        let result = client.build_request(method, url, None, headers.as_ref(), None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_request_with_query() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let method = reqwest::Method::GET;
+
+        let query = Some(HashMap::from([
+            ("page".to_string(), "1".to_string()),
+            ("limit".to_string(), "10".to_string()),
+        ]));
+
+        let result = client.build_request(method, url, None, None, query.as_ref());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_multipart_form() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::POST, url);
+
+        let fields = vec![
+            crate::models::MultipartField {
+                name: "field1".to_string(),
+                value: "value1".to_string(),
+                content_type: Some("text/plain".to_string()),
+            },
+            crate::models::MultipartField {
+                name: "field2".to_string(),
+                value: "value2".to_string(),
+                content_type: None,
+            },
+        ];
+
+        let result = client.build_multipart_form(request, &fields);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_raw_body() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::POST, url);
+
+        let data = base64::engine::general_purpose::STANDARD.encode("Hello World");
+        let content_type = Some("application/octet-stream".to_string());
+
+        let result = client.build_raw_body(request, &data, &content_type);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_raw_body_invalid_base64() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::POST, url);
+
+        let data = "invalid-base64!";
+        let content_type = Some("application/octet-stream".to_string());
+
+        let result = client.build_raw_body(request, data, &content_type);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_method_supports_body() {
+        assert!(!HttpClient::method_supports_body(&reqwest::Method::GET));
+        assert!(!HttpClient::method_supports_body(&reqwest::Method::HEAD));
+        assert!(!HttpClient::method_supports_body(&reqwest::Method::OPTIONS));
+        assert!(HttpClient::method_supports_body(&reqwest::Method::POST));
+        assert!(HttpClient::method_supports_body(&reqwest::Method::PUT));
+        assert!(HttpClient::method_supports_body(&reqwest::Method::DELETE));
+        assert!(HttpClient::method_supports_body(&reqwest::Method::PATCH));
+    }
+
+    #[test]
+    fn test_build_body_json() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::POST, url);
+
+        let body = RequestBody::Json {
+            data: serde_json::json!({"key": "value"}),
+        };
+
+        let result = client.build_body(request, &body, &reqwest::Method::POST);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_body_form() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::POST, url);
+
+        let body = RequestBody::Form {
+            data: HashMap::from([
+                ("key1".to_string(), "value1".to_string()),
+                ("key2".to_string(), "value2".to_string()),
+            ]),
+        };
+
+        let result = client.build_body(request, &body, &reqwest::Method::POST);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_body_ignores_for_get() {
+        let client = HttpClient::new().unwrap();
+        let url = url::Url::parse("https://example.com").unwrap();
+        let request = client.client.request(reqwest::Method::GET, url);
+
+        let body = RequestBody::Json {
+            data: serde_json::json!({"key": "value"}),
+        };
+
+        let result = client.build_body(request, &body, &reqwest::Method::GET);
+        assert!(result.is_ok());
+        // Body should be ignored for GET requests
+    }
+}
