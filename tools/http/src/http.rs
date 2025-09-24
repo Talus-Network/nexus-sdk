@@ -288,7 +288,7 @@ impl Http {
         let status = response.status().as_u16();
 
         // Check if it's an HTTP error status
-        if status >= 400 {
+        if response.status().is_client_error() || response.status().is_server_error() {
             let reason_phrase = response.status().canonical_reason().unwrap_or("");
             let body = response.text().await.unwrap_or_default();
             let snippet = if body.len() > 200 {

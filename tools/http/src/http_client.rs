@@ -220,10 +220,8 @@ impl HttpClient {
                 .await
             {
                 Ok(response) => {
-                    let status = response.status().as_u16();
-
                     // Check if it's a retryable error (5xx server errors)
-                    if status >= 500 && attempt < retries {
+                    if response.status().is_server_error() && attempt < retries {
                         // Server error, retry with linear backoff
                         let delay_ms = 1000 * (attempt + 1) as u64; // 1s, 2s, 3s...
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
