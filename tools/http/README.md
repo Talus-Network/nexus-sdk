@@ -81,7 +81,7 @@ Request timeout in milliseconds. Maximum allowed value is 30000ms (30 seconds).
 
 _opt_ **`retries`: [`Option<u32>`]** _default_: [`0`]
 
-Number of retries on failure.
+Number of retries on failure. Maximum allowed value is 5.
 
 _opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`false`]
 

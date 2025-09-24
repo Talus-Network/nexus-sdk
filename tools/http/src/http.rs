@@ -148,9 +148,9 @@ impl Input {
 
         // Validate retries
         if let Some(retries) = self.retries {
-            if retries > 10 {
+            if retries > 5 {
                 return Err(ValidationError::InvalidRetries(
-                    "retries cannot exceed 10".to_string(),
+                    "retries cannot exceed 5".to_string(),
                 ));
             }
         }
