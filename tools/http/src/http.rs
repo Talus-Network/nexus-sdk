@@ -1228,7 +1228,6 @@ mod tests {
                 fields: vec![crate::models::MultipartField {
                     name: "".to_string(),
                     value: "test".to_string(),
-                    filename: None,
                     content_type: None,
                 }],
             }),

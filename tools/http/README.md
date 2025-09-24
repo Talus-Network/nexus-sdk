@@ -51,14 +51,13 @@ Request body configuration.
 
 - **`Json { data }`** - JSON request body
 - **`Form { data }`** - URL-encoded form data
-- **`Multipart { fields }`** - Multipart form data for file uploads
+- **`Multipart { fields }`** - Multipart form data for text fields
 - **`Raw { data, content_type }`** - Raw bytes (base64 encoded)
 
 ### MultipartField Structure
 
 - **`name`: [`String`]** - Field name
-- **`value`: [`String`]** - Field value (text) or base64 encoded data (for files)
-- **`filename`: [`Option<String>`]** - Filename for file uploads
+- **`value`: [`String`]** - Field value (text only)
 - **`content_type`: [`Option<String>`]** - Content type for the field
 
 _opt_ **`expect_json`: [`Option<bool>`]** _default_: [`None`]

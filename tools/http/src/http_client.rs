@@ -144,34 +144,16 @@ impl HttpClient {
             RequestBody::Multipart { fields } => {
                 let mut form = Form::new();
                 for field in fields {
-                    if let Some(filename) = &field.filename {
-                        // Check if value is base64 encoded (for file uploads)
-                        if let Ok(bytes) =
-                            base64::engine::general_purpose::STANDARD.decode(&field.value)
-                        {
-                            // Real file upload with binary data
-                            let part = reqwest::multipart::Part::bytes(bytes)
-                                .file_name(filename.clone())
-                                .mime_str(
-                                    field
-                                        .content_type
-                                        .as_deref()
-                                        .unwrap_or("application/octet-stream"),
-                                )
-                                .map_err(|e| {
-                                    HttpToolError::ErrInput(format!("Invalid content type: {}", e))
-                                })?;
-                            form = form.part(field.name.clone(), part);
-                        } else {
-                            // Text field
-                            let part = reqwest::multipart::Part::text(field.value.clone());
-                            form = form.part(field.name.clone(), part);
-                        }
-                    } else {
-                        // Text field without filename
-                        let part = reqwest::multipart::Part::text(field.value.clone());
-                        form = form.part(field.name.clone(), part);
+                    let mut part = reqwest::multipart::Part::text(field.value.clone());
+
+                    // Set content type if provided
+                    if let Some(content_type) = &field.content_type {
+                        part = part.mime_str(content_type).map_err(|e| {
+                            HttpToolError::ErrInput(format!("Invalid content type: {}", e))
+                        })?;
                     }
+
+                    form = form.part(field.name.clone(), part);
                 }
                 Ok(request.multipart(form))
             }

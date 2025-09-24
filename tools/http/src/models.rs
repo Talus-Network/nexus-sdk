@@ -153,16 +153,13 @@ pub enum RequestBody {
     },
 }
 
-/// Multipart field for file uploads and form data
+/// Multipart field for form data
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct MultipartField {
     /// Field name
     pub name: String,
-    /// Field value (text) or base64 encoded data (for files)
+    /// Field value (text only)
     pub value: String,
-    /// Optional filename for file uploads
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filename: Option<String>,
     /// Optional content type (default: text/plain)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
