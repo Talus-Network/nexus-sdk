@@ -226,43 +226,10 @@ impl NexusTool for Http {
             return HttpToolError::from_validation_error(validation_error).to_output();
         }
 
-        // Create HTTP client with configuration
-        let timeout_ms = input.timeout_ms.unwrap_or(30000);
-        let follow_redirects = input.follow_redirects.unwrap_or(false);
-        let http_client = match HttpClient::with_config(Some(timeout_ms), Some(follow_redirects)) {
-            Ok(client) => client,
+        // Prepare request (client, URL, method, headers, body)
+        let (http_client, request) = match self.prepare_request(&input) {
+            Ok((client, req)) => (client, req),
             Err(e) => return e.to_output(),
-        };
-
-        // Resolve URL from input with proper validation
-        let resolved_url = match http_client.resolve_url(&input.url) {
-            Ok(url) => url,
-            Err(e) => return e.to_output(),
-        };
-
-        // Build HTTP method
-        let method = http_client.build_method(&input.method);
-
-        // Build request with authentication, headers, and query parameters
-        let request = match http_client.build_request(
-            method.clone(),
-            resolved_url.clone(),
-            input.auth.as_ref(),
-            input.headers.as_ref(),
-            input.query.as_ref(),
-        ) {
-            Ok(request) => request,
-            Err(e) => return e.to_output(),
-        };
-
-        // Build request body if provided
-        let request = if let Some(body) = &input.body {
-            match http_client.build_body(request, body, &method) {
-                Ok(request) => request,
-                Err(e) => return e.to_output(),
-            }
-        } else {
-            request
         };
 
         // Execute request with or without retry logic
@@ -274,149 +241,206 @@ impl NexusTool for Http {
         };
 
         match response {
-            Ok(response) => {
-                let status = response.status().as_u16();
-
-                // Check if it's an HTTP error status
-                if status >= 400 {
-                    let reason_phrase = response.status().canonical_reason().unwrap_or("");
-                    let body = response.text().await.unwrap_or_default();
-                    let snippet = if body.len() > 200 {
-                        format!("{}...", &body[..200])
-                    } else {
-                        body
-                    };
-
-                    return HttpToolError::ErrHttp {
-                        status,
-                        reason: if reason_phrase.is_empty() {
-                            format!("HTTP error: {}", status)
-                        } else {
-                            format!("HTTP error: {} ({})", status, reason_phrase)
-                        },
-                        snippet,
-                    }
-                    .to_output();
-                }
-
-                // Get response headers
-                let headers: HashMap<String, String> = response
-                    .headers()
-                    .iter()
-                    .map(|(name, value)| {
-                        (name.to_string(), value.to_str().unwrap_or("").to_string())
-                    })
-                    .collect();
-
-                // Get raw response body as bytes
-                let body_bytes = match response.bytes().await {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        return HttpToolError::from_network_error(e).to_output();
-                    }
-                };
-
-                // Encode raw body as base64
-                let raw_base64 = base64::engine::general_purpose::STANDARD.encode(&body_bytes);
-
-                // Try to decode as UTF-8 text
-                let text = String::from_utf8(body_bytes.to_vec()).ok();
-
-                // Detect JSON content-type from collected headers
-                let is_json_content_type = headers
-                    .get("content-type")
-                    .map(|s| {
-                        let s_lower = s.to_ascii_lowercase();
-                        s_lower.contains("application/json") || s_lower.contains("+json")
-                    })
-                    .unwrap_or(false);
-
-                // Parse JSON only if expected or content-type signals JSON
-                let should_try_parse_json =
-                    input.expect_json.unwrap_or(false) || is_json_content_type;
-                let json = if should_try_parse_json {
-                    if let Some(ref text_content) = text {
-                        if text_content.trim().is_empty() {
-                            // If expect_json=true but we tolerate empty body (e.g., 204)
-                            if input.expect_json.unwrap_or(false)
-                                && !input.allow_empty_json.unwrap_or(false)
-                            {
-                                return HttpToolError::ErrInput(
-                                    "Empty response body but JSON expected".to_string(),
-                                )
-                                .to_output();
-                            }
-                            None
-                        } else {
-                            match serde_json::from_str(text_content) {
-                                Ok(json_data) => Some(json_data),
-                                Err(e) => {
-                                    if input.expect_json.unwrap_or(false) || is_json_content_type {
-                                        return HttpToolError::from_json_error(e).to_output();
-                                    }
-                                    None
-                                }
-                            }
-                        }
-                    } else {
-                        if input.expect_json.unwrap_or(false)
-                            && !input.allow_empty_json.unwrap_or(false)
-                        {
-                            return HttpToolError::ErrInput(
-                                "Non-text response body but JSON expected".to_string(),
-                            )
-                            .to_output();
-                        }
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // Schema validation (if schema provided)
-                let schema_validation = if let Some(schema_def) = &input.json_schema {
-                    if let Some(ref json_data) = json {
-                        Some(validate_schema_detailed(schema_def, json_data))
-                    } else {
-                        // JSON could not be parsed, schema validation failed
-                        Some(SchemaValidationDetails {
-                            name: schema_def.name.clone(),
-                            description: schema_def.description.clone(),
-                            strict: schema_def.strict,
-                            valid: false,
-                            errors: vec!["JSON could not be parsed".to_string()],
-                        })
-                    }
-                } else {
-                    None // No schema, no validation performed
-                };
-
-                // If schema validation failed, handle based on strict mode
-                if let Some(ref validation) = schema_validation {
-                    if !validation.valid {
-                        if validation.strict.unwrap_or(false) {
-                            // Strict mode: Return error immediately
-                            return HttpToolError::ErrSchemaValidation {
-                                errors: validation.errors.clone(),
-                            }
-                            .to_output();
-                        }
-                        // Non-strict mode: Continue with validation details in response
-                        // (validation.valid = false, errors filled, but return Output::Ok)
-                    }
-                }
-
-                Output::Ok {
-                    status,
-                    headers,
-                    raw_base64,
-                    text,
-                    json,
-                    schema_validation,
-                }
-            }
+            Ok(response) => self.process_response(response, &input).await,
             Err(e) => e.to_output(),
         }
+    }
+}
+
+impl Http {
+    /// Prepare HTTP request (client, URL, method, headers, body)
+    fn prepare_request(
+        &self,
+        input: &Input,
+    ) -> Result<(HttpClient, reqwest::RequestBuilder), HttpToolError> {
+        // Create HTTP client with configuration
+        let timeout_ms = input.timeout_ms.unwrap_or(30000);
+        let follow_redirects = input.follow_redirects.unwrap_or(false);
+        let http_client = HttpClient::with_config(Some(timeout_ms), Some(follow_redirects))?;
+
+        // Resolve URL from input with proper validation
+        let resolved_url = http_client.resolve_url(&input.url)?;
+
+        // Build HTTP method
+        let method = http_client.build_method(&input.method);
+
+        // Build request with authentication, headers, and query parameters
+        let request = http_client.build_request(
+            method.clone(),
+            resolved_url.clone(),
+            input.auth.as_ref(),
+            input.headers.as_ref(),
+            input.query.as_ref(),
+        )?;
+
+        // Build request body if provided
+        let request = if let Some(body) = &input.body {
+            http_client.build_body(request, body, &method)?
+        } else {
+            request
+        };
+
+        Ok((http_client, request))
+    }
+
+    /// Process HTTP response and return structured output
+    async fn process_response(&self, response: reqwest::Response, input: &Input) -> Output {
+        let status = response.status().as_u16();
+
+        // Check if it's an HTTP error status
+        if status >= 400 {
+            let reason_phrase = response.status().canonical_reason().unwrap_or("");
+            let body = response.text().await.unwrap_or_default();
+            let snippet = if body.len() > 200 {
+                format!("{}...", &body[..200])
+            } else {
+                body
+            };
+
+            return HttpToolError::ErrHttp {
+                status,
+                reason: if reason_phrase.is_empty() {
+                    format!("HTTP error: {}", status)
+                } else {
+                    format!("HTTP error: {} ({})", status, reason_phrase)
+                },
+                snippet,
+            }
+            .to_output();
+        }
+
+        // Get response headers
+        let headers: HashMap<String, String> = response
+            .headers()
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
+            .collect();
+
+        // Get raw response body as bytes
+        let body_bytes = match response.bytes().await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return HttpToolError::from_network_error(e).to_output();
+            }
+        };
+
+        // Encode raw body as base64
+        let raw_base64 = base64::engine::general_purpose::STANDARD.encode(&body_bytes);
+
+        // Try to decode as UTF-8 text
+        let text = String::from_utf8(body_bytes.to_vec()).ok();
+
+        // Parse JSON response
+        let json = match self.parse_json_response(&text, &headers, input) {
+            Ok(json) => json,
+            Err(e) => return e.to_output(),
+        };
+
+        // Validate schema if provided
+        let schema_validation = match self.validate_schema_response(&json, input) {
+            Ok(validation) => validation,
+            Err(e) => return e.to_output(),
+        };
+
+        Output::Ok {
+            status,
+            headers,
+            raw_base64,
+            text,
+            json,
+            schema_validation,
+        }
+    }
+
+    /// Parse JSON from response text and headers
+    fn parse_json_response(
+        &self,
+        text: &Option<String>,
+        headers: &HashMap<String, String>,
+        input: &Input,
+    ) -> Result<Option<Value>, HttpToolError> {
+        // Detect JSON content-type from collected headers
+        let is_json_content_type = headers
+            .get("content-type")
+            .map(|s| {
+                let s_lower = s.to_ascii_lowercase();
+                s_lower.contains("application/json") || s_lower.contains("+json")
+            })
+            .unwrap_or(false);
+
+        // Parse JSON only if expected or content-type signals JSON
+        let should_try_parse_json = input.expect_json.unwrap_or(false) || is_json_content_type;
+
+        if !should_try_parse_json {
+            return Ok(None);
+        }
+
+        if let Some(ref text_content) = text {
+            if text_content.trim().is_empty() {
+                // If expect_json=true but we tolerate empty body (e.g., 204)
+                if input.expect_json.unwrap_or(false) && !input.allow_empty_json.unwrap_or(false) {
+                    return Err(HttpToolError::ErrInput(
+                        "Empty response body but JSON expected".to_string(),
+                    ));
+                }
+                Ok(None)
+            } else {
+                match serde_json::from_str(text_content) {
+                    Ok(json_data) => Ok(Some(json_data)),
+                    Err(e) => {
+                        if input.expect_json.unwrap_or(false) || is_json_content_type {
+                            Err(HttpToolError::from_json_error(e))
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                }
+            }
+        } else {
+            if input.expect_json.unwrap_or(false) && !input.allow_empty_json.unwrap_or(false) {
+                Err(HttpToolError::ErrInput(
+                    "Non-text response body but JSON expected".to_string(),
+                ))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    /// Validate JSON response against schema if provided
+    fn validate_schema_response(
+        &self,
+        json: &Option<Value>,
+        input: &Input,
+    ) -> Result<Option<SchemaValidationDetails>, HttpToolError> {
+        let schema_validation = if let Some(schema_def) = &input.json_schema {
+            if let Some(ref json_data) = json {
+                Some(validate_schema_detailed(schema_def, json_data))
+            } else {
+                // JSON could not be parsed, schema validation failed
+                Some(SchemaValidationDetails {
+                    name: schema_def.name.clone(),
+                    description: schema_def.description.clone(),
+                    strict: schema_def.strict,
+                    valid: false,
+                    errors: vec!["JSON could not be parsed".to_string()],
+                })
+            }
+        } else {
+            None // No schema, no validation performed
+        };
+
+        // If schema validation failed, handle based on strict mode
+        if let Some(ref validation) = schema_validation {
+            if !validation.valid && validation.strict.unwrap_or(false) {
+                // Strict mode: Return error immediately
+                return Err(HttpToolError::ErrSchemaValidation {
+                    errors: validation.errors.clone(),
+                });
+            }
+        }
+
+        Ok(schema_validation)
     }
 }
 
