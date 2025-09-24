@@ -141,36 +141,51 @@ impl HttpClient {
         match body {
             RequestBody::Json { data } => Ok(request.json(data)),
             RequestBody::Form { data } => Ok(request.form(data)),
-            RequestBody::Multipart { fields } => {
-                let mut form = Form::new();
-                for field in fields {
-                    let mut part = reqwest::multipart::Part::text(field.value.clone());
-
-                    // Set content type if provided
-                    if let Some(content_type) = &field.content_type {
-                        part = part.mime_str(content_type).map_err(|e| {
-                            HttpToolError::ErrInput(format!("Invalid content type: {}", e))
-                        })?;
-                    }
-
-                    form = form.part(field.name.clone(), part);
-                }
-                Ok(request.multipart(form))
-            }
+            RequestBody::Multipart { fields } => self.build_multipart_form(request, fields),
             RequestBody::Raw { data, content_type } => {
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(data)
-                    .map_err(|e| {
-                        HttpToolError::ErrBase64Decode(format!("Invalid base64 data: {}", e))
-                    })?;
-
-                let content_type = content_type
-                    .as_deref()
-                    .unwrap_or("application/octet-stream");
-
-                Ok(request.header("Content-Type", content_type).body(bytes))
+                self.build_raw_body(request, data, content_type)
             }
         }
+    }
+
+    /// Builds multipart form from fields
+    fn build_multipart_form(
+        &self,
+        request: reqwest::RequestBuilder,
+        fields: &[crate::models::MultipartField],
+    ) -> Result<reqwest::RequestBuilder, HttpToolError> {
+        let mut form = Form::new();
+        for field in fields {
+            let mut part = reqwest::multipart::Part::text(field.value.clone());
+
+            // Set content type if provided
+            if let Some(content_type) = &field.content_type {
+                part = part
+                    .mime_str(content_type)
+                    .map_err(|e| HttpToolError::ErrInput(format!("Invalid content type: {}", e)))?;
+            }
+
+            form = form.part(field.name.clone(), part);
+        }
+        Ok(request.multipart(form))
+    }
+
+    /// Builds raw body from base64 data
+    fn build_raw_body(
+        &self,
+        request: reqwest::RequestBuilder,
+        data: &str,
+        content_type: &Option<String>,
+    ) -> Result<reqwest::RequestBuilder, HttpToolError> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|e| HttpToolError::ErrBase64Decode(format!("Invalid base64 data: {}", e)))?;
+
+        let content_type = content_type
+            .as_deref()
+            .unwrap_or("application/octet-stream");
+
+        Ok(request.header("Content-Type", content_type).body(bytes))
     }
 
     /// Executes the request and returns the response
