@@ -36,8 +36,8 @@ impl HttpClient {
         let timeout_ms = timeout_ms.unwrap_or(30000);
         builder = builder.timeout(std::time::Duration::from_millis(timeout_ms));
 
-        // Set redirect policy with default (follow redirects)
-        let follow_redirects = follow_redirects.unwrap_or(true);
+        // Set redirect policy with default (don't follow redirects, following curl's philosophy)
+        let follow_redirects = follow_redirects.unwrap_or(false);
         if follow_redirects {
             builder = builder.redirect(reqwest::redirect::Policy::limited(10));
         } else {

@@ -83,9 +83,9 @@ _opt_ **`retries`: [`Option<u32>`]** _default_: [`0`]
 
 Number of retries on failure.
 
-_opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`true`]
+_opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`false`]
 
-Whether to follow HTTP redirects.
+Whether to follow HTTP redirects. Defaults to false, following curl's philosophy of not following redirects unless explicitly requested.
 
 _opt_ **`allow_empty_json`: [`Option<bool>`]** _default_: [`false`]
 

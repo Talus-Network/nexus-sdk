@@ -228,7 +228,7 @@ impl NexusTool for Http {
 
         // Create HTTP client with configuration
         let timeout_ms = input.timeout_ms.unwrap_or(30000);
-        let follow_redirects = input.follow_redirects.unwrap_or(true);
+        let follow_redirects = input.follow_redirects.unwrap_or(false);
         let http_client = match HttpClient::with_config(Some(timeout_ms), Some(follow_redirects)) {
             Ok(client) => client,
             Err(e) => return e.to_output(),
@@ -1622,7 +1622,7 @@ mod tests {
             .with_body(mock_response)
             .create();
 
-        // Test with follow_redirects = true (default behavior)
+        // Test with follow_redirects = true (explicit)
         let input = Input {
             method: HttpMethod::Get,
             url: UrlInput::FullUrl(format!("{}/redirect", server.url())),
