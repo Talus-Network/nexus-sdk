@@ -25,6 +25,9 @@ pub enum HttpErrorKind {
     /// Network connectivity error
     #[serde(rename = "err_network")]
     Network,
+    /// Request timeout error
+    #[serde(rename = "err_timeout")]
+    Timeout,
     /// Input validation error
     #[serde(rename = "err_input")]
     Input,
@@ -79,6 +82,9 @@ pub enum HttpToolError {
     #[error("Network error: {0}")]
     ErrNetwork(String),
 
+    #[error("Request timeout: {0}")]
+    ErrTimeout(String),
+
     #[error("Input validation error: {0}")]
     ErrInput(String),
 
@@ -117,6 +123,11 @@ impl HttpToolError {
                 kind: HttpErrorKind::Network,
                 status_code: None,
             },
+            HttpToolError::ErrTimeout(msg) => crate::http::Output::Err {
+                reason: format!("Request timeout: {}", msg),
+                kind: HttpErrorKind::Timeout,
+                status_code: None,
+            },
             HttpToolError::ErrInput(msg) => crate::http::Output::Err {
                 reason: format!("Input validation error: {}", msg),
                 kind: HttpErrorKind::Input,
@@ -141,7 +152,17 @@ impl HttpToolError {
     }
 
     pub fn from_network_error(e: ReqwestError) -> Self {
-        Self::ErrNetwork(e.to_string())
+        let error_msg = e.to_string();
+        if e.is_timeout() {
+            Self::ErrTimeout(error_msg)
+        } else {
+            // Check if it's a timeout by looking at the error message
+            if error_msg.contains("timeout") || error_msg.contains("timed out") {
+                Self::ErrTimeout(error_msg)
+            } else {
+                Self::ErrNetwork(error_msg)
+            }
+        }
     }
 
     pub fn from_url_parse_error(e: UrlParseError) -> Self {

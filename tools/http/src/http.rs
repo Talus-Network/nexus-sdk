@@ -697,14 +697,12 @@ mod tests {
             Output::Err { reason, kind, .. } => {
                 assert!(matches!(kind, HttpErrorKind::JsonParse));
                 assert!(reason.contains("Failed to parse JSON"));
-                println!("JSON parse error message: {}", reason);
             }
             Output::Ok { text, .. } => {
                 // If response is not JSON but text, we should not get a JSON parse error
                 if let Some(text_content) = text {
                     if !text_content.trim().is_empty() {
                         // Text response but not JSON - this is normal
-                        println!("Got text response (not JSON): {}", text_content);
                     }
                 }
             }
@@ -828,7 +826,6 @@ mod tests {
                 assert!(schema_validation.is_none());
             }
             _ => {
-                println!("Got unexpected output: {:?}", output);
                 panic!("Expected successful response");
             }
         }
@@ -1596,6 +1593,38 @@ mod tests {
                 // Body should be used for POST
             }
             _ => panic!("Expected successful response with body in POST request"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_timeout_error() {
+        let tool = Http::new().await;
+
+        // Test with very short timeout to trigger timeout error
+        let input = Input {
+            method: HttpMethod::Get,
+            url: UrlInput::FullUrl("https://httpbin.org/delay/10".to_string()),
+            headers: None,
+            query: None,
+            auth: None,
+            body: None,
+            expect_json: None,
+            json_schema: None,
+            timeout_ms: Some(100), // Very short timeout
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        let output = tool.invoke(input).await;
+
+        match output {
+            Output::Err { reason, kind, .. } => {
+                // Should be timeout error
+                assert!(matches!(kind, HttpErrorKind::Timeout));
+                assert!(reason.contains("Request timeout"));
+            }
+            _ => panic!("Expected timeout error"),
         }
     }
 

@@ -149,6 +149,7 @@ An error occurred during the request.
 - **`err_json_parse`** - JSON parsing error
 - **`err_schema_validation`** - Schema validation error
 - **`err_network`** - Network connectivity error
+- **`err_timeout`** - Request timeout error
 - **`err_input`** - Input validation error
 - **`err_url_parse`** - URL parsing error
 - **`err_base64_decode`** - Base64 decoding error
