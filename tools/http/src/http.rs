@@ -138,10 +138,10 @@ impl Input {
                     "timeout_ms must be greater than 0".to_string(),
                 ));
             }
-            if timeout_ms > 300000 {
-                // 5 minutes max
+            if timeout_ms > 30000 {
+                // 30 seconds max
                 return Err(ValidationError::InvalidTimeout(
-                    "timeout_ms cannot exceed 300000ms (5 minutes)".to_string(),
+                    "timeout_ms cannot exceed 30000ms (30 seconds)".to_string(),
                 ));
             }
         }
@@ -254,7 +254,7 @@ impl Http {
         input: &Input,
     ) -> Result<(HttpClient, reqwest::RequestBuilder), HttpToolError> {
         // Create HTTP client with configuration
-        let timeout_ms = input.timeout_ms.unwrap_or(30000);
+        let timeout_ms = input.timeout_ms.unwrap_or(5000);
         let follow_redirects = input.follow_redirects.unwrap_or(false);
         let http_client = HttpClient::with_config(Some(timeout_ms), Some(follow_redirects))?;
 
@@ -1650,6 +1650,48 @@ mod tests {
             }
             _ => panic!("Expected timeout error"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_timeout_validation_maximum() {
+        // Test that timeout cannot exceed 30 seconds (30000ms)
+        let input = Input {
+            method: HttpMethod::Get,
+            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            headers: None,
+            query: None,
+            auth: None,
+            body: None,
+            expect_json: None,
+            json_schema: None,
+            timeout_ms: Some(35000), // 35 seconds - should fail
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        assert!(input.validate().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_timeout_validation_within_limit() {
+        // Test that timeout within 30 seconds is valid
+        let input = Input {
+            method: HttpMethod::Get,
+            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            headers: None,
+            query: None,
+            auth: None,
+            body: None,
+            expect_json: None,
+            json_schema: None,
+            timeout_ms: Some(25000), // 25 seconds - should pass
+            retries: None,
+            follow_redirects: None,
+            allow_empty_json: None,
+        };
+
+        assert!(input.validate().is_ok());
     }
 
     #[tokio::test]

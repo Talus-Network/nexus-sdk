@@ -75,9 +75,9 @@ Optional JSON schema to validate the response against.
 - **`description`: [`Option<String>`]** - Description of the expected format
 - **`strict`: [`Option<bool>`]** - Whether to enable strict schema adherence
 
-_opt_ **`timeout_ms`: [`Option<u64>`]** _default_: [`30000`]
+_opt_ **`timeout_ms`: [`Option<u64>`]** _default_: [`5000`]
 
-Request timeout in milliseconds.
+Request timeout in milliseconds. Maximum allowed value is 30000ms (30 seconds).
 
 _opt_ **`retries`: [`Option<u32>`]** _default_: [`0`]
 

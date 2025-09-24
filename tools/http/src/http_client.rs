@@ -32,8 +32,8 @@ impl HttpClient {
     ) -> Result<Self, HttpToolError> {
         let mut builder = Client::builder();
 
-        // Set timeout with default (30 seconds = 30000ms)
-        let timeout_ms = timeout_ms.unwrap_or(30000);
+        // Set timeout with default (5 seconds = 5000ms)
+        let timeout_ms = timeout_ms.unwrap_or(5000);
         builder = builder.timeout(std::time::Duration::from_millis(timeout_ms));
 
         // Set redirect policy with default (don't follow redirects, following curl's philosophy)
