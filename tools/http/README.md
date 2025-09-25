@@ -87,9 +87,6 @@ _opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`false`]
 
 Whether to follow HTTP redirects. Defaults to false, following curl's philosophy of not following redirects unless explicitly requested. When enabled, follows up to 3 redirects maximum
 
-_opt_ **`allow_empty_json`: [`Option<bool>`]** _default_: [`false`]
-
-If true, tolerate empty body when JSON is expected (e.g., 204 No Content).
 
 ## Security Features
 

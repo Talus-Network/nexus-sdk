@@ -72,10 +72,6 @@ pub(crate) struct Input {
     /// Whether to follow redirects (default: true)
     #[serde(default)]
     pub follow_redirects: Option<bool>,
-
-    /// If true, tolerate empty body when JSON is expected (e.g., 204 No Content)
-    #[serde(default)]
-    pub allow_empty_json: Option<bool>,
 }
 
 impl Input {
@@ -248,6 +244,11 @@ impl NexusTool for Http {
 }
 
 impl Http {
+    /// Check if HTTP status code indicates no content
+    fn is_no_content_status(status: &reqwest::StatusCode) -> bool {
+        matches!(status.as_u16(), 204 | 202 | 205)
+    }
+
     /// Prepare HTTP request (client, URL, method, headers, body)
     fn prepare_request(
         &self,
@@ -286,6 +287,7 @@ impl Http {
     /// Process HTTP response and return structured output
     async fn process_response(&self, response: reqwest::Response, input: &Input) -> Output {
         let status = response.status().as_u16();
+        let status_code = response.status();
 
         // Check if it's an HTTP error status
         if response.status().is_client_error() || response.status().is_server_error() {
@@ -331,7 +333,7 @@ impl Http {
         let text = String::from_utf8(body_bytes.to_vec()).ok();
 
         // Parse JSON response
-        let json = match self.parse_json_response(&text, &headers, input) {
+        let json = match self.parse_json_response(&text, &headers, input, &status_code) {
             Ok(json) => json,
             Err(e) => return e.to_output(),
         };
@@ -358,6 +360,7 @@ impl Http {
         text: &Option<String>,
         headers: &HashMap<String, String>,
         input: &Input,
+        status: &reqwest::StatusCode,
     ) -> Result<Option<Value>, HttpToolError> {
         // Detect JSON content-type from collected headers
         let is_json_content_type = headers
@@ -377,8 +380,8 @@ impl Http {
 
         if let Some(ref text_content) = text {
             if text_content.trim().is_empty() {
-                // If expect_json=true but we tolerate empty body (e.g., 204)
-                if input.expect_json.unwrap_or(false) && !input.allow_empty_json.unwrap_or(false) {
+                // If expect_json=true but status indicates no content (204, 202, 205)
+                if input.expect_json.unwrap_or(false) && !Self::is_no_content_status(status) {
                     return Err(HttpToolError::ErrInput(
                         "Empty response body but JSON expected".to_string(),
                     ));
@@ -397,7 +400,7 @@ impl Http {
                 }
             }
         } else {
-            if input.expect_json.unwrap_or(false) && !input.allow_empty_json.unwrap_or(false) {
+            if input.expect_json.unwrap_or(false) && !Self::is_no_content_status(status) {
                 Err(HttpToolError::ErrInput(
                     "Non-text response body but JSON expected".to_string(),
                 ))
@@ -474,7 +477,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -532,7 +534,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -588,7 +589,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -642,7 +642,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -712,7 +711,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -757,7 +755,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -821,7 +818,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -877,7 +873,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -920,7 +915,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -964,7 +958,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1007,7 +1000,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1040,7 +1032,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
         assert!(valid_input.validate().is_ok());
 
@@ -1062,7 +1053,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
         assert!(invalid_input.validate().is_err());
 
@@ -1084,7 +1074,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
         assert!(invalid_input2.validate().is_err());
 
@@ -1101,7 +1090,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
         assert!(valid_input2.validate().is_ok());
     }
@@ -1128,7 +1116,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1173,7 +1160,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1216,7 +1202,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1250,7 +1235,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         assert!(input.validate().is_err());
@@ -1271,7 +1255,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         assert!(input2.validate().is_err());
@@ -1292,7 +1275,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         assert!(input3.validate().is_err());
@@ -1325,7 +1307,6 @@ mod tests {
             timeout_ms: Some(5000), // 5 second timeout
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1365,7 +1346,6 @@ mod tests {
             timeout_ms: None,
             retries: Some(2), // 2 retries
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1417,7 +1397,6 @@ mod tests {
             timeout_ms: None,
             retries: Some(1), // 1 retry
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1457,7 +1436,6 @@ mod tests {
             timeout_ms: None,
             retries: Some(2), // 2 retries available
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1508,7 +1486,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1553,7 +1530,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1599,7 +1575,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1630,7 +1605,6 @@ mod tests {
             timeout_ms: Some(100), // Very short timeout
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         let output = tool.invoke(input).await;
@@ -1660,7 +1634,6 @@ mod tests {
             timeout_ms: Some(35000), // 35 seconds - should fail
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         assert!(input.validate().is_err());
@@ -1681,7 +1654,6 @@ mod tests {
             timeout_ms: Some(25000), // 25 seconds - should pass
             retries: None,
             follow_redirects: None,
-            allow_empty_json: None,
         };
 
         assert!(input.validate().is_ok());
@@ -1723,7 +1695,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: Some(true),
-            allow_empty_json: None,
         };
 
         let result = tool.invoke(input).await;
@@ -1747,7 +1718,6 @@ mod tests {
             timeout_ms: None,
             retries: None,
             follow_redirects: Some(false),
-            allow_empty_json: None,
         };
 
         let result_no_redirect = tool.invoke(input_no_redirect).await;
