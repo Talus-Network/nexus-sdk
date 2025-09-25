@@ -91,6 +91,10 @@ _opt_ **`allow_empty_json`: [`Option<bool>`]** _default_: [`false`]
 
 If true, tolerate empty body when JSON is expected (e.g., 204 No Content).
 
+## Security Features
+
+**Localhost Blocking**: Requests to `localhost` and `127.0.0.1` are blocked for security reasons. This prevents internal network scanning and ensures the tool only makes external requests.
+
 ## Output Variants & Ports
 
 **`ok`**

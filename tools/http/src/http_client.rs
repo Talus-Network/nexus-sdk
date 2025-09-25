@@ -51,13 +51,29 @@ impl HttpClient {
 
     /// Resolves URL from input with proper validation
     pub fn resolve_url(&self, url_input: &UrlInput) -> Result<Url, HttpToolError> {
-        match url_input {
-            UrlInput::FullUrl(url) => Url::parse(url).map_err(HttpToolError::from_url_parse_error),
+        let url = match url_input {
+            UrlInput::FullUrl(url) => {
+                Url::parse(url).map_err(HttpToolError::from_url_parse_error)?
+            }
             UrlInput::SplitUrl { base_url, path } => {
                 let base = Url::parse(base_url).map_err(HttpToolError::from_url_parse_error)?;
-                base.join(path).map_err(HttpToolError::from_url_parse_error)
+                base.join(path)
+                    .map_err(HttpToolError::from_url_parse_error)?
+            }
+        };
+
+        // Block localhost and 127.0.0.1 for security (skip in test environment)
+        #[cfg(not(test))]
+        if let Some(host) = url.host_str() {
+            if host == "localhost" || host == "127.0.0.1" {
+                return Err(HttpToolError::ErrInput(
+                    "Requests to localhost and 127.0.0.1 are not allowed for security reasons"
+                        .to_string(),
+                ));
             }
         }
+
+        Ok(url)
     }
 
     /// Builds HTTP method from input
