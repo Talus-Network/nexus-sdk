@@ -70,7 +70,8 @@ Edges define the flow of data between vertices, connecting an output port of a s
     "vertex": "source_vertex_name", // Name from the "vertices" list
     "output_variant": "ok", // e.g., ok, err, gt, lt, eq
     "output_port": "output_port_name",
-    "encrypted": true // Optional, default is false
+    "encrypted": true, // Optional, default is false
+    "type": "normal" // Optional, default is "normal"
   },
   "to": {
     "vertex": "target_vertex_name", // Name from the "vertices" list
@@ -82,6 +83,16 @@ Edges define the flow of data between vertices, connecting an output port of a s
 - The `source_vertex_name` and `target_vertex_name` refer to the `name` field of vertices defined in the `vertices` list.
 - The `target_input_port_name` must be a valid input port for the tool used by the `target_vertex_name`.
 - If the `encrypted` field is set to `true`, the data will be encrypted before being sent on-chain. This is useful for sensitive data that should not be exposed in plaintext.
+
+## 3.1 Special edge types
+
+- **`normal`** → The default edge type. Data flows from the source vertex to the target vertex as soon as the source vertex produces output on the specified port.
+- **`for-each`** → Spawns parallel executions of the downstream vertex, once per element of an array.
+- **`collect`** → Gathers the results of a `for-each` branch back into a single ordered array.
+- **`do-while`** → Repeats execution by looping back as long as a condition is satisfied.
+- **`break`** → Exits a `do-while` loop when the condition is no longer met.
+
+Read more about looping and flow controls in the [looping documentation][looping].
 
 ## 4. Default Values
 
@@ -237,3 +248,4 @@ For examples of invalid DAGs and common mistakes to avoid (especially regarding 
 [nexus-next-workflow]: ../../nexus-next/packages/workflow.md
 [example-dags]: https://github.com/Talus-Network/nexus-sdk/tree/v0.1.0/cli/src/dag/_dags
 [nexus-cli]: ../cli.md
+[looping]: ../../nexus-next/flow-controls/looping.md
