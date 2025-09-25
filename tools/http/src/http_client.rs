@@ -7,6 +7,7 @@ use {
         errors::HttpToolError,
         models::{AuthConfig, HttpMethod, RequestBody, UrlInput},
     },
+    backon::{ExponentialBuilder, Retryable},
     base64::Engine,
     reqwest::{multipart::Form, Client, Method},
     std::collections::HashMap,
@@ -226,42 +227,30 @@ impl HttpClient {
             return self.execute(request).await;
         }
 
-        let mut last_error = None;
+        // Configure exponential backoff with jitter
+        let retry_policy = ExponentialBuilder::default()
+            .with_max_times(retries as usize)
+            .with_jitter();
 
-        for attempt in 0..=retries {
-            match self
-                .execute(request.try_clone().ok_or_else(|| {
-                    HttpToolError::ErrInput("Request cannot be cloned for retry".to_string())
-                })?)
-                .await
-            {
-                Ok(response) => {
-                    // Check if it's a retryable error (5xx server errors)
-                    if response.status().is_server_error() && attempt < retries {
-                        // Server error, retry with linear backoff
-                        let delay_ms = 1000 * (attempt + 1) as u64; // 1s, 2s, 3s...
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
+        // Execute with retry policy
+        (|| async {
+            let cloned_request = request.try_clone().ok_or_else(|| {
+                HttpToolError::ErrInput("Request cannot be cloned for retry".to_string())
+            })?;
 
-                    // Success or non-retryable error (4xx), return response
-                    return Ok(response);
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                    if attempt < retries {
-                        // Network error, retry with exponential backoff
-                        let delay_ms = 100 * (2_u64.pow(attempt));
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                    }
-                }
+            let response = self.execute(cloned_request).await?;
+
+            // Check if it's a retryable error (5xx server errors)
+            if response.status().is_server_error() {
+                return Err(HttpToolError::ErrInput(
+                    "Server error, will retry".to_string(),
+                ));
             }
-        }
 
-        // All retries failed
-        Err(last_error.unwrap_or_else(|| {
-            HttpToolError::ErrInput("Request failed after all retries".to_string())
-        }))
+            Ok(response)
+        })
+        .retry(&retry_policy)
+        .await
     }
 }
 

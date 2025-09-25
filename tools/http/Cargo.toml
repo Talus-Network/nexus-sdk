@@ -11,6 +11,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+backon = "0.4"
 base64.workspace = true
 jsonschema.workspace = true
 reqwest = { workspace = true, features = ["json", "multipart"] }
