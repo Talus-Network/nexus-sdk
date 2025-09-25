@@ -707,7 +707,7 @@ mod tests {
             query: None,
             auth: None,
             body: None,
-            expect_json: None,
+            expect_json: Some(true), // Force JSON parsing
             json_schema: None,
             timeout_ms: None,
             retries: None,
@@ -720,16 +720,9 @@ mod tests {
         match output {
             Output::Err { reason, kind, .. } => {
                 assert!(matches!(kind, HttpErrorKind::JsonParse));
-                assert!(reason.contains("Failed to parse JSON"));
+                assert!(reason.contains("JSON parse error"));
             }
-            Output::Ok { text, .. } => {
-                // If response is not JSON but text, we should not get a JSON parse error
-                if let Some(text_content) = text {
-                    if !text_content.trim().is_empty() {
-                        // Text response but not JSON - this is normal
-                    }
-                }
-            }
+            _ => panic!("Expected JSON parse error, got success"),
         }
     }
 
