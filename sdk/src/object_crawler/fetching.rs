@@ -150,9 +150,6 @@ where
         bail!("Could not parse owner data from object {object_id}")
     };
 
-    // TODO: remove
-    // println!("{:#?}", object);
-
     // Using [serde_json::Value] as an intermediary format.
     match serde_json::to_value(&object).and_then(serde_json::from_value::<T>) {
         Ok(parsed) => Ok(Response {

@@ -86,7 +86,9 @@ mod tests {
     #[tokio::test]
     async fn test_sum_multiple_elements() {
         let tool = I64Sum::new().await;
-        let input = Input { vec: vec![1, 2, 3, 4, 5] };
+        let input = Input {
+            vec: vec![1, 2, 3, 4, 5],
+        };
         match tool.invoke(input).await {
             Output::Ok { result } => assert_eq!(result, 15),
             _ => panic!("Expected Ok variant"),
@@ -96,7 +98,9 @@ mod tests {
     #[tokio::test]
     async fn test_sum_negative_numbers() {
         let tool = I64Sum::new().await;
-        let input = Input { vec: vec![-1, -2, -3] };
+        let input = Input {
+            vec: vec![-1, -2, -3],
+        };
         match tool.invoke(input).await {
             Output::Ok { result } => assert_eq!(result, -6),
             _ => panic!("Expected Ok variant"),
@@ -106,7 +110,9 @@ mod tests {
     #[tokio::test]
     async fn test_sum_mixed_numbers() {
         let tool = I64Sum::new().await;
-        let input = Input { vec: vec![10, -5, 3, -2] };
+        let input = Input {
+            vec: vec![10, -5, 3, -2],
+        };
         match tool.invoke(input).await {
             Output::Ok { result } => assert_eq!(result, 6),
             _ => panic!("Expected Ok variant"),
@@ -116,7 +122,9 @@ mod tests {
     #[tokio::test]
     async fn test_sum_overflow() {
         let tool = I64Sum::new().await;
-        let input = Input { vec: vec![i64::MAX, 1] };
+        let input = Input {
+            vec: vec![i64::MAX, 1],
+        };
         match tool.invoke(input).await {
             Output::Err { reason } => assert!(reason.contains("overflow")),
             _ => panic!("Expected Err variant"),
@@ -126,11 +134,12 @@ mod tests {
     #[tokio::test]
     async fn test_sum_underflow() {
         let tool = I64Sum::new().await;
-        let input = Input { vec: vec![i64::MIN, -1] };
+        let input = Input {
+            vec: vec![i64::MIN, -1],
+        };
         match tool.invoke(input).await {
             Output::Err { reason } => assert!(reason.contains("overflow")),
             _ => panic!("Expected Err variant"),
         }
     }
 }
-

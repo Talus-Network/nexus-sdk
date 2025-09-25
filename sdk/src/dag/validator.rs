@@ -294,7 +294,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     let mut graph_nodes: HashMap<GraphNode, NodeIndex> = HashMap::new();
 
     for edge in &dag.edges {
-        // Ignore do-whlie edges.
+        // Ignore do-while edges.
         if edge.kind == EdgeKind::DoWhile {
             continue;
         }
