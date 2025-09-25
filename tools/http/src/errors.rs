@@ -174,9 +174,7 @@ impl HttpToolError {
     }
 
     pub fn from_schema_validation_error(e: crate::models::SchemaValidationDetails) -> Self {
-        Self::ErrSchemaValidation {
-            errors: e.errors,
-        }
+        Self::ErrSchemaValidation { errors: e.errors }
     }
 }
 
