@@ -77,7 +77,7 @@ Optional JSON schema to validate the response against.
 
 _opt_ **`timeout_ms`: [`Option<u64>`]** _default_: [`5000`]
 
-Request timeout in milliseconds. Maximum allowed value is 30000ms (30 seconds).
+Request timeout in milliseconds. Maximum allowed value is 30000ms (30 seconds). The timeout applies to the **entire request chain**, including all redirects when `follow_redirects` is enabled. For example, if `timeout_ms: 5000` is set and a request follows 3 redirects
 
 _opt_ **`retries`: [`Option<u32>`]** _default_: [`0`]
 
@@ -85,7 +85,7 @@ Number of retries on failure. Maximum allowed value is 5.
 
 _opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`false`]
 
-Whether to follow HTTP redirects. Defaults to false, following curl's philosophy of not following redirects unless explicitly requested.
+Whether to follow HTTP redirects. Defaults to false, following curl's philosophy of not following redirects unless explicitly requested. When enabled, follows up to 3 redirects maximum
 
 _opt_ **`allow_empty_json`: [`Option<bool>`]** _default_: [`false`]
 

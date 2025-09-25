@@ -39,7 +39,7 @@ impl HttpClient {
         // Set redirect policy with default (don't follow redirects, following curl's philosophy)
         let follow_redirects = follow_redirects.unwrap_or(false);
         if follow_redirects {
-            builder = builder.redirect(reqwest::redirect::Policy::limited(10));
+            builder = builder.redirect(reqwest::redirect::Policy::limited(3));
         } else {
             builder = builder.redirect(reqwest::redirect::Policy::none());
         }
