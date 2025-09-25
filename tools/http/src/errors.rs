@@ -172,4 +172,16 @@ impl HttpToolError {
     pub fn from_validation_error(e: ValidationError) -> Self {
         Self::ErrInput(e.to_string())
     }
+
+    pub fn from_schema_validation_error(e: crate::models::SchemaValidationDetails) -> Self {
+        Self::ErrSchemaValidation {
+            errors: e.errors,
+        }
+    }
+}
+
+impl From<crate::models::SchemaValidationDetails> for HttpToolError {
+    fn from(e: crate::models::SchemaValidationDetails) -> Self {
+        Self::from_schema_validation_error(e)
+    }
 }

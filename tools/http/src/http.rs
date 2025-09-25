@@ -415,7 +415,7 @@ impl Http {
     ) -> Result<Option<SchemaValidationDetails>, HttpToolError> {
         let schema_validation = if let Some(schema_def) = &input.json_schema {
             if let Some(ref json_data) = json {
-                Some(validate_schema_detailed(schema_def, json_data))
+                Some(validate_schema_detailed(schema_def, json_data)?)
             } else {
                 // JSON could not be parsed, schema validation failed
                 Some(SchemaValidationDetails {
@@ -675,7 +675,7 @@ mod tests {
         let invalid_json = serde_json::json!("invalid");
 
         // Test valid JSON
-        let result = validate_schema_detailed(&schema, &valid_json);
+        let result = validate_schema_detailed(&schema, &valid_json).unwrap();
         assert!(result.valid);
         assert_eq!(result.name, "TestSchema");
         assert_eq!(result.description, Some("Test schema".to_string()));
@@ -683,7 +683,7 @@ mod tests {
         assert!(result.errors.is_empty());
 
         // Test invalid JSON (should still pass because schema is very permissive)
-        let result2 = validate_schema_detailed(&schema, &invalid_json);
+        let result2 = validate_schema_detailed(&schema, &invalid_json).unwrap();
         assert!(result2.valid); // Very permissive schema
     }
 
