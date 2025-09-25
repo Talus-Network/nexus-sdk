@@ -7,7 +7,12 @@ use {
         errors::{HttpErrorKind, HttpToolError, ValidationError},
         http_client::HttpClient,
         models::{
-            AuthConfig, HttpJsonSchema, HttpMethod, RequestBody, SchemaValidationDetails, UrlInput,
+            AuthConfig,
+            HttpJsonSchema,
+            HttpMethod,
+            RequestBody,
+            SchemaValidationDetails,
+            UrlInput,
         },
         utils::validate_schema_detailed,
     },
