@@ -474,6 +474,10 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
         }
     }
 
+    // TODO: check that each for-each is followed by a collect.
+    // TODO: check that each vertex that has a do-while edge also has a break edge and vice versa.
+    // TODO: check that no loops are nested.
+
     Ok((graph, vertex_entry_groups))
 }
 
