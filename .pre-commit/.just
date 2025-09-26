@@ -10,12 +10,16 @@ cargo-check: _check-cargo
     cargo check --locked --workspace --bins --examples
 
 
-# cargo +nightly-2025-01-06 fmt --all --check
+# cargo +nightly fmt --all --check
 cargo-nightly-fmt: _check-cargo
     #!/usr/bin/env bash
 
-    cargo +nightly-2025-01-06 fmt --all --check || {
-        echo "❌ Formatting failed. Please run 'cargo +nightly fmt --all' to format the code." >&2
+    set -euo pipefail
+
+    nightly="$(just helpers::get-nightly-version)"
+
+    cargo +"$nightly" fmt --all --check || {
+        echo "❌ Formatting failed. Please run 'cargo +$nightly fmt --all' to format the code." >&2
         exit 1
     }
 
@@ -219,6 +223,51 @@ executable-scripts:
                 fi
             fi
         fi
+    done
+
+    exit $error
+
+nightly-version:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    # With 'nullglob', if a glob pattern does not match any files,
+    # it expands to nothing instead of itself.
+    # `globstar` allows `**` to match all files and directories recursively.
+    shopt -s nullglob globstar
+
+    error=0
+    nightly="$(just helpers::get-nightly-version)"
+
+    # 1. Check the version itself
+    if [[ -z "$nightly" ]]; then
+        echo "❌  nightly version not found" >&2
+        exit 1
+    else
+        echo "✅  Found nightly version: $nightly" >&2
+    fi
+
+    # 2. Check what we have in .github workflows and actions.
+    # Anything that looks like a "toolchain: nightly" must have the exact version
+
+    for yml in ../.github/{workflows,actions}/**/*.yml; do
+        echo "Checking: $yml" >&2
+
+        for match in "$(grep -E "^\s+toolchain:\s+.*nightly.*" "$yml")"; do
+            if [[ -n "$match" ]]; then
+                simple_match="${match#"${match%%[![:space:]]*}"}"
+
+                if [[ "$match" != *"$nightly"* ]]; then
+                    # Remove leading spaces for better error message
+
+                    echo "❌  Toolchain mismatch. Found: '$simple_match', which does not have: '$nightly'" >&2
+                    error=1
+                else
+                    echo "✅  Found '$simple_match'" >&2
+                fi
+            fi
+        done
     done
 
     exit $error
