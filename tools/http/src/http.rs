@@ -1017,7 +1017,7 @@ mod tests {
         // Test valid case: json_schema provided with expect_json = true
         let valid_input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1038,7 +1038,7 @@ mod tests {
         // Test invalid case: json_schema provided with expect_json = false
         let invalid_input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1059,7 +1059,7 @@ mod tests {
         // Test invalid case: json_schema provided with expect_json = None
         let invalid_input2 = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1080,7 +1080,7 @@ mod tests {
         // Test valid case: no json_schema provided
         let valid_input2 = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1101,7 +1101,7 @@ mod tests {
         // Test with json_schema but expect_json = false
         let input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1219,7 +1219,7 @@ mod tests {
         // Test empty multipart field name
         let input = Input {
             method: HttpMethod::Post,
-            url: UrlInput::FullUrl("https://httpbin.org/post".to_string()),
+            url: UrlInput::FullUrl("https://example.com/post".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1242,7 +1242,7 @@ mod tests {
         // Test empty raw body data
         let input2 = Input {
             method: HttpMethod::Post,
-            url: UrlInput::FullUrl("https://httpbin.org/post".to_string()),
+            url: UrlInput::FullUrl("https://example.com/post".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1262,7 +1262,7 @@ mod tests {
         // Test invalid base64
         let input3 = Input {
             method: HttpMethod::Post,
-            url: UrlInput::FullUrl("https://httpbin.org/post".to_string()),
+            url: UrlInput::FullUrl("https://example.com/post".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1592,17 +1592,29 @@ mod tests {
     async fn test_timeout_error() {
         let tool = Http::new().await;
 
+        // Create mock server that will delay response to trigger timeout
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/delay")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_chunked_body(|w| {
+                std::thread::sleep(std::time::Duration::from_millis(200)); // 200ms delay
+                w.write_all(r#"{"delayed": true}"#.as_bytes())
+            })
+            .create();
+
         // Test with very short timeout to trigger timeout error
         let input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/delay/10".to_string()),
+            url: UrlInput::FullUrl(format!("{}/delay", server.url())),
             headers: None,
             query: None,
             auth: None,
             body: None,
             expect_json: None,
             json_schema: None,
-            timeout_ms: Some(100), // Very short timeout
+            timeout_ms: Some(100), // Very short timeout - 100ms
             retries: None,
             follow_redirects: None,
         };
@@ -1615,7 +1627,7 @@ mod tests {
                 assert!(matches!(kind, HttpErrorKind::Timeout));
                 assert!(reason.contains("Request timeout"));
             }
-            _ => panic!("Expected timeout error"),
+            _ => panic!("Expected timeout error, got: {:?}", output),
         }
     }
 
@@ -1624,7 +1636,7 @@ mod tests {
         // Test that timeout cannot exceed 30 seconds (30000ms)
         let input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
@@ -1644,7 +1656,7 @@ mod tests {
         // Test that timeout within 30 seconds is valid
         let input = Input {
             method: HttpMethod::Get,
-            url: UrlInput::FullUrl("https://httpbin.org/get".to_string()),
+            url: UrlInput::FullUrl("https://example.com/get".to_string()),
             headers: None,
             query: None,
             auth: None,
