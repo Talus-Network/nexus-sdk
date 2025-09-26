@@ -451,12 +451,16 @@ impl Http {
 mod tests {
     use {super::*, mockito::Server};
 
+    /// Helper function to create a mock server and HTTP tool for testing
+    async fn create_server_and_tool() -> (mockito::ServerGuard, Http) {
+        let server = Server::new_async().await;
+        let tool = Http::new().await;
+        (server, tool)
+    }
+
     #[tokio::test]
     async fn test_http_get() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
         let _mock = server
             .mock("GET", "/get")
@@ -509,10 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_http_method() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/default", "args": {}}"#;
         let _mock = server
             .mock("GET", "/default")
@@ -566,10 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_head() {
-        let tool = Http::new().await;
-
-        // Create mock server - HEAD requests typically don't return body
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("HEAD", "/head")
             .with_status(200)
@@ -619,10 +617,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_404_error() {
-        let tool = Http::new().await;
-
-        // Create mock server for 404 error
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("GET", "/notfound")
             .with_status(404)
@@ -688,10 +683,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_json_parse_error() {
-        let tool = Http::new().await;
-
-        // Create mock server that returns invalid JSON
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("GET", "/invalid-json")
             .with_status(200)
@@ -726,10 +718,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_url_split() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response =
             r#"{"method": "GET", "url": "http://example.com/api/users", "args": {}}"#;
         let _mock = server
@@ -781,10 +770,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_headers_and_query() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/api/users?page=1&limit=10", "headers": {"Authorization": "Bearer token123", "Content-Type": "application/json"}}"#;
         let _mock = server
             .mock("GET", "/api/users")
@@ -846,10 +832,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_bearer_token() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"authenticated": true, "token": "test-token"}"#;
         let _mock = server
             .mock("GET", "/auth")
@@ -887,10 +870,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_api_key_header() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"authenticated": true, "api_key": "test-key"}"#;
         let _mock = server
             .mock("GET", "/auth")
@@ -929,10 +909,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_api_key_query() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"authenticated": true, "api_key": "test-key"}"#;
         let _mock = server
             .mock("GET", "/auth")
@@ -972,10 +949,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_basic() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"authenticated": true, "user": "testuser"}"#;
         let _mock = server
             .mock("GET", "/auth")
@@ -1131,10 +1105,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_json_body() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "POST", "url": "http://example.com/post", "data": {"name": "test", "value": 123}}"#;
         let _mock = server
             .mock("POST", "/post")
@@ -1174,10 +1145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_raw_body() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response =
             r#"{"method": "POST", "url": "http://example.com/post", "data": "binary data"}"#;
         let _mock = server
@@ -1282,10 +1250,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_timeout_configuration() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
         let _mock = server
             .mock("GET", "/get")
@@ -1321,10 +1286,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_retries_configuration() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
         let _mock = server
             .mock("GET", "/get")
@@ -1360,10 +1322,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_on_server_errors() {
-        let tool = Http::new().await;
-
-        // Create mock server that returns 500 error first, then 200
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
 
         // First request returns 500
@@ -1411,10 +1370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_retry_on_client_errors() {
-        let tool = Http::new().await;
-
-        // Create mock server that returns 404 error
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("GET", "/notfound")
             .with_status(404)
@@ -1456,10 +1412,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_method_ignores_body() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
         let _mock = server
             .mock("GET", "/get")
@@ -1501,10 +1454,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_head_method_ignores_body() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("HEAD", "/head")
             .with_status(200)
@@ -1545,10 +1495,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_post_method_uses_body() {
-        let tool = Http::new().await;
-
-        // Create mock server
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "POST", "url": "http://example.com/post", "data": {"name": "test", "value": 123}}"#;
         let _mock = server
             .mock("POST", "/post")
@@ -1590,10 +1537,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_timeout_error() {
-        let tool = Http::new().await;
-
-        // Create mock server that will delay response to trigger timeout
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let _mock = server
             .mock("GET", "/delay")
             .with_status(200)
@@ -1673,10 +1617,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_follow_redirects_configuration() {
-        let tool = Http::new().await;
-
-        // Create mock server with redirect
-        let mut server = Server::new_async().await;
+        let (mut server, tool) = create_server_and_tool().await;
         let mock_response = r#"{"method": "GET", "url": "http://example.com/get", "args": {}}"#;
 
         // Mock redirect endpoint
