@@ -87,7 +87,6 @@ _opt_ **`follow_redirects`: [`Option<bool>`]** _default_: [`false`]
 
 Whether to follow HTTP redirects. Defaults to false, following curl's philosophy of not following redirects unless explicitly requested. When enabled, follows up to 3 redirects maximum
 
-
 ## Security Features
 
 **Localhost Blocking**: Requests to `localhost` and `127.0.0.1` are blocked for security reasons. This prevents internal network scanning and ensures the tool only makes external requests.
