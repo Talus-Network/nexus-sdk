@@ -362,8 +362,10 @@ mod tests {
                     "execution": execution.to_string(),
                     "walk_index": "42",
                     "next_vertex": {
-                        "_variant_name": "Plain",
-                        "vertex": { "name": "foo" },
+                        "variant": "Plain",
+                        "fields": {
+                            "vertex": { "name": "foo" },
+                        }
                     },
                     "evaluations": evaluations.to_string(),
                     "worksheet_from_type": {
