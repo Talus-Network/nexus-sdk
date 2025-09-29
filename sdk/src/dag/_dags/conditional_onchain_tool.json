@@ -1,0 +1,79 @@
+{
+  "default_values": [
+    {
+      "vertex": "add_input_and_default",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": -3
+      }
+    },
+    {
+      "vertex": "is_positive",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 0
+      }
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_input_and_default",
+      "entry_ports": [
+        {
+          "name": "a",
+          "encrypted": false
+        }
+      ]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.cmp@1"
+      },
+      "name": "is_positive"
+    },
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.taluslabs.example@1"
+      },
+      "name": "counter_increment",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "add_input_and_default",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "is_positive",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "is_positive",
+        "output_variant": "gt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "counter_increment",
+        "input_port": "1"
+      }
+    }
+  ]
+}

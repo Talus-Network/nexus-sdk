@@ -29,7 +29,7 @@ pub enum VertexKind {
         tool_fqn: ToolFqn,
     },
     OnChain {
-        //
+        tool_fqn: ToolFqn,
     },
 }
 
