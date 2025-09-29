@@ -1,0 +1,166 @@
+{
+  "vertices": [
+    {
+      "name": "create_vec",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.create_vec@1"
+      },
+      "entry_ports": [
+        {
+          "name": "size",
+          "encrypted": false
+        }
+      ]
+    },
+    {
+      "name": "add_1_to_element",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      }
+    },
+    {
+      "name": "sum_collected",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.sum@1"
+      }
+    },
+    {
+      "name": "add_1",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      }
+    },
+    {
+      "name": "until_11",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.cmp@1"
+      }
+    },
+    {
+      "name": "add_2",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      }
+    }
+  ],
+  "default_values": [
+    {
+      "vertex": "add_1_to_element",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 1
+      }
+    },
+    {
+      "vertex": "add_1",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 1
+      }
+    },
+    {
+      "vertex": "add_2",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 2
+      }
+    },
+    {
+      "vertex": "until_11",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 11
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "for_each",
+      "from": {
+        "vertex": "create_vec",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "add_1_to_element",
+        "input_port": "a"
+      }
+    },
+    {
+      "kind": "collect",
+      "from": {
+        "vertex": "add_1_to_element",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "sum_collected",
+        "input_port": "vec"
+      }
+    },
+    {
+      "from": {
+        "vertex": "sum_collected",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "add_1",
+        "input_port": "a"
+      }
+    },
+    {
+      "from": {
+        "vertex": "add_1",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "until_11",
+        "input_port": "a"
+      }
+    },
+    {
+      "kind": "do_while",
+      "from": {
+        "vertex": "until_11",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "add_1",
+        "input_port": "a"
+      }
+    },
+    {
+      "kind": "break",
+      "from": {
+        "vertex": "until_11",
+        "output_variant": "eq",
+        "output_port": "a"
+      },
+      "to": {
+        "vertex": "add_2",
+        "input_port": "a"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "add_2",
+      "output_variant": "ok",
+      "output_port": "result",
+      "encrypted": false
+    }
+  ]
+}

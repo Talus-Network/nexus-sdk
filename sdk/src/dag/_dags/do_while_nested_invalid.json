@@ -1,0 +1,68 @@
+{
+  "vertices": [
+    {
+      "name": "a",
+      "kind": { "variant": "off_chain", "tool_fqn": "com.test.test@1" },
+      "entry_ports": [{ "name": "input", "encrypted": false }]
+    },
+    {
+      "name": "b",
+      "kind": { "variant": "off_chain", "tool_fqn": "com.test.test@1" }
+    },
+    {
+      "name": "c",
+      "kind": { "variant": "off_chain", "tool_fqn": "com.test.test@1" }
+    },
+    {
+      "name": "d",
+      "kind": { "variant": "off_chain", "tool_fqn": "com.test.test@1" }
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "a",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": { "vertex": "b", "input_port": "1" }
+    },
+    {
+      "kind": "do_while",
+      "from": {
+        "vertex": "b",
+        "output_variant": "also_ok",
+        "output_port": "loop"
+      },
+      "to": { "vertex": "a", "input_port": "1" }
+    },
+    {
+      "kind": "break",
+      "from": {
+        "vertex": "b",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": { "vertex": "c", "input_port": "1" }
+    },
+    {
+      "kind": "do_while",
+      "from": {
+        "vertex": "c",
+        "output_variant": "also_ok",
+        "output_port": "loop"
+      },
+      "to": { "vertex": "a", "input_port": "1" }
+    },
+    {
+      "kind": "break",
+      "from": {
+        "vertex": "c",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": { "vertex": "d", "input_port": "1" }
+    }
+  ],
+  "outputs": []
+}
