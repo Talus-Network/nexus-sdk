@@ -389,17 +389,19 @@ pub fn build_dag_execution_transaction(
                 let json_string = serde_json::to_string(port_value)?;
                 let json_bytes = json_string.as_bytes().to_vec();
 
-                // Use different NexusData creation based on encryption (like CLI)
-                let nexus_data_target = if is_encrypted {
-                    "{{primitives_pkg_id}}::data::encrypted_one" // For encrypted data
+                // Use appropriate NexusData function based on encryption status (like CLI)
+                let data_target = if is_encrypted {
+                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for encrypted data
                 } else {
-                    "{{primitives_pkg_id}}::data::inline_one" // For plain data
+                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for regular data too
                 };
 
                 commands.push(serde_json::json!({
                     "type": "moveCall",
-                    "target": nexus_data_target,
-                    "arguments": [{"type": "pure", "pure_type": "vector_u8", "value": json_bytes}],
+                    "target": data_target,
+                    "arguments": [
+                        {"type": "pure", "pure_type": "vector_u8", "value": json_bytes}
+                    ],
                     "result_index": command_index
                 }));
                 let nexus_data_result_index = command_index;
