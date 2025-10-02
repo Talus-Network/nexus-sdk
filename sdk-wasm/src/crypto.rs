@@ -7,7 +7,7 @@ use {
         session::{Message, Session},
         x3dh::{IdentityKey, PreKeyBundle},
     },
-    rand,
+    rand::{self, RngCore},
     std::collections::HashMap,
     wasm_bindgen::prelude::*,
     web_sys::console,
@@ -105,57 +105,14 @@ pub fn key_init(force: bool) -> String {
     .to_string()
 }
 
-/// Convert bytes to hex string manually
+/// Convert bytes to hex string using hex crate
 fn bytes_to_hex(bytes: &[u8]) -> String {
-    let mut hex_string = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        hex_string.push_str(&format!("{:02x}", byte));
-    }
-    hex_string
+    hex::encode(bytes)
 }
 
-/// Convert hex string to bytes manually
+/// Convert hex string to bytes using hex crate
 fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
-    if hex.len() % 2 != 0 {
-        return Err("Hex string must have even length".to_string());
-    }
-
-    let mut bytes = Vec::with_capacity(hex.len() / 2);
-    for i in (0..hex.len()).step_by(2) {
-        let hex_pair = &hex[i..i + 2];
-        match u8::from_str_radix(hex_pair, 16) {
-            Ok(byte) => bytes.push(byte),
-            Err(_) => return Err("Invalid hex character".to_string()),
-        }
-    }
-    Ok(bytes)
-}
-
-/// Generate an identity key from a master key (CLI-compatible)
-#[wasm_bindgen]
-pub fn generate_identity_key_from_master(master_key_hex: &str) -> Result<String, JsValue> {
-    // Simple hex parsing without external crate
-    if master_key_hex.len() != 64 {
-        return Err(JsValue::from_str(
-            "Master key must be 64 hex characters (32 bytes)",
-        ));
-    }
-
-    let mut master_key_bytes = [0u8; 32];
-    for i in 0..32 {
-        let hex_pair = &master_key_hex[i * 2..i * 2 + 2];
-        master_key_bytes[i] = u8::from_str_radix(hex_pair, 16)
-            .map_err(|_| JsValue::from_str("Invalid hex character"))?;
-    }
-
-    // Generate deterministic identity key from master key (same as CLI)
-    let secret_bytes = SecretBytes(master_key_bytes);
-    let static_secret = secret_bytes.into();
-    let identity_key = IdentityKey::from_secret(static_secret);
-
-    // Convert public key to hex manually
-    let public_key_bytes = identity_key.dh_public.to_bytes();
-    Ok(bytes_to_hex(&public_key_bytes))
+    hex::decode(hex).map_err(|e| format!("Hex decode error: {}", e))
 }
 
 /// Real X3DH session initiation with peer bundle (CLI-compatible)
@@ -174,10 +131,8 @@ pub fn initiate_x3dh_session(master_key_hex: &str, peer_bundle_bytes: &[u8]) -> 
             return Err("Master key must be exactly 32 bytes".into());
         }
 
-        // Generate identity key from master key (like CLI)
-        let secret_bytes = SecretBytes(master_key_bytes.clone().try_into().unwrap());
-        let static_secret = secret_bytes.into();
-        let identity_key = IdentityKey::from_secret(static_secret);
+        // Generate identity key randomly (CLI-compatible)
+        let identity_key = IdentityKey::generate();
 
         console_log!("Generated identity key from master key");
 
@@ -289,19 +244,21 @@ pub fn validate_master_key(master_key_hex: &str) -> String {
     result.to_string()
 }
 
-/// Generate a random master key using Web Crypto API
+/// Generate a random master key using CLI-compatible logic
 #[wasm_bindgen]
 pub fn generate_random_master_key() -> String {
-    // Use web crypto API through wasm_bindgen
-    let window = web_sys::window().unwrap();
-    let crypto = window.crypto().unwrap();
-    let mut key_bytes = [0u8; 32];
-    crypto
-        .get_random_values_with_u8_array(&mut key_bytes)
-        .unwrap();
+    // CLI-parity: Use OsRng like CLI does
+    let mut key = [0u8; 32]; // KEY_LEN = 32 bytes like CLI
+    rand::rngs::OsRng.fill_bytes(&mut key);
 
-    // Convert to hex manually
-    bytes_to_hex(&key_bytes)
+    // Convert to hex like CLI does
+    let hex_key = bytes_to_hex(&key);
+    console_log!(
+        "🔍 WASM generate_random_master_key: Generated master key (hex): {}",
+        hex_key
+    );
+
+    hex_key
 }
 
 /// Check if master key exists in localStorage (placeholder - will be called from JS)
@@ -850,7 +807,7 @@ pub fn test_crypto_auth_flow(master_key_hex: &str) -> String {
         if let Some(sessions_json) = export_sessions_for_storage() {
             if let Some(window) = web_sys::window() {
                 if let Ok(Some(storage)) = window.local_storage() {
-                    if let Ok(()) = storage.set_item("nexus-wasm-sessions", &sessions_json) {
+                    if let Ok(()) = storage.set_item("nexus-sessions", &sessions_json) {
                         console_log!("✅ Test session auto-saved to localStorage");
                     }
                 }
