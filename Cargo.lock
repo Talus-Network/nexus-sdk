@@ -982,6 +982,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "backon"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d67782c3f868daa71d3533538e98a8e13713231969def7536e8039606fc46bf0"
+dependencies = [
+ "fastrand",
+ "futures-core",
+ "pin-project",
+ "tokio",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3498,6 +3510,25 @@ dependencies = [
 
 [[package]]
 name = "http"
+version = "0.3.0-rc.1"
+dependencies = [
+ "backon",
+ "base64 0.21.7",
+ "jsonschema",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "http"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4a85d31aea989eead29a3aaf9e1115a180df8282431156e533de47660892565"
@@ -4477,7 +4508,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -4560,6 +4591,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "market-coinbase"
+version = "0.3.0-rc.1"
+dependencies = [
+ "chrono",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "matchit"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4573,7 +4620,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -5294,7 +5341,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5337,7 +5384,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -5406,7 +5453,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -9608,7 +9655,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "jsonschema",
