@@ -26,8 +26,6 @@ Before starting, ensure you have:
 
 ## Project Setup
 
-todo: add local setup guide
-
 ### 1. Create a New Move Package
 
 ```bash
@@ -56,20 +54,21 @@ nexus_workflow = "0x5addaf9046d4a16ec3cbbe4fa9f89b5da73e0304ed1fff26fb8301574692
 nexus_interface = "0xf66be6face6f35dea9d6aea2b6ce8930a2bf7f55ac9ec7c80ffcb8182cabf5ae"
 ```
 
-**Note**: Update the paths and addresses to match your local setup and target network.
+**Note**: Update the paths and addresses to match your setup and target network.
 
 ## Step-by-Step Development
 
 ### Step 1: Create the Basic Module Structure
 
-Create `sources/my_tool.move`:
+In `sources/my_onchain_tool.move`:
 
 ```move
-module my_onchain_tool::my_tool;
+module my_onchain_tool::my_onchain_tool;
 
 use nexus_primitives::proof_of_uid::ProofOfUID;
 use nexus_workflow::tool_output::{Self, ToolOutput};
 use sui::bag::{Self, Bag};
+use sui::clock::Clock;
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;
 
@@ -100,7 +99,7 @@ public struct MyToolState has key {
 /// It's not used during execution. Only the ToolOutput object is used.
 public enum Output {
     Success {
-        result: AsciiString,
+        result: u64,
         // Add custom fields here as needed
     },
     Error {
@@ -150,6 +149,7 @@ public fun execute(
     state: &mut MyToolState,
     // Add your custom parameters here
     input_value: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): ToolOutput {
     // Get the witness for stamping.
@@ -166,11 +166,12 @@ public fun execute(
         // Return custom variant
         tool_output::variant(b"custom_result")
             .with_field(b"data", b"large_value_processed")
-            .with_field(b"timestamp", sui::clock::timestamp_ms(ctx).to_string().into_bytes())
+            .with_field(b"timestamp", sui::clock::timestamp_ms(clock).to_string().into_bytes())
     } else {
         // Return success variant
+        let result = input_value * 2;
         tool_output::success()
-            .with_field(b"result", input_value.to_string().into_bytes())
+            .with_field(b"result", result.to_string().into_bytes())
     }
 }
 ```
@@ -211,14 +212,12 @@ Make sure to add tests in the `/tests` folder to test the correct functionality 
 ### Step 1: Publish to Sui
 
 ```bash
-# Build first to check for errors
-sui move build
-
 # Publish to testnet (or your target network)
-sui client publish --gas-budget 100000000
+sui client publish
 
 # Save the package ID from the output
 export PACKAGE_ID="0x..."
+# export <..> Other required IDs as described in step 2...
 ```
 
 ### Step 2: Get Required Information
@@ -228,9 +227,17 @@ After publishing, you'll need:
 1. **Package Address**: From publish output
 2. **Module Name**: Your module name (e.g., "my_tool")
 3. **Witness ID**: Object ID of your witness object
+4. ***ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
 
 You can find the witness ID in the explorer by looking up the Witness object in the dynamic field ID that is given
-to you in the publish output.
+to you in the publish output. This object has type: `0x2::dynamic_field::Field<vector<u8>, PACKAGE_ID::my_onchain_tool::MyToolWitness>`
+
+Alternatively, you can find the witness ID by using the CLI: 
+
+```bash
+sui client object <DYNAMIC_FIELD_ID>
+```
+
 
 ### Step 3: Register with Nexus
 
@@ -239,8 +246,8 @@ Use the Nexus CLI to register your tool with automatic schema generation:
 ```bash
 nexus tool register-onchain \
   --package-address $PACKAGE_ID \
-  --module-name my_tool \
-  --tool-fqn "mydomain.my_tool@1" \
+  --module-name my_onchain_tool \
+  --tool-fqn "xyz.mydomain.my_onchain_tool@1" \
   --description "My custom onchain tool that processes values" \
   --witness-id "0x..."
 ```
@@ -264,6 +271,78 @@ nexus tool list
 ### Using in DAG Definitions
 
 Once registered, your onchain tool can be used in Nexus workflows the same way offchain tools are used.
+
+An example JSON DAG using the onchain tool is as follows: 
+
+```
+{
+    "default_values": [
+    {
+      "vertex": "just_execute_first",
+      "input_port": "2",
+      "value": {
+        "storage": "inline",
+        "data": "0x6"
+      }
+    },
+    {
+        "vertex": "just_execute_second",
+        "input_port": "2",
+        "value": {
+          "storage": "inline",
+          "data": "0x6"
+        }
+      }
+  ],
+    "vertices": [
+      {
+        "kind": {
+          "variant": "on_chain",
+          "tool_fqn": "xyz.mydomain.my_tool@1"
+        },
+        "name": "just_execute_first",
+        "entry_ports": [
+          {
+            "name": "0",
+            "encrypted": false
+          },
+          {
+            "name": "1",
+            "encrypted": false
+          }
+        ]
+      },
+      {
+        "kind": {
+          "variant": "on_chain",
+          "tool_fqn": "xyz.mydomain.my_tool@1"
+        },
+        "name": "just_execute_second",
+        "entry_ports": [
+          {
+            "name": "0",
+            "encrypted": false
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": {
+          "vertex": "just_execute_first",
+          "output_variant": "success",
+          "output_port": "result"
+        },
+        "to": {
+          "vertex": "just_execute_second",
+          "input_port": "1"
+        }
+      }
+    ]
+  }
+    
+```
+This workflow only executes the onchain tool twice if the output variant is Success. Else it only executes it once.
 
 ### Useful Sources
 
