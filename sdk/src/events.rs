@@ -38,6 +38,8 @@ pub enum NexusEventKind {
     ToolUnregistered(ToolUnregisteredEvent),
     #[serde(rename = "WalkAdvancedEvent")]
     WalkAdvanced(WalkAdvancedEvent),
+    #[serde(rename = "WalkFailedEvent")]
+    WalkFailed(WalkFailedEvent),
     #[serde(rename = "EndStateReachedEvent")]
     EndStateReached(EndStateReachedEvent),
     #[serde(rename = "ExecutionFinishedEvent")]
@@ -165,6 +167,22 @@ pub struct WalkAdvancedEvent {
     pub variant: TypeName,
     /// What data is associated with the variant.
     pub variant_ports_to_data: serde_json::Value,
+}
+
+/// Fored by the Nexus Workflow when a walk has failed.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkFailedEvent {
+    pub dag: sui::ObjectID,
+    pub execution: sui::ObjectID,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub walk_index: u64,
+    /// Which vertex was being executed when the failure happened.
+    pub vertex: RuntimeVertex,
+    /// The error message associated with the failure.
+    pub reason: String,
 }
 
 /// Fired by the Nexus Workflow when a walk has halted in an end state. This
