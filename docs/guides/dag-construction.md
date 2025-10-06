@@ -87,7 +87,7 @@ Edges define the flow of data between vertices, connecting an output port of a s
 ## 3.1 Special edge types
 
 - **`normal`** → The default edge type. Data flows from the source vertex to the target vertex as soon as the source vertex produces output on the specified port.
-- **`for_each`** → Spawns parallel executions of the downstream vertex, once per element of an array.
+- **`for_each`** → Spawns parallel executions of the downstream vertex, once per element of an array. This must be followed by a `collect` (with any number of intermediate `normal` edges) to gather the results back into a single array.
 - **`collect`** → Gathers the results of a `for_each` branch back into a single ordered array.
 - **`do_while`** → Repeats execution by looping back as long as a condition is satisfied.
 - **`break`** → Exits a `do_while` loop when the condition is no longer met.
