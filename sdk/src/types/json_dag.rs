@@ -105,7 +105,7 @@ pub struct FromPort {
     pub output_port: String,
     /// Whether the output port data should be encrypted before being sent to
     /// the workflow. Defaults to `false`.
-    // TODO: maybe move this to `Edge`?
+    // TODO: <https://github.com/Talus-Network/nexus/issues/524>
     #[serde(default)]
     pub encrypted: bool,
 }
