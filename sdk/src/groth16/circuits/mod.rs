@@ -1,2 +1,2 @@
-mod gas_proof;
-mod transaction_policy_proof;
+mod gas;
+mod transaction_policy;

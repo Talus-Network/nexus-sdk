@@ -1,6 +1,5 @@
 use {
     crate::groth16::{curve::PairingEngine, error::SetupError},
-    ark_ec::{pairing::Pairing, CurveGroup},
     ark_serialize::{CanonicalDeserialize, Compress, Validate},
     std::{
         fs::File,
