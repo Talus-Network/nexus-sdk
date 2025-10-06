@@ -1,4 +1,7 @@
-use crate::{idents::ModuleAndNameIdent, sui};
+use crate::{
+    idents::{move_std, ModuleAndNameIdent},
+    sui,
+};
 
 // == `nexus_primitives::data` ==
 
@@ -51,6 +54,51 @@ impl Data {
         json: &T,
         encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
+        // Arrays need to be created with `Self::INLINE_MANY`.
+        if let serde_json::Value::Array(arr) = serde_json::to_value(json)? {
+            let type_params = vec![sui::MoveTypeTag::Vector(Box::new(sui::MoveTypeTag::U8))];
+
+            let vec = tx.programmable_move_call(
+                sui::MOVE_STDLIB_PACKAGE_ID,
+                move_std::Vector::EMPTY.module.into(),
+                move_std::Vector::EMPTY.name.into(),
+                type_params.clone(),
+                vec![],
+            );
+
+            for data in arr {
+                // `bytes: vector<u8>`
+                let data_bytes = tx.pure(serde_json::to_string(&data)?.into_bytes())?;
+
+                // `vector<vector<u8>>::push_back`
+                tx.programmable_move_call(
+                    sui::MOVE_STDLIB_PACKAGE_ID,
+                    move_std::Vector::PUSH_BACK.module.into(),
+                    move_std::Vector::PUSH_BACK.name.into(),
+                    type_params.clone(),
+                    vec![vec, data_bytes],
+                );
+            }
+
+            if encrypted {
+                return Ok(tx.programmable_move_call(
+                    primitives_pkg_id,
+                    Self::INLINE_MANY_ENCRYPTED.module.into(),
+                    Self::INLINE_MANY_ENCRYPTED.name.into(),
+                    vec![],
+                    vec![vec],
+                ));
+            }
+
+            return Ok(tx.programmable_move_call(
+                primitives_pkg_id,
+                Self::INLINE_MANY.module.into(),
+                Self::INLINE_MANY.name.into(),
+                vec![],
+                vec![vec],
+            ));
+        }
+
         let json = tx.pure(serde_json::to_string(json)?.into_bytes())?;
 
         if encrypted {

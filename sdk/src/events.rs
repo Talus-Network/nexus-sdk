@@ -38,6 +38,8 @@ pub enum NexusEventKind {
     ToolUnregistered(ToolUnregisteredEvent),
     #[serde(rename = "WalkAdvancedEvent")]
     WalkAdvanced(WalkAdvancedEvent),
+    #[serde(rename = "WalkFailedEvent")]
+    WalkFailed(WalkFailedEvent),
     #[serde(rename = "EndStateReachedEvent")]
     EndStateReached(EndStateReachedEvent),
     #[serde(rename = "ExecutionFinishedEvent")]
@@ -88,7 +90,7 @@ pub struct RequestWalkExecutionEvent {
         serialize_with = "serialize_sui_u64"
     )]
     pub walk_index: u64,
-    pub next_vertex: TypeName,
+    pub next_vertex: RuntimeVertex,
     pub evaluations: sui::ObjectID,
     /// This field defines the package ID, module and name of the Agent that
     /// holds the DAG. Used to confirm the tool evaluation with the Agent.
@@ -160,11 +162,27 @@ pub struct WalkAdvancedEvent {
     )]
     pub walk_index: u64,
     /// Which vertex was just executed.
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
     pub variant_ports_to_data: serde_json::Value,
+}
+
+/// Fored by the Nexus Workflow when a walk has failed.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkFailedEvent {
+    pub dag: sui::ObjectID,
+    pub execution: sui::ObjectID,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub walk_index: u64,
+    /// Which vertex was being executed when the failure happened.
+    pub vertex: RuntimeVertex,
+    /// The error message associated with the failure.
+    pub reason: String,
 }
 
 /// Fired by the Nexus Workflow when a walk has halted in an end state. This
@@ -179,7 +197,7 @@ pub struct EndStateReachedEvent {
     )]
     pub walk_index: u64,
     /// Which vertex was just executed.
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
@@ -212,7 +230,7 @@ pub struct FoundingLeaderCapCreatedEvent {
 pub struct GasSettlementUpdateEvent {
     pub execution: sui::ObjectID,
     pub tool_fqn: ToolFqn,
-    pub vertex: TypeName,
+    pub vertex: RuntimeVertex,
     pub was_settled: bool,
 }
 
@@ -362,7 +380,10 @@ mod tests {
                     "execution": execution.to_string(),
                     "walk_index": "42",
                     "next_vertex": {
-                        "name": "foo",
+                        "variant": "Plain",
+                        "fields": {
+                            "vertex": { "name": "foo" },
+                        }
                     },
                     "evaluations": evaluations.to_string(),
                     "worksheet_from_type": {
@@ -381,7 +402,7 @@ mod tests {
                 e.execution == execution &&
                 e.evaluations == evaluations &&
                 e.walk_index == 42 &&
-                e.next_vertex.name == *"foo" &&
+                matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
                 e.worksheet_from_type.name == *"bar"
         );
     }
