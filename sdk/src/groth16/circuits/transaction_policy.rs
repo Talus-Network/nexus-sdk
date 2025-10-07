@@ -2,12 +2,8 @@
 
 use {
     super::gas::{
-        enforce_digest_eq_limbs,
-        enforce_le_uint64,
-        pack_bits_le_to_fp,
-        pack_bytes_le_to_fp,
-        Digest256Gadget,
-        DIGEST_LIMB_BYTES,
+        enforce_digest_eq_limbs, enforce_le_uint64, pack_bits_le_to_fp, pack_bytes_le_to_fp,
+        Digest256Gadget, DIGEST_LIMB_BYTES,
     },
     ark_ff::PrimeField,
     ark_r1cs_std::{
@@ -18,8 +14,8 @@ use {
         uint64::UInt64,
         uint8::UInt8,
     },
-    ark_relations::r1cs::{ConstraintSystemRef, SynthesisError},
-    ark_std::vec::Vec,
+    ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
+    ark_std::{marker::PhantomData, vec::Vec},
 };
 
 const COMMAND_MOVE_CALL: u8 = 0;
@@ -87,6 +83,29 @@ pub struct DfaTransitionWitness<F: PrimeField> {
 struct DfaTransitionVar<F: PrimeField> {
     target: FpVar<F>,
     symbol_limbs: [FpVar<F>; DIGEST_LIMBS],
+}
+
+/// Groth16 circuit wrapper that enforces the transaction policy constraints.
+pub struct TxPolicyCircuit<F: PrimeField, D: Digest256Gadget<F>> {
+    pub pubcfg: TxPolicyPublic<F>,
+    pub witness: TxPolicyWitness<F>,
+    _pd: PhantomData<D>,
+}
+
+impl<F: PrimeField, D: Digest256Gadget<F>> TxPolicyCircuit<F, D> {
+    pub fn new(pubcfg: TxPolicyPublic<F>, witness: TxPolicyWitness<F>) -> Self {
+        Self {
+            pubcfg,
+            witness,
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField, D: Digest256Gadget<F>> ConstraintSynthesizer<F> for TxPolicyCircuit<F, D> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
+        enforce_tx_policy::<F, D>(&cs, &self.pubcfg, &self.witness)
+    }
 }
 
 pub fn enforce_tx_policy<F: PrimeField, D: Digest256Gadget<F>>(

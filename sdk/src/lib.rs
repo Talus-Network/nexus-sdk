@@ -1,8 +1,6 @@
 //! This library contains all Nexus types that are shared between different
 //! parts of Nexus. This includes the CLI, the Toolkits and the Leader node.
 
-pub mod kat;
-
 /// The ToolFqn type represents a fully qualified tool name. Contains the
 /// logic for verifying, serializing and deserializing the FQN.
 #[cfg(feature = "tool_fqn")]
@@ -66,3 +64,7 @@ pub mod dag;
 /// Groth16 provides a generic implementation of the Groth16 proof system.
 #[cfg(feature = "groth16")]
 pub mod groth16;
+
+/// Kat provides a generic implementation of the Kat proof system.
+#[cfg(feature = "kat")]
+pub mod kat;

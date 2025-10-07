@@ -1,13 +1,8 @@
 use {
     ark_ff::PrimeField,
     ark_r1cs_std::{
-        alloc::AllocVar,
-        boolean::Boolean,
-        eq::EqGadget,
-        fields::fp::FpVar,
-        prelude::*,
-        uint64::UInt64,
-        uint8::UInt8,
+        alloc::AllocVar, boolean::Boolean, eq::EqGadget, fields::fp::FpVar, prelude::*,
+        uint64::UInt64, uint8::UInt8,
     },
     ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     ark_std::{marker::PhantomData, vec::Vec},
@@ -74,6 +69,7 @@ pub struct CheckpointGasCircuit<F: PrimeField, D: Digest256Gadget<F>, const N: u
     _pd: PhantomData<D>,
 }
 
+#[warn(dead_code)]
 impl<F: PrimeField, D: Digest256Gadget<F>, const N: usize> CheckpointGasCircuit<F, D, N> {
     pub fn new(
         publics: [CheckpointItemPublic<F>; N],

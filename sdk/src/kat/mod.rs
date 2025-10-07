@@ -1,5 +1,5 @@
 //! Streaming parser for Kleene Algebra with Tests (KAT).
-//!
+//! TODO: Move to Concurrent version of the KAT parser
 //! The parser follows KAT's algebraic structure directly. Actions and
 //! primitive tests are supplied up-front and the parser consumes a token
 //! stream on demand, never buffering more than necessary. Parsing produces an
@@ -16,14 +16,8 @@ mod parser;
 pub use {
     ast::{KatExpr, Span, Symbol, TestExpr},
     automaton::{
-        DeterministicFiniteAutomaton,
-        DfaState,
-        DfaStateId,
-        DfaTransition,
-        EpsilonNfa,
-        StateId,
-        Transition,
-        TransitionLabel,
+        DeterministicFiniteAutomaton, DfaState, DfaStateId, DfaTransition, EpsilonNfa, StateId,
+        Transition, TransitionLabel,
     },
     config::KatParserConfig,
     error::ParseError,

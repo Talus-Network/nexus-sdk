@@ -86,6 +86,9 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Kat provides a generic implementation of the Kat proof system.
+kat = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -120,7 +123,7 @@ chrono.workspace = true
 dirs = "6.0.0"
 serde.workspace = true
 
-# Arkworks deps for Groth16 
+# Arkworks deps for Groth16
 [dependencies.ark-ff]
 version = "0.5"
 optional = true
