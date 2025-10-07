@@ -120,7 +120,7 @@ mod tests {
             );
         }
 
-        let mut keys = setup.into_keys();
+        let keys = setup.into_keys();
         let proof = Groth16::<E>::prove(&keys.pk, circuit.clone(), &mut rng).expect("prove");
         assert!(
             Groth16::<E>::verify(&keys.vk, &[c, d], &proof).expect("verify"),
