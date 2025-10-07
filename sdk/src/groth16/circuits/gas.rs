@@ -1,8 +1,13 @@
 use {
     ark_ff::PrimeField,
     ark_r1cs_std::{
-        alloc::AllocVar, boolean::Boolean, eq::EqGadget, fields::fp::FpVar, prelude::*,
-        uint64::UInt64, uint8::UInt8,
+        alloc::AllocVar,
+        boolean::Boolean,
+        eq::EqGadget,
+        fields::fp::FpVar,
+        prelude::*,
+        uint64::UInt64,
+        uint8::UInt8,
     },
     ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     ark_std::{marker::PhantomData, vec::Vec},

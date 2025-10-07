@@ -114,7 +114,8 @@ full = [
     "transactions",
     "walrus",
     "dag",
-    "groth16"
+    "groth16",
+    "kat"
 ]
 
 [dependencies]

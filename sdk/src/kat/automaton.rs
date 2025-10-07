@@ -319,10 +319,100 @@ impl DeterministicFiniteAutomaton {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, std::collections::BTreeSet};
 
     fn sym(name: &str) -> Symbol {
         Symbol::from(name)
+    }
+
+    fn action_labels(word: &str) -> Vec<TransitionLabel> {
+        word.chars()
+            .map(|ch| {
+                let mut buf = [0u8; 4];
+                let view = ch.encode_utf8(&mut buf);
+                TransitionLabel::Action(sym(view))
+            })
+            .collect()
+    }
+
+    fn epsilon_closure<I>(seeds: I, epsilon_index: &[Vec<StateId>]) -> BTreeSet<StateId>
+    where
+        I: IntoIterator<Item = StateId>,
+    {
+        let mut closure = BTreeSet::new();
+        let mut stack = Vec::new();
+
+        for seed in seeds {
+            if closure.insert(seed) {
+                stack.push(seed);
+            }
+        }
+
+        while let Some(state) = stack.pop() {
+            for &next in &epsilon_index[state.index()] {
+                if closure.insert(next) {
+                    stack.push(next);
+                }
+            }
+        }
+
+        closure
+    }
+
+    fn nfa_accepts(nfa: &EpsilonNfa, word: &str) -> bool {
+        let labels = action_labels(word);
+        let mut epsilon_index = vec![Vec::new(); nfa.state_count];
+        let mut symbol_index = vec![Vec::new(); nfa.state_count];
+
+        for transition in &nfa.transitions {
+            match transition {
+                Transition::Epsilon { from, to } => {
+                    epsilon_index[from.index()].push(*to);
+                }
+                Transition::Symbol { from, to, label } => {
+                    symbol_index[from.index()].push((label.clone(), *to));
+                }
+            }
+        }
+
+        let mut current = epsilon_closure(std::iter::once(nfa.start), &epsilon_index);
+
+        for label in &labels {
+            let mut seeds = BTreeSet::new();
+            for state in &current {
+                for (candidate, target) in &symbol_index[state.index()] {
+                    if candidate == label {
+                        seeds.insert(*target);
+                    }
+                }
+            }
+            if seeds.is_empty() {
+                return false;
+            }
+            current = epsilon_closure(seeds.into_iter(), &epsilon_index);
+        }
+
+        current.iter().any(|state| nfa.accepts.contains(state))
+    }
+
+    fn dfa_accepts(dfa: &DeterministicFiniteAutomaton, word: &str) -> bool {
+        let labels = action_labels(word);
+        let mut state = dfa.start;
+
+        for label in &labels {
+            if let Some(next) = dfa
+                .state(state)
+                .transitions
+                .iter()
+                .find(|transition| &transition.label == label)
+            {
+                state = next.to;
+            } else {
+                return false;
+            }
+        }
+
+        dfa.accepts.contains(&state)
     }
 
     #[test]
@@ -438,5 +528,42 @@ mod tests {
             _ => panic!("expected action label"),
         }
         assert!(dfa.accepts.contains(&second_state.transitions[0].to));
+    }
+
+    #[test]
+    fn epsilon_nfa_filters_expected_sequences() {
+        let expr = KatExpr::Sequence(
+            Box::new(KatExpr::Star(Box::new(KatExpr::Action(sym("a"))))),
+            Box::new(KatExpr::Action(sym("b"))),
+        );
+        let nfa = EpsilonNfa::from_kat(&expr);
+
+        for word in ["b", "ab", "aaab"] {
+            assert!(nfa_accepts(&nfa, word), "expected ε-NFA to accept {word:?}");
+        }
+
+        for word in ["", "a", "aa", "baa"] {
+            assert!(
+                !nfa_accepts(&nfa, word),
+                "expected ε-NFA to reject {word:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dfa_filters_expected_sequences() {
+        let expr = KatExpr::Sequence(
+            Box::new(KatExpr::Star(Box::new(KatExpr::Action(sym("a"))))),
+            Box::new(KatExpr::Action(sym("b"))),
+        );
+        let dfa = DeterministicFiniteAutomaton::from_kat(&expr);
+
+        for word in ["b", "ab", "aaab"] {
+            assert!(dfa_accepts(&dfa, word), "expected DFA to accept {word:?}");
+        }
+
+        for word in ["", "a", "aa", "baa"] {
+            assert!(!dfa_accepts(&dfa, word), "expected DFA to reject {word:?}");
+        }
     }
 }

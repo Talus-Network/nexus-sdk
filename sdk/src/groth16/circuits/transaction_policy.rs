@@ -2,8 +2,12 @@
 
 use {
     super::gas::{
-        enforce_digest_eq_limbs, enforce_le_uint64, pack_bits_le_to_fp, pack_bytes_le_to_fp,
-        Digest256Gadget, DIGEST_LIMB_BYTES,
+        enforce_digest_eq_limbs,
+        enforce_le_uint64,
+        pack_bits_le_to_fp,
+        pack_bytes_le_to_fp,
+        Digest256Gadget,
+        DIGEST_LIMB_BYTES,
     },
     ark_ff::PrimeField,
     ark_r1cs_std::{
@@ -85,26 +89,31 @@ struct DfaTransitionVar<F: PrimeField> {
     symbol_limbs: [FpVar<F>; DIGEST_LIMBS],
 }
 
-/// Groth16 circuit wrapper that enforces the transaction policy constraints.
-pub struct TxPolicyCircuit<F: PrimeField, D: Digest256Gadget<F>> {
-    pub pubcfg: TxPolicyPublic<F>,
-    pub witness: TxPolicyWitness<F>,
+/// batch transaction policy constraints.
+pub struct TxPolicyCircuit<F: PrimeField, D: Digest256Gadget<F>, const N: usize> {
+    pub publics: [TxPolicyPublic<F>; N],
+    pub witnesses: [TxPolicyWitness<F>; N],
     _pd: PhantomData<D>,
 }
 
-impl<F: PrimeField, D: Digest256Gadget<F>> TxPolicyCircuit<F, D> {
-    pub fn new(pubcfg: TxPolicyPublic<F>, witness: TxPolicyWitness<F>) -> Self {
+impl<F: PrimeField, D: Digest256Gadget<F>, const N: usize> TxPolicyCircuit<F, D, N> {
+    pub fn new(publics: [TxPolicyPublic<F>; N], witnesses: [TxPolicyWitness<F>; N]) -> Self {
         Self {
-            pubcfg,
-            witness,
+            publics,
+            witnesses,
             _pd: PhantomData,
         }
     }
 }
 
-impl<F: PrimeField, D: Digest256Gadget<F>> ConstraintSynthesizer<F> for TxPolicyCircuit<F, D> {
+impl<F: PrimeField, D: Digest256Gadget<F>, const N: usize> ConstraintSynthesizer<F>
+    for TxPolicyCircuit<F, D, N>
+{
     fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-        enforce_tx_policy::<F, D>(&cs, &self.pubcfg, &self.witness)
+        for i in 0..N {
+            enforce_tx_policy::<F, D>(&cs, &self.publics[i], &self.witnesses[i])?;
+        }
+        Ok(())
     }
 }
 

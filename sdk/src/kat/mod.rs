@@ -16,8 +16,14 @@ mod parser;
 pub use {
     ast::{KatExpr, Span, Symbol, TestExpr},
     automaton::{
-        DeterministicFiniteAutomaton, DfaState, DfaStateId, DfaTransition, EpsilonNfa, StateId,
-        Transition, TransitionLabel,
+        DeterministicFiniteAutomaton,
+        DfaState,
+        DfaStateId,
+        DfaTransition,
+        EpsilonNfa,
+        StateId,
+        Transition,
+        TransitionLabel,
     },
     config::KatParserConfig,
     error::ParseError,
