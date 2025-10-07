@@ -481,3 +481,171 @@ fn take_le4<F: PrimeField>(bytes: &[UInt8<F>], off: usize) -> [UInt8<F>; LENGTH_
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, ark_bls12_381::Fr, ark_relations::r1cs::ConstraintSystem};
+
+    struct FirstChunkDigest;
+
+    impl<F: PrimeField> Digest256Gadget<F> for FirstChunkDigest {
+        const NAME: &'static str = "first-chunk";
+
+        fn hash(bytes: &[UInt8<F>]) -> Result<[UInt8<F>; 32], SynthesisError> {
+            let mut out = Vec::with_capacity(32);
+            for idx in 0..32 {
+                let byte = bytes
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| UInt8::constant(0u8));
+                out.push(byte);
+            }
+            out.try_into()
+                .map_err(|_| SynthesisError::AssignmentMissing)
+        }
+    }
+
+    fn limbs_from_first_chunk(bytes: &[u8]) -> [Fr; DIGEST_LIMBS] {
+        assert_eq!(bytes.len(), 32, "expected 32-byte digest input");
+        let limbs = bytes
+            .chunks(DIGEST_LIMB_BYTES)
+            .map(|chunk| {
+                let mut padded = [0u8; 32];
+                padded[..chunk.len()].copy_from_slice(chunk);
+                Fr::from_le_bytes_mod_order(&padded)
+            })
+            .collect::<Vec<_>>();
+        limbs
+            .try_into()
+            .expect("chunk count should match digest limb count")
+    }
+
+    #[test]
+    fn move_call_sequence_satisfies_policy() {
+        type F = Fr;
+        const N: usize = 1;
+
+        let cs = ConstraintSystem::<F>::new_ref();
+
+        let package_bytes: Vec<u8> = (1..=32).collect();
+        let module_name = b"module";
+        let function_name = b"do_stuff";
+        let module_len = module_name.len() as u32;
+        let function_len = function_name.len() as u32;
+
+        let command_tag_offset = 0usize;
+        let pkg_offset = 1usize;
+        let module_len_offset = pkg_offset + package_bytes.len();
+        let module_offset = module_len_offset + LENGTH_PREFIX_BYTES;
+        let function_len_offset = module_offset + module_name.len();
+        let function_offset = function_len_offset + LENGTH_PREFIX_BYTES;
+        let trailing_bytes = 8usize;
+        let total_len = function_offset + function_name.len() + trailing_bytes;
+
+        let mut tx_bytes_plain = vec![0u8; total_len];
+        tx_bytes_plain[command_tag_offset] = COMMAND_MOVE_CALL;
+        tx_bytes_plain[pkg_offset..pkg_offset + package_bytes.len()]
+            .copy_from_slice(&package_bytes);
+        tx_bytes_plain[module_len_offset..module_len_offset + LENGTH_PREFIX_BYTES]
+            .copy_from_slice(&module_len.to_le_bytes());
+        tx_bytes_plain[module_offset..module_offset + module_name.len()]
+            .copy_from_slice(module_name);
+        tx_bytes_plain[function_len_offset..function_len_offset + LENGTH_PREFIX_BYTES]
+            .copy_from_slice(&function_len.to_le_bytes());
+        tx_bytes_plain[function_offset..function_offset + function_name.len()]
+            .copy_from_slice(function_name);
+        if tx_bytes_plain.len() < 32 {
+            panic!("transaction bytes must be at least 32 bytes long");
+        }
+        let tx_digest_plain = &tx_bytes_plain[..32];
+
+        let tx_bytes = tx_bytes_plain
+            .iter()
+            .map(|&b| UInt8::new_witness(ark_relations::ns!(cs, "tx_byte"), || Ok(b)))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("tx witness");
+
+        let max_symbol_bytes = 64usize;
+        let mut move_call_payload = Vec::new();
+        move_call_payload.extend_from_slice(MOVE_CALL_LITERAL);
+        move_call_payload.extend_from_slice(&package_bytes);
+        move_call_payload.extend_from_slice(&module_len.to_le_bytes());
+        move_call_payload.extend_from_slice(module_name);
+        move_call_payload.extend_from_slice(&function_len.to_le_bytes());
+        move_call_payload.extend_from_slice(function_name);
+        let payload_len = move_call_payload.len();
+
+        assert!(
+            payload_len <= max_symbol_bytes,
+            "payload must respect configured maximum"
+        );
+
+        let mut move_call_symbol_plain = Vec::with_capacity(LENGTH_PREFIX_BYTES + max_symbol_bytes);
+        move_call_symbol_plain.extend_from_slice(&(payload_len as u32).to_le_bytes());
+        move_call_symbol_plain.extend_from_slice(&move_call_payload);
+        move_call_symbol_plain.resize(LENGTH_PREFIX_BYTES + max_symbol_bytes, 0u8);
+        let move_call_symbol = move_call_symbol_plain
+            .iter()
+            .map(|&b| UInt8::constant(b))
+            .collect::<Vec<_>>();
+
+        let tx_digest_limbs = limbs_from_first_chunk(tx_digest_plain);
+
+        let mut dfa_serialization_plain = Vec::new();
+        dfa_serialization_plain.extend_from_slice(&(2u32).to_le_bytes());
+        dfa_serialization_plain.extend_from_slice(&(0u32).to_le_bytes());
+        dfa_serialization_plain.push(0u8);
+        dfa_serialization_plain.extend_from_slice(&(1u32).to_le_bytes());
+        dfa_serialization_plain.extend_from_slice(&(1u32).to_le_bytes());
+        dfa_serialization_plain.extend_from_slice(&move_call_symbol_plain);
+        dfa_serialization_plain.push(1u8);
+        dfa_serialization_plain.extend_from_slice(&(0u32).to_le_bytes());
+        let dfa_digest_limbs = limbs_from_first_chunk(&dfa_serialization_plain[..32]);
+
+        let witness = TxPolicyWitness::<F> {
+            tx_bytes,
+            command_tag_offsets: vec![command_tag_offset],
+            move_call_pkg_offsets: vec![pkg_offset],
+            move_call_module_offsets: vec![module_offset],
+            move_call_module_lengths: vec![module_len],
+            move_call_function_offsets: vec![function_offset],
+            move_call_function_lengths: vec![function_len],
+            action_count: 1,
+            dfa: DfaWitness {
+                start_state: 0,
+                states: vec![
+                    DfaStateWitness {
+                        is_accepting: false,
+                        transitions: vec![DfaTransitionWitness {
+                            target: 1,
+                            symbol: move_call_symbol.clone(),
+                        }],
+                    },
+                    DfaStateWitness {
+                        is_accepting: true,
+                        transitions: vec![],
+                    },
+                ],
+            },
+        };
+
+        let public = TxPolicyPublic::<F> {
+            tx_digest_limbs,
+            dfa_hash_limbs: dfa_digest_limbs,
+            max_actions: 1,
+            max_symbol_bytes,
+            max_states: 2,
+            max_transitions_per_state: 1,
+            max_id_len: module_name.len().max(function_name.len()),
+        };
+
+        let circuit = TxPolicyCircuit::<F, FirstChunkDigest, N>::new([public], [witness]);
+        circuit
+            .generate_constraints(cs.clone())
+            .expect("constraint synthesis");
+        assert!(
+            cs.is_satisfied().expect("satisfaction query"),
+            "well-formed MoveCall sequence should satisfy the policy constraints"
+        );
+    }
+}

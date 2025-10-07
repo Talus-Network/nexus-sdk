@@ -51,3 +51,92 @@ impl<E: PairingEngine> Setup<E> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::groth16::curve::DefaultCurve,
+        ark_ec::pairing::Pairing,
+        ark_ff::UniformRand,
+        ark_groth16::Groth16,
+        ark_relations::r1cs::{ConstraintSynthesizer, LinearCombination, Variable},
+        ark_snark::SNARK,
+        rand::{rngs::StdRng, SeedableRng},
+    };
+
+    #[derive(Clone)]
+    struct MulAddCircuit<F: ark_ff::PrimeField> {
+        a: F,
+        b: F,
+        c: F,
+        d: F,
+    }
+
+    impl<F: ark_ff::PrimeField> ConstraintSynthesizer<F> for MulAddCircuit<F> {
+        fn generate_constraints(
+            self,
+            cs: ark_relations::r1cs::ConstraintSystemRef<F>,
+        ) -> Result<(), ark_relations::r1cs::SynthesisError> {
+            let c_var = cs.new_input_variable(|| Ok(self.c))?;
+            let d_var = cs.new_input_variable(|| Ok(self.d))?;
+            let a = cs.new_witness_variable(|| Ok(self.a))?;
+            let b = cs.new_witness_variable(|| Ok(self.b))?;
+
+            cs.enforce_constraint(
+                LinearCombination::from(a),
+                LinearCombination::from(b),
+                LinearCombination::from(c_var),
+            )?;
+            cs.enforce_constraint(
+                LinearCombination::from(a) + LinearCombination::from(b),
+                LinearCombination::from(Variable::One),
+                LinearCombination::from(d_var),
+            )?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn dev_trusted_setup_produces_usable_keys() {
+        type E = DefaultCurve;
+        type Fr = <E as Pairing>::ScalarField;
+
+        let mut rng = StdRng::seed_from_u64(2024);
+        let a = Fr::rand(&mut rng);
+        let b = Fr::rand(&mut rng);
+        let c = a * b;
+        let d = a + b;
+
+        let circuit = MulAddCircuit { a, b, c, d };
+        let setup = Setup::<E>::dev_trusted(circuit.clone(), &mut rng).expect("dev setup");
+
+        {
+            let keys = setup.keys();
+            let proof = Groth16::<E>::prove(&keys.pk, circuit.clone(), &mut rng).expect("prove");
+            assert!(
+                Groth16::<E>::verify(&keys.vk, &[c, d], &proof).expect("verify"),
+                "verification with borrowed keys should succeed"
+            );
+        }
+
+        let mut keys = setup.into_keys();
+        let proof = Groth16::<E>::prove(&keys.pk, circuit.clone(), &mut rng).expect("prove");
+        assert!(
+            Groth16::<E>::verify(&keys.vk, &[c, d], &proof).expect("verify"),
+            "verification with owned keys should succeed"
+        );
+        assert!(
+            Groth16::<E>::verify_with_processed_vk(&keys.pvk, &[c, d], &proof).expect("verify pvk"),
+            "prepared verifying key should match verifying key"
+        );
+
+        // Mutate keys to ensure API remains usable after ownership transfer.
+        let another_proof = Groth16::<E>::prove(&keys.pk, circuit, &mut rng).expect("second proof");
+        assert!(
+            Groth16::<E>::verify_with_processed_vk(&keys.pvk, &[c, d], &another_proof)
+                .expect("verify pvk"),
+            "prepared VK stays in sync after reuse"
+        );
+    }
+}

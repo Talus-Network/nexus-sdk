@@ -362,3 +362,114 @@ impl<F: PrimeField> CheckpointItemWitness<F> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, ark_bls12_381::Fr, ark_relations::r1cs::ConstraintSystem};
+
+    struct FirstChunkDigest;
+
+    impl<F: PrimeField> Digest256Gadget<F> for FirstChunkDigest {
+        const NAME: &'static str = "first-chunk";
+
+        fn hash(bytes: &[UInt8<F>]) -> Result<[UInt8<F>; 32], SynthesisError> {
+            let mut out = Vec::with_capacity(32);
+            for idx in 0..32 {
+                let byte = bytes
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| UInt8::constant(0u8));
+                out.push(byte);
+            }
+            out.try_into()
+                .map_err(|_| SynthesisError::AssignmentMissing)
+        }
+    }
+
+    fn chunked_limbs(bytes: &[u8]) -> Vec<Fr> {
+        assert_eq!(bytes.len() % DIGEST_LIMB_BYTES, 0);
+        bytes
+            .chunks(DIGEST_LIMB_BYTES)
+            .map(|chunk| {
+                let mut padded = [0u8; 32];
+                padded[..chunk.len()].copy_from_slice(chunk);
+                Fr::from_le_bytes_mod_order(&padded)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn checkpoint_gas_accepts_consistent_data() {
+        type F = Fr;
+        const N: usize = 1;
+
+        let cs = ConstraintSystem::<F>::new_ref();
+
+        let tx_bytes_plain: Vec<u8> = (0..48).map(|i| i as u8).collect();
+        let tx_digest_plain = &tx_bytes_plain[..32];
+
+        let mut effects_bytes_plain: Vec<u8> =
+            (100..180).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let gas_comp = 500u64;
+        let gas_storage = 450u64;
+        let gas_rebate = 100u64;
+        let comp_off = 40usize;
+        let storage_off = 50usize;
+        let rebate_off = 60usize;
+        effects_bytes_plain[comp_off..comp_off + 8].copy_from_slice(&gas_comp.to_le_bytes());
+        effects_bytes_plain[storage_off..storage_off + 8]
+            .copy_from_slice(&gas_storage.to_le_bytes());
+        effects_bytes_plain[rebate_off..rebate_off + 8].copy_from_slice(&gas_rebate.to_le_bytes());
+        let effects_digest_plain = &effects_bytes_plain[..32];
+
+        let mut contents_bytes_plain: Vec<u8> =
+            (200..296).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        contents_bytes_plain[..32].copy_from_slice(tx_digest_plain);
+        contents_bytes_plain[32..64].copy_from_slice(effects_digest_plain);
+        let contents_digest_plain = &contents_bytes_plain[..32];
+
+        let mut summary_bytes_plain: Vec<u8> =
+            (50..130).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let summary_off = 32usize;
+        summary_bytes_plain[summary_off..summary_off + 32].copy_from_slice(contents_digest_plain);
+        let summary_digest_plain = &summary_bytes_plain[..32];
+
+        let checkpoint_digest_limbs = chunked_limbs(summary_digest_plain);
+        let tx_digest_limbs = chunked_limbs(tx_digest_plain);
+        let claimed_total = gas_comp + gas_storage - gas_rebate;
+
+        let publics = [CheckpointItemPublic::<F> {
+            checkpoint_digest_limbs,
+            tx_digest_limbs,
+            claimed_total_gas_u64: claimed_total,
+            tolerance_bps_u16: 100,
+        }];
+
+        let witnesses = [CheckpointItemWitness::new(
+            summary_bytes_plain.clone(),
+            contents_bytes_plain.clone(),
+            effects_bytes_plain.clone(),
+            summary_off,
+            0,
+            32,
+            gas_comp,
+            gas_storage,
+            gas_rebate,
+            comp_off,
+            storage_off,
+            rebate_off,
+            cs.clone(),
+        )
+        .expect("witness")];
+
+        let circuit = CheckpointGasCircuit::<F, FirstChunkDigest, N>::new(publics, witnesses);
+
+        circuit
+            .generate_constraints(cs.clone())
+            .expect("generate constraints");
+        assert!(
+            cs.is_satisfied().expect("satisfaction check"),
+            "consistent data should satisfy the circuit"
+        );
+    }
+}
