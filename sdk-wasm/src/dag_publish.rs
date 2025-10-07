@@ -743,6 +743,107 @@ pub fn build_dag_publish_transaction(dag_json: &str, nexus_objects_json: &str) -
         }
     }
 
+    if let Some(outputs) = &dag.outputs {
+        for output in outputs {
+            // Create vertex argument
+            commands.push(TransactionCommand {
+                command_type: "moveCall".to_string(),
+                target: format!(
+                    "{}::dag::vertex_from_string",
+                    nexus_objects
+                        .get("workflow_pkg_id")
+                        .unwrap_or(&"{{workflow_pkg_id}}".to_string())
+                ),
+                arguments: vec![CommandArgument::Pure {
+                    pure_type: "string".to_string(),
+                    value: serde_json::Value::String(output.vertex.clone()),
+                }],
+                type_arguments: vec![],
+                result_index,
+            });
+            let vertex_index = result_index;
+            result_index += 1;
+
+            // Create output variant argument
+            commands.push(TransactionCommand {
+                command_type: "moveCall".to_string(),
+                target: format!(
+                    "{}::dag::output_variant_from_string",
+                    nexus_objects
+                        .get("workflow_pkg_id")
+                        .unwrap_or(&"{{workflow_pkg_id}}".to_string())
+                ),
+                arguments: vec![CommandArgument::Pure {
+                    pure_type: "string".to_string(),
+                    value: serde_json::Value::String(output.output_variant.clone()),
+                }],
+                type_arguments: vec![],
+                result_index,
+            });
+            let output_variant_index = result_index;
+            result_index += 1;
+
+            // Create output port argument
+            commands.push(TransactionCommand {
+                command_type: "moveCall".to_string(),
+                target: format!(
+                    "{}::dag::output_port_from_string",
+                    nexus_objects
+                        .get("workflow_pkg_id")
+                        .unwrap_or(&"{{workflow_pkg_id}}".to_string())
+                ),
+                arguments: vec![CommandArgument::Pure {
+                    pure_type: "string".to_string(),
+                    value: serde_json::Value::String(output.output_port.clone()),
+                }],
+                type_arguments: vec![],
+                result_index,
+            });
+            let output_port_index = result_index;
+            result_index += 1;
+
+            // Add output to DAG (with encrypted support like CLI)
+            let output_target = if output.encrypted {
+                format!(
+                    "{}::dag::with_encrypted_output",
+                    nexus_objects
+                        .get("workflow_pkg_id")
+                        .unwrap_or(&"{{workflow_pkg_id}}".to_string())
+                )
+            } else {
+                format!(
+                    "{}::dag::with_output",
+                    nexus_objects
+                        .get("workflow_pkg_id")
+                        .unwrap_or(&"{{workflow_pkg_id}}".to_string())
+                )
+            };
+
+            commands.push(TransactionCommand {
+                command_type: "moveCall".to_string(),
+                target: output_target,
+                arguments: vec![
+                    CommandArgument::Result {
+                        index: current_dag_index,
+                    },
+                    CommandArgument::Result {
+                        index: vertex_index,
+                    },
+                    CommandArgument::Result {
+                        index: output_variant_index,
+                    },
+                    CommandArgument::Result {
+                        index: output_port_index,
+                    },
+                ],
+                type_arguments: vec![],
+                result_index,
+            });
+            current_dag_index = result_index;
+            result_index += 1;
+        }
+    }
+
     // Final command: Publish DAG
     commands.push(TransactionCommand {
         command_type: "moveCall".to_string(),
@@ -790,7 +891,7 @@ pub fn build_dag_publish_transaction(dag_json: &str, nexus_objects_json: &str) -
     }
 }
 
-/// ✅ Simple validation function (backward compatibility)
+/// Simple validation function (backward compatibility)
 #[wasm_bindgen]
 pub fn validate_dag_for_publish(dag_json: &str) -> PublishResult {
     let dag: Dag = match serde_json::from_str(dag_json) {

@@ -297,21 +297,85 @@ pub fn check_execution_requirements(dag_id: &str, entry_group: &str) -> Executio
     }
 }
 
-/// ✅ Build DAG execution transaction using SDK (CLI-compatible)
+/// ✅ Build DAG execution transaction using SDK (CLI-compatible with auto-encryption)
 #[wasm_bindgen]
 pub fn build_dag_execution_transaction(
+    master_key_hex: &str,
     dag_id: &str,
     entry_group: &str,
     input_json: &str,
     encrypted_ports_json: &str,
     gas_budget: &str,
 ) -> ExecutionResult {
+    use web_sys::console;
+
     let result = (|| -> Result<String, Box<dyn std::error::Error>> {
         // Parse inputs
-        let input_data: serde_json::Value = serde_json::from_str(input_json)?;
+        let mut input_data: serde_json::Value = serde_json::from_str(input_json)?;
         let encrypted_ports: std::collections::HashMap<String, Vec<String>> =
             serde_json::from_str(encrypted_ports_json)?;
         let gas_budget_u64: u64 = gas_budget.parse()?;
+
+        // 🔐 CLI-parity: If there are encrypted ports, encrypt input data first
+        // BUT: Check if data is already encrypted (array = already encrypted)
+        if !encrypted_ports.is_empty() {
+            // Check if any encrypted port is already in encrypted form (byte array)
+            let mut needs_encryption = false;
+            for (vertex_name, port_names) in &encrypted_ports {
+                if let Some(vertex_obj) = input_data.get(vertex_name) {
+                    for port_name in port_names {
+                        if let Some(port_value) = vertex_obj.get(port_name) {
+                            // If port_value is NOT an array, it needs encryption
+                            // If it IS an array, it's already encrypted
+                            if !port_value.is_array() {
+                                needs_encryption = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if needs_encryption {
+                    break;
+                }
+            }
+
+            if needs_encryption {
+                console::log_1(
+                    &"🔐 Encrypted ports detected, encrypting input data (CLI-parity)...".into(),
+                );
+
+                // Call the encryption function from crypto.rs
+                let encrypt_result = crate::encrypt_entry_ports_with_session(
+                    master_key_hex,
+                    input_json,
+                    encrypted_ports_json,
+                );
+
+                // Parse the encryption result
+                let encrypt_response: serde_json::Value = serde_json::from_str(&encrypt_result)?;
+
+                if !encrypt_response["success"].as_bool().unwrap_or(false) {
+                    let error_msg = encrypt_response["error"]
+                        .as_str()
+                        .unwrap_or("Encryption failed");
+                    return Err(format!("Input encryption failed: {}", error_msg).into());
+                }
+
+                // Use the encrypted input data
+                input_data = encrypt_response["input_data"].clone();
+                console::log_1(
+                    &format!(
+                        "✅ Successfully encrypted {} ports (CLI-parity)",
+                        encrypt_response["encrypted_count"].as_u64().unwrap_or(0)
+                    )
+                    .into(),
+                );
+            } else {
+                console::log_1(&"Input data already encrypted, skipping encryption (prevent double encryption)".into());
+            }
+        } else {
+            console::log_1(&"No encrypted ports, using plaintext input (CLI-parity)".into());
+        }
 
         // Build transaction commands that mirror CLI's dag::execute function
         let mut commands = Vec::new();
@@ -385,15 +449,14 @@ pub fn build_dag_execution_transaction(
                 let port_result_index = command_index;
                 command_index += 1;
 
-                // Create NexusData like CLI (encrypted vs non-encrypted)
                 let json_string = serde_json::to_string(port_value)?;
                 let json_bytes = json_string.as_bytes().to_vec();
 
                 // Use appropriate NexusData function based on encryption status (like CLI)
                 let data_target = if is_encrypted {
-                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for encrypted data
+                    "{{primitives_pkg_id}}::data::inline_one_encrypted" // Use inline_one_encrypted for encrypted data
                 } else {
-                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for regular data too
+                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for regular data
                 };
 
                 commands.push(serde_json::json!({
@@ -473,13 +536,15 @@ pub fn build_dag_execution_transaction(
             "commands": commands,
             "gas_budget": gas_budget_u64,
             "encrypted_ports_count": encrypted_ports.len(),
-            "vertices_count": input_data.as_object().map_or(0, |obj| obj.len())
+            "vertices_count": input_data.as_object().map_or(0, |obj| obj.len()),
+            "auto_encrypted": !encrypted_ports.is_empty()
         });
 
         Ok(serde_json::json!({
             "success": true,
             "transaction_data": transaction_data.to_string(),
-            "message": "CLI-compatible transaction built successfully"
+            "message": "CLI-compatible transaction built successfully with auto-encryption",
+            "encrypted": !encrypted_ports.is_empty()
         })
         .to_string())
     })();

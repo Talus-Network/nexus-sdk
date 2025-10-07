@@ -5084,12 +5084,17 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk-wasm"
-version = "0.2.0-rc.8"
+version = "0.2.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.7",
+ "bincode",
  "console_error_panic_hook",
+ "getrandom 0.2.15",
+ "hex",
  "js-sys",
  "nexus-sdk",
+ "rand 0.8.5",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -5097,6 +5102,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "x25519-dalek",
 ]
 
 [[package]]

@@ -20,3 +20,4 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db 
+dag-publish-app/
