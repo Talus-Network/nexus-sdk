@@ -890,31 +890,3 @@ pub fn build_dag_publish_transaction(dag_json: &str, nexus_objects_json: &str) -
         },
     }
 }
-
-/// Simple validation function (backward compatibility)
-#[wasm_bindgen]
-pub fn validate_dag_for_publish(dag_json: &str) -> PublishResult {
-    let dag: Dag = match serde_json::from_str(dag_json) {
-        Ok(dag) => dag,
-        Err(e) => {
-            return PublishResult {
-                is_success: false,
-                error_message: Some(format!("DAG JSON parsing error: {}", e)),
-                transaction_data: None,
-            }
-        }
-    };
-
-    match validator::validate(dag) {
-        Ok(_) => PublishResult {
-            is_success: true,
-            error_message: None,
-            transaction_data: Some("DAG validation successful".to_string()),
-        },
-        Err(e) => PublishResult {
-            is_success: false,
-            error_message: Some(format!("DAG validation error: {}", e)),
-            transaction_data: None,
-        },
-    }
-}

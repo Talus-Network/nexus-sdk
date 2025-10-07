@@ -169,31 +169,6 @@ pub fn initiate_x3dh_session(master_key_hex: &str, peer_bundle_bytes: &[u8]) -> 
     }
 }
 
-/// Validate master key format
-#[wasm_bindgen]
-pub fn validate_master_key(master_key_hex: &str) -> String {
-    let result = if master_key_hex.len() != 64 {
-        serde_json::json!({
-            "valid": false,
-            "length": master_key_hex.len(),
-            "message": format!("Invalid length: expected 64 hex characters, got {}", master_key_hex.len())
-        })
-    } else if master_key_hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        serde_json::json!({
-            "valid": true,
-            "length": 64,
-            "message": "Valid 32-byte master key"
-        })
-    } else {
-        serde_json::json!({
-            "valid": false,
-            "message": "Invalid hex format: contains non-hex characters"
-        })
-    };
-
-    result.to_string()
-}
-
 /// Generate a random master key using CLI-compatible logic
 #[wasm_bindgen]
 pub fn generate_random_master_key() -> String {
@@ -205,16 +180,6 @@ pub fn generate_random_master_key() -> String {
     let hex_key = bytes_to_hex(&key);
 
     hex_key
-}
-
-/// Check if master key exists in localStorage (placeholder - will be called from JS)
-#[wasm_bindgen]
-pub fn check_master_key_status() -> String {
-    serde_json::json!({
-        "status": "check_required_from_js",
-        "message": "Master key status should be checked from JavaScript localStorage"
-    })
-    .to_string()
 }
 
 /// Get current session count
@@ -341,22 +306,6 @@ pub fn import_sessions_from_storage(sessions_json: &str) -> String {
         })
         .to_string(),
     }
-}
-
-/// Clear all sessions
-#[wasm_bindgen]
-pub fn clear_all_sessions() -> String {
-    SESSIONS.with(|sessions| {
-        let mut sessions = sessions.borrow_mut();
-        let count = sessions.len();
-        sessions.clear();
-
-        serde_json::json!({
-            "status": "cleared",
-            "sessions_cleared": count
-        })
-        .to_string()
-    })
 }
 
 /// Get active session for DAG execution (CLI-compatible)
@@ -492,81 +441,6 @@ pub fn encrypt_entry_ports_with_session(
         Err(e) => serde_json::json!({
             "success": false,
             "error": e.to_string()
-        })
-        .to_string(),
-    }
-}
-
-/// Comprehensive peer bundle validation and analysis
-#[wasm_bindgen]
-pub fn validate_peer_bundle_comprehensive(peer_bundle_bytes: &[u8]) -> String {
-    let result = (|| -> Result<String, Box<dyn std::error::Error>> {
-        if peer_bundle_bytes.is_empty() {
-            return Err("Peer bundle is empty".into());
-        }
-
-        // Try to deserialize the peer bundle
-        let peer_bundle: PreKeyBundle = match bincode::deserialize(peer_bundle_bytes) {
-            Ok(bundle) => bundle,
-            Err(e) => {
-                return Err(format!("Deserialization failed: {}", e).into());
-            }
-        };
-
-        // Analyze bundle structure
-        let bundle_analysis = serde_json::json!({
-            "spk_id": peer_bundle.spk_id,
-            "has_otpk": peer_bundle.otpk_id.is_some(),
-            "otpk_id": peer_bundle.otpk_id,
-            "identity_pk_hex": bytes_to_hex(&peer_bundle.identity_pk.to_bytes()),
-            "spk_pub_hex": bytes_to_hex(&peer_bundle.spk_pub.to_bytes()),
-            "identity_verify_bytes_hex": bytes_to_hex(&peer_bundle.identity_verify_bytes),
-            "spk_sig_hex": bytes_to_hex(&peer_bundle.spk_sig)
-        });
-
-        // Validate SPK signature
-        let spk_valid = peer_bundle.verify_spk();
-
-        if !spk_valid {
-            return Err("SPK signature verification failed".into());
-        }
-
-        let dummy_identity = IdentityKey::generate();
-        let test_message = b"test";
-
-        match Session::initiate(&dummy_identity, &peer_bundle, test_message) {
-            Ok((initial_msg, session)) => {
-                let initial_message_bytes = match initial_msg {
-                    Message::Initial(msg) => bincode::serialize(&msg)
-                        .map_err(|e| format!("InitialMessage serialize failed: {}", e))?,
-                    _ => return Err("Expected Initial message from session initiation".into()),
-                };
-
-                let session_id_hex = bytes_to_hex(session.id());
-
-                Ok(serde_json::json!({
-                    "success": true,
-                    "bundle_valid": true,
-                    "spk_signature_valid": true,
-                    "x3dh_test_successful": true,
-                    "bundle_analysis": bundle_analysis,
-                    "test_session_id": session_id_hex,
-                    "test_initial_message_size": initial_message_bytes.len(),
-                    "message": "Peer bundle is valid and ready for authentication"
-                })
-                .to_string())
-            }
-            Err(e) => Err(format!("X3DH test failed: {}", e).into()),
-        }
-    })();
-
-    match result {
-        Ok(response) => response,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "bundle_valid": false,
-            "error": e.to_string(),
-            "message": "Peer bundle validation failed"
         })
         .to_string(),
     }
