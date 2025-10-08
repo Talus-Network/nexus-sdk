@@ -3159,7 +3159,18 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.0"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
+dependencies = [
+ "bytes",
+ "fnv",
+ "itoa",
+]
+
+[[package]]
+name = "http"
+version = "0.3.0-rc.1"
 dependencies = [
  "backon",
  "base64 0.21.7",
@@ -3174,17 +3185,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
-]
-
-[[package]]
-name = "http"
-version = "0.2.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
-dependencies = [
- "bytes",
- "fnv",
- "itoa",
 ]
 
 [[package]]
@@ -4168,7 +4168,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "market-coinbase"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "chrono",
  "mockito",
@@ -4280,7 +4280,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -4989,7 +4989,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5032,7 +5032,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -5107,7 +5107,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -6890,9 +6890,9 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "2.3.3"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea091f6cac2595aa38993f04f4ee692ed43757035c36e67c180b6828356385b1"
+checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
 dependencies = [
  "sdd",
 ]
@@ -9195,7 +9195,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "jsonschema",

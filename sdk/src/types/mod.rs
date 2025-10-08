@@ -4,6 +4,9 @@ mod nexus_data;
 #[cfg(feature = "types")]
 mod nexus_objects;
 #[cfg(feature = "types")]
+mod runtime_vertex;
+
+#[cfg(feature = "types")]
 mod serde_parsers;
 #[cfg(feature = "types")]
 mod tool_meta;
@@ -17,6 +20,7 @@ pub use json_dag::*;
 pub use {
     nexus_data::NexusData,
     nexus_objects::NexusObjects,
+    runtime_vertex::RuntimeVertex,
     serde_parsers::*,
     tool_meta::ToolMeta,
     type_name::TypeName,
