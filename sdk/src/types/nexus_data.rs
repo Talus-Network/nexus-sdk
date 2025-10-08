@@ -2,25 +2,53 @@
 //! data for input ports, output ports or default values. It is represented as
 //! an enum because default values can be stored remotely.
 //!
-//! See: <https://github.com/Talus-Network/nexus-next/issues/30>
+//! The [`NexusData::Inline::data`] field is a byte array on-chain but we assume
+//! that, upon decoding it, it will be a valid JSON object.
 //!
-//! The [`NexusData::data`] field is a byte array on-chain but we assume that,
-//! upon decoding it, it will be a valid JSON object.
+//! The [`NexusData::Walrus::data`] field is also a byte array on-chain but we
+//! assume that, upon decoding it, it will be a valid JSON object containing
+//! a reference to Walrus storage.
+//!
+//! Note: As an optimization to reduce storage costs, array types are stored as
+//! one blob containing a JSON array, instead of multiple blobs. This means that
+//! the array of keys referencing the data will contain only one key repeated N
+//! times where N is the length of the array.
 
 use serde::{Deserialize, Serialize};
 
+// TODO: rethink the enum approach. the only difference seems to be how to fetch
+// the data. inline just return. walrus make a request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NexusData {
-    Inline {
-        data: serde_json::Value,
-        /// Whether the data is encrypted and should be decrypted before sending
-        /// it to a tool.
-        encrypted: bool,
-    },
-    #[allow(dead_code)]
-    Remote {
-        // TODO: <https://github.com/Talus-Network/nexus-next/issues/30>
-    },
+    Inline { data: DataBag, encrypted: bool },
+    Walrus { data: DataBag, encrypted: bool },
+}
+
+impl NexusData {
+    /// Returns true if the data is encrypted and should be decrypted before
+    /// sending it to a tool.
+    pub fn is_encrypted(&self) -> bool {
+        match self {
+            NexusData::Inline { encrypted, .. } => *encrypted,
+            NexusData::Walrus { encrypted, .. } => *encrypted,
+        }
+    }
+
+    /// Returns a reference to the data.
+    pub fn data(&self) -> &DataBag {
+        match self {
+            NexusData::Inline { data, .. } => data,
+            NexusData::Walrus { data, .. } => data,
+        }
+    }
+}
+
+/// We need to distinguish between single values and arrays of values to support
+/// looping.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DataBag {
+    One(serde_json::Value),
+    Many(Vec<serde_json::Value>),
 }
 
 mod parser {
@@ -41,6 +69,11 @@ mod parser {
     ///
     /// This is as opposed to data stored in some storage.
     const NEXUS_DATA_INLINE_STORAGE_TAG: &[u8] = b"inline";
+
+    /// This is a hard-coded identifier for remote storage via Walrus.
+    /// Meaning we only store a reference to the data on-chain and fetch it
+    /// from Walrus when needed.
+    const NEXUS_DATA_WALRUS_STORAGE_TAG: &[u8] = b"walrus";
 
     use {
         super::*,
@@ -69,7 +102,7 @@ mod parser {
                 // the data is a JSON string that can be parsed directly.
                 let str = String::from_utf8(data.one).map_err(serde::de::Error::custom)?;
 
-                serde_json::from_str(&str).map_err(serde::de::Error::custom)?
+                DataBag::One(serde_json::from_str(&str).map_err(serde::de::Error::custom)?)
             } else {
                 // If we're dealing with multiple values, we assume that
                 // the data is an array of JSON strings that can be parsed.
@@ -81,7 +114,7 @@ mod parser {
                     values.push(serde_json::from_str(&str).map_err(serde::de::Error::custom)?);
                 }
 
-                serde_json::Value::Array(values)
+                DataBag::Many(values)
             };
 
             match data.storage.as_ref() {
@@ -89,6 +122,11 @@ mod parser {
                     data: value,
                     encrypted: data.encrypted,
                 }),
+                NEXUS_DATA_WALRUS_STORAGE_TAG => Ok(NexusData::Walrus {
+                    data: value,
+                    encrypted: data.encrypted,
+                }),
+                // Add more...
                 _ => todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"),
             }
         }
@@ -99,42 +137,48 @@ mod parser {
         where
             S: Serializer,
         {
-            let data = match self {
-                NexusData::Inline { data, encrypted } => {
-                    let (one, many) = if let serde_json::Value::Array(ref values) = data {
-                        // If the data is an array, we serialize it as an array of JSON strings.
-                        let mut many = Vec::with_capacity(values.len());
+            let data = self.data();
+            let encrypted = self.is_encrypted();
 
-                        for value in data.as_array().unwrap() {
-                            let str =
-                                serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
-                            many.push(str.into_bytes());
-                        }
+            let storage = match self {
+                NexusData::Inline { .. } => NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
+                NexusData::Walrus { .. } => NEXUS_DATA_WALRUS_STORAGE_TAG.to_vec(),
+                // Add more...
+            };
 
-                        (vec![], many)
-                    } else {
-                        // If the data is a single value, we serialize it as a single JSON string.
-                        (
-                            serde_json::to_string(data)
-                                .map_err(serde::ser::Error::custom)?
-                                .into_bytes(),
-                            vec![],
-                        )
-                    };
-
-                    NexusDataAsStruct {
-                        storage: NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
-                        one,
-                        many,
-                        encrypted: *encrypted,
-                    }
+            let (one, many) = match data {
+                DataBag::One(value) => {
+                    // If the data is a single value, we serialize it as a
+                    // single JSON string in the `one` field.
+                    (
+                        serde_json::to_string(value)
+                            .map_err(serde::ser::Error::custom)?
+                            .into_bytes(),
+                        vec![],
+                    )
                 }
-                NexusData::Remote {} => {
-                    todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>")
+                DataBag::Many(values) => {
+                    // If the data is an array, we serialize it as an array of
+                    // JSON strings in the `many` field.
+                    let mut many = Vec::with_capacity(values.len());
+
+                    for value in values {
+                        let str =
+                            serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
+                        many.push(str.into_bytes());
+                    }
+
+                    (vec![], many)
                 }
             };
 
-            data.serialize(serializer)
+            NexusDataAsStruct {
+                storage,
+                one,
+                many,
+                encrypted,
+            }
+            .serialize(serializer)
         }
     }
 
@@ -143,12 +187,12 @@ mod parser {
         use super::*;
 
         #[test]
-        fn test_dag_data_sers_and_desers() {
+        fn test_inline_dag_data_sers_and_desers() {
             // Single value.
             let dag_data = NexusData::Inline {
-                data: serde_json::json!({
+                data: DataBag::One(serde_json::json!({
                     "key": "value"
-                }),
+                })),
                 encrypted: false,
             };
 
@@ -173,13 +217,13 @@ mod parser {
 
             // Array of values.
             let dag_data = NexusData::Inline {
-                data: serde_json::json!([
-                    {
+                data: DataBag::Many(vec![
+                    serde_json::json!({
                         "key": "value"
-                    },
-                    {
+                    }),
+                    serde_json::json!({
                         "key": "value"
-                    }
+                    }),
                 ]),
                 encrypted: false,
             };
@@ -197,21 +241,54 @@ mod parser {
         }
 
         #[test]
-        #[should_panic(
-            expected = "not yet implemented: TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"
-        )]
-        fn test_dag_data_only_supports_inline_ser() {
-            let data = NexusData::Remote {};
-            let _ = serde_json::to_string(&data);
-        }
+        fn test_walrus_dag_data_sers_and_desers() {
+            // Single value.
+            let dag_data = NexusData::Walrus {
+                data: DataBag::One(serde_json::json!({
+                    "key": "value"
+                })),
+                encrypted: true,
+            };
 
-        #[test]
-        #[should_panic(
-            expected = "not yet implemented: TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"
-        )]
-        fn test_dag_data_only_supports_inline_deser() {
-            let data = r#"{"storage":[1,2,3],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#;
-            let _ = serde_json::from_str::<NexusData>(&data);
+            let serialized = serde_json::to_string(&dag_data).unwrap();
+
+            // this is where the storage tag comes from
+            assert_eq!(NEXUS_DATA_WALRUS_STORAGE_TAG, [119, 97, 108, 114, 117, 115]);
+
+            // The byte representation of the JSON object
+            // {"key":"value"} is [123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]
+            assert_eq!(
+                serialized,
+                r#"{"storage":[119,97,108,114,117,115],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encrypted":true}"#
+            );
+
+            let deserialized = serde_json::from_str(&serialized).unwrap();
+
+            assert_eq!(dag_data, deserialized);
+
+            // Array of values.
+            let dag_data = NexusData::Walrus {
+                data: DataBag::Many(vec![
+                    serde_json::json!({
+                        "key": "value"
+                    }),
+                    serde_json::json!({
+                        "key": "value"
+                    }),
+                ]),
+                encrypted: true,
+            };
+
+            let serialized = serde_json::to_string(&dag_data).unwrap();
+
+            assert_eq!(
+                serialized,
+                r#"{"storage":[119,97,108,114,117,115],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":true}"#
+            );
+
+            let deserialized = serde_json::from_str(&serialized).unwrap();
+
+            assert_eq!(dag_data, deserialized);
         }
     }
 }

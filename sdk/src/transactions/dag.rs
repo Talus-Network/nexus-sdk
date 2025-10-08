@@ -180,7 +180,12 @@ pub fn create_default_value(
         Data::Inline { data, .. } => {
             // Default values cannot be secret. Sensitive data should be passed
             // via entry ports at runtime.
-            primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, data, false)?
+            primitives::Data::nexus_data_inline_from_json(
+                tx,
+                objects.primitives_pkg_id,
+                data,
+                false,
+            )?
         }
         // Allowing to remind us that any other data storages can be added here.
         #[allow(unreachable_patterns)]
@@ -467,7 +472,7 @@ pub fn execute(
             };
 
             // `value: NexusData`
-            let value = primitives::Data::nexus_data_from_json(
+            let value = primitives::Data::nexus_data_inline_from_json(
                 tx,
                 objects.primitives_pkg_id,
                 value,
