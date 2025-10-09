@@ -11,5 +11,6 @@ async fn main() {
     bootstrap!([
         tools::get_spot_price::GetSpotPrice,
         tools::get_product_ticker::GetProductTicker,
+        tools::get_product_stats::GetProductStats,
     ]);
 }
