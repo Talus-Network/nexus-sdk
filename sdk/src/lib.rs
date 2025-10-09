@@ -49,6 +49,10 @@ pub mod test_utils;
 #[cfg(feature = "walrus")]
 pub mod walrus;
 
+/// NexusData struct. More than a type as it has ties on walrus and crypto.
+#[cfg(feature = "nexus_data")]
+pub mod nexus_data;
+
 /// Cryptographic primitives including X3DH for secure key exchange
 #[cfg(feature = "crypto")]
 pub mod crypto;

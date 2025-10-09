@@ -1,5 +1,4 @@
 mod json_dag;
-mod nexus_data;
 mod nexus_objects;
 mod runtime_vertex;
 mod serde_parsers;
@@ -8,7 +7,6 @@ mod type_name;
 
 pub use {
     json_dag::*,
-    nexus_data::NexusData,
     nexus_objects::NexusObjects,
     runtime_vertex::RuntimeVertex,
     serde_parsers::*,
