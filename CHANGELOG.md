@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `groth16` module to support Groth16 zk-SNARKs
 - `kat` module to support Kleene Algebra with Tests parses
 
+#### Fixed
+
+- made faucet requests compatible with old and latest versions of the `sui-faucet`
+
 ## [`0.2.0`] - 2025-08-12
 
 ### Repository
