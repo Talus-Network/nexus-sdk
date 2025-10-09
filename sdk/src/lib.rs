@@ -52,6 +52,8 @@ pub mod walrus;
 /// NexusData struct. More than a type as it has ties on walrus and crypto.
 #[cfg(feature = "nexus_data")]
 pub mod nexus_data;
+#[cfg(feature = "nexus_data")]
+pub use nexus_data::NexusData;
 
 /// Cryptographic primitives including X3DH for secure key exchange
 #[cfg(feature = "crypto")]

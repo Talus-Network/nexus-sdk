@@ -11,7 +11,8 @@ use {
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
         idents::primitives,
-        types::{NexusData, TypeName},
+        types::TypeName,
+        NexusData,
     },
     std::collections::HashMap,
 };
