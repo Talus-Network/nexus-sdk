@@ -61,10 +61,6 @@ pub mod secret_core;
 #[cfg(feature = "dag")]
 pub mod dag;
 
-/// Groth16 provides a generic implementation of the Groth16 proof system.
-#[cfg(feature = "groth16")]
-pub mod groth16;
-
 /// Kat provides a generic implementation of the Kat proof system.
 #[cfg(feature = "kat")]
 pub mod kat;

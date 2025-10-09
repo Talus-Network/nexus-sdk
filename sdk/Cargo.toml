@@ -29,29 +29,6 @@ crypto = [
 # Secret core feature provides a generic secret type
 secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "zeroize"]
 
-
-# Groth16 proof system feature and curve selections
-groth16 = [
-    "ark-groth16",
-    "ark-snark",
-    "ark-ff",
-    "ark-ec",
-    "ark-relations",
-    "ark-r1cs-std",
-    "ark-bls12-381",
-    "ark-serialize",
-    "ark-std",
-    "rand",
-    "thiserror",
-    "phase2",
-    "bellman",
-    "pairing",
-    "rand_04",
-    "blake2",
-    "digest"
-]
-
-
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
     "sui_sdk",
@@ -114,7 +91,6 @@ full = [
     "transactions",
     "walrus",
     "dag",
-    "groth16",
     "kat"
 ]
 

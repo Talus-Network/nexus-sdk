@@ -8,6 +8,3 @@ extend-ignore-re = [
 [default.extend-words]
 fo = "fo" # this "fo" thing appears a lot in IDs, like "b26v89c19zqg8o3fo7dpmyo3vz9wkxa5fiuds5yu3eewn"
 PN = "PN" # used in sdk/src/crypto
-Groth = "Groth"
-Groth16 = "Groth16"
-groth = "groth"

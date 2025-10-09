@@ -22,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - .nightly-version
-- `groth16` module to support Groth16 zk-SNARKs
 - `kat` module to support Kleene Algebra with Tests parses
 
 ## [`0.2.0`] - 2025-08-12
