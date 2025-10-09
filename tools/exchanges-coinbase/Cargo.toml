@@ -1,6 +1,6 @@
 [package]
-name = "market-coinbase"
-description = "Coinbase market data and trading tools for Nexus"
+name = "exchanges-coinbase"
+description = "Coinbase exchange data and trading tools for Nexus"
 
 edition.workspace = true
 version.workspace = true

@@ -4,9 +4,12 @@ use nexus_toolkit::bootstrap;
 
 mod coinbase_client;
 mod error;
-mod market;
+mod tools;
 
 #[tokio::main]
 async fn main() {
-    bootstrap!([market::get_spot_price::GetSpotPrice,]);
+    bootstrap!([
+        tools::get_spot_price::GetSpotPrice,
+        tools::get_product_ticker::GetProductTicker,
+    ]);
 }
