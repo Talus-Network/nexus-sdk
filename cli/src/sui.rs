@@ -44,10 +44,7 @@ pub(crate) async fn create_wallet_context(
 ) -> AnyResult<sui::WalletContext, NexusCliError> {
     let wallet_handle = loading!("Initiating SUI wallet...");
 
-    let request_timeout = None;
-    let max_concurrent_requests = None;
-
-    let wallet = match sui::WalletContext::new(path, request_timeout, max_concurrent_requests) {
+    let wallet = match sui::WalletContext::new(path) {
         Ok(wallet) => wallet,
         Err(e) => {
             wallet_handle.error();
@@ -162,7 +159,7 @@ pub(crate) async fn sign_and_execute_transaction(
 
     let response = match sui
         .quorum_driver_api()
-        .execute_transaction_block(envelope, resp_options, Some(resp_finality))
+        .execute_transaction_block(envelope.await, resp_options, Some(resp_finality))
         .await
     {
         Ok(response) => response,
@@ -308,20 +305,25 @@ pub(crate) async fn fetch_gas_coin(
     }
 }
 
-pub fn resolve_wallet_path(
+pub async fn resolve_wallet_path(
     cli_wallet_path: Option<PathBuf>,
     conf: &SuiConf,
 ) -> Result<PathBuf, NexusCliError> {
     if let Some(path) = cli_wallet_path {
         Ok(path)
     } else if let Ok(mnemonic) = std::env::var("SUI_SECRET_MNEMONIC") {
-        retrieve_wallet_with_mnemonic(conf.net, &mnemonic).map_err(NexusCliError::Any)
+        retrieve_wallet_with_mnemonic(conf.net, &mnemonic)
+            .await
+            .map_err(NexusCliError::Any)
     } else {
         Ok(conf.wallet_path.clone())
     }
 }
 
-fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf, anyhow::Error> {
+async fn retrieve_wallet_with_mnemonic(
+    net: SuiNet,
+    mnemonic: &str,
+) -> Result<PathBuf, anyhow::Error> {
     // Determine configuration paths.
     let config_dir = sui::config_dir()?;
     let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
@@ -329,13 +331,13 @@ fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf,
 
     // Ensure the keystore exists.
     if !keystore_path.exists() {
-        let keystore = sui::FileBasedKeystore::new(&keystore_path)?;
-        keystore.save()?;
+        let keystore = sui::FileBasedKeystore::load_or_create(&keystore_path)?;
+        keystore.save().await?;
     }
 
     // If the wallet config file does not exist, create it.
     if !wallet_conf_path.exists() {
-        let keystore = sui::FileBasedKeystore::new(&keystore_path)?;
+        let keystore = sui::FileBasedKeystore::load_or_create(&keystore_path)?;
         let mut client_config = sui::ClientConfig::new(keystore.into());
         if let Some(env) = get_sui_env(net) {
             client_config.add_env(env);
@@ -349,9 +351,10 @@ fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf,
     }
 
     // Import the mnemonic into the keystore.
-    let mut keystore = sui::FileBasedKeystore::new(&keystore_path)?;
-    let imported_address =
-        keystore.import_from_mnemonic(mnemonic, sui::SignatureScheme::ED25519, None, None)?;
+    let mut keystore = sui::FileBasedKeystore::load_or_create(&keystore_path)?;
+    let imported_address = keystore
+        .import_from_mnemonic(mnemonic, sui::SignatureScheme::ED25519, None, None)
+        .await?;
 
     // Read the existing client configuration.
     let mut client_config: sui::ClientConfig = sui::PersistedConfig::read(&wallet_conf_path)?;
@@ -404,6 +407,7 @@ mod tests {
         rstest::rstest,
         serial_test::serial,
         tempfile::tempdir,
+        tokio::runtime::Runtime,
     };
 
     #[rstest(
@@ -447,7 +451,10 @@ mod tests {
         };
 
         // Call the function under test.
-        let resolved = resolve_wallet_path(cli_wallet_path, &conf).unwrap();
+        let resolved = Runtime::new()
+            .expect("Failed to create Tokio runtime")
+            .block_on(resolve_wallet_path(cli_wallet_path, &conf))
+            .expect("Failed to resolve wallet path");
         assert_eq!(resolved, expected);
 
         // Clean up the env variable.
@@ -483,7 +490,9 @@ mod tests {
         let _ = std::fs::remove_file(&keystore_path);
 
         // Call the function under test.
-        let _ = retrieve_wallet_with_mnemonic(SuiNet::Localnet, mnemonic)
+        let runtime = Runtime::new().expect("Failed to create Tokio runtime");
+        let _ = runtime
+            .block_on(retrieve_wallet_with_mnemonic(SuiNet::Localnet, mnemonic))
             .expect("retrieve_wallet_with_mnemonic failed");
 
         let client_config: sui::ClientConfig =
@@ -514,6 +523,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let config_dir: PathBuf = temp_dir.path().to_path_buf();
         std::env::set_var("SUI_CONFIG_DIR", config_dir.to_str().unwrap());
+        let runtime = Runtime::new().expect("Failed to create Tokio runtime");
 
         let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
         let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
@@ -521,25 +531,29 @@ mod tests {
         // Create a preexisting keystore file with an active address derived from preexisting_mnemonic.
         {
             // FileBasedKeystore is assumed to be your real implementation.
-            let mut preexisting_keystore =
-                sui::FileBasedKeystore::new(&keystore_path).expect("Failed to create keystore");
-            preexisting_keystore
-                .import_from_mnemonic(
-                    preexisting_mnemonic,
-                    sui::SignatureScheme::ED25519,
-                    None,
-                    None,
-                )
-                .expect("Failed to import preexisting mnemonic");
-            preexisting_keystore
-                .save()
-                .expect("Failed to save keystore");
+            let mut preexisting_keystore = sui::FileBasedKeystore::load_or_create(&keystore_path)
+                .expect("Failed to create keystore");
+            runtime.block_on(async {
+                preexisting_keystore
+                    .import_from_mnemonic(
+                        preexisting_mnemonic,
+                        sui::SignatureScheme::ED25519,
+                        None,
+                        None,
+                    )
+                    .await
+                    .expect("Failed to import preexisting mnemonic");
+                preexisting_keystore
+                    .save()
+                    .await
+                    .expect("Failed to save keystore");
+            });
         }
 
         // Create a default client configuration if it doesn't exist.
         if !wallet_conf_path.exists() {
-            let keystore =
-                sui::FileBasedKeystore::new(&keystore_path).expect("Failed to create keystore");
+            let keystore = sui::FileBasedKeystore::load_or_create(&keystore_path)
+                .expect("Failed to create keystore");
             let client_config = sui::ClientConfig::new(keystore.into());
             client_config
                 .save(&wallet_conf_path)
@@ -549,7 +563,11 @@ mod tests {
         // Call retrieve_wallet_with_mnemonic with the new mnemonic.
         // This should import the new mnemonic into the preexisting keystore so that its derived
         // address becomes the first (active) address.
-        let _ = retrieve_wallet_with_mnemonic(SuiNet::Localnet, new_mnemonic)
+        let _ = runtime
+            .block_on(retrieve_wallet_with_mnemonic(
+                SuiNet::Localnet,
+                new_mnemonic,
+            ))
             .expect("retrieve_wallet_with_mnemonic failed");
 
         // Read the updated client configuration.
@@ -591,7 +609,9 @@ mod tests {
             rpc_url: None,
         };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+        let path = resolve_wallet_path(None, &conf)
+            .await
+            .expect("Failed to resolve wallet path");
 
         let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
 
@@ -625,7 +645,9 @@ mod tests {
             rpc_url: None,
         };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+        let path = resolve_wallet_path(None, &conf)
+            .await
+            .expect("Failed to resolve wallet path");
 
         // Try to use the devnet wallet with localnet - this should fail
         let err = create_wallet_context(&path, SuiNet::Localnet)
@@ -660,7 +682,9 @@ mod tests {
             rpc_url: None,
         };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+        let path = resolve_wallet_path(None, &conf)
+            .await
+            .expect("Failed to resolve wallet path");
 
         let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
 

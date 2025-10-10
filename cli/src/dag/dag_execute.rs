@@ -162,7 +162,7 @@ fn get_active_session(
         Some(crypto_secret) => {
             if crypto_secret.sessions.is_empty() {
                 return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required — run `nexus crypto auth` first"
+                    "Authentication required - run `nexus crypto auth` first"
                 )));
             }
 
@@ -173,7 +173,7 @@ fn get_active_session(
                 .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
         }
         None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
+            "Authentication required - run `nexus crypto auth` first"
         ))),
     }
 }

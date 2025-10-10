@@ -469,7 +469,7 @@ impl RatchetStateHE {
     /// Reject the identity point and other small‑order curve points.
     /// This is a defence‑in‑depth measure.
     #[inline]
-    /// Reject identity *and* any of the eight small‑order points.
+    /// Reject identity and any of the eight small‑order points.
     fn validate_pk(pk: &PublicKey) -> Result<(), RatchetError> {
         for bad in SMALL_ORDER {
             if pk.as_bytes().ct_eq(&bad).unwrap_u8() == 1 {
