@@ -1,0 +1,23 @@
+# Generated WASM packages
+pkg/
+pkg-node/
+pkg-bundler/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Rust
+target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db 
+dag-publish-app/
