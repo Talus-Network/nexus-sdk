@@ -48,7 +48,7 @@ impl Data {
     };
 
     /// Create NexusData from a [serde_json::Value].
-    pub fn nexus_data_from_json<T: serde::Serialize>(
+    pub fn nexus_data_inline_from_json<T: serde::Serialize>(
         tx: &mut sui::ProgrammableTransactionBuilder,
         primitives_pkg_id: sui::ObjectID,
         json: &T,

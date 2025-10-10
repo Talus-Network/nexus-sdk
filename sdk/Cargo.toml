@@ -44,7 +44,7 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
 # Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
-types = ["sui_types", "reqwest"]
+types = ["sui_types", "reqwest", "enum_dispatch", "walrus"]
 
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
@@ -59,6 +59,9 @@ transactions = ["sui_idents", "bincode"]
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
+
+# NexusData module. More than a type as it has dependencies on walrus and crypto.
+nexus_data = ["types", "crypto", "enum_dispatch", "walrus"]
 
 # Provides DAG-related utilities.
 dag = ["petgraph"]
@@ -88,6 +91,7 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "nexus_data",
 ]
 
 
@@ -99,6 +103,10 @@ serde.workspace = true
 
 # === Optional deps for features ===
 [dependencies.base64]
+workspace = true
+optional = true
+
+[dependencies.enum_dispatch]
 workspace = true
 optional = true
 

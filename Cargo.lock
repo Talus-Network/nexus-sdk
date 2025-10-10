@@ -5036,6 +5036,7 @@ dependencies = [
  "chrono",
  "ciborium",
  "dirs 6.0.0",
+ "enum_dispatch",
  "futures-util",
  "hex",
  "hkdf",
