@@ -39,33 +39,17 @@ pub async fn publish_move_package(
         .build(&install_dir)
         .expect("Failed to build package.");
 
-    let reference_gas_price = sui
-        .read_api()
-        .get_reference_gas_price()
-        .await
-        .expect("Failed to fetch reference gas price.");
-
     let with_unpublished_deps = false;
-
-    let tx = sui
-        .transaction_builder()
-        .publish_tx_kind(
-            addr,
-            package.get_package_bytes(with_unpublished_deps),
-            package.get_dependency_storage_package_ids(),
-        )
-        .await
-        .expect("Failed to build transaction.");
+    let gas_budget = sui::MIST_PER_SUI;
 
     let tx_data = sui
         .transaction_builder()
-        .tx_data(
+        .publish(
             addr,
-            tx,
-            sui::MIST_PER_SUI,
-            reference_gas_price,
-            vec![gas_coin.coin_object_id],
-            None,
+            package.get_package_bytes(with_unpublished_deps),
+            package.get_dependency_storage_package_ids(),
+            Some(gas_coin.coin_object_id),
+            gas_budget,
         )
         .await
         .expect("Failed to build transaction data.");
@@ -82,7 +66,7 @@ pub async fn publish_move_package(
     // Execute the transaction.
     let response = sui
         .quorum_driver_api()
-        .execute_transaction_block(envelope, resp_options, Some(resp_finality))
+        .execute_transaction_block(envelope.await, resp_options, Some(resp_finality))
         .await
         .expect("Failed to execute transaction.");
 

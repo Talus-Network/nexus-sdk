@@ -79,6 +79,7 @@ async fn test_object_crawler() {
 
     // Create a wallet and request some gas tokens.
     let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
+        .await
         .expect("Failed to create a wallet.");
     let sui = wallet.get_client().await.expect("Could not get Sui client");
 
