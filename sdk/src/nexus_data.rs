@@ -80,6 +80,12 @@ impl NexusData {
             encrypted: true,
         }
     }
+
+    /// Private function to turn [`DataStorage`] back to [`NexusData`].
+    #[cfg(test)]
+    fn from_data_storage(data: DataStorage, encrypted: bool) -> Self {
+        Self { data, encrypted }
+    }
 }
 
 // == DataStorage ==
@@ -471,6 +477,7 @@ mod parser {
         }
     }
 
+    /// Tests for parsing only.
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -605,5 +612,404 @@ mod parser {
 
             assert_eq!(dag_data, deserialized);
         }
+    }
+}
+
+/// E2E tests for encryption and walrus integration.
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::crypto::{
+            session::Message,
+            x3dh::{IdentityKey, PreKeyBundle},
+        },
+        serde_json::json,
+    };
+
+    const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
+    const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
+
+    /// Helper to create sender and receiver sessions for testing
+    /// Returns (nexus_session, user_session) where:
+    /// - nexus_session: represents the Nexus system that encrypts output data
+    /// - user_session: represents the user inspecting execution and decrypting data
+    fn create_test_sessions() -> (Session, Session) {
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = IdentityKey::generate().secret().clone();
+        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
+
+        let (message, mut sender_sess) =
+            Session::initiate(&sender_id, &bundle, b"test").expect("Failed to initiate session");
+
+        let initial_msg = match message {
+            Message::Initial(msg) => msg,
+            _ => panic!("Expected Initial message type"),
+        };
+
+        let (mut receiver_sess, _) =
+            Session::recv(&receiver_id, &spk_secret, &bundle, &initial_msg, None)
+                .expect("Failed to receive session");
+
+        // Exchange messages to establish the ratchet properly
+        let setup_msg = sender_sess
+            .encrypt(b"setup")
+            .expect("Failed to encrypt setup message");
+        let _ = receiver_sess
+            .decrypt(&setup_msg)
+            .expect("Failed to decrypt setup message");
+
+        (sender_sess, receiver_sess)
+    }
+
+    fn create_storage_conf() -> StorageConf {
+        StorageConf {
+            walrus_publisher_url: Some(WALRUS_PUBLISHER_URL.to_string()),
+            walrus_aggregator_url: Some(WALRUS_AGGREGATOR_URL.to_string()),
+            walrus_save_for_epochs: Some(2),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inline_plain_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!({"key": "value"});
+
+        let nexus_data = NexusData::new_inline(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, false);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+
+        // Nothing should change when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_eq!(committed.as_json(), &data);
+        assert_eq!(committed.kind(), DataStorageKind::Inline);
+
+        let committed_data = NexusData::from_data_storage(committed, false);
+
+        // Nothing should change when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+    }
+
+    #[tokio::test]
+    async fn test_inline_non_array_encrypted_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!({"key": "value"});
+
+        let nexus_data = NexusData::new_inline_encrypted(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, true);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+
+        // Data should be encrypted when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert_eq!(committed.kind(), DataStorageKind::Inline);
+
+        let committed_data = NexusData::from_data_storage(committed, true);
+
+        // Data should be decrypted when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+    }
+
+    #[tokio::test]
+    async fn test_inline_array_encrypted_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!([{"key": "value"}, {"key": "value2"}]);
+
+        let nexus_data = NexusData::new_inline_encrypted(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, true);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+
+        // Data should be encrypted when we commit as Nexus. Elements should
+        // also be encrypted individually.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert_eq!(
+            committed.as_json().as_array().unwrap().len(),
+            data.as_array().unwrap().len()
+        );
+        assert_eq!(committed.kind(), DataStorageKind::Inline);
+
+        let committed_data = NexusData::from_data_storage(committed, true);
+
+        // Data should be decrypted when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+    }
+
+    #[tokio::test]
+    async fn test_walrus_plain_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!({"key": "value"});
+
+        let nexus_data = NexusData::new_walrus(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, false);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+
+        // Data should be stored on walrus when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert!(committed.as_json().is_string());
+        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+
+        // We can fetch and parse the blob from Walrus to get back the original data.
+        let key = committed.as_json().as_str().unwrap();
+        let client = WalrusClient::builder()
+            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
+            .build();
+        let fetched_data = client
+            .read_json::<serde_json::Value>(key)
+            .await
+            .expect("Failed to fetch data from Walrus");
+
+        assert_eq!(fetched_data, data);
+
+        let committed_data = NexusData::from_data_storage(committed, false);
+
+        // Data should be fetched from walrus when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+    }
+
+    #[tokio::test]
+    async fn test_walrus_empty_arr_plain_roundrip() {
+        // Empty array should not contact walrus at all.
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!([]);
+
+        let nexus_data = NexusData::new_walrus(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, false);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+
+        // Nothing should change when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_eq!(committed.as_json(), &data);
+        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+
+        let committed_data = NexusData::from_data_storage(committed, false);
+
+        // Nothing should change when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+    }
+
+    #[tokio::test]
+    async fn test_walrus_non_array_encrypted_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!({"key": "value"});
+
+        let nexus_data = NexusData::new_walrus_encrypted(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, true);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+
+        // Data should be encrypted and stored on walrus when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert!(committed.as_json().is_string());
+        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+
+        // We can fetch and parse the blob from Walrus to get back the original data.
+        let key = committed.as_json().as_str().unwrap();
+        let client = WalrusClient::builder()
+            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
+            .build();
+        let fetched_data = client
+            .read_json::<serde_json::Value>(key)
+            .await
+            .expect("Failed to fetch data from Walrus");
+        let decrypted_data = nexus_session
+            .decrypt_nexus_data_json(&fetched_data)
+            .expect("Failed to decrypt data");
+        assert_eq!(decrypted_data, data);
+
+        let committed_data = NexusData::from_data_storage(committed, true);
+        // Data should be fetched from walrus and decrypted when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+    }
+
+    #[tokio::test]
+    async fn test_walrus_array_plain_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!([{"key": "value"}, {"key": "value2"}]);
+
+        let nexus_data = NexusData::new_walrus(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, false);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+
+        // Data should be stored on walrus when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert!(committed.as_json().is_array());
+        assert_eq!(
+            committed.as_json().as_array().unwrap().len(),
+            data.as_array().unwrap().len()
+        );
+        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+
+        // We can fetch and parse the blob from Walrus to get back the original data.
+        let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
+        let client = WalrusClient::builder()
+            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
+            .build();
+        let fetched_data = client
+            .read_json::<serde_json::Value>(key)
+            .await
+            .expect("Failed to fetch data from Walrus");
+
+        assert_eq!(fetched_data, data);
+
+        let committed_data = NexusData::from_data_storage(committed, false);
+
+        // Data should be fetched from walrus when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+    }
+
+    #[tokio::test]
+    async fn test_walrus_array_encrypted_roundrip() {
+        let storage_conf = create_storage_conf();
+        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let data = json!([{"key": "value"}, {"key": "value2"}]);
+
+        let nexus_data = NexusData::new_walrus_encrypted(data.clone());
+
+        // Inspect the inner data.
+        assert_eq!(nexus_data.encrypted, true);
+        assert_eq!(nexus_data.data.as_json(), &data);
+        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+
+        // Data should be encrypted and stored on walrus when we commit as Nexus.
+        let committed = nexus_data
+            .commit(&storage_conf, &mut nexus_session)
+            .await
+            .expect("Failed to commit data");
+
+        assert_ne!(committed.as_json(), &data);
+        assert!(committed.as_json().is_array());
+        assert_eq!(
+            committed.as_json().as_array().unwrap().len(),
+            data.as_array().unwrap().len()
+        );
+        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+
+        // We can fetch and parse the blob from Walrus to get back the original data.
+        let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
+        let client = WalrusClient::builder()
+            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
+            .build();
+        let fetched_data = client
+            .read_json::<serde_json::Value>(key)
+            .await
+            .expect("Failed to fetch data from Walrus");
+        // Each element should be encrypted individually.
+        assert!(fetched_data.is_array());
+        let decrypted_data = nexus_session
+            .decrypt_nexus_data_json(&fetched_data)
+            .expect("Failed to decrypt data");
+        assert_eq!(decrypted_data, data);
+
+        let committed_data = NexusData::from_data_storage(committed, true);
+        // Data should be fetched from walrus and decrypted when we fetch as user.
+        let fetched = committed_data
+            .fetch(&storage_conf, &mut user_session)
+            .await
+            .expect("Failed to fetch data");
+
+        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
     }
 }
