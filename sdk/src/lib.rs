@@ -53,7 +53,7 @@ pub mod walrus;
 #[cfg(feature = "nexus_data")]
 pub mod nexus_data;
 #[cfg(feature = "nexus_data")]
-pub use nexus_data::NexusData;
+pub use nexus_data::{NexusData, StorageConf};
 
 /// Cryptographic primitives including X3DH for secure key exchange
 #[cfg(feature = "crypto")]

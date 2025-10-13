@@ -16,9 +16,6 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-// TODO: tests for these integrations. should work e2e. Also need `from` fns.
-// TODO: when fetch/commit, we need to keep the storage type info.
-
 // == NexusData ==
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,20 +29,56 @@ pub struct NexusData {
 impl NexusData {
     /// Fetches the data from its storage location. This consumes `self`.
     pub async fn fetch(
-        self,
+        mut self,
         conf: &StorageConf,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
-        self.data.fetch(conf, self.encrypted, session).await
+    ) -> anyhow::Result<DataStorage> {
+        self.data.fetch(conf, self.encrypted, session).await?;
+
+        Ok(self.data)
     }
 
     /// Commits the data to its storage location. This consumes `self`.
     pub async fn commit(
-        self,
+        mut self,
         conf: &StorageConf,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
-        self.data.commit(conf, self.encrypted, session).await
+    ) -> anyhow::Result<DataStorage> {
+        self.data.commit(conf, self.encrypted, session).await?;
+
+        Ok(self.data)
+    }
+
+    /// Create inline data that is not encrypted.
+    pub fn new_inline(data: serde_json::Value) -> Self {
+        Self {
+            data: DataStorage::Inline(InlineStorage { data }),
+            encrypted: false,
+        }
+    }
+
+    /// Create inline data that is encrypted.
+    pub fn new_inline_encrypted(data: serde_json::Value) -> Self {
+        Self {
+            data: DataStorage::Inline(InlineStorage { data }),
+            encrypted: true,
+        }
+    }
+
+    /// Create walrus data that is not encrypted.
+    pub fn new_walrus(data: serde_json::Value) -> Self {
+        Self {
+            data: DataStorage::Walrus(WalrusStorage { data }),
+            encrypted: false,
+        }
+    }
+
+    /// Create walrus data that is encrypted.
+    pub fn new_walrus_encrypted(data: serde_json::Value) -> Self {
+        Self {
+            data: DataStorage::Walrus(WalrusStorage { data }),
+            encrypted: true,
+        }
     }
 }
 
@@ -66,35 +99,67 @@ pub enum DataStorage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DataStorageKind {
+    Inline,
+    Walrus,
+}
+
+impl DataStorage {
+    /// Extract the inner JSON value.
+    pub fn into_json(self) -> serde_json::Value {
+        match self {
+            DataStorage::Inline(storage) => storage.data,
+            DataStorage::Walrus(storage) => storage.data,
+        }
+    }
+
+    /// Get a reference to the inner JSON value.
+    pub fn as_json(&self) -> &serde_json::Value {
+        match self {
+            DataStorage::Inline(storage) => &storage.data,
+            DataStorage::Walrus(storage) => &storage.data,
+        }
+    }
+
+    /// Get the kind of storage used.
+    pub fn kind(&self) -> DataStorageKind {
+        match self {
+            DataStorage::Inline { .. } => DataStorageKind::Inline,
+            DataStorage::Walrus { .. } => DataStorageKind::Walrus,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlineStorage {
     data: serde_json::Value,
 }
 
 impl Storable for InlineStorage {
     async fn fetch(
-        self,
+        &mut self,
         _: &StorageConf,
         decrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<()> {
         if decrypt {
-            return session.decrypt_nexus_data_json(&self.data);
+            self.data = session.decrypt_nexus_data_json(&self.data)?;
         }
 
-        Ok(self.data)
+        Ok(())
     }
 
     async fn commit(
-        mut self,
+        &mut self,
         _: &StorageConf,
         encrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<()> {
         if encrypt {
             session.encrypt_nexus_data_json(&mut self.data)?;
         }
 
-        Ok(self.data)
+        Ok(())
     }
 }
 
@@ -107,11 +172,11 @@ pub struct WalrusStorage {
 
 impl Storable for WalrusStorage {
     async fn fetch(
-        self,
+        &mut self,
         conf: &StorageConf,
         decrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<()> {
         let walrus_aggregator_url = conf
             .walrus_aggregator_url
             .as_ref()
@@ -127,7 +192,9 @@ impl Storable for WalrusStorage {
         let blob_id = match &self.data {
             serde_json::Value::Array(values) => {
                 if values.is_empty() {
-                    return Ok(serde_json::Value::Array(vec![]));
+                    self.data = serde_json::Value::Array(vec![]);
+
+                    return Ok(());
                 }
 
                 values[0]
@@ -145,22 +212,24 @@ impl Storable for WalrusStorage {
             }
         };
 
-        let blob = client.read_json::<serde_json::Value>(&blob_id).await?;
+        let mut data = client.read_json::<serde_json::Value>(&blob_id).await?;
 
         // Decrypt the data if needed.
         if decrypt {
-            return session.decrypt_nexus_data_json(&blob);
+            data = session.decrypt_nexus_data_json(&data)?;
         }
 
-        Ok(blob)
+        self.data = data;
+
+        Ok(())
     }
 
     async fn commit(
-        mut self,
+        &mut self,
         conf: &StorageConf,
         encrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<()> {
         let walrus_publisher_url = conf
             .walrus_publisher_url
             .as_ref()
@@ -194,7 +263,9 @@ impl Storable for WalrusStorage {
             serde_json::Value::Array(values) => {
                 if values.is_empty() {
                     // No need to store empty arrays.
-                    return Ok(serde_json::Value::Array(vec![]));
+                    self.data = serde_json::Value::Array(vec![]);
+
+                    return Ok(());
                 }
 
                 DataKind::Many(values.len())
@@ -215,14 +286,18 @@ impl Storable for WalrusStorage {
         };
 
         // Now we have to return the key(s) referencing the data.
-        match data_kind {
-            DataKind::One => Ok(serde_json::Value::String(info.blob_object.blob_id)),
-            DataKind::Many(len) => Ok(serde_json::Value::Array(
+        let data = match data_kind {
+            DataKind::One => serde_json::Value::String(info.blob_object.blob_id),
+            DataKind::Many(len) => serde_json::Value::Array(
                 std::iter::repeat(serde_json::Value::String(info.blob_object.blob_id.clone()))
                     .take(len)
                     .collect(),
-            )),
-        }
+            ),
+        };
+
+        self.data = data;
+
+        Ok(())
     }
 }
 
@@ -243,19 +318,19 @@ pub enum DataBag {
 pub trait Storable {
     /// Fetch the data from its storage location.
     async fn fetch(
-        self,
+        &mut self,
         conf: &StorageConf,
         decrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value>;
+    ) -> anyhow::Result<()>;
 
     /// Commit the data to its storage location.
     async fn commit(
-        self,
+        &mut self,
         conf: &StorageConf,
         encrypt: bool,
         session: &mut Session,
-    ) -> anyhow::Result<serde_json::Value>;
+    ) -> anyhow::Result<()>;
 }
 
 // == Parsing ==
@@ -412,6 +487,11 @@ mod parser {
                 encrypted: false,
             };
 
+            assert_eq!(
+                dag_data,
+                NexusData::new_inline(serde_json::json!({"key": "value"}))
+            );
+
             let serialized = serde_json::to_string(&dag_data).unwrap();
 
             // this is where the storage tag comes from
@@ -439,14 +519,22 @@ mod parser {
                         { "key": "value" }
                     ]),
                 }),
-                encrypted: false,
+                encrypted: true,
             };
+
+            assert_eq!(
+                dag_data,
+                NexusData::new_inline_encrypted(serde_json::json!([
+                    { "key": "value" },
+                    { "key": "value" }
+                ]))
+            );
 
             let serialized = serde_json::to_string(&dag_data).unwrap();
 
             assert_eq!(
                 serialized,
-                r#"{"storage":[105,110,108,105,110,101],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":false}"#
+                r#"{"storage":[105,110,108,105,110,101],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encrypted":true}"#
             );
 
             let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -463,8 +551,13 @@ mod parser {
                         "key": "value"
                     }),
                 }),
-                encrypted: true,
+                encrypted: false,
             };
+
+            assert_eq!(
+                dag_data,
+                NexusData::new_walrus(serde_json::json!({"key": "value"}))
+            );
 
             let serialized = serde_json::to_string(&dag_data).unwrap();
 
@@ -475,7 +568,7 @@ mod parser {
             // {"key":"value"} is [123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]
             assert_eq!(
                 serialized,
-                r#"{"storage":[119,97,108,114,117,115],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encrypted":true}"#
+                r#"{"storage":[119,97,108,114,117,115],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encrypted":false}"#
             );
 
             let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -492,6 +585,14 @@ mod parser {
                 }),
                 encrypted: true,
             };
+
+            assert_eq!(
+                dag_data,
+                NexusData::new_walrus_encrypted(serde_json::json!([
+                    { "key": "value" },
+                    { "key": "value" }
+                ]))
+            );
 
             let serialized = serde_json::to_string(&dag_data).unwrap();
 

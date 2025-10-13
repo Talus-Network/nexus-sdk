@@ -113,7 +113,7 @@ pub(crate) async fn inspect_dag_execution(
 
                     for (port, data) in variant_ports_to_data.values {
                         let (display_data, json_data_value) =
-                            match process_port_data(&port, &data, session) {
+                            match process_port_data(&port, data, session).await {
                                 Ok(result) => result,
                                 Err(e) => return Err(NexusCliError::Any(anyhow!("{}", e))),
                             };
@@ -159,7 +159,7 @@ pub(crate) async fn inspect_dag_execution(
 
                     for (port, data) in variant_ports_to_data.values {
                         let (display_data, json_data_value) =
-                            match process_port_data(&port, &data, session) {
+                            match process_port_data(&port, data, session).await {
                                 Ok(result) => result,
                                 Err(e) => return Err(NexusCliError::Any(anyhow!("{}", e))),
                             };
@@ -207,40 +207,19 @@ pub(crate) async fn inspect_dag_execution(
 }
 
 /// Process port data, handling decryption if needed
-fn process_port_data(
+async fn process_port_data(
     port: &TypeName,
-    data: &NexusData,
+    data: NexusData,
     session: &mut nexus_sdk::crypto::session::Session,
-) -> Result<(String, serde_json::Value), Box<dyn std::error::Error>> {
-    match data {
-        // ─ plain ─
-        NexusData::Inline {
-            data,
-            encrypted: false,
-        } => Ok((
-            format!("{data:?}"),
-            json!({ "port": port.name, "data": data }),
-        )),
+) -> AnyResult<(String, serde_json::Value)> {
+    // TODO: configure walrus eps.
+    let conf = StorageConf::default();
+    let data = data.fetch(&conf, session).await?.into_json();
 
-        // ─ encrypted ─
-        NexusData::Inline {
-            data,
-            encrypted: true,
-        } => {
-            let decrypted = session.decrypt_nexus_data_json(data)?;
-
-            Ok((
-                format!("{decrypted:?}"),
-                json!({ "port": port.name, "data": decrypted, "was_encrypted": true }),
-            ))
-        }
-
-        // ─ anything else ─
-        _ => Ok((
-            format!("{data:?}"),
-            json!({ "port": port.name, "data": data }),
-        )),
-    }
+    Ok((
+        format!("{data:?}"),
+        json!({ "port": port.name, "data": data }),
+    ))
 }
 
 /// Gets the active session for decryption
@@ -348,8 +327,8 @@ mod tests {
         (sender_sess, receiver_sess)
     }
 
-    #[test]
-    fn test_process_port_data_plain_data() {
+    #[tokio::test]
+    async fn test_process_port_data_plain_data() {
         let (mut _sender, mut receiver) = create_test_sessions();
 
         let port = TypeName {
@@ -362,12 +341,9 @@ mod tests {
             "array": [1, 2, 3]
         });
 
-        let nexus_data = NexusData::Inline {
-            data: test_data.clone(),
-            encrypted: false,
-        };
+        let nexus_data = NexusData::new_inline(test_data.clone());
 
-        let result = process_port_data(&port, &nexus_data, &mut receiver);
+        let result = process_port_data(&port, nexus_data, &mut receiver).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -379,11 +355,10 @@ mod tests {
         // Check JSON result structure
         assert_eq!(json_result["port"], "test_port");
         assert_eq!(json_result["data"], test_data);
-        assert!(json_result["was_encrypted"].is_null());
     }
 
-    #[test]
-    fn test_process_port_data_encrypted_data() {
+    #[tokio::test]
+    async fn test_process_port_data_encrypted_data() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
 
         let port = TypeName {
@@ -405,12 +380,9 @@ mod tests {
             .encrypt_nexus_data_json(&mut encrypted)
             .expect("Failed to encrypt test data");
 
-        let nexus_data = NexusData::Inline {
-            data: encrypted,
-            encrypted: true,
-        };
+        let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, &nexus_data, &mut user_session);
+        let result = process_port_data(&port, nexus_data, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -422,11 +394,10 @@ mod tests {
         // Check JSON result structure
         assert_eq!(json_result["port"], "encrypted_port");
         assert_eq!(json_result["data"], original);
-        assert_eq!(json_result["was_encrypted"], true);
     }
 
-    #[test]
-    fn test_process_port_data_encrypted_simple_string() {
+    #[tokio::test]
+    async fn test_process_port_data_encrypted_simple_string() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
 
         let port = TypeName {
@@ -441,12 +412,9 @@ mod tests {
             .encrypt_nexus_data_json(&mut encrypted)
             .expect("Failed to encrypt test data");
 
-        let nexus_data = NexusData::Inline {
-            data: encrypted,
-            encrypted: true,
-        };
+        let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, &nexus_data, &mut user_session);
+        let result = process_port_data(&port, nexus_data, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -457,11 +425,10 @@ mod tests {
         // Check JSON result structure
         assert_eq!(json_result["port"], "string_port");
         assert_eq!(json_result["data"], original);
-        assert_eq!(json_result["was_encrypted"], true);
     }
 
-    #[test]
-    fn test_process_port_data_encrypted_complex_object() {
+    #[tokio::test]
+    async fn test_process_port_data_encrypted_complex_object() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
 
         let port = TypeName {
@@ -493,12 +460,9 @@ mod tests {
             .encrypt_nexus_data_json(&mut encrypted)
             .expect("Failed to encrypt test data");
 
-        let nexus_data = NexusData::Inline {
-            data: encrypted,
-            encrypted: true,
-        };
+        let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, &nexus_data, &mut user_session);
+        let result = process_port_data(&port, nexus_data, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -511,11 +475,10 @@ mod tests {
         // Check JSON result structure
         assert_eq!(json_result["port"], "complex_port");
         assert_eq!(json_result["data"], original);
-        assert_eq!(json_result["was_encrypted"], true);
     }
 
-    #[test]
-    fn test_process_port_data_malformed_encrypted_data() {
+    #[tokio::test]
+    async fn test_process_port_data_malformed_encrypted_data() {
         let (_nexus_session, mut user_session) = create_test_sessions();
 
         let port = TypeName {
@@ -525,19 +488,16 @@ mod tests {
         // Create malformed encrypted data (not properly serialized)
         let bad_encrypted_data = json!("this is not encrypted binary data");
 
-        let nexus_data = NexusData::Inline {
-            data: bad_encrypted_data,
-            encrypted: true,
-        };
+        let nexus_data = NexusData::new_inline_encrypted(bad_encrypted_data);
 
-        let result = process_port_data(&port, &nexus_data, &mut user_session);
+        let result = process_port_data(&port, nexus_data, &mut user_session).await;
 
         // Should fail because the data is not properly encrypted
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_multiple_encrypt_decrypt_roundtrips() {
+    #[tokio::test]
+    async fn test_multiple_encrypt_decrypt_roundtrips() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
 
         let test_cases = vec![
@@ -559,19 +519,15 @@ mod tests {
                 .encrypt_nexus_data_json(&mut encrypted)
                 .expect("Failed to encrypt test data");
 
-            let nexus_data = NexusData::Inline {
-                data: encrypted,
-                encrypted: true,
-            };
+            let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
             // Decrypt and verify using user session (simulating user inspecting execution)
-            let result = process_port_data(&port, &nexus_data, &mut user_session);
+            let result = process_port_data(&port, nexus_data, &mut user_session).await;
             assert!(result.is_ok(), "Failed to process port {}", port_name);
 
             let (_display_data, json_result) = result.unwrap();
             assert_eq!(json_result["port"], port_name);
             assert_eq!(json_result["data"], original);
-            assert_eq!(json_result["was_encrypted"], true);
         }
     }
 }

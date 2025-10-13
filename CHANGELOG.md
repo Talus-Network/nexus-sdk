@@ -13,15 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
 
-### `nexus-sdk`
-
 #### Changed
 
-- standardized array and single value serialization of `NexusData` in `serde_parsers`
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag inspect-execution` no longer shows `was_encrypted` field in the output
+
+### `nexus-sdk`
 
 #### Added
 
 - .nightly-version
+
+#### Changed
+
+- standardized array and single value serialization of `NexusData` in `serde_parsers`
+- `NexusData` can now represent data stored remotely in Walrus
 
 ## [`0.2.0`] - 2025-08-12
 
