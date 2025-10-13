@@ -17,6 +17,7 @@ use {
 };
 
 // TODO: tests for these integrations. should work e2e. Also need `from` fns.
+// TODO: when fetch/commit, we need to keep the storage type info.
 
 // == NexusData ==
 
