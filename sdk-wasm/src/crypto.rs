@@ -445,3 +445,72 @@ pub fn encrypt_entry_ports_with_session(
         .to_string(),
     }
 }
+
+/// Decrypt output data using active session (CLI-compatible)
+#[wasm_bindgen]
+pub fn decrypt_output_data_with_session(
+    _master_key_hex: &str,
+    encrypted_bytes_json: &str,
+) -> String {
+    let result = (|| -> Result<String, Box<dyn std::error::Error>> {
+        // Parse encrypted bytes array
+        let encrypted_bytes: Vec<u8> = serde_json::from_str(encrypted_bytes_json)?;
+
+        if encrypted_bytes.is_empty() {
+            return Err("Empty encrypted data".into());
+        }
+
+        // Deserialize StandardMessage from bincode (reverse of encryption)
+        let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+            bincode::deserialize(&encrypted_bytes)
+                .map_err(|e| format!("Failed to deserialize StandardMessage: {}", e))?;
+
+        // Find active session and decrypt
+        let decrypted_result = SESSIONS.with(|sessions| {
+            let mut sessions = sessions.borrow_mut();
+
+            if sessions.is_empty() {
+                return Err("No active sessions available for decryption".to_string());
+            }
+
+            // Get first available session (CLI-parity: mutable reference)
+            let (_session_id, session) = sessions
+                .iter_mut()
+                .next()
+                .ok_or("No sessions available for decryption")?;
+
+            // Decrypt using session
+            let decrypted_bytes = session
+                .decrypt(&Message::Standard(standard_msg))
+                .map_err(|e| format!("Decryption failed: {}", e))?;
+
+            // Try to deserialize as JSON
+            let decrypted_value: serde_json::Value = serde_json::from_slice(&decrypted_bytes)
+                .map_err(|e| format!("Failed to parse decrypted data as JSON: {}", e))?;
+
+            // CLI-parity: Commit session state after decryption
+            session.commit_receiver(None, None);
+
+            Ok(decrypted_value)
+        });
+
+        match decrypted_result {
+            Ok(data) => Ok(serde_json::json!({
+                "success": true,
+                "data": data,
+                "message": "Successfully decrypted output data"
+            })
+            .to_string()),
+            Err(e) => Err(e.into()),
+        }
+    })();
+
+    match result {
+        Ok(response) => response,
+        Err(e) => serde_json::json!({
+            "success": false,
+            "error": e.to_string()
+        })
+        .to_string(),
+    }
+}
