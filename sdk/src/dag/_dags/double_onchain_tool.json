@@ -14,6 +14,10 @@
         {
           "name": "1",
           "encrypted": false
+        },
+        {
+          "name": "2",
+          "encrypted": false
         }
       ]
     },
@@ -27,6 +31,10 @@
         {
           "name": "0",
           "encrypted": false
+        },
+        {
+          "name": "2",
+          "encrypted": false
         }
       ]
     }
@@ -35,7 +43,7 @@
     {
       "from": {
         "vertex": "counter_increment_first",
-        "output_variant": "success",
+        "output_variant": "ok",
         "output_port": "increment"
       },
       "to": {

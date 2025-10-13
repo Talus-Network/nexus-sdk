@@ -98,11 +98,11 @@ public struct MyToolState has key {
 /// This enum is used for automatic schema generation during registration.
 /// It's not used during execution. Only the ToolOutput object is used.
 public enum Output {
-    Success {
+    Ok {
         result: u64,
         // Add custom fields here as needed
     },
-    Error {
+    Err {
         reason: AsciiString,
     },
     // Add custom variants as needed
@@ -161,7 +161,7 @@ public fun execute(
     // Implement your tool logic here
     if (input_value == 0) {
         // Return error variant
-        tool_output::error(b"Input value cannot be zero")
+        tool_output::err(b"Input value cannot be zero")
     } else if (input_value > 1000) {
         // Return custom variant
         tool_output::variant(b"custom_result")
@@ -170,7 +170,7 @@ public fun execute(
     } else {
         // Return success variant
         let result = input_value * 2;
-        tool_output::success()
+        tool_output::ok()
             .with_field(b"result", result.to_string().into_bytes())
     }
 }
@@ -330,7 +330,7 @@ An example JSON DAG using the onchain tool is as follows:
       {
         "from": {
           "vertex": "just_execute_first",
-          "output_variant": "success",
+          "output_variant": "ok",
           "output_port": "result"
         },
         "to": {

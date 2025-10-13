@@ -1,7 +1,7 @@
 {
     "default_values": [
     {
-      "vertex": "just_execute_first",
+      "vertex": "execute_first",
       "input_port": "2",
       "value": {
         "storage": "inline",
@@ -9,7 +9,7 @@
       }
     },
     {
-        "vertex": "just_execute_second",
+        "vertex": "execute_second",
         "input_port": "2",
         "value": {
           "storage": "inline",
@@ -21,9 +21,9 @@
       {
         "kind": {
           "variant": "on_chain",
-          "tool_fqn": "xyz.mydomain.my_tool@2"
+          "tool_fqn": "xyz.mydomain.my_tool@1"
         },
-        "name": "just_execute_first",
+        "name": "execute_first",
         "entry_ports": [
           {
             "name": "0",
@@ -38,9 +38,9 @@
       {
         "kind": {
           "variant": "on_chain",
-          "tool_fqn": "xyz.mydomain.my_tool@2"
+          "tool_fqn": "xyz.mydomain.my_tool@1"
         },
-        "name": "just_execute_second",
+        "name": "execute_second",
         "entry_ports": [
           {
             "name": "0",
@@ -52,12 +52,12 @@
     "edges": [
       {
         "from": {
-          "vertex": "just_execute_first",
-          "output_variant": "success",
+          "vertex": "execute_first",
+          "output_variant": "ok",
           "output_port": "result"
         },
         "to": {
-          "vertex": "just_execute_second",
+          "vertex": "execute_second",
           "input_port": "1"
         }
       }
