@@ -44,7 +44,7 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
 # Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
-types = ["sui_types", "reqwest", "enum_dispatch", "walrus"]
+types = ["sui_types", "reqwest"]
 
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
