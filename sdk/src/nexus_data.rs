@@ -295,9 +295,11 @@ impl Storable for WalrusStorage {
         let data = match data_kind {
             DataKind::One => serde_json::Value::String(info.blob_object.blob_id),
             DataKind::Many(len) => serde_json::Value::Array(
-                std::iter::repeat(serde_json::Value::String(info.blob_object.blob_id.clone()))
-                    .take(len)
-                    .collect(),
+                std::iter::repeat_n(
+                    serde_json::Value::String(info.blob_object.blob_id.clone()),
+                    len,
+                )
+                .collect(),
             ),
         };
 
@@ -387,7 +389,7 @@ mod parser {
         {
             let data: NexusDataAsStruct = Deserialize::deserialize(deserializer)?;
 
-            let value = if data.one.len() > 0 {
+            let value = if !data.one.is_empty() {
                 // If we're dealing with a single value, we assume that
                 // the data is a JSON string that can be parsed directly.
                 let str = String::from_utf8(data.one).map_err(serde::de::Error::custom)?;
@@ -680,7 +682,7 @@ mod tests {
         let nexus_data = NexusData::new_inline(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, false);
+        assert!(!nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
 
@@ -714,7 +716,7 @@ mod tests {
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, true);
+        assert!(nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
 
@@ -748,7 +750,7 @@ mod tests {
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, true);
+        assert!(nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
 
@@ -787,7 +789,7 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, false);
+        assert!(!nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
 
@@ -835,7 +837,7 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, false);
+        assert!(!nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
 
@@ -869,7 +871,7 @@ mod tests {
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, true);
+        assert!(nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
 
@@ -917,7 +919,7 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, false);
+        assert!(!nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
 
@@ -968,7 +970,7 @@ mod tests {
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert_eq!(nexus_data.encrypted, true);
+        assert!(nexus_data.encrypted);
         assert_eq!(nexus_data.data.as_json(), &data);
         assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
 

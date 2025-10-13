@@ -7,7 +7,6 @@ use {
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
     tempfile::tempdir,
-    tokio,
 };
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
