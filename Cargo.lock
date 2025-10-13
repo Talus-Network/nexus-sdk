@@ -2363,6 +2363,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "exchanges-coinbase"
+version = "0.3.0-rc.1"
+dependencies = [
+ "chrono",
+ "mockito",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "reqwest",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "eyre"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4238,22 +4254,6 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "url",
-]
-
-[[package]]
-name = "market-coinbase"
-version = "0.3.0-rc.2"
-dependencies = [
- "chrono",
- "mockito",
- "nexus-sdk",
- "nexus-toolkit",
- "reqwest",
- "schemars 1.0.0-alpha.17",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
 ]
 
 [[package]]
@@ -6858,9 +6858,9 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "2.3.3"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea091f6cac2595aa38993f04f4ee692ed43757035c36e67c180b6828356385b1"
+checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
 dependencies = [
  "sdd",
 ]
