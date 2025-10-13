@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus DAG Validator</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 16px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        text-align: center;
+        color: #2d3748;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        -webkit-text-fill-color: transparent;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: #718096;
+        font-size: 1.1rem;
+        margin-bottom: 40px;
+      }
+
+      .input-section {
+        margin-bottom: 30px;
+      }
+
+      .section-title {
+        color: #2d3748;
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .dag-input {
+        width: 100%;
+        min-height: 300px;
+        padding: 20px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        background: #f8fafc;
+        color: #2d3748;
+        resize: vertical;
+        transition: all 0.3s ease;
+      }
+
+      .dag-input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        background: #fff;
+      }
+
+      .dag-input::placeholder {
+        color: #a0aec0;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 12px;
+        margin: 20px 0;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+      }
+
+      .btn-secondary {
+        background: #e2e8f0;
+        color: #4a5568;
+      }
+
+      .btn-secondary:hover {
+        background: #cbd5e0;
+        transform: translateY(-1px);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      .result-section {
+        margin-top: 30px;
+      }
+
+      .result-box {
+        background: #f8fafc;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px;
+        font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        min-height: 80px;
+        transition: all 0.3s ease;
+      }
+
+      .result-success {
+        border-color: #48bb78;
+        background: #f0fff4;
+        color: #22543d;
+      }
+
+      .result-error {
+        border-color: #f56565;
+        background: #fff5f5;
+        color: #742a2a;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        margin: 20px 0;
+        color: #667eea;
+        font-weight: 600;
+      }
+
+      .loading.show {
+        display: block;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 20px;
+          margin: 10px;
+        }
+
+        h1 {
+          font-size: 2rem;
+        }
+
+        .button-group {
+          flex-direction: column;
+        }
+
+        .btn {
+          justify-content: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Nexus DAG Validator</h1>
+      <p class="subtitle">Validate your Nexus DAG configurations with ease</p>
+
+      <div class="input-section">
+        <h2 class="section-title">📝 DAG JSON Input</h2>
+        <textarea
+          id="dag-input"
+          class="dag-input"
+          placeholder="Paste your DAG JSON here..."
+        ></textarea>
+
+        <div class="button-group">
+          <button id="validate-btn" class="btn btn-primary">
+            ✓ Validate DAG
+          </button>
+          <button id="clear-btn" class="btn btn-secondary">🗑️ Clear</button>
+          <button id="format-btn" class="btn btn-secondary">
+            🎨 Format JSON
+          </button>
+        </div>
+      </div>
+
+      <div class="loading" id="loading">⏳ Validating DAG...</div>
+
+      <div class="result-section">
+        <h2 class="section-title">📊 Validation Result</h2>
+        <div id="result" class="result-box">
+          Ready to validate your DAG. Enter JSON above and click "Validate DAG".
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import init, { validate_dag_from_json } from "./pkg/nexus_cli_wasm.js";
+
+      let wasmReady = false;
+
+      async function initWasm() {
+        try {
+          await init();
+          wasmReady = true;
+          updateUI();
+        } catch (error) {
+          showResult(`Failed to initialize WASM: ${error}`, false);
+        }
+      }
+
+      function updateUI() {
+        const validateBtn = document.getElementById("validate-btn");
+        if (wasmReady) {
+          validateBtn.textContent = "✓ Validate DAG";
+          validateBtn.disabled = false;
+        } else {
+          validateBtn.textContent = "⏳ Loading...";
+          validateBtn.disabled = true;
+        }
+      }
+
+      function showResult(message, isSuccess) {
+        const resultDiv = document.getElementById("result");
+        const loadingDiv = document.getElementById("loading");
+
+        loadingDiv.classList.remove("show");
+        resultDiv.textContent = message;
+        resultDiv.className = `result-box ${
+          isSuccess ? "result-success" : "result-error"
+        }`;
+      }
+
+      function formatJson() {
+        const input = document.getElementById("dag-input");
+        try {
+          const json = JSON.parse(input.value);
+          input.value = JSON.stringify(json, null, 2);
+          showResult("JSON formatted successfully! ✨", true);
+        } catch (error) {
+          showResult(`JSON formatting failed: ${error.message}`, false);
+        }
+      }
+
+      function validateDag() {
+        if (!wasmReady) {
+          showResult("WASM not ready. Please wait...", false);
+          return;
+        }
+
+        const input = document.getElementById("dag-input").value.trim();
+        const loadingDiv = document.getElementById("loading");
+
+        if (!input) {
+          showResult("Please enter a DAG JSON to validate.", false);
+          return;
+        }
+
+        loadingDiv.classList.add("show");
+
+        // Small delay to show loading animation
+        setTimeout(() => {
+          try {
+            const result = validate_dag_from_json(input);
+
+            if (result.is_valid) {
+              showResult(
+                "✅ DAG is valid!\n\nYour DAG configuration passed all validation checks.",
+                true
+              );
+            } else {
+              showResult(
+                `❌ DAG validation failed:\n\n${result.error_message}`,
+                false
+              );
+            }
+          } catch (error) {
+            showResult(
+              `💥 Validation error:\n\n${error.message || error}`,
+              false
+            );
+          }
+        }, 100);
+      }
+
+      function clearInput() {
+        document.getElementById("dag-input").value = "";
+        document.getElementById("result").textContent =
+          'Ready to validate your DAG. Enter JSON above and click "Validate DAG".';
+        document.getElementById("result").className = "result-box";
+      }
+
+      // Event listeners
+      document
+        .getElementById("validate-btn")
+        .addEventListener("click", validateDag);
+      document
+        .getElementById("clear-btn")
+        .addEventListener("click", clearInput);
+      document
+        .getElementById("format-btn")
+        .addEventListener("click", formatJson);
+
+      // Keyboard shortcuts
+      document.getElementById("dag-input").addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          validateDag();
+        }
+      });
+
+      // Initialize
+      initWasm();
+      updateUI();
+    </script>
+  </body>
+</html>

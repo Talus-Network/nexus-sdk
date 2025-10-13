@@ -1,0 +1,70 @@
+[package]
+name = "nexus-sdk-wasm"
+description = "Nexus SDK WASM bindings for browser/web usage"
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# WASM bindings
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+# Serde for JSON handling
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen = "0.4"
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Crypto dependencies (from workspace)
+hex.workspace = true
+x25519-dalek = "2.0"
+rand.workspace = true
+base64.workspace = true
+bincode.workspace = true
+
+# Web API bindings
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "console",
+  "Window",
+  "Location",
+  "Navigator",
+  "Storage",
+  "Request",
+  "RequestInit",
+  "Response",
+  "Headers",
+  "Crypto",
+  "SubtleCrypto",
+]
+
+# === Nexus deps ===
+[dependencies.nexus-sdk]
+workspace = true
+features = ["wasm_types", "dag", "crypto"]
+
+# Re-open dependencies table for local crate deps
+# (moved crypto deps to main [dependencies] above)
+# Fix getrandom for WASM
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4" 
