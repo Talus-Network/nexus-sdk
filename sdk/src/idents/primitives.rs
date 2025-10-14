@@ -1,7 +1,6 @@
 use crate::{
     idents::{move_std, ModuleAndNameIdent},
     sui,
-    types::StorageKind,
 };
 
 // == `nexus_primitives::data` ==
