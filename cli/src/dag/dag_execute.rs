@@ -12,10 +12,9 @@ use {
     nexus_sdk::{
         crypto::session::Session,
         idents::workflow,
-        nexus_data::{DataStorage, StorageConf},
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
-        types::{StorageKind, TypeName},
+        types::{DataStorage, StorageConf, StorageKind, TypeName},
     },
 };
 
@@ -181,7 +180,7 @@ async fn process_entry_ports(
             .collect::<Vec<_>>();
 
         // Convert this json into a map of port -> NexusData.
-        let nexus_data_map = nexus_data::json_to_nexus_data_map(
+        let nexus_data_map = types::json_to_nexus_data_map(
             data,
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,
@@ -310,7 +309,7 @@ mod tests {
                 session::{Message, Session},
                 x3dh::{IdentityKey, PreKeyBundle},
             },
-            nexus_data::{DataStorage, Storable},
+            types::{DataStorage, Storable},
         },
         serde_json::json,
         std::collections::HashMap,

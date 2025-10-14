@@ -1,15 +1,16 @@
 use {
     crate::{
         idents::{primitives, sui_framework, workflow},
-        nexus_data::{DataStorage, Storable},
         sui,
         types::{
             Dag,
+            DataStorage,
             DefaultValue,
             Edge,
             EntryPort,
             FromPort,
             NexusObjects,
+            Storable,
             StorageKind,
             Vertex,
             VertexKind,

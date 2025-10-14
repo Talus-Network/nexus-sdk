@@ -9,12 +9,11 @@ use {
         sui::*,
     },
     nexus_sdk::{
+        self,
         events::{NexusEvent, NexusEventKind},
         idents::primitives,
-        nexus_data::{NexusData, Storable, StorageConf},
-        types::TypeName,
+        types::{NexusData, Storable, StorageConf, TypeName},
     },
-    std::collections::HashMap,
 };
 
 /// Inspect a Nexus DAG execution process based on the provided object ID and
@@ -97,21 +96,9 @@ pub(crate) async fn inspect_dag_execution(
                         variant = e.variant.name.truecolor(100, 100, 100),
                     );
 
-                    let Ok(variant_ports_to_data) =
-                        serde_json::from_value::<PortsToData>(e.variant_ports_to_data.clone())
-                    else {
-                        item!(
-                            "With data: {data}",
-                            data =
-                                format!("{:?}", e.variant_ports_to_data).truecolor(100, 100, 100),
-                        );
-
-                        continue;
-                    };
-
                     let mut json_data = Vec::new();
 
-                    for (port, data) in variant_ports_to_data.values {
+                    for (port, data) in e.variant_ports_to_data.values {
                         let (display_data, json_data_value) =
                             match process_port_data(&port, data, session).await {
                                 Ok(result) => result,
@@ -143,21 +130,9 @@ pub(crate) async fn inspect_dag_execution(
                         end_state = "END STATE".truecolor(100, 100, 100)
                     );
 
-                    let Ok(variant_ports_to_data) =
-                        serde_json::from_value::<PortsToData>(e.variant_ports_to_data.clone())
-                    else {
-                        item!(
-                            "With data: {data}",
-                            data =
-                                format!("{:?}", e.variant_ports_to_data).truecolor(100, 100, 100),
-                        );
-
-                        continue;
-                    };
-
                     let mut json_data = Vec::new();
 
-                    for (port, data) in variant_ports_to_data.values {
+                    for (port, data) in e.variant_ports_to_data.values {
                         let (display_data, json_data_value) =
                             match process_port_data(&port, data, session).await {
                                 Ok(result) => result,
@@ -243,43 +218,6 @@ fn get_active_session(
         None => Err(NexusCliError::Any(anyhow!(
             "Authentication required — run `nexus crypto auth` first"
         ))),
-    }
-}
-
-/// Struct defining deser of the `variant_ports_to_data` field in the
-/// `WalkAdvanced` and `EndStateReached` events.
-// TODO: This can be later improved by making some bigger changes to the object
-// crawler and porting it to the Nexus SDK.
-#[derive(Clone, Debug)]
-struct PortsToData {
-    values: HashMap<TypeName, NexusData>,
-}
-
-impl<'de> serde::Deserialize<'de> for PortsToData {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct VecMapWrapper {
-            contents: Vec<VecMapEntry>,
-        }
-
-        #[derive(Deserialize)]
-        struct VecMapEntry {
-            key: TypeName,
-            value: NexusData,
-        }
-
-        let values = VecMapWrapper::deserialize(deserializer)?;
-
-        Ok(PortsToData {
-            values: values
-                .contents
-                .into_iter()
-                .map(|entry| (entry.key, entry.value))
-                .collect(),
-        })
     }
 }
 
