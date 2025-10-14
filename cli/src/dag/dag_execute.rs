@@ -12,6 +12,7 @@ use {
     nexus_sdk::{
         crypto::session::Session,
         idents::workflow,
+        nexus_data::{DataStorage, StorageConf},
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
         types::{StorageKind, TypeName},
@@ -164,6 +165,7 @@ async fn process_entry_ports(
         // Figure out which ports need to be encrypted and stored remotely for
         // this vertex.
         // TODO: config?
+        // TODO: add hint for remote fields?
         let preferred_remote_storage = Some(StorageKind::Walrus);
         let encrypt_fields = encrypt.get(vertex);
         let remote_fields = ports
@@ -179,7 +181,7 @@ async fn process_entry_ports(
             .collect::<Vec<_>>();
 
         // Convert this json into a map of port -> NexusData.
-        let nexus_data_map = json_to_nexus_data_map(
+        let nexus_data_map = nexus_data::json_to_nexus_data_map(
             data,
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,

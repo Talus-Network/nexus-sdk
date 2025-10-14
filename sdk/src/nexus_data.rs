@@ -27,6 +27,7 @@ pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 // == NexusData ==
 
 // TODO: add remote storage configurations to CLI
+// TODO: add CLI docs
 
 /// Note that the sole reason the top-level [`NexusData`] struct exists is to
 /// ensure that the inner `data` can only be accessed via [`DataStorage`]'s

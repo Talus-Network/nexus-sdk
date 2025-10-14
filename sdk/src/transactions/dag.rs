@@ -1,7 +1,7 @@
 use {
     crate::{
         idents::{primitives, sui_framework, workflow},
-        nexus_data::Storable,
+        nexus_data::{DataStorage, Storable},
         sui,
         types::{
             Dag,
@@ -15,7 +15,6 @@ use {
             VertexKind,
             DEFAULT_ENTRY_GROUP,
         },
-        DataStorage,
     },
     std::collections::HashMap,
 };
@@ -177,19 +176,23 @@ pub fn create_default_value(
     let port =
         workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port)?;
 
-    // Note: Default values cannot be secret. Sensitive data should be passed
-    // via entry ports at runtime.
     // `value: NexusData`
     let value = match &default_value.value.storage {
         StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
+            // Default values cannot be secret. Sensitive data should be passed
+            // via entry ports at runtime.
+            false,
         )?,
         StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
+            // Default values cannot be secret. Sensitive data should be passed
+            // via entry ports at runtime.
+            false,
         )?,
     };
 
@@ -447,38 +450,27 @@ pub fn execute(
 
         for (port, value) in data {
             // `port: InputPort`
-            let port: sui_sdk::types::transaction::Argument = if value.is_encrypted() {
-                workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, port)?
-            } else {
-                workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?
+            let port = match value.is_encrypted() {
+                true => {
+                    workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, port)?
+                }
+                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?,
             };
 
             // `value: NexusData`
-            let value = match (value.storage_kind(), value.is_encrypted()) {
-                (StorageKind::Inline, false) => primitives::Data::nexus_data_inline_from_json(
+            let value = match value.storage_kind() {
+                StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
+                    value.is_encrypted(),
                 )?,
-                (StorageKind::Inline, true) => {
-                    primitives::Data::nexus_data_inline_encrypted_from_json(
-                        tx,
-                        objects.primitives_pkg_id,
-                        value.as_json(),
-                    )?
-                }
-                (StorageKind::Walrus, false) => primitives::Data::nexus_data_walrus_from_json(
+                StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
+                    value.is_encrypted(),
                 )?,
-                (StorageKind::Walrus, true) => {
-                    primitives::Data::nexus_data_walrus_encrypted_from_json(
-                        tx,
-                        objects.primitives_pkg_id,
-                        value.as_json(),
-                    )?
-                }
             };
 
             // `with_vertex_input.insert(port, value)`

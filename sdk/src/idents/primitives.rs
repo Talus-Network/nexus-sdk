@@ -1,6 +1,7 @@
 use crate::{
     idents::{move_std, ModuleAndNameIdent},
     sui,
+    types::StorageKind,
 };
 
 // == `nexus_primitives::data` ==
@@ -83,29 +84,14 @@ impl Data {
         tx: &mut sui::ProgrammableTransactionBuilder,
         primitives_pkg_id: sui::ObjectID,
         json: &T,
+        encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
-        Self::nexus_data_from_json(
-            tx,
-            primitives_pkg_id,
-            json,
-            &Self::INLINE_ONE,
-            &Self::INLINE_MANY,
-        )
-    }
+        let (one, many) = match encrypted {
+            true => (&Self::INLINE_ONE_ENCRYPTED, &Self::INLINE_MANY_ENCRYPTED),
+            false => (&Self::INLINE_ONE, &Self::INLINE_MANY),
+        };
 
-    /// Create NexusData with inline encrypted storage from a [serde_json::Value].
-    pub fn nexus_data_inline_encrypted_from_json<T: serde::Serialize>(
-        tx: &mut sui::ProgrammableTransactionBuilder,
-        primitives_pkg_id: sui::ObjectID,
-        json: &T,
-    ) -> anyhow::Result<sui::Argument> {
-        Self::nexus_data_from_json(
-            tx,
-            primitives_pkg_id,
-            json,
-            &Self::INLINE_ONE_ENCRYPTED,
-            &Self::INLINE_MANY_ENCRYPTED,
-        )
+        Self::nexus_data_from_json(tx, primitives_pkg_id, json, one, many)
     }
 
     /// Create NexusData with Walrus storage from a [serde_json::Value].
@@ -113,29 +99,14 @@ impl Data {
         tx: &mut sui::ProgrammableTransactionBuilder,
         primitives_pkg_id: sui::ObjectID,
         json: &T,
+        encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
-        Self::nexus_data_from_json(
-            tx,
-            primitives_pkg_id,
-            json,
-            &Self::WALRUS_ONE,
-            &Self::WALRUS_MANY,
-        )
-    }
+        let (one, many) = match encrypted {
+            true => (&Self::WALRUS_ONE_ENCRYPTED, &Self::WALRUS_MANY_ENCRYPTED),
+            false => (&Self::WALRUS_ONE, &Self::WALRUS_MANY),
+        };
 
-    /// Create NexusData with Walrus encrypted storage from a [serde_json::Value].
-    pub fn nexus_data_walrus_encrypted_from_json<T: serde::Serialize>(
-        tx: &mut sui::ProgrammableTransactionBuilder,
-        primitives_pkg_id: sui::ObjectID,
-        json: &T,
-    ) -> anyhow::Result<sui::Argument> {
-        Self::nexus_data_from_json(
-            tx,
-            primitives_pkg_id,
-            json,
-            &Self::WALRUS_ONE_ENCRYPTED,
-            &Self::WALRUS_MANY_ENCRYPTED,
-        )
+        Self::nexus_data_from_json(tx, primitives_pkg_id, json, one, many)
     }
 
     /// Internal helper to create NexusData from a [serde_json::Value].
@@ -158,7 +129,10 @@ impl Data {
             );
 
             for data in arr {
+                // `bytes: vector<u8>`
                 let data_bytes = tx.pure(serde_json::to_string(&data)?.into_bytes())?;
+
+                // `vector<vector<u8>>::push_back`
                 tx.programmable_move_call(
                     sui::MOVE_STDLIB_PACKAGE_ID,
                     move_std::Vector::PUSH_BACK.module.into(),
