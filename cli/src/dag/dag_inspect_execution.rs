@@ -11,6 +11,7 @@ use {
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
         idents::primitives,
+        nexus_data::Storable,
         types::TypeName,
         NexusData,
     },
@@ -214,11 +215,11 @@ async fn process_port_data(
 ) -> AnyResult<(String, serde_json::Value)> {
     // TODO: configure walrus eps.
     let conf = StorageConf::default();
-    let data = data.fetch(&conf, session).await?.into_json();
+    let data = data.fetch(&conf, session).await?;
 
     Ok((
         format!("{data:?}"),
-        json!({ "port": port.name, "data": data }),
+        json!({ "port": port.name, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
     ))
 }
 

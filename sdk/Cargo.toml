@@ -52,16 +52,16 @@ events = ["sui_idents", "types"]
 # Object crawler feature enables the use of the `object_crawler` module.
 object_crawler = ["sui_types", "serde_json"]
 
-# Transactions feature enables the use of the `transactions` module. These are
-# used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents", "bincode"]
-
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # NexusData module. More than a type as it has dependencies on walrus and crypto.
 nexus_data = ["types", "crypto", "enum_dispatch", "walrus"]
+
+# Transactions feature enables the use of the `transactions` module. These are
+# used in the CLI and tests and hide away PTBs for various Nexus operations.
+transactions = ["sui_idents", "bincode", "nexus_data"]
 
 # Provides DAG-related utilities.
 dag = ["petgraph"]

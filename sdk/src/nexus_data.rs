@@ -11,7 +11,7 @@
 //! times where N is the length of the array.
 
 use {
-    crate::{crypto::session::Session, walrus::WalrusClient},
+    crate::{crypto::session::Session, types::StorageKind, walrus::WalrusClient},
     enum_dispatch::enum_dispatch,
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
@@ -26,12 +26,21 @@ pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 
 // == NexusData ==
 
+// TODO: add remote storage configurations to CLI
+
+/// Note that the sole reason the top-level [`NexusData`] struct exists is to
+/// ensure that the inner `data` can only be accessed via [`DataStorage`]'s
+/// `fetch` and `commit` methods.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NexusData {
     data: DataStorage,
-    /// Whether the data is encrypted and should be decrypted before use or
-    /// encrypted before committing.
-    encrypted: bool,
+}
+
+#[cfg(test)]
+impl From<DataStorage> for NexusData {
+    fn from(data: DataStorage) -> Self {
+        Self { data }
+    }
 }
 
 impl NexusData {
@@ -41,7 +50,7 @@ impl NexusData {
         conf: &StorageConf,
         session: &mut Session,
     ) -> anyhow::Result<DataStorage> {
-        self.data.fetch(conf, self.encrypted, session).await?;
+        self.data.fetch(conf, session).await?;
 
         Ok(self.data)
     }
@@ -52,7 +61,7 @@ impl NexusData {
         conf: &StorageConf,
         session: &mut Session,
     ) -> anyhow::Result<DataStorage> {
-        self.data.commit(conf, self.encrypted, session).await?;
+        self.data.commit(conf, session).await?;
 
         Ok(self.data)
     }
@@ -60,39 +69,41 @@ impl NexusData {
     /// Create inline data that is not encrypted.
     pub fn new_inline(data: serde_json::Value) -> Self {
         Self {
-            data: DataStorage::Inline(InlineStorage { data }),
-            encrypted: false,
+            data: DataStorage::Inline(InlineStorage {
+                data,
+                encrypted: false,
+            }),
         }
     }
 
     /// Create inline data that is encrypted.
     pub fn new_inline_encrypted(data: serde_json::Value) -> Self {
         Self {
-            data: DataStorage::Inline(InlineStorage { data }),
-            encrypted: true,
+            data: DataStorage::Inline(InlineStorage {
+                data,
+                encrypted: true,
+            }),
         }
     }
 
     /// Create walrus data that is not encrypted.
     pub fn new_walrus(data: serde_json::Value) -> Self {
         Self {
-            data: DataStorage::Walrus(WalrusStorage { data }),
-            encrypted: false,
+            data: DataStorage::Walrus(WalrusStorage {
+                data,
+                encrypted: false,
+            }),
         }
     }
 
     /// Create walrus data that is encrypted.
     pub fn new_walrus_encrypted(data: serde_json::Value) -> Self {
         Self {
-            data: DataStorage::Walrus(WalrusStorage { data }),
-            encrypted: true,
+            data: DataStorage::Walrus(WalrusStorage {
+                data,
+                encrypted: true,
+            }),
         }
-    }
-
-    /// Private function to turn [`DataStorage`] back to [`NexusData`].
-    #[cfg(test)]
-    fn from_data_storage(data: DataStorage, encrypted: bool) -> Self {
-        Self { data, encrypted }
     }
 }
 
@@ -112,34 +123,35 @@ pub enum DataStorage {
     Walrus(WalrusStorage),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DataStorageKind {
-    Inline,
-    Walrus,
-}
+#[cfg(test)]
+impl TryFrom<serde_json::Value> for DataStorage {
+    type Error = anyhow::Error;
 
-impl DataStorage {
-    /// Extract the inner JSON value.
-    pub fn into_json(self) -> serde_json::Value {
-        match self {
-            DataStorage::Inline(storage) => storage.data,
-            DataStorage::Walrus(storage) => storage.data,
-        }
-    }
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let kind = value
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'kind' field"))?;
 
-    /// Get a reference to the inner JSON value.
-    pub fn as_json(&self) -> &serde_json::Value {
-        match self {
-            DataStorage::Inline(storage) => &storage.data,
-            DataStorage::Walrus(storage) => &storage.data,
-        }
-    }
+        let data = value
+            .get("data")
+            .ok_or_else(|| anyhow::anyhow!("Missing 'data' field"))?;
 
-    /// Get the kind of storage used.
-    pub fn kind(&self) -> DataStorageKind {
-        match self {
-            DataStorage::Inline { .. } => DataStorageKind::Inline,
-            DataStorage::Walrus { .. } => DataStorageKind::Walrus,
+        let encrypted = value
+            .get("encrypted")
+            .and_then(|v| v.as_bool())
+            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'encrypted' field"))?;
+
+        match kind {
+            "inline" => Ok(Self::Inline(InlineStorage {
+                data: data.clone(),
+                encrypted,
+            })),
+            "walrus" => Ok(Self::Walrus(WalrusStorage {
+                data: data.clone(),
+                encrypted,
+            })),
+            _ => Err(anyhow::anyhow!("Invalid 'kind' value")),
         }
     }
 }
@@ -147,50 +159,55 @@ impl DataStorage {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlineStorage {
     data: serde_json::Value,
+    /// Whether the data is encrypted and should be decrypted before use or
+    /// encrypted before committing.
+    encrypted: bool,
 }
 
 impl Storable for InlineStorage {
-    async fn fetch(
-        &mut self,
-        _: &StorageConf,
-        decrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()> {
-        if decrypt {
+    async fn fetch(&mut self, _: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+        if self.encrypted {
             self.data = session.decrypt_nexus_data_json(&self.data)?;
         }
 
         Ok(())
     }
 
-    async fn commit(
-        &mut self,
-        _: &StorageConf,
-        encrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()> {
-        if encrypt {
+    async fn commit(&mut self, _: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+        if self.encrypted {
             session.encrypt_nexus_data_json(&mut self.data)?;
         }
 
         Ok(())
     }
+
+    fn storage_kind(&self) -> StorageKind {
+        StorageKind::Inline
+    }
+
+    fn into_json(self) -> serde_json::Value {
+        self.data
+    }
+
+    fn as_json(&self) -> &serde_json::Value {
+        &self.data
+    }
+
+    fn is_encrypted(&self) -> bool {
+        self.encrypted
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WalrusStorage {
-    /// We have to differentiate between single values and arrays of values
-    /// to support looping.
     data: serde_json::Value,
+    /// Whether the data is encrypted and should be decrypted before use or
+    /// encrypted before committing.
+    encrypted: bool,
 }
 
 impl Storable for WalrusStorage {
-    async fn fetch(
-        &mut self,
-        conf: &StorageConf,
-        decrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()> {
+    async fn fetch(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
         let walrus_aggregator_url = conf
             .walrus_aggregator_url
             .as_ref()
@@ -229,7 +246,7 @@ impl Storable for WalrusStorage {
         let mut data = client.read_json::<serde_json::Value>(&blob_id).await?;
 
         // Decrypt the data if needed.
-        if decrypt {
+        if self.encrypted {
             data = session.decrypt_nexus_data_json(&data)?;
         }
 
@@ -238,12 +255,7 @@ impl Storable for WalrusStorage {
         Ok(())
     }
 
-    async fn commit(
-        &mut self,
-        conf: &StorageConf,
-        encrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()> {
+    async fn commit(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
         let walrus_publisher_url = conf
             .walrus_publisher_url
             .as_ref()
@@ -258,7 +270,7 @@ impl Storable for WalrusStorage {
             .build();
 
         // Encrypt the data if needed.
-        if encrypt {
+        if self.encrypted {
             session.encrypt_nexus_data_json(&mut self.data)?;
         }
 
@@ -315,6 +327,22 @@ impl Storable for WalrusStorage {
 
         Ok(())
     }
+
+    fn storage_kind(&self) -> StorageKind {
+        StorageKind::Walrus
+    }
+
+    fn into_json(self) -> serde_json::Value {
+        self.data
+    }
+
+    fn as_json(&self) -> &serde_json::Value {
+        &self.data
+    }
+
+    fn is_encrypted(&self) -> bool {
+        self.encrypted
+    }
 }
 
 /// Trait defining two methods for accessing and saving data based on its storage
@@ -323,20 +351,23 @@ impl Storable for WalrusStorage {
 #[allow(async_fn_in_trait)]
 pub trait Storable {
     /// Fetch the data from its storage location.
-    async fn fetch(
-        &mut self,
-        conf: &StorageConf,
-        decrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()>;
+    async fn fetch(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()>;
 
     /// Commit the data to its storage location.
-    async fn commit(
-        &mut self,
-        conf: &StorageConf,
-        encrypt: bool,
-        session: &mut Session,
-    ) -> anyhow::Result<()>;
+    async fn commit(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()>;
+
+    /// Get the kind of storage used.
+    fn storage_kind(&self) -> StorageKind;
+
+    /// Extract the inner JSON value.
+    fn into_json(self) -> serde_json::Value;
+
+    /// Get a reference to the inner JSON value.
+    fn as_json(&self) -> &serde_json::Value;
+
+    /// Whether the data is encrypted and should be encrypted before committing
+    /// and decrypted after fetching.
+    fn is_encrypted(&self) -> bool;
 }
 
 // == Helpers ==
@@ -346,14 +377,14 @@ pub trait Storable {
 /// This helper also takes:
 /// - [`Vec<String>`] that indicates which fields should be encrypted
 /// - [`Vec<String>`] that indicates which fields should be stored remotely
-/// - [`Option<DataStorageKind>`] that indicates the preferred remote storage kind
+/// - [`Option<StorageKind>`] that indicates the preferred remote storage kind
 pub fn json_to_nexus_data_map(
     json: &serde_json::Value,
     encrypt_fields: &[String],
     remote_fields: &[String],
-    preferred_remote_storage: Option<DataStorageKind>,
+    preferred_remote_storage: Option<StorageKind>,
 ) -> anyhow::Result<HashMap<String, NexusData>> {
-    let preferred_remote_storage = preferred_remote_storage.unwrap_or(DataStorageKind::Walrus);
+    let preferred_remote_storage = preferred_remote_storage.unwrap_or(StorageKind::Walrus);
 
     let Some(obj) = json.as_object() else {
         anyhow::bail!("Expected JSON object");
@@ -372,14 +403,14 @@ pub fn json_to_nexus_data_map(
             (false, false) => map.insert(key, NexusData::new_inline(value)),
             (true, false) => map.insert(key, NexusData::new_inline_encrypted(value)),
             (false, true) => match preferred_remote_storage {
-                DataStorageKind::Walrus => map.insert(key, NexusData::new_walrus(value)),
-                DataStorageKind::Inline => {
+                StorageKind::Walrus => map.insert(key, NexusData::new_walrus(value)),
+                StorageKind::Inline => {
                     anyhow::bail!("Cannot store data remotely using inline storage")
                 }
             },
             (true, true) => match preferred_remote_storage {
-                DataStorageKind::Walrus => map.insert(key, NexusData::new_walrus_encrypted(value)),
-                DataStorageKind::Inline => {
+                StorageKind::Walrus => map.insert(key, NexusData::new_walrus_encrypted(value)),
+                StorageKind::Inline => {
                     anyhow::bail!("Cannot store data remotely using inline storage")
                 }
             },
@@ -520,15 +551,19 @@ mod parser {
 
             match data.storage.as_ref() {
                 NEXUS_DATA_INLINE_STORAGE_TAG => Ok(NexusData {
-                    data: DataStorage::Inline(InlineStorage { data: value }),
-                    encrypted: data.encrypted,
+                    data: DataStorage::Inline(InlineStorage {
+                        data: value,
+                        encrypted: data.encrypted,
+                    }),
                 }),
                 NEXUS_DATA_WALRUS_STORAGE_TAG => Ok(NexusData {
-                    data: DataStorage::Walrus(WalrusStorage { data: value }),
-                    encrypted: data.encrypted,
+                    data: DataStorage::Walrus(WalrusStorage {
+                        data: value,
+                        encrypted: data.encrypted,
+                    }),
                 }),
                 // Add more...
-                _ => todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>"),
+                _ => unimplemented!("Unknown storage type"),
             }
         }
     }
@@ -544,7 +579,7 @@ mod parser {
                 // Add more...
             };
 
-            let encrypted = self.encrypted;
+            let encrypted = self.data.is_encrypted();
 
             let storage = match &self.data {
                 DataStorage::Inline { .. } => NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
@@ -601,8 +636,8 @@ mod parser {
                     data: serde_json::json!({
                         "key": "value"
                     }),
+                    encrypted: false,
                 }),
-                encrypted: false,
             };
 
             assert_eq!(
@@ -636,8 +671,8 @@ mod parser {
                         { "key": "value" },
                         { "key": "value" }
                     ]),
+                    encrypted: true,
                 }),
-                encrypted: true,
             };
 
             assert_eq!(
@@ -668,8 +703,8 @@ mod parser {
                     data: serde_json::json!({
                         "key": "value"
                     }),
+                    encrypted: false,
                 }),
-                encrypted: false,
             };
 
             assert_eq!(
@@ -700,8 +735,8 @@ mod parser {
                         { "key": "value" },
                         { "key": "value" }
                     ]),
+                    encrypted: true,
                 }),
-                encrypted: true,
             };
 
             assert_eq!(
@@ -792,9 +827,9 @@ mod tests {
         let nexus_data = NexusData::new_inline(data.clone());
 
         // Inspect the inner data.
-        assert!(!nexus_data.encrypted);
+        assert!(!nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Inline);
 
         // Nothing should change when we commit as Nexus.
         let committed = nexus_data
@@ -803,9 +838,9 @@ mod tests {
             .expect("Failed to commit data");
 
         assert_eq!(committed.as_json(), &data);
-        assert_eq!(committed.kind(), DataStorageKind::Inline);
+        assert_eq!(committed.storage_kind(), StorageKind::Inline);
 
-        let committed_data = NexusData::from_data_storage(committed, false);
+        let committed_data: NexusData = committed.into();
 
         // Nothing should change when we fetch as user.
         let fetched = committed_data
@@ -814,7 +849,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+        assert_eq!(fetched.storage_kind(), StorageKind::Inline);
     }
 
     #[tokio::test]
@@ -826,9 +861,9 @@ mod tests {
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert!(nexus_data.encrypted);
+        assert!(nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Inline);
 
         // Data should be encrypted when we commit as Nexus.
         let committed = nexus_data
@@ -837,9 +872,9 @@ mod tests {
             .expect("Failed to commit data");
 
         assert_ne!(committed.as_json(), &data);
-        assert_eq!(committed.kind(), DataStorageKind::Inline);
+        assert_eq!(committed.storage_kind(), StorageKind::Inline);
 
-        let committed_data = NexusData::from_data_storage(committed, true);
+        let committed_data: NexusData = committed.into();
 
         // Data should be decrypted when we fetch as user.
         let fetched = committed_data
@@ -848,7 +883,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+        assert_eq!(fetched.storage_kind(), StorageKind::Inline);
     }
 
     #[tokio::test]
@@ -860,9 +895,9 @@ mod tests {
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert!(nexus_data.encrypted);
+        assert!(nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Inline);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Inline);
 
         // Data should be encrypted when we commit as Nexus. Elements should
         // also be encrypted individually.
@@ -876,9 +911,9 @@ mod tests {
             committed.as_json().as_array().unwrap().len(),
             data.as_array().unwrap().len()
         );
-        assert_eq!(committed.kind(), DataStorageKind::Inline);
+        assert_eq!(committed.storage_kind(), StorageKind::Inline);
 
-        let committed_data = NexusData::from_data_storage(committed, true);
+        let committed_data: NexusData = committed.into();
 
         // Data should be decrypted when we fetch as user.
         let fetched = committed_data
@@ -887,7 +922,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Inline);
+        assert_eq!(fetched.storage_kind(), StorageKind::Inline);
     }
 
     #[tokio::test]
@@ -899,9 +934,9 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert!(!nexus_data.encrypted);
+        assert!(!nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
 
         // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
@@ -911,7 +946,7 @@ mod tests {
 
         assert_ne!(committed.as_json(), &data);
         assert!(committed.as_json().is_string());
-        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+        assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
         // We can fetch and parse the blob from Walrus to get back the original data.
         let key = committed.as_json().as_str().unwrap();
@@ -925,7 +960,7 @@ mod tests {
 
         assert_eq!(fetched_data, data);
 
-        let committed_data = NexusData::from_data_storage(committed, false);
+        let committed_data: NexusData = committed.into();
 
         // Data should be fetched from walrus when we fetch as user.
         let fetched = committed_data
@@ -934,7 +969,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+        assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[tokio::test]
@@ -947,9 +982,9 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert!(!nexus_data.encrypted);
+        assert!(!nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
 
         // Nothing should change when we commit as Nexus.
         let committed = nexus_data
@@ -958,9 +993,9 @@ mod tests {
             .expect("Failed to commit data");
 
         assert_eq!(committed.as_json(), &data);
-        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+        assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        let committed_data = NexusData::from_data_storage(committed, false);
+        let committed_data: NexusData = committed.into();
 
         // Nothing should change when we fetch as user.
         let fetched = committed_data
@@ -969,7 +1004,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+        assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[tokio::test]
@@ -981,9 +1016,9 @@ mod tests {
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert!(nexus_data.encrypted);
+        assert!(nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
 
         // Data should be encrypted and stored on walrus when we commit as Nexus.
         let committed = nexus_data
@@ -993,7 +1028,7 @@ mod tests {
 
         assert_ne!(committed.as_json(), &data);
         assert!(committed.as_json().is_string());
-        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+        assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
         // We can fetch and parse the blob from Walrus to get back the original data.
         let key = committed.as_json().as_str().unwrap();
@@ -1009,7 +1044,7 @@ mod tests {
             .expect("Failed to decrypt data");
         assert_eq!(decrypted_data, data);
 
-        let committed_data = NexusData::from_data_storage(committed, true);
+        let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
             .fetch(&storage_conf, &mut user_session)
@@ -1017,7 +1052,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+        assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[tokio::test]
@@ -1029,9 +1064,9 @@ mod tests {
         let nexus_data = NexusData::new_walrus(data.clone());
 
         // Inspect the inner data.
-        assert!(!nexus_data.encrypted);
+        assert!(!nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
 
         // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
@@ -1045,7 +1080,7 @@ mod tests {
             committed.as_json().as_array().unwrap().len(),
             data.as_array().unwrap().len()
         );
-        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+        assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
         // We can fetch and parse the blob from Walrus to get back the original data.
         let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
@@ -1059,7 +1094,7 @@ mod tests {
 
         assert_eq!(fetched_data, data);
 
-        let committed_data = NexusData::from_data_storage(committed, false);
+        let committed_data: NexusData = committed.into();
 
         // Data should be fetched from walrus when we fetch as user.
         let fetched = committed_data
@@ -1068,7 +1103,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+        assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[tokio::test]
@@ -1080,9 +1115,9 @@ mod tests {
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
 
         // Inspect the inner data.
-        assert!(nexus_data.encrypted);
+        assert!(nexus_data.data.is_encrypted());
         assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.kind(), DataStorageKind::Walrus);
+        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
 
         // Data should be encrypted and stored on walrus when we commit as Nexus.
         let committed = nexus_data
@@ -1096,7 +1131,7 @@ mod tests {
             committed.as_json().as_array().unwrap().len(),
             data.as_array().unwrap().len()
         );
-        assert_eq!(committed.kind(), DataStorageKind::Walrus);
+        assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
         // We can fetch and parse the blob from Walrus to get back the original data.
         let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
@@ -1114,7 +1149,7 @@ mod tests {
             .expect("Failed to decrypt data");
         assert_eq!(decrypted_data, data);
 
-        let committed_data = NexusData::from_data_storage(committed, true);
+        let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
             .fetch(&storage_conf, &mut user_session)
@@ -1122,7 +1157,7 @@ mod tests {
             .expect("Failed to fetch data");
 
         assert_eq!(fetched.as_json(), &data);
-        assert_eq!(fetched.kind(), DataStorageKind::Walrus);
+        assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[test]
@@ -1197,7 +1232,7 @@ mod tests {
             &json,
             &encrypt_fields,
             &remote_fields,
-            Some(DataStorageKind::Inline),
+            Some(StorageKind::Inline),
         );
         assert!(result.is_err());
         assert_matches!(
@@ -1218,7 +1253,7 @@ mod tests {
             &json,
             &encrypt_fields,
             &remote_fields,
-            Some(DataStorageKind::Inline),
+            Some(StorageKind::Inline),
         );
         assert!(result.is_err());
         assert_matches!(

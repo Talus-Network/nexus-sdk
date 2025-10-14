@@ -56,7 +56,7 @@ pub mod nexus_data;
 pub use nexus_data::{
     hint_remote_fields,
     json_to_nexus_data_map,
-    DataStorageKind,
+    DataStorage,
     NexusData,
     StorageConf,
 };

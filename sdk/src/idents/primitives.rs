@@ -46,15 +46,106 @@ impl Data {
         module: DATA_MODULE,
         name: sui::move_ident_str!("NexusData"),
     };
+    /// Create NexusData from a vector of vectors of bytes that are stored on
+    /// Walrus.
+    ///
+    /// `nexus_primitives::data::walrus_many`
+    pub const WALRUS_MANY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("walrus_many"),
+    };
+    /// Create NexusData from a vector of vectors of bytes that are stored on
+    /// Walrus and mark it as encrypted.
+    ///
+    /// `nexus_primitives::data::walrus_many_encrypted`
+    pub const WALRUS_MANY_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("walrus_many_encrypted"),
+    };
+    /// Create NexusData from a vector of bytes that are stored on Walrus.
+    ///
+    /// `nexus_primitives::data::walrus_one`
+    pub const WALRUS_ONE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("walrus_one"),
+    };
+    /// Create NexusData from a vector of bytes that are stored on Walrus and
+    /// mark it as encrypted.
+    ///
+    /// `nexus_primitives::data::walrus_one_encrypted`
+    pub const WALRUS_ONE_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DATA_MODULE,
+        name: sui::move_ident_str!("walrus_one_encrypted"),
+    };
 
-    /// Create NexusData from a [serde_json::Value].
+    /// Create NexusData with inline storage from a [serde_json::Value].
     pub fn nexus_data_inline_from_json<T: serde::Serialize>(
         tx: &mut sui::ProgrammableTransactionBuilder,
         primitives_pkg_id: sui::ObjectID,
         json: &T,
-        encrypted: bool,
     ) -> anyhow::Result<sui::Argument> {
-        // Arrays need to be created with `Self::INLINE_MANY`.
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::INLINE_ONE,
+            &Self::INLINE_MANY,
+        )
+    }
+
+    /// Create NexusData with inline encrypted storage from a [serde_json::Value].
+    pub fn nexus_data_inline_encrypted_from_json<T: serde::Serialize>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        primitives_pkg_id: sui::ObjectID,
+        json: &T,
+    ) -> anyhow::Result<sui::Argument> {
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::INLINE_ONE_ENCRYPTED,
+            &Self::INLINE_MANY_ENCRYPTED,
+        )
+    }
+
+    /// Create NexusData with Walrus storage from a [serde_json::Value].
+    pub fn nexus_data_walrus_from_json<T: serde::Serialize>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        primitives_pkg_id: sui::ObjectID,
+        json: &T,
+    ) -> anyhow::Result<sui::Argument> {
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::WALRUS_ONE,
+            &Self::WALRUS_MANY,
+        )
+    }
+
+    /// Create NexusData with Walrus encrypted storage from a [serde_json::Value].
+    pub fn nexus_data_walrus_encrypted_from_json<T: serde::Serialize>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        primitives_pkg_id: sui::ObjectID,
+        json: &T,
+    ) -> anyhow::Result<sui::Argument> {
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::WALRUS_ONE_ENCRYPTED,
+            &Self::WALRUS_MANY_ENCRYPTED,
+        )
+    }
+
+    /// Internal helper to create NexusData from a [serde_json::Value].
+    fn nexus_data_from_json<T: serde::Serialize>(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        primitives_pkg_id: sui::ObjectID,
+        json: &T,
+        one: &ModuleAndNameIdent,
+        many: &ModuleAndNameIdent,
+    ) -> anyhow::Result<sui::Argument> {
         if let serde_json::Value::Array(arr) = serde_json::to_value(json)? {
             let type_params = vec![sui::MoveTypeTag::Vector(Box::new(sui::MoveTypeTag::U8))];
 
@@ -67,10 +158,7 @@ impl Data {
             );
 
             for data in arr {
-                // `bytes: vector<u8>`
                 let data_bytes = tx.pure(serde_json::to_string(&data)?.into_bytes())?;
-
-                // `vector<vector<u8>>::push_back`
                 tx.programmable_move_call(
                     sui::MOVE_STDLIB_PACKAGE_ID,
                     move_std::Vector::PUSH_BACK.module.into(),
@@ -80,20 +168,10 @@ impl Data {
                 );
             }
 
-            if encrypted {
-                return Ok(tx.programmable_move_call(
-                    primitives_pkg_id,
-                    Self::INLINE_MANY_ENCRYPTED.module.into(),
-                    Self::INLINE_MANY_ENCRYPTED.name.into(),
-                    vec![],
-                    vec![vec],
-                ));
-            }
-
             return Ok(tx.programmable_move_call(
                 primitives_pkg_id,
-                Self::INLINE_MANY.module.into(),
-                Self::INLINE_MANY.name.into(),
+                many.module.into(),
+                many.name.into(),
                 vec![],
                 vec![vec],
             ));
@@ -101,20 +179,10 @@ impl Data {
 
         let json = tx.pure(serde_json::to_string(json)?.into_bytes())?;
 
-        if encrypted {
-            return Ok(tx.programmable_move_call(
-                primitives_pkg_id,
-                Self::INLINE_ONE_ENCRYPTED.module.into(),
-                Self::INLINE_ONE_ENCRYPTED.name.into(),
-                vec![],
-                vec![json],
-            ));
-        }
-
         Ok(tx.programmable_move_call(
             primitives_pkg_id,
-            Self::INLINE_ONE.module.into(),
-            Self::INLINE_ONE.name.into(),
+            one.module.into(),
+            one.name.into(),
             vec![],
             vec![json],
         ))
