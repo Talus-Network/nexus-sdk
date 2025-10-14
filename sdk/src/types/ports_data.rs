@@ -67,127 +67,30 @@ impl serde::Serialize for PortsData {
     }
 }
 
-// TODO:
-// #[cfg(test)]
-// mod tests {
-//     use {super::*, serde_json::json};
+#[cfg(test)]
+mod tests {
+    use {super::*, serde_json::json};
 
-//     fn sample_ports_data() -> PortsData {
-//         let mut values = HashMap::new();
-//         values.insert(
-//             TypeName::new("port1"),
-//             NexusData::new_inline(json!("value1")),
-//         );
-//         values.insert(TypeName::new("port2"), NexusData::new_inline(json!(42)));
-//         PortsData { values }
-//     }
+    fn sample_ports_data() -> PortsData {
+        let mut values = HashMap::new();
+        values.insert(
+            TypeName::new("port1"),
+            NexusData::new_inline(json!({ "key": "value" })),
+        );
+        PortsData { values }
+    }
 
-//     #[test]
-//     fn test_serialize_ports_data() {
-//         let ports_data = sample_ports_data();
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         assert!(json.contains("port1"));
-//         assert!(json.contains("value1"));
-//         assert!(json.contains("port2"));
-//         assert!(json.contains("42"));
-//     }
+    #[test]
+    fn test_ser_deser_ports_data() {
+        let ports_data = sample_ports_data();
+        let json = serde_json::to_string(&ports_data).unwrap();
 
-//     #[test]
-//     fn test_deserialize_ports_data() {
-//         let json = r#"
-//         {
-//             "contents": [
-//                 { "key": "port1", "value": { "String": "value1" } },
-//                 { "key": "port2", "value": { "Int": 42 } }
-//             ]
-//         }
-//         "#;
-//         let ports_data: PortsData = serde_json::from_str(json).unwrap();
-//         assert_eq!(ports_data.values.len(), 2);
-//         assert_eq!(
-//             ports_data.values.get(&TypeName::from("port1")),
-//             Some(&NexusData::String("value1".to_string()))
-//         );
-//         assert_eq!(
-//             ports_data.values.get(&TypeName::from("port2")),
-//             Some(&NexusData::Int(42))
-//         );
-//     }
+        assert_eq!(
+            json,
+            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":[105,110,108,105,110,101],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encrypted":false}}]}"#
+        );
 
-//     #[test]
-//     fn test_roundtrip_ser_de() {
-//         let ports_data = sample_ports_data();
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
-//         assert_eq!(ports_data.values, deserialized.values);
-//     }
-
-//     #[test]
-//     fn test_empty_ports_data() {
-//         let ports_data = PortsData {
-//             values: HashMap::new(),
-//         };
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
-//         assert!(deserialized.values.is_empty());
-//     }
-//     fn sample_ports_data() -> PortsData {
-//         let mut values = HashMap::new();
-//         values.insert(
-//             TypeName::from("port1"),
-//             NexusData::new_inline(serde_json::json!("value1")),
-//         );
-//         values.insert(TypeName::from("port2"), NexusData::Int(42));
-//         PortsData { values }
-//     }
-
-//     #[test]
-//     fn test_serialize_ports_data() {
-//         let ports_data = sample_ports_data();
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         assert!(json.contains("port1"));
-//         assert!(json.contains("value1"));
-//         assert!(json.contains("port2"));
-//         assert!(json.contains("42"));
-//     }
-
-//     #[test]
-//     fn test_deserialize_ports_data() {
-//         let json = r#"
-//     {
-//         "contents": [
-//             { "key": "port1", "value": { "Inline": "value1" } },
-//             { "key": "port2", "value": { "Int": 42 } }
-//         ]
-//     }
-//     "#;
-//         let ports_data: PortsData = serde_json::from_str(json).unwrap();
-//         assert_eq!(ports_data.values.len(), 2);
-//         assert_eq!(
-//             ports_data.values.get(&TypeName::from("port1")),
-//             Some(&NexusData::new_inline(serde_json::json!("value1")))
-//         );
-//         assert_eq!(
-//             ports_data.values.get(&TypeName::from("port2")),
-//             Some(&NexusData::Int(42))
-//         );
-//     }
-
-//     #[test]
-//     fn test_roundtrip_ser_de() {
-//         let ports_data = sample_ports_data();
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
-//         assert_eq!(ports_data.values, deserialized.values);
-//     }
-
-//     #[test]
-//     fn test_empty_ports_data() {
-//         let ports_data = PortsData {
-//             values: HashMap::new(),
-//         };
-//         let json = serde_json::to_string(&ports_data).unwrap();
-//         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
-//         assert!(deserialized.values.is_empty());
-//     }
-// }
+        let deserialized: PortsData = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ports_data);
+    }
+}
