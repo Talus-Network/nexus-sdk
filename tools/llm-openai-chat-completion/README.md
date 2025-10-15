@@ -8,7 +8,7 @@ It uses the [`async_openai`] crate to interact with the OpenAI API.
 
 ## Input
 
-**`api_key`: [`Secret<String>`]**
+**`api_key`: [`String`]**
 
 The API key to invoke the OpenAI API with.
 
