@@ -24,6 +24,7 @@ impl FromStr for StorageKind {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
