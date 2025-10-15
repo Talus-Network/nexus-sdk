@@ -927,6 +927,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_walrus_plain_roundrip() {
         let storage_conf = create_storage_conf();
         let (mut nexus_session, mut user_session) = create_test_sessions();
@@ -974,6 +975,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_walrus_empty_arr_plain_roundrip() {
         // Empty array should not contact walrus at all.
         let storage_conf = create_storage_conf();
@@ -1009,6 +1011,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_walrus_non_array_encrypted_roundrip() {
         let storage_conf = create_storage_conf();
         let (mut nexus_session, mut user_session) = create_test_sessions();
@@ -1057,6 +1060,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_walrus_array_plain_roundrip() {
         let storage_conf = create_storage_conf();
         let (mut nexus_session, mut user_session) = create_test_sessions();
@@ -1108,6 +1112,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_walrus_array_encrypted_roundrip() {
         let storage_conf = create_storage_conf();
         let (mut nexus_session, mut user_session) = create_test_sessions();

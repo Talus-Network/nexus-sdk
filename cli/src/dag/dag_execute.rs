@@ -450,6 +450,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_process_entry_ports_remote_only() {
         let input = json!({
             "vertex1": {
@@ -471,13 +472,14 @@ mod tests {
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        // port1 should be remote (not Inline)
-        assert!(!matches!(port1, DataStorage::Inline(_)));
+        // port1 should be walrus
+        assert_matches!(port1, DataStorage::Walrus(_));
         // port2 should be Inline
         assert_matches!(port2, DataStorage::Inline(_));
     }
 
     #[tokio::test]
+    #[serial_test::serial(wal_token)]
     async fn test_process_entry_ports_encrypt_and_remote() {
         let input = json!({
             "vertex1": {
@@ -500,9 +502,9 @@ mod tests {
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        // port1 should be encrypted and remote (not Inline)
+        // port1 should be encrypted and walrus
         assert!(port1.is_encrypted());
-        assert!(!matches!(port1, DataStorage::Inline(_)));
+        assert_matches!(port1, DataStorage::Walrus(_));
         // port2 should be Inline and not encrypted
         assert_matches!(port2, DataStorage::Inline(_));
         assert!(!port2.is_encrypted());

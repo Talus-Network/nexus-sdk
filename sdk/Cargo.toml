@@ -282,9 +282,10 @@ optional = true
 [dev-dependencies]
 assert_matches = "1.5.0"
 tokio = { workspace = true, features = ["full", "macros"] }
-serde_json = { workspace = true }
+serde_json.workspace = true
 mockito.workspace = true
-tempfile = "3"
+serial_test.workspace = true
+tempfile.workspace = true
 
 # === Build deps ===
 [build-dependencies]
