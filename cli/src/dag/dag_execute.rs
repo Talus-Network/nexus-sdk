@@ -336,19 +336,18 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
+        mockito::{Server, ServerGuard},
         nexus_sdk::{
             crypto::{
                 session::{Message, Session},
                 x3dh::{IdentityKey, PreKeyBundle},
             },
             types::{DataStorage, Storable},
+            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
         },
         serde_json::json,
         std::collections::HashMap,
     };
-
-    const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
-    const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
 
     /// Helper to create a mock session for testing
     fn create_mock_session() -> Session {
@@ -380,12 +379,20 @@ mod tests {
         sender_sess
     }
 
-    fn create_storage_conf() -> StorageConf {
-        StorageConf {
-            walrus_publisher_url: Some(WALRUS_PUBLISHER_URL.to_string()),
-            walrus_aggregator_url: Some(WALRUS_AGGREGATOR_URL.to_string()),
+    /// Setup mock server for Walrus testing
+    async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
+        // Create mock server
+        let server = Server::new_async().await;
+        let server_url = server.url();
+
+        // Create a Walrus client that points to our mock server
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(server_url.clone()),
+            walrus_aggregator_url: Some(server_url),
             walrus_save_for_epochs: Some(2),
-        }
+        };
+
+        Ok((server, storage_conf))
     }
 
     #[tokio::test]
@@ -396,7 +403,9 @@ mod tests {
                 "port2": "value2"
             }
         });
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];
@@ -428,7 +437,9 @@ mod tests {
                 "port2": "plain_value"
             }
         });
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let mut encrypt = HashMap::new();
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
@@ -450,7 +461,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_process_entry_ports_remote_only() {
         let input = json!({
             "vertex1": {
@@ -458,10 +468,32 @@ mod tests {
                 "port2": "local_value"
             }
         });
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec!["vertex1.port1".to_string()];
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
 
         let result =
             process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
@@ -476,10 +508,12 @@ mod tests {
         assert_matches!(port1, DataStorage::Walrus(_));
         // port2 should be Inline
         assert_matches!(port2, DataStorage::Inline(_));
+
+        // Verify the request was made
+        mock_put.assert_async().await;
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_process_entry_ports_encrypt_and_remote() {
         let input = json!({
             "vertex1": {
@@ -487,11 +521,33 @@ mod tests {
                 "port2": "plain_local_value"
             }
         });
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let mut encrypt = HashMap::new();
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec!["vertex1.port1".to_string()];
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
 
         let result =
             process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
@@ -508,12 +564,17 @@ mod tests {
         // port2 should be Inline and not encrypted
         assert_matches!(port2, DataStorage::Inline(_));
         assert!(!port2.is_encrypted());
+
+        // Verify the request was made
+        mock_put.assert_async().await;
     }
 
     #[tokio::test]
     async fn test_process_entry_ports_invalid_input_not_object() {
         let input = json!("not_an_object");
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];
@@ -530,7 +591,9 @@ mod tests {
         let input = json!({
             "vertex1": "not_an_object"
         });
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
         let mut session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];

@@ -26,9 +26,6 @@ pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 
 // == NexusData ==
 
-// TODO: add remote storage configurations to CLI
-// TODO: add CLI docs
-
 /// Note that the sole reason the top-level [`NexusData`] struct exists is to
 /// ensure that the inner `data` can only be accessed via [`DataStorage`]'s
 /// `fetch` and `commit` methods.
@@ -762,21 +759,22 @@ mod parser {
     }
 }
 
-/// E2E tests for encryption, walrus integration and the helpers.
+/// Tests encryption, walrus integration and the helpers.
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::crypto::{
-            session::Message,
-            x3dh::{IdentityKey, PreKeyBundle},
+        crate::{
+            crypto::{
+                session::Message,
+                x3dh::{IdentityKey, PreKeyBundle},
+            },
+            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
         },
         assert_matches::assert_matches,
+        mockito::{Server, ServerGuard},
         serde_json::json,
     };
-
-    const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
-    const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
 
     /// Helper to create sender and receiver sessions for testing
     /// Returns (nexus_session, user_session) where:
@@ -811,17 +809,27 @@ mod tests {
         (sender_sess, receiver_sess)
     }
 
-    fn create_storage_conf() -> StorageConf {
-        StorageConf {
-            walrus_publisher_url: Some(WALRUS_PUBLISHER_URL.to_string()),
-            walrus_aggregator_url: Some(WALRUS_AGGREGATOR_URL.to_string()),
+    /// Setup mock server for Walrus testing
+    async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
+        // Create mock server
+        let server = Server::new_async().await;
+        let server_url = server.url();
+
+        // Create a Walrus client that points to our mock server
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(server_url.clone()),
+            walrus_aggregator_url: Some(server_url),
             walrus_save_for_epochs: Some(2),
-        }
+        };
+
+        Ok((server, storage_conf))
     }
 
     #[tokio::test]
     async fn test_inline_plain_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
@@ -855,7 +863,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_non_array_encrypted_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
@@ -889,7 +899,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_array_encrypted_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
@@ -927,11 +939,40 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_walrus_plain_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let mock_get = server
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&data).expect("Must serialize"))
+            .create_async()
+            .await;
 
         let nexus_data = NexusData::new_walrus(data.clone());
 
@@ -950,18 +991,6 @@ mod tests {
         assert!(committed.as_json().is_string());
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        // We can fetch and parse the blob from Walrus to get back the original data.
-        let key = committed.as_json().as_str().unwrap();
-        let client = WalrusClient::builder()
-            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
-            .build();
-        let fetched_data = client
-            .read_json::<serde_json::Value>(key)
-            .await
-            .expect("Failed to fetch data from Walrus");
-
-        assert_eq!(fetched_data, data);
-
         let committed_data: NexusData = committed.into();
 
         // Data should be fetched from walrus when we fetch as user.
@@ -972,13 +1001,18 @@ mod tests {
 
         assert_eq!(fetched.as_json(), &data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
+
+        // Verify the requests were made
+        mock_put.assert_async().await;
+        mock_get.assert_async().await;
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_walrus_empty_arr_plain_roundrip() {
         // Empty array should not contact walrus at all.
-        let storage_conf = create_storage_conf();
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([]);
 
@@ -1011,13 +1045,47 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_walrus_non_array_encrypted_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let mut encrypted_data = data.clone();
+        nexus_session
+            .encrypt_nexus_data_json(&mut encrypted_data)
+            .expect("Must encrypt data");
+
+        let mock_get = server
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&encrypted_data).expect("Must serialize"))
+            .create_async()
+            .await;
 
         // Inspect the inner data.
         assert!(nexus_data.data.is_encrypted());
@@ -1034,20 +1102,6 @@ mod tests {
         assert!(committed.as_json().is_string());
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        // We can fetch and parse the blob from Walrus to get back the original data.
-        let key = committed.as_json().as_str().unwrap();
-        let client = WalrusClient::builder()
-            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
-            .build();
-        let fetched_data = client
-            .read_json::<serde_json::Value>(key)
-            .await
-            .expect("Failed to fetch data from Walrus");
-        let decrypted_data = nexus_session
-            .decrypt_nexus_data_json(&fetched_data)
-            .expect("Failed to decrypt data");
-        assert_eq!(decrypted_data, data);
-
         let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
@@ -1057,16 +1111,49 @@ mod tests {
 
         assert_eq!(fetched.as_json(), &data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
+
+        // Verify the requests were made
+        mock_put.assert_async().await;
+        mock_get.assert_async().await;
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_walrus_array_plain_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
         let nexus_data = NexusData::new_walrus(data.clone());
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let mock_get = server
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&data).expect("Must serialize"))
+            .create_async()
+            .await;
 
         // Inspect the inner data.
         assert!(!nexus_data.data.is_encrypted());
@@ -1087,18 +1174,6 @@ mod tests {
         );
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        // We can fetch and parse the blob from Walrus to get back the original data.
-        let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
-        let client = WalrusClient::builder()
-            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
-            .build();
-        let fetched_data = client
-            .read_json::<serde_json::Value>(key)
-            .await
-            .expect("Failed to fetch data from Walrus");
-
-        assert_eq!(fetched_data, data);
-
         let committed_data: NexusData = committed.into();
 
         // Data should be fetched from walrus when we fetch as user.
@@ -1109,16 +1184,54 @@ mod tests {
 
         assert_eq!(fetched.as_json(), &data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
+
+        // Verify the requests were made
+        mock_put.assert_async().await;
+        mock_get.assert_async().await;
     }
 
     #[tokio::test]
-    #[serial_test::serial(wal_token)]
     async fn test_walrus_array_encrypted_roundrip() {
-        let storage_conf = create_storage_conf();
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Mock server should start");
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let mut encrypted_data = data.clone();
+        nexus_session
+            .encrypt_nexus_data_json(&mut encrypted_data)
+            .expect("Must encrypt data");
+
+        let mock_get = server
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&encrypted_data).expect("Must serialize"))
+            .create_async()
+            .await;
 
         // Inspect the inner data.
         assert!(nexus_data.data.is_encrypted());
@@ -1139,22 +1252,6 @@ mod tests {
         );
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        // We can fetch and parse the blob from Walrus to get back the original data.
-        let key = committed.as_json().as_array().unwrap()[0].as_str().unwrap();
-        let client = WalrusClient::builder()
-            .with_aggregator_url(WALRUS_AGGREGATOR_URL)
-            .build();
-        let fetched_data = client
-            .read_json::<serde_json::Value>(key)
-            .await
-            .expect("Failed to fetch data from Walrus");
-        // Each element should be encrypted individually.
-        assert!(fetched_data.is_array());
-        let decrypted_data = nexus_session
-            .decrypt_nexus_data_json(&fetched_data)
-            .expect("Failed to decrypt data");
-        assert_eq!(decrypted_data, data);
-
         let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
@@ -1164,6 +1261,10 @@ mod tests {
 
         assert_eq!(fetched.as_json(), &data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
+
+        // Verify the requests were made
+        mock_put.assert_async().await;
+        mock_get.assert_async().await;
     }
 
     #[test]
