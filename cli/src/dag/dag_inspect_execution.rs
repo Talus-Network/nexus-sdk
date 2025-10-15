@@ -39,6 +39,9 @@ pub(crate) async fn inspect_dag_execution(
     let sui_conf = conf.sui.clone();
     let sui = build_sui_client(&sui_conf).await?;
 
+    // Remote storage conf.
+    let storage_conf = conf.data_storage.clone().into();
+
     // Check if we have authentication for potential decryption and get the session
     let session = get_active_session(&mut conf)?;
 
@@ -98,12 +101,9 @@ pub(crate) async fn inspect_dag_execution(
 
                     let mut json_data = Vec::new();
 
-                    for (port, data) in e.variant_ports_to_data.values {
+                    for (port, data) in e.variant_ports_to_data.into_map() {
                         let (display_data, json_data_value) =
-                            match process_port_data(&port, data, session).await {
-                                Ok(result) => result,
-                                Err(e) => return Err(NexusCliError::Any(anyhow!("{}", e))),
-                            };
+                            process_port_data(&port, data, &storage_conf, session).await?;
 
                         item!(
                             "Port '{port}' produced data: {data}",
@@ -132,12 +132,9 @@ pub(crate) async fn inspect_dag_execution(
 
                     let mut json_data = Vec::new();
 
-                    for (port, data) in e.variant_ports_to_data.values {
+                    for (port, data) in e.variant_ports_to_data.into_map() {
                         let (display_data, json_data_value) =
-                            match process_port_data(&port, data, session).await {
-                                Ok(result) => result,
-                                Err(e) => return Err(NexusCliError::Any(anyhow!("{}", e))),
-                            };
+                            process_port_data(&port, data, &storage_conf, session).await?;
 
                         item!(
                             "Port '{port}' produced data: {data}",
@@ -185,11 +182,18 @@ pub(crate) async fn inspect_dag_execution(
 async fn process_port_data(
     port: &TypeName,
     data: NexusData,
+    storage_conf: &StorageConf,
     session: &mut nexus_sdk::crypto::session::Session,
-) -> AnyResult<(String, serde_json::Value)> {
-    // TODO: configure walrus eps.
-    let conf = StorageConf::default();
-    let data = data.fetch(&conf, session).await?;
+) -> Result<(String, serde_json::Value), NexusCliError> {
+    let data = data.fetch(&storage_conf, session).await.map_err(|e| {
+        NexusCliError::Any(anyhow!(
+            "Failed to fetch data for port '{port}': {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+            port = port.name,
+            e = e,
+            command = "$ nexus conf set --data-storage.walrus-aggregator-url <URL>",
+            testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+        ))
+    })?;
 
     Ok((
         format!("{data:?}"),
@@ -268,6 +272,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_port_data_plain_data() {
         let (mut _sender, mut receiver) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let port = TypeName {
             name: "test_port".to_string(),
@@ -281,7 +286,7 @@ mod tests {
 
         let nexus_data = NexusData::new_inline(test_data.clone());
 
-        let result = process_port_data(&port, nexus_data, &mut receiver).await;
+        let result = process_port_data(&port, nexus_data, &storage_conf, &mut receiver).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -298,6 +303,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_port_data_encrypted_data() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let port = TypeName {
             name: "encrypted_port".to_string(),
@@ -320,7 +326,7 @@ mod tests {
 
         let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, nexus_data, &mut user_session).await;
+        let result = process_port_data(&port, nexus_data, &storage_conf, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -337,6 +343,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_port_data_encrypted_simple_string() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let port = TypeName {
             name: "string_port".to_string(),
@@ -352,7 +359,7 @@ mod tests {
 
         let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, nexus_data, &mut user_session).await;
+        let result = process_port_data(&port, nexus_data, &storage_conf, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -368,6 +375,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_port_data_encrypted_complex_object() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let port = TypeName {
             name: "complex_port".to_string(),
@@ -400,7 +408,7 @@ mod tests {
 
         let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
-        let result = process_port_data(&port, nexus_data, &mut user_session).await;
+        let result = process_port_data(&port, nexus_data, &storage_conf, &mut user_session).await;
 
         assert!(result.is_ok());
         let (display_data, json_result) = result.unwrap();
@@ -418,6 +426,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_port_data_malformed_encrypted_data() {
         let (_nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let port = TypeName {
             name: "bad_port".to_string(),
@@ -428,7 +437,7 @@ mod tests {
 
         let nexus_data = NexusData::new_inline_encrypted(bad_encrypted_data);
 
-        let result = process_port_data(&port, nexus_data, &mut user_session).await;
+        let result = process_port_data(&port, nexus_data, &storage_conf, &mut user_session).await;
 
         // Should fail because the data is not properly encrypted
         assert!(result.is_err());
@@ -437,6 +446,7 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_encrypt_decrypt_roundtrips() {
         let (mut nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf::default();
 
         let test_cases = vec![
             ("port1", json!("first message")),
@@ -460,7 +470,8 @@ mod tests {
             let nexus_data = NexusData::new_inline_encrypted(encrypted);
 
             // Decrypt and verify using user session (simulating user inspecting execution)
-            let result = process_port_data(&port, nexus_data, &mut user_session).await;
+            let result =
+                process_port_data(&port, nexus_data, &storage_conf, &mut user_session).await;
             assert!(result.is_ok(), "Failed to process port {}", port_name);
 
             let (_display_data, json_result) = result.unwrap();

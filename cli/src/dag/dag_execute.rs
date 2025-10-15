@@ -14,7 +14,7 @@ use {
         idents::workflow,
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
-        types::{DataStorage, StorageConf, StorageKind, TypeName},
+        types::{hint_remote_fields, DataStorage, Storable, StorageConf, StorageKind, TypeName},
     },
 };
 
@@ -42,12 +42,8 @@ pub(crate) async fn execute_dag(
     let objects = &get_nexus_objects(&mut conf).await?;
 
     // Build the remote storage conf.
-    // TODO: make this configurable
-    let storage_conf = StorageConf {
-        walrus_publisher_url: Some("".to_owned()),
-        walrus_aggregator_url: Some("".to_owned()),
-        walrus_save_for_epochs: Some(2),
-    };
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
     let session = get_active_session(&mut conf)?;
@@ -57,8 +53,15 @@ pub(crate) async fn execute_dag(
 
     // Encrypt ports that need to be encrypted and store ports remote if they
     // need to be stored remotely.
-    let input_data =
-        process_entry_ports(&input_json, &storage_conf, session, &encrypt, &remote).await?;
+    let input_data = process_entry_ports(
+        &input_json,
+        &storage_conf,
+        preferred_remote_storage,
+        session,
+        &encrypt,
+        &remote,
+    )
+    .await?;
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
@@ -140,6 +143,7 @@ pub(crate) async fn execute_dag(
 async fn process_entry_ports(
     input: &serde_json::Value,
     storage_conf: &StorageConf,
+    preferred_remote_storage: Option<StorageKind>,
     session: &mut Session,
     encrypt: &HashMap<String, Vec<String>>,
     remote: &Vec<String>,
@@ -163,9 +167,6 @@ async fn process_entry_ports(
 
         // Figure out which ports need to be encrypted and stored remotely for
         // this vertex.
-        // TODO: config?
-        // TODO: add hint for remote fields?
-        let preferred_remote_storage = Some(StorageKind::Walrus);
         let encrypt_fields = encrypt.get(vertex);
         let remote_fields = ports
             .iter()
@@ -184,7 +185,7 @@ async fn process_entry_ports(
             data,
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,
-            preferred_remote_storage,
+            preferred_remote_storage.clone(),
         )
         .map_err(NexusCliError::Any)?;
 
@@ -194,12 +195,43 @@ async fn process_entry_ports(
             let committed = nexus_data
                 .commit(&storage_conf, session)
                 .await
-                .map_err(NexusCliError::Any)?;
+                .map_err(|e| {
+                    NexusCliError::Any(anyhow!(
+                        "Failed to store data for port '{port}': {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                        port = port,
+                        e = e,
+                        command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                        testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                    ))
+                })?;
 
             port_data.insert(port, committed);
         }
 
         result.insert(vertex.clone(), port_data);
+    }
+
+    // Hint the user if they should use remote storage and for what fields.
+    let flattened = result
+        .iter()
+        .flat_map(|(vertex, ports)| {
+            ports.iter().map(|(port, data)| {
+                (
+                    format!("{}.{}", vertex.clone(), port.clone()),
+                    data.as_json(),
+                )
+            })
+        })
+        .collect::<HashMap<String, &serde_json::Value>>();
+
+    let remote_hints = hint_remote_fields(&json!(flattened)).unwrap_or_default();
+
+    if !remote_hints.is_empty() {
+        return Err(NexusCliError::Any(anyhow!(
+            "Some input fields must be stored remotely to fit within transaction size limits. Please add the following argument to your command:\n\n{command} {fields}",
+            command = "--remote",
+            fields = remote_hints.join(",")
+        )));
     }
 
     // Advance the ratchet if we need to.
@@ -369,9 +401,10 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result = process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote)
-            .await
-            .expect("Should succeed");
+        let result =
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
+                .await
+                .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
         let port1 = vertex.get("port1").expect("port1 missing");
@@ -401,9 +434,10 @@ mod tests {
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec![];
 
-        let result = process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote)
-            .await
-            .expect("Should succeed");
+        let result =
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
+                .await
+                .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
         let port1 = vertex.get("port1").expect("port1 missing");
@@ -428,9 +462,10 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec!["vertex1.port1".to_string()];
 
-        let result = process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote)
-            .await
-            .expect("Should succeed");
+        let result =
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
+                .await
+                .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
         let port1 = vertex.get("port1").expect("port1 missing");
@@ -456,9 +491,10 @@ mod tests {
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec!["vertex1.port1".to_string()];
 
-        let result = process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote)
-            .await
-            .expect("Should succeed");
+        let result =
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
+                .await
+                .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
         let port1 = vertex.get("port1").expect("port1 missing");
@@ -481,7 +517,7 @@ mod tests {
         let remote = vec![];
 
         let result =
-            process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote).await;
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("Input JSON must be an object"));
@@ -498,7 +534,7 @@ mod tests {
         let remote = vec![];
 
         let result =
-            process_entry_ports(&input, &storage_conf, &mut session, &encrypt, &remote).await;
+            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("must be an object with port names as keys"));

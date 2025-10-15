@@ -230,6 +230,7 @@ mod tests {
             nexus: None,
             tools: HashMap::new(),
             crypto: Some(secret_crypto),
+            ..Default::default()
         };
 
         cli_conf.save_to_path(&conf_path).await.expect("save conf");

@@ -1,6 +1,6 @@
 //! Module defines [`PortsData`] - struct that represents data stored on-chain
 //! in relation to their variants and ports. This can deserialize directly to
-//! [`crate::nexus_data::NexusData`]
+//! [`crate::types::NexusData`]
 
 use {
     crate::types::{NexusData, TypeName},
@@ -10,7 +10,27 @@ use {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsData {
-    pub values: HashMap<TypeName, NexusData>,
+    values: HashMap<TypeName, NexusData>,
+}
+
+impl PortsData {
+    pub fn into_map(self) -> HashMap<TypeName, NexusData> {
+        self.values
+    }
+}
+
+impl std::ops::Deref for PortsData {
+    type Target = HashMap<TypeName, NexusData>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl std::ops::DerefMut for PortsData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
 }
 
 impl<'de> serde::Deserialize<'de> for PortsData {
@@ -92,5 +112,28 @@ mod tests {
 
         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, ports_data);
+    }
+
+    #[test]
+    fn test_into_map_returns_inner_hashmap() {
+        let ports_data = sample_ports_data();
+        let map = ports_data.clone().into_map();
+
+        // The map should contain the same entries as the original PortsData
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key(&TypeName::new("port1")));
+        assert_eq!(
+            map.get(&TypeName::new("port1")),
+            ports_data.values.get(&TypeName::new("port1"))
+        );
+    }
+
+    #[test]
+    fn test_into_map_empty_ports_data() {
+        let ports_data = PortsData {
+            values: HashMap::new(),
+        };
+        let map = ports_data.into_map();
+        assert!(map.is_empty());
     }
 }

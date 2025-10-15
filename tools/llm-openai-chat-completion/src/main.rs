@@ -194,8 +194,7 @@ impl From<MessageBag> for Vec<Message> {
 #[serde(deny_unknown_fields)]
 struct Input {
     /// The OpenAI API key.
-    // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/29>.
-    api_key: Secret<String>,
+    api_key: String,
     /// The prompt to send to the chat completion API.
     prompt: MessageBag,
     /// The context to provide to the chat completion API.
