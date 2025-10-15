@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn test_input_deserialization() {
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "prompt": {"role": "system", "name": "robot", "value": "You are a helpful assistant."}
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
@@ -622,7 +622,7 @@ mod tests {
         );
 
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "prompt": "hello"
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
@@ -630,7 +630,7 @@ mod tests {
         assert!(matches!(input.prompt, MessageBag::One(Message::Short(s)) if s == *"hello"));
 
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "prompt": [
                 {"role": "system", "name": "robot", "value": "You are a helpful assistant."},
                 "Hello",
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn test_input_empty_message() {
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "prompt": []
         }"#;
         let input: Input = serde_json::from_str(json).unwrap();
@@ -673,7 +673,7 @@ mod tests {
     #[test]
     fn test_input_missing_message() {
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\""
+            "api_key": "your_api_key"
         }"#;
 
         let input: Result<Input, _> = serde_json::from_str(json);
@@ -715,7 +715,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "prompt": "Hello"
         }"#;
 
@@ -758,7 +758,7 @@ mod tests {
         let (mut server, tool) = create_server_and_tool().await;
 
         let json = r#"{
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "max_completion_tokens": 256,
             "temperature": 0.5,
             "model": "gpt-4o",
@@ -834,7 +834,7 @@ mod tests {
         let schema = schema_for!(Completion);
 
         let json = json!({
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "json_schema": {
                 "name": "completion",
                 "description": "A completion JSON schema",
@@ -904,7 +904,7 @@ mod tests {
         let schema = schema_for!(Completion);
 
         let json = json!({
-            "api_key": "best-encryption-ever-\"your_api_key\"",
+            "api_key": "your_api_key",
             "json_schema": {
                 "name": "completion",
                 "description": "A completion JSON schema",
