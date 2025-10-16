@@ -351,7 +351,7 @@ pub mod x25519_serde {
     use {
         super::X25519PublicKey,
         serde::{
-            de::{Error, Visitor},
+            de::{Error, SeqAccess, Visitor},
             Deserializer,
             Serializer,
         },
@@ -367,7 +367,7 @@ pub mod x25519_serde {
 
     struct PublicKeyVisitor;
 
-    impl Visitor<'_> for PublicKeyVisitor {
+    impl<'de> Visitor<'de> for PublicKeyVisitor {
         type Value = X25519PublicKey;
 
         fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -383,6 +383,27 @@ pub mod x25519_serde {
             }
             let mut bytes = [0u8; 32];
             bytes.copy_from_slice(v);
+            Ok(X25519PublicKey::from(bytes))
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut bytes = [0u8; 32];
+
+            for (idx, slot) in bytes.iter_mut().enumerate() {
+                let Some(value) = seq.next_element::<u8>()?
+                else {
+                    return Err(A::Error::invalid_length(idx, &self));
+                };
+                *slot = value;
+            }
+
+            if seq.next_element::<u8>()?.is_some() {
+                return Err(A::Error::invalid_length(33, &self));
+            }
+
             Ok(X25519PublicKey::from(bytes))
         }
     }

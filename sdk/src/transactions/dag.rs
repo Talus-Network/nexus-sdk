@@ -373,6 +373,7 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::ObjectRef,
+    gas_price: u64,
     entry_group: &str,
     input_json: serde_json::Value,
     encrypt: &HashMap<String, Vec<String>>,
@@ -400,6 +401,9 @@ pub fn execute(
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `gas_price: u64`
+    let gas_price_arg = tx.pure(gas_price)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -508,6 +512,7 @@ pub fn execute(
             dag,
             gas_service,
             network,
+            gas_price_arg,
             entry_group,
             with_vertex_inputs,
             clock,
@@ -737,12 +742,14 @@ mod tests {
                 "port1": {"key": "value"}
             }
         });
+        let gas_price = 42;
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         execute(
             &mut tx,
             &nexus_objects,
             &dag,
+            gas_price,
             entry_group,
             input_json,
             &HashMap::new(),

@@ -20,12 +20,84 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
+    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("dag_begin_execution_from_scheduler"),
+    };
     /// The DefaultTap struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("DefaultTAP"),
+    };
+}
+
+// == `nexus_workflow::scheduler` ==
+
+pub struct Scheduler;
+
+const SCHEDULER_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("scheduler");
+
+impl Scheduler {
+    /// Enqueue a new occurrence for a task with explicit deadline.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_absolute_for_task`
+    pub const ADD_OCCURRENCE_ABSOLUTE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_absolute_for_task"),
+    };
+    /// Enqueue a new occurrence with deadline offset.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_with_offset_for_task`
+    pub const ADD_OCCURRENCE_WITH_OFFSET_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_with_offset_for_task"),
+    };
+    /// Modify periodic schedule parameters for a task.
+    ///
+    /// `nexus_workflow::scheduler::modify_periodic_for_task`
+    pub const MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("modify_periodic_for_task"),
+    };
+    /// Disable periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::disable_periodic_for_task`
+    pub const DISABLE_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("disable_periodic_for_task"),
+    };
+    /// Pause the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::pause_time_constraint_for_task`
+    pub const PAUSE_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("pause_time_constraint_for_task"),
+    };
+    /// Resume the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::resume_time_constraint_for_task`
+    pub const RESUME_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("resume_time_constraint_for_task"),
+    };
+    /// Cancel scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
+    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("cancel_time_constraint_for_task"),
+    };
+    /// Run scheduler checks to consume the next occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_time_constraint`
+    pub const CHECK_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_time_constraint"),
     };
 }
 

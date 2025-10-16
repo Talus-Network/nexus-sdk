@@ -1,4 +1,8 @@
-use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use {
+    crate::sui,
+    serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
+    serde_json::Value,
+};
 
 /// Deserialize a `Vec<u8>` into a [reqwest::Url].
 pub fn deserialize_bytes_to_url<'de, D>(deserializer: D) -> Result<reqwest::Url, D::Error>
@@ -69,6 +73,85 @@ where
     S: Serializer,
 {
     value.to_string().serialize(serializer)
+}
+
+/// Deserialize an optional Sui `u64` value.
+pub fn deserialize_sui_option_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    fn parse_value(value: Value) -> Result<Option<u64>, String> {
+        match value {
+            Value::Null => Ok(None),
+            Value::String(str) => {
+                if str.is_empty() {
+                    Ok(None)
+                } else {
+                    str.parse::<u64>()
+                        .map(Some)
+                        .map_err(|e| format!("invalid number: {e}"))
+                }
+            }
+            Value::Number(num) => num
+                .as_u64()
+                .map(Some)
+                .ok_or_else(|| "expected unsigned number".to_string()),
+            Value::Object(mut object) => {
+                if let Some(inner) = object
+                    .remove("some")
+                    .or_else(|| object.remove("Some"))
+                {
+                    parse_value(inner)
+                } else if object.contains_key("none") || object.contains_key("None") {
+                    Ok(None)
+                } else {
+                    Err("expected Option with `some` or `none` field".to_string())
+                }
+            }
+            other => Err(format!("unexpected value for Option<u64>: {other}")),
+        }
+    }
+
+    match parse_value(Deserialize::deserialize(deserializer)?) {
+        Ok(value) => Ok(value),
+        Err(err) => Err(serde::de::Error::custom(err)),
+    }
+}
+
+/// Serialize an optional Sui `u64` value.
+pub fn serialize_sui_option_u64<S>(
+    value: &Option<u64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(inner) => Value::String(inner.to_string()).serialize(serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Deserialize a Sui address represented as a string.
+pub fn deserialize_sui_address<'de, D>(deserializer: D) -> Result<sui::Address, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: String = Deserialize::deserialize(deserializer)?;
+    value
+        .parse::<sui::Address>()
+        .map_err(serde::de::Error::custom)
+}
+
+/// Serialize a Sui address as a hex string.
+pub fn serialize_sui_address<S>(
+    value: &sui::Address,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.to_string())
 }
 
 /// Deserialize a `Vec<u8>` into a `String` using lossy UTF-8 conversion.
