@@ -97,10 +97,7 @@ where
                 .map(Some)
                 .ok_or_else(|| "expected unsigned number".to_string()),
             Value::Object(mut object) => {
-                if let Some(inner) = object
-                    .remove("some")
-                    .or_else(|| object.remove("Some"))
-                {
+                if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
                     parse_value(inner)
                 } else if object.contains_key("none") || object.contains_key("None") {
                     Ok(None)
@@ -119,10 +116,7 @@ where
 }
 
 /// Serialize an optional Sui `u64` value.
-pub fn serialize_sui_option_u64<S>(
-    value: &Option<u64>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_sui_option_u64<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -144,10 +138,7 @@ where
 }
 
 /// Serialize a Sui address as a hex string.
-pub fn serialize_sui_address<S>(
-    value: &sui::Address,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_sui_address<S>(value: &sui::Address, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

@@ -484,13 +484,14 @@ impl TryInto<NexusEvent> for sui::Event {
         let mut payload = self.parsed_json;
 
         let mut event_kind_name = name.to_string();
+        // TODO: Fix the implementation
         if event_kind_name == "RequestScheduledExecution" {
-            let mut is_occurrence = if let Some(sui::MoveTypeTag::Struct(inner)) = type_params.get(0)
-            {
-                inner.name.as_str() == "OccurrenceScheduledEvent"
-            } else {
-                false
-            };
+            let mut is_occurrence =
+                if let Some(sui::MoveTypeTag::Struct(inner)) = type_params.get(0) {
+                    inner.name.as_str() == "OccurrenceScheduledEvent"
+                } else {
+                    false
+                };
 
             if !is_occurrence {
                 if let Some(event) = payload.get("event") {

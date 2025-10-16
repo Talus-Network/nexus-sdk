@@ -60,7 +60,3 @@ pub mod secret_core;
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
-
-/// Kat provides a generic implementation of the Kat proof system.
-#[cfg(feature = "kat")]
-pub mod kat;

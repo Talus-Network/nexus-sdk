@@ -1,7 +1,10 @@
 use {
     super::{
         serde_parsers::{
-            deserialize_sui_address, deserialize_sui_u64, serialize_sui_address, serialize_sui_u64,
+            deserialize_sui_address,
+            deserialize_sui_u64,
+            serialize_sui_address,
+            serialize_sui_u64,
         },
         TypeName,
     },
@@ -359,9 +362,11 @@ fn is_value_wrapper_key(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
-    use sui::{move_ident_str, MoveStructTag, MoveTypeTag, ObjectID};
+    use {
+        super::*,
+        serde_json::json,
+        sui::{move_ident_str, MoveStructTag, MoveTypeTag, ObjectID},
+    };
 
     #[test]
     fn linear_policy_deserializes_from_wrapped_move_struct() {

@@ -57,12 +57,19 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("add_occurrence_with_offset_for_task"),
     };
-    /// Modify periodic schedule parameters for a task.
+    /// Cancel scheduling for a task.
     ///
-    /// `nexus_workflow::scheduler::modify_periodic_for_task`
-    pub const MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
+    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("modify_periodic_for_task"),
+        name: sui::move_ident_str!("cancel_time_constraint_for_task"),
+    };
+    /// Run scheduler checks to consume the next occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_time_constraint`
+    pub const CHECK_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_time_constraint"),
     };
     /// Disable periodic scheduling for a task.
     ///
@@ -70,6 +77,13 @@ impl Scheduler {
     pub const DISABLE_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("disable_periodic_for_task"),
+    };
+    /// Modify periodic schedule parameters for a task.
+    ///
+    /// `nexus_workflow::scheduler::modify_periodic_for_task`
+    pub const MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("modify_periodic_for_task"),
     };
     /// Pause the scheduler for a task.
     ///
@@ -84,20 +98,6 @@ impl Scheduler {
     pub const RESUME_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("resume_time_constraint_for_task"),
-    };
-    /// Cancel scheduling for a task.
-    ///
-    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
-    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("cancel_time_constraint_for_task"),
-    };
-    /// Run scheduler checks to consume the next occurrence.
-    ///
-    /// `nexus_workflow::scheduler::check_time_constraint`
-    pub const CHECK_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("check_time_constraint"),
     };
 }
 

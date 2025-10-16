@@ -1,8 +1,4 @@
-use crate::{
-    idents::workflow,
-    sui,
-    types::NexusObjects,
-};
+use crate::{idents::workflow, sui, types::NexusObjects};
 
 fn shared_task_arg(
     tx: &mut sui::ProgrammableTransactionBuilder,
@@ -119,7 +115,13 @@ pub fn modify_periodic_for_task(
         workflow::Scheduler::MODIFY_PERIODIC_FOR_TASK.module.into(),
         workflow::Scheduler::MODIFY_PERIODIC_FOR_TASK.name.into(),
         vec![],
-        vec![task, period_ms, deadline_offset_ms, max_iterations, gas_price],
+        vec![
+            task,
+            period_ms,
+            deadline_offset_ms,
+            max_iterations,
+            gas_price,
+        ],
     ))
 }
 
