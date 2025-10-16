@@ -1,6 +1,11 @@
 use {
     crate::{
-        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
+        command_title,
+        display::json_output,
+        loading,
+        notify_error,
+        notify_success,
+        prelude::*,
         sui::*,
     },
     nexus_sdk::{
@@ -477,11 +482,16 @@ fn convert_move_type_to_schema(
         }
         MoveNormalizedType::Reference(inner_type) => {
             let inner_schema = convert_move_type_to_schema(inner_type)?;
-            Ok(json!({
-                "type": "reference",
-                "description": "Reference to an object",
-                "referenced_type": inner_schema
-            }))
+            if let Value::Object(mut schema_obj) = inner_schema {
+                schema_obj.insert("mutable".to_string(), Value::Bool(false));
+                Ok(Value::Object(schema_obj))
+            } else {
+                Ok(json!({
+                    "type": "reference",
+                    "description": "Reference to an object",
+                    "referenced_type": inner_schema
+                }))
+            }
         }
         MoveNormalizedType::MutableReference(inner_type) => {
             let inner_schema = convert_move_type_to_schema(inner_type)?;
@@ -557,8 +567,10 @@ fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
 
 /// Allow the user to customize parameter descriptions interactively.
 fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
-    use serde_json::{Map, Value};
-    use std::io::{self, Write};
+    use {
+        serde_json::{Map, Value},
+        std::io::{self, Write},
+    };
 
     // Skip interactive prompts in JSON mode.
     if JSON_MODE.load(Ordering::Relaxed) {
@@ -621,7 +633,7 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
                     .unwrap_or(false);
 
                 let type_display = if is_mutable {
-                    format!("&mut {}", param_type)
+                    format!("mut {}", param_type)
                 } else {
                     param_type.to_string()
                 };

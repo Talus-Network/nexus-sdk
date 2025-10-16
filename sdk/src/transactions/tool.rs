@@ -199,9 +199,7 @@ pub fn register_on_chain_for_self(
     // `nexus_workflow::tool_registry::register_on_chain_tool()`
     let owner_cap_over_tool = tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
-            .module
-            .into(),
+        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module.into(),
         workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name.into(),
         vec![],
         vec![

@@ -1,6 +1,7 @@
 use crate::{
     idents::{sui_framework::Address, ModuleAndNameIdent},
-    sui, ToolFqn,
+    sui,
+    ToolFqn,
 };
 
 // == `nexus_workflow::default_tap` ==
@@ -170,7 +171,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("vertex_off_chain"),
     };
-
     /// Create a new onchain NodeIdent from an ASCII string.
     ///
     /// `nexus_workflow::dag::vertex_on_chain`
@@ -178,7 +178,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("vertex_on_chain"),
     };
-
     /// Add a default value to a DAG. Default value is a Vertex + InputPort pair
     /// with NexusData as the value.
     ///
@@ -402,12 +401,12 @@ pub struct ToolOutput;
 const TOOL_OUTPUT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_output");
 
 impl ToolOutput {
-    /// The ToolOutput struct type.
+    /// Create an error output variant with a reason.
     ///
-    /// `nexus_workflow::tool_output::ToolOutput`
-    pub const TOOL_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_output::err`
+    pub const ERR: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("ToolOutput"),
+        name: sui::move_ident_str!("err"),
     };
     /// Create a new empty tool output with the specified variant.
     ///
@@ -416,19 +415,26 @@ impl ToolOutput {
         module: TOOL_OUTPUT_MODULE,
         name: sui::move_ident_str!("new"),
     };
-    /// Create a success output variant.
+    /// Create an ok output variant.
     ///
-    /// `nexus_workflow::tool_output::success`
-    pub const SUCCESS: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_output::ok`
+    pub const OK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("success"),
+        name: sui::move_ident_str!("ok"),
     };
-    /// Create an error output variant with a reason.
+    /// The ToolOutput struct type.
     ///
-    /// `nexus_workflow::tool_output::error`
-    pub const ERROR: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_output::ToolOutput`
+    pub const TOOL_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("error"),
+        name: sui::move_ident_str!("ToolOutput"),
+    };
+    /// Convert ToolOutput to DAG types.
+    ///
+    /// `nexus_workflow::tool_output::to_dag_types`
+    pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("to_dag_types"),
     };
     /// Create a custom variant output.
     ///
@@ -450,13 +456,6 @@ impl ToolOutput {
     pub const WITH_FIELDS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_OUTPUT_MODULE,
         name: sui::move_ident_str!("with_fields"),
-    };
-    /// Convert ToolOutput to DAG types.
-    ///
-    /// `nexus_workflow::tool_output::to_dag_types`
-    pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("to_dag_types"),
     };
 }
 
@@ -490,6 +489,13 @@ impl ToolRegistry {
         // TODO: This will likely be renamed to `claim_collateral_for_tool`.
         name: sui::move_ident_str!("claim_collateral_for_off_chain_tool"),
     };
+    /// Get the witness ID for an onchain tool.
+    ///
+    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
+    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("onchain_tool_witness_id"),
+    };
     /// OverSlashing struct type. Used to fetch caps for slashing tools.
     ///
     /// `nexus_workflow::tool_registry::OverSlashing`
@@ -519,14 +525,6 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool_for_self"),
     };
-    /// Remove an address from the allowlist for tool registration.
-    /// Only callable by the holder of OverSlashing cap.
-    ///
-    /// `nexus_workflow::tool_registry::remove_allowed_owner`
-    pub const REMOVE_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::move_ident_str!("remove_allowed_owner"),
-    };
     /// Register an on-chain tool. This returns the tool's owner cap.
     ///
     /// `nexus_workflow::tool_registry::register_on_chain_tool`
@@ -542,6 +540,14 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_on_chain_tool_for_self"),
     };
+    /// Remove an address from the allowlist for tool registration.
+    /// Only callable by the holder of OverSlashing cap.
+    ///
+    /// `nexus_workflow::tool_registry::remove_allowed_owner`
+    pub const REMOVE_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("remove_allowed_owner"),
+    };
     /// The ToolRegistry struct type.
     ///
     /// `nexus_workflow::tool_registry::ToolRegistry`
@@ -556,14 +562,6 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         // TODO: This will likely be renamed to `unregister_tool`.
         name: sui::move_ident_str!("unregister_off_chain_tool"),
-    };
-
-    /// Get the witness ID for an onchain tool.
-    ///
-    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
-    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::move_ident_str!("onchain_tool_witness_id"),
     };
 }
 

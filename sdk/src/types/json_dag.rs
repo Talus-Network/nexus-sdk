@@ -25,12 +25,8 @@ pub struct Dag {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
 pub enum VertexKind {
-    OffChain {
-        tool_fqn: ToolFqn,
-    },
-    OnChain {
-        tool_fqn: ToolFqn,
-    },
+    OffChain { tool_fqn: ToolFqn },
+    OnChain { tool_fqn: ToolFqn },
 }
 
 #[derive(Clone, Debug, Deserialize)]

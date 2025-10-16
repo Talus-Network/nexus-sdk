@@ -65,7 +65,10 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
                     "OffChain Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
                     fqn = fqn.to_string().truecolor(100, 100, 100),
                     url = offchain_tool.url.as_str().truecolor(100, 100, 100),
-                    registered_at = offchain_tool.registered_at_ms.to_string().truecolor(100, 100, 100),
+                    registered_at = offchain_tool
+                        .registered_at_ms
+                        .to_string()
+                        .truecolor(100, 100, 100),
                     description = offchain_tool.description.truecolor(100, 100, 100),
                 );
             }
