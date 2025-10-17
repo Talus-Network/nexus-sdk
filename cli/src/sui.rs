@@ -397,8 +397,13 @@ fn get_sui_env(net: SuiNet) -> Option<sui::Env> {
 #[cfg(test)]
 mod tests {
     use {
-        super::*, assert_matches::assert_matches, mockito::Server, nexus_sdk::sui::Address,
-        rstest::rstest, serial_test::serial, tempfile::tempdir,
+        super::*,
+        assert_matches::assert_matches,
+        mockito::Server,
+        nexus_sdk::sui::Address,
+        rstest::rstest,
+        serial_test::serial,
+        tempfile::tempdir,
     };
 
     #[rstest(
