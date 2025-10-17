@@ -65,7 +65,16 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, &encrypt) {
+    // TODO: Add gas tool
+    if let Err(e) = dag::execute(
+        &mut tx,
+        objects,
+        &dag,
+        0,
+        &entry_group,
+        input_json,
+        &encrypt,
+    ) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
