@@ -64,6 +64,30 @@ impl NexusData {
         Ok(self.data)
     }
 
+    /// Convenience function that synchronously and infallibly creates a new
+    /// `NexusData` instance with inline, unencrypted data.
+    ///
+    /// This [`panic!`]s if used for any remote or encrypted storage.
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// use nexus_sdk::types::{NexusData, StorageKind};
+    ///
+    /// let data = NexusData::new_inline(serde_json::json!({"key": "value"})).commit_inline_plain();
+    ///
+    /// assert_eq!(data.as_json(), &serde_json::json!({"key": "value"}));
+    /// assert!(!data.is_encrypted());
+    /// assert_eq!(data.storage_kind(), StorageKind::Inline);
+    /// ```
+    pub fn commit_inline_plain(self) -> DataStorage {
+        if self.data.storage_kind() != StorageKind::Inline || self.data.is_encrypted() {
+            panic!("commit_inline_plain can only be used for inline, unencrypted data");
+        }
+
+        self.data
+    }
+
     /// Create inline data that is not encrypted.
     pub fn new_inline(data: serde_json::Value) -> Self {
         Self {
@@ -114,7 +138,7 @@ pub struct StorageConf {
     pub walrus_save_for_epochs: Option<u64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[enum_dispatch(Storable)]
 pub enum DataStorage {
     Inline(InlineStorage),
@@ -154,7 +178,7 @@ impl TryFrom<serde_json::Value> for DataStorage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InlineStorage {
     data: serde_json::Value,
     /// Whether the data is encrypted and should be decrypted before use or
@@ -196,7 +220,7 @@ impl Storable for InlineStorage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct WalrusStorage {
     data: serde_json::Value,
     /// Whether the data is encrypted and should be decrypted before use or
@@ -827,9 +851,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_plain_roundrip() {
-        let (_, storage_conf) = setup_mock_server_and_conf()
-            .await
-            .expect("Mock server should start");
+        let storage_conf = StorageConf::default();
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
@@ -863,9 +885,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_non_array_encrypted_roundrip() {
-        let (_, storage_conf) = setup_mock_server_and_conf()
-            .await
-            .expect("Mock server should start");
+        let storage_conf = StorageConf::default();
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
@@ -899,9 +919,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_array_encrypted_roundrip() {
-        let (_, storage_conf) = setup_mock_server_and_conf()
-            .await
-            .expect("Mock server should start");
+        let storage_conf = StorageConf::default();
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
@@ -1009,10 +1027,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_walrus_empty_arr_plain_roundrip() {
-        // Empty array should not contact walrus at all.
-        let (_, storage_conf) = setup_mock_server_and_conf()
-            .await
-            .expect("Mock server should start");
+        let storage_conf = StorageConf::default();
         let (mut nexus_session, mut user_session) = create_test_sessions();
         let data = json!([]);
 
