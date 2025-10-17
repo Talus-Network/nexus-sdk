@@ -1,12 +1,7 @@
 use {
     crate::{
-        command_title,
-        dag::dag_inspect_execution::inspect_dag_execution,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        sui::*,
+        command_title, dag::dag_inspect_execution::inspect_dag_execution, display::json_output,
+        loading, notify_success, prelude::*, sui::*,
     },
     anyhow::anyhow,
     nexus_sdk::{
@@ -65,11 +60,12 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
+    // TODO: Add gas tool
     if let Err(e) = dag::execute(
         &mut tx,
         objects,
         &dag,
-        reference_gas_price,
+        0,
         &entry_group,
         input_json,
         &encrypt,
@@ -170,7 +166,7 @@ fn get_active_session(
         Some(crypto_secret) => {
             if crypto_secret.sessions.is_empty() {
                 return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required - run `nexus crypto auth` first"
+                    "Authentication required — run `nexus crypto auth` first"
                 )));
             }
 
@@ -181,7 +177,7 @@ fn get_active_session(
                 .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
         }
         None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required - run `nexus crypto auth` first"
+            "Authentication required — run `nexus crypto auth` first"
         ))),
     }
 }

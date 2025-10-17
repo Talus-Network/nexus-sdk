@@ -37,7 +37,7 @@ pub(crate) async fn set_nexus_conf(
     }
 
     conf.sui.net = sui_net.unwrap_or(conf.sui.net);
-    conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui).await?;
+    conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
 
     json_output(&serde_json::to_value(&conf).unwrap())?;

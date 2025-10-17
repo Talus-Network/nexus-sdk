@@ -486,22 +486,25 @@ impl TryInto<NexusEvent> for sui::Event {
         let event_kind_name = name.to_string();
 
         if event_kind_name == "RequestScheduledExecution" {
-            let inner_name = type_params
-                .get(0)
-                .and_then(|tag| match tag {
+            fn extract_struct_name(tag: &sui::MoveTypeTag) -> Option<String> {
+                match tag {
                     sui::MoveTypeTag::Struct(inner) => {
-                        inner
-                            .type_params
-                            .get(0)
-                            .and_then(|inner_tag| match inner_tag {
-                                sui::MoveTypeTag::Struct(deep_inner) => {
-                                    Some(deep_inner.name.to_string())
-                                }
-                                _ => None,
-                            })
+                        if inner.type_params.is_empty() {
+                            Some(inner.name.to_string())
+                        } else {
+                            inner
+                                .type_params
+                                .iter()
+                                .find_map(extract_struct_name)
+                                .or_else(|| Some(inner.name.to_string()))
+                        }
                     }
                     _ => None,
-                })
+                }
+            }
+            let inner_name = type_params
+                .get(0)
+                .and_then(extract_struct_name)
                 .ok_or_else(|| anyhow::anyhow!("Scheduled event missing inner type parameter"))?;
 
             let request_value = payload

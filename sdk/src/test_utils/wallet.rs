@@ -3,7 +3,7 @@
 use crate::{sui, sui::traits::AccountKeystore};
 
 /// Create an ephemeral wallet context that can be loaded.
-pub async fn create_ephemeral_wallet_context(
+pub fn create_ephemeral_wallet_context(
     sui_port: u16,
 ) -> anyhow::Result<(sui::WalletContext, String)> {
     let derivation_path = None;
@@ -35,21 +35,20 @@ active_address: \"{addr}\"",
 
     std::fs::write(&path, config).map_err(|e| anyhow::anyhow!(e))?;
 
-    let mut context = sui::WalletContext::new(&path)?;
+    let request_timeout = None;
+    let max_concurrent_requests = None;
+
+    let mut context = sui::WalletContext::new(&path, request_timeout, max_concurrent_requests)?;
 
     let derivation_path = None;
     let alias = None;
 
-    context
-        .config
-        .keystore
-        .import_from_mnemonic(
-            sui_secret_mnemonic.as_str(),
-            sui::SignatureScheme::ED25519,
-            derivation_path,
-            alias,
-        )
-        .await?;
+    context.config.keystore.import_from_mnemonic(
+        sui_secret_mnemonic.as_str(),
+        sui::SignatureScheme::ED25519,
+        derivation_path,
+        alias,
+    )?;
 
     Ok((context, sui_secret_mnemonic))
 }

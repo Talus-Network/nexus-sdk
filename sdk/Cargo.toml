@@ -63,9 +63,6 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
-# Kat provides a generic implementation of the Kat proof system.
-kat = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
-
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -91,8 +88,8 @@ full = [
     "transactions",
     "walrus",
     "dag",
-    "kat"
 ]
+
 
 [dependencies]
 anyhow.workspace = true
@@ -164,14 +161,6 @@ optional = true
 version = "0.10"
 optional = true
 
-[dependencies.blake2]
-version = "0.10"
-optional = true
-
-[dependencies.digest]
-version = "0.10"
-optional = true
-
 [dependencies.subtle]
 version = "2"
 optional = true
@@ -238,43 +227,43 @@ optional = true
 # === Sui deps ===
 [dependencies.sui_sdk]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "sui-sdk"
 optional = true
 
 [dependencies.move_core_types]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "move-core-types"
 optional = true
 
 [dependencies.sui_keys]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "sui-keys"
 optional = true
 
 [dependencies.sui_config]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "sui-config"
 optional = true
 
 [dependencies.shared_crypto]
 git = "https://github.com/mystenlabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "shared-crypto"
 optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.57.3"
+tag = "mainnet-v1.45.3"
 package = "sui-package-management"
 optional = true
 

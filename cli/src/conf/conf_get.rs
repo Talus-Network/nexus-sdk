@@ -31,9 +31,7 @@ mod tests {
         std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
         std::env::set_var("XDG_DATA_HOME", secret_home.path());
 
-        let tempdir = tempfile::tempdir()
-            .expect("Failed to create tempdir")
-            .keep();
+        let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());

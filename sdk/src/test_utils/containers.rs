@@ -4,18 +4,10 @@
 //! - Sui
 //! - Redis
 
-use {
-    std::time::Duration,
-    testcontainers_modules::{
-        redis::Redis,
-        sui::Sui,
-        testcontainers::{
-            core::ports::ContainerPort,
-            runners::AsyncRunner,
-            ContainerAsync,
-            ImageExt,
-        },
-    },
+use testcontainers_modules::{
+    redis::Redis,
+    sui::Sui,
+    testcontainers::{core::ports::ContainerPort, runners::AsyncRunner, ContainerAsync, ImageExt},
 };
 
 pub type SuiContainer = ContainerAsync<Sui>;
@@ -28,9 +20,8 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
+        .with_name("taluslabs/sui-tools")
         .with_tag(env!("SUI_SDK_TAG"))
-        // Allow extra time for genesis when running under emulation.
-        .with_startup_timeout(Duration::from_secs(180))
         .with_mapped_port(0, ContainerPort::Tcp(9000))
         .with_mapped_port(0, ContainerPort::Tcp(9123));
 
