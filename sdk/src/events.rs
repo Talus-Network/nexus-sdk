@@ -166,10 +166,10 @@ pub struct WalkAdvancedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    pub variant_ports_to_data: serde_json::Value,
+    pub variant_ports_to_data: PortsData,
 }
 
-/// Fored by the Nexus Workflow when a walk has failed.
+/// Fired by the Nexus Workflow when a walk has failed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WalkFailedEvent {
     pub dag: sui::ObjectID,
@@ -201,7 +201,7 @@ pub struct EndStateReachedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    pub variant_ports_to_data: serde_json::Value,
+    pub variant_ports_to_data: PortsData,
 }
 
 /// Fired by the Nexus Workflow when all walks have halted in their end states

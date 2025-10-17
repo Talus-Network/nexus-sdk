@@ -72,6 +72,15 @@ pub(crate) enum DagCommand {
             value_name = "DATA"
         )]
         input_json: serde_json::Value,
+        /// Which input json keys should be stored remotely.
+        #[arg(
+            long = "remote",
+            short = 'r',
+            help = "Which input json keys should be stored remotely. Provide a comma-separated list of {vertex}.{port} values. By default, all fields are stored inline.",
+            value_delimiter = ',',
+            value_name = "VERTEX.PORT"
+        )]
+        remote: Vec<String>,
         /// Whether to inspect the DAG execution process.
         #[arg(
             long = "inspect",
@@ -123,6 +132,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             entry_group,
             input_json,
+            remote,
             inspect,
             gas,
         } => {
@@ -133,6 +143,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 dag_id,
                 entry_group,
                 input_json,
+                remote,
                 inspect,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,

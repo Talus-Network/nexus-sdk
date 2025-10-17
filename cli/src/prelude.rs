@@ -1,3 +1,4 @@
+use nexus_sdk::types::{StorageConf, StorageKind};
 pub(crate) use {
     crate::{error::NexusCliError, utils::secrets::Secret},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
@@ -55,6 +56,8 @@ pub(crate) struct CliConf {
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
     pub(crate) crypto: Option<Secret<CryptoConf>>,
+    #[serde(default)]
+    pub(crate) data_storage: DataStorageConf,
 }
 
 impl CliConf {
@@ -107,7 +110,7 @@ impl Default for SuiConf {
     }
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub(crate) struct CryptoConf {
     /// User's long-term identity key (None until first generated)
     pub(crate) identity_key: Option<IdentityKey>,
@@ -136,6 +139,29 @@ impl PartialEq for CryptoConf {
 }
 
 impl Eq for CryptoConf {}
+
+/// Remote data storage configuration.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DataStorageConf {
+    /// The preferred Walrus aggregator URL.
+    pub(crate) walrus_aggregator_url: Option<reqwest::Url>,
+    /// The preferred Walrus publisher URL.
+    pub(crate) walrus_publisher_url: Option<reqwest::Url>,
+    /// How many epochs to save remote data for?
+    pub(crate) walrus_save_for_epochs: Option<u64>,
+    /// What is the preferred remote storage backend?
+    pub(crate) preferred_remote_storage: Option<StorageKind>,
+}
+
+impl Into<StorageConf> for DataStorageConf {
+    fn into(self) -> StorageConf {
+        StorageConf {
+            walrus_aggregator_url: self.walrus_aggregator_url.map(|url| url.to_string()),
+            walrus_publisher_url: self.walrus_publisher_url.map(|url| url.to_string()),
+            walrus_save_for_epochs: self.walrus_save_for_epochs,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {

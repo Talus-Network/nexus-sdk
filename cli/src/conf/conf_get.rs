@@ -86,11 +86,19 @@ mod tests {
             sessions,
         };
 
+        let data_storage_conf = DataStorageConf {
+            walrus_aggregator_url: None,
+            walrus_publisher_url: None,
+            walrus_save_for_epochs: None,
+            preferred_remote_storage: None,
+        };
+
         let conf = CliConf {
             sui: sui_conf.clone(),
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
             crypto: Some(Secret::new(crypto_conf)),
+            data_storage: data_storage_conf.clone(),
         };
 
         // Write the configuration to the file.
@@ -128,6 +136,7 @@ mod tests {
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
             crypto: None,
+            ..Default::default()
         };
 
         let path_no_crypto = tempdir.join("conf_no_crypto.toml");
