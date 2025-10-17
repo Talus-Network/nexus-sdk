@@ -56,9 +56,9 @@ where
 #[serde(tag = "_nexus_event_type", content = "event")]
 pub enum NexusEventKind {
     #[serde(rename = "RequestScheduledExecution")]
-    RequestScheduledExecution(RequestScheduledExecution<RequestWalkExecutionEvent>),
-    #[serde(rename = "OccurrenceScheduledExecution")]
-    OccurrenceScheduled(RequestScheduledExecution<OccurrenceScheduledEvent>),
+    Scheduled(RequestScheduledExecution<Box<NexusEventKind>>),
+    #[serde(rename = "OccurrenceScheduledEvent")]
+    OccurrenceScheduled(OccurrenceScheduledEvent),
     #[serde(rename = "RequestWalkExecutionEvent")]
     RequestWalkExecution(RequestWalkExecutionEvent),
     #[serde(rename = "AnnounceInterfacePackageEvent")]
@@ -483,29 +483,37 @@ impl TryInto<NexusEvent> for sui::Event {
         // [NexusEventKind].
         let mut payload = self.parsed_json;
 
-        let mut event_kind_name = name.to_string();
-        // TODO: Fix the implementation
+        let event_kind_name = name.to_string();
+
         if event_kind_name == "RequestScheduledExecution" {
-            let mut is_occurrence =
-                if let Some(sui::MoveTypeTag::Struct(inner)) = type_params.get(0) {
-                    inner.name.as_str() == "OccurrenceScheduledEvent"
-                } else {
-                    false
-                };
-
-            if !is_occurrence {
-                if let Some(event) = payload.get("event") {
-                    if let Some(request) = event.get("request") {
-                        is_occurrence = request.get("dag").is_none()
-                            && request.get("execution").is_none()
-                            && request.get("task").is_some();
+            let inner_name = type_params
+                .get(0)
+                .and_then(|tag| match tag {
+                    sui::MoveTypeTag::Struct(inner) => {
+                        inner
+                            .type_params
+                            .get(0)
+                            .and_then(|inner_tag| match inner_tag {
+                                sui::MoveTypeTag::Struct(deep_inner) => {
+                                    Some(deep_inner.name.to_string())
+                                }
+                                _ => None,
+                            })
                     }
-                }
-            }
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow::anyhow!("Scheduled event missing inner type parameter"))?;
 
-            if is_occurrence {
-                event_kind_name = "OccurrenceScheduledExecution".to_string();
-            }
+            let request_value = payload
+                .get_mut("event")
+                .and_then(|event| event.get_mut("request"))
+                .ok_or_else(|| anyhow::anyhow!("Scheduled event is missing request payload"))?;
+
+            let inner_payload = request_value.clone();
+            *request_value = serde_json::json!({
+                NEXUS_EVENT_TYPE_TAG: inner_name,
+                "event": inner_payload,
+            });
         }
 
         payload
@@ -661,18 +669,30 @@ mod tests {
         let event: NexusEvent = event.try_into().unwrap();
 
         assert_eq!(event.generics, vec![outer]);
-        assert_matches!(event.data, NexusEventKind::RequestScheduledExecution(scheduled)
-            if scheduled.request.dag == dag &&
-                scheduled.request.execution == execution &&
-                scheduled.request.evaluations == evaluations &&
-                scheduled.request.walk_index == 42 &&
-                matches!(&scheduled.request.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
-                scheduled.request.worksheet_from_type.name == *"bar" &&
-                scheduled.priority == 7 &&
-                scheduled.request_ms == 1 &&
-                scheduled.start_ms == 2 &&
-                scheduled.deadline_ms == 3
-        );
+
+        let NexusEventKind::Scheduled(scheduled) = event.data else {
+            panic!("Expected scheduled event");
+        };
+
+        assert_eq!(scheduled.priority, 7);
+        assert_eq!(scheduled.request_ms, 1);
+        assert_eq!(scheduled.start_ms, 2);
+        assert_eq!(scheduled.deadline_ms, 3);
+
+        let inner_event = *scheduled.request;
+        let NexusEventKind::RequestWalkExecution(inner) = inner_event else {
+            panic!("Expected RequestWalkExecution inner event");
+        };
+
+        assert_eq!(inner.dag, dag);
+        assert_eq!(inner.execution, execution);
+        assert_eq!(inner.evaluations, evaluations);
+        assert_eq!(inner.walk_index, 42);
+        match inner.next_vertex {
+            RuntimeVertex::Plain { vertex } => assert_eq!(vertex.name, *"foo"),
+            _ => panic!("Unexpected vertex"),
+        }
+        assert_eq!(inner.worksheet_from_type.name, *"bar");
     }
 
     #[test]
@@ -686,40 +706,25 @@ mod tests {
             type_params: vec![],
         }));
 
-        let outer = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: *sui::ObjectID::random(),
-            name: sui::move_ident_str!("RequestScheduledExecution").into(),
-            module: sui::move_ident_str!("scheduler").into(),
-            type_params: vec![inner.clone()],
-        }));
-
         let event = dummy_event(
-            sui::move_ident_str!("RequestScheduledExecution").into(),
+            sui::move_ident_str!("OccurrenceScheduledEvent").into(),
             serde_json::json!({
                 "event":{
-                    "request": {
-                        "task": task.to_string(),
-                        "from_periodic": true
-                    },
-                    "priority": "4",
-                    "request_ms": "11",
-                    "start_ms": "22",
-                    "deadline_ms": "33",
+                    "task": task.to_string(),
+                    "from_periodic": true
                 }
             }),
-            vec![outer.clone()],
+            vec![inner.clone()],
         );
 
         let event: NexusEvent = event.try_into().unwrap();
 
-        assert_eq!(event.generics, vec![outer]);
-        assert_matches!(event.data, NexusEventKind::OccurrenceScheduled(scheduled)
-            if scheduled.request.task == task &&
-                scheduled.request.from_periodic &&
-                scheduled.priority == 4 &&
-                scheduled.request_ms == 11 &&
-                scheduled.start_ms == 22 &&
-                scheduled.deadline_ms == 33
-        );
+        assert_eq!(event.generics, vec![inner]);
+        let NexusEventKind::OccurrenceScheduled(scheduled) = event.data else {
+            panic!("Expected OccurrenceScheduled event");
+        };
+
+        assert_eq!(scheduled.task, task);
+        assert!(scheduled.from_periodic);
     }
 }
