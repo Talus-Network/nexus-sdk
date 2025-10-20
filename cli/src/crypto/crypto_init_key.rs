@@ -60,14 +60,7 @@ pub async fn crypto_init_key(force: bool, conf_path: PathBuf) -> AnyResult<(), N
     // 3. Remove crypto section from CLI configuration before rotating the key
     let cleanup_handle = loading!("Clearing crypto section from configuration...");
 
-    let mut crypto_conf = CryptoConf::load_from_path(&conf_path)
-        .await
-        .unwrap_or_default();
-
-    crypto_conf.identity_key = None;
-    crypto_conf.sessions.clear();
-
-    match crypto_conf.save_to_path(&conf_path).await {
+    match CryptoConf::truncate(Some(&conf_path)).await {
         Ok(()) => {
             cleanup_handle.success();
 
@@ -111,24 +104,14 @@ mod tests {
         env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test-passphrase-clear-crypto");
 
         // Create a config with a crypto section and persist it at ~/.nexus/conf.toml
-        let crypto_conf = CryptoConf {
-            identity_key: Some(Secret::new(IdentityKey::generate())),
-            sessions: Default::default(),
-        };
-
-        crypto_conf
-            .save_to_path(&conf_path)
+        CryptoConf::set_identity_key(IdentityKey::generate(), Some(&conf_path))
             .await
-            .expect("save conf with crypto");
+            .expect("set identity key should succeed");
 
         // Sanity: confirm crypto key exists in file
-        let saved = CryptoConf::load_from_path(&conf_path)
+        let _ = CryptoConf::get_identity_key(Some(&conf_path))
             .await
             .expect("load conf with crypto");
-        assert!(
-            saved.sessions.is_empty() && saved.identity_key.is_some(),
-            "crypto section should exist before rotation"
-        );
 
         // Rotate key with --force; this should clear the crypto section first
         crypto_init_key(true, conf_path.clone())
@@ -136,13 +119,9 @@ mod tests {
             .expect("crypto_init_key should succeed");
 
         // Verify crypto section was removed but file still exists
-        let cleared = CryptoConf::load_from_path(&conf_path)
-            .await
-            .expect("load conf after rotation");
-
-        println!("Cleared crypto conf: {:?}", cleared);
+        let cleared = CryptoConf::get_identity_key(Some(&conf_path)).await;
         assert!(
-            cleared.sessions.is_empty() && cleared.identity_key.is_none(),
+            cleared.is_err(),
             "crypto section should be cleared after rotation"
         );
 

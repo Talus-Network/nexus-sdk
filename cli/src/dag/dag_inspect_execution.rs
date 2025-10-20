@@ -43,8 +43,17 @@ pub(crate) async fn inspect_dag_execution(
     // Remote storage conf.
     let storage_conf = conf.data_storage.clone().into();
 
-    // Check if we have authentication for potential decryption and get the session
-    let session = get_active_session().await?;
+    // Get the active session for potential encryption
+    let session = CryptoConf::get_active_session(None).await.map_err(|e|
+        NexusCliError::Any(
+            anyhow!(
+                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+                e,
+                init_key = "$ nexus crypto init-key --force",
+                crypto_auth = "$ nexus crypto auth"
+            )
+        )
+    )?;
 
     let limit = None;
     let descending_order = false;
@@ -197,17 +206,10 @@ pub(crate) async fn inspect_dag_execution(
         }
     }
 
-    // TODO: should have like SessionBag.
     // Update the session in the configuration.
-    let mut crypto_conf = CryptoConf::load().await.unwrap_or_default();
-    let Ok(session) = Arc::try_unwrap(session) else {
-        return Err(NexusCliError::Any(anyhow!(
-            "Failed to unwrap session Arc for saving"
-        )));
-    };
-    let session = session.into_inner();
-    crypto_conf.sessions.insert(*session.id(), session);
-    crypto_conf.save().await.map_err(NexusCliError::Any)?;
+    CryptoConf::release_session(session, None)
+        .await
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
     json_output(&json_trace)?;
 

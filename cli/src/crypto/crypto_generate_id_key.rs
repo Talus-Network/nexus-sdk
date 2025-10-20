@@ -1,25 +1,16 @@
-use crate::{command_title, display::json_output, loading, notify_success, prelude::*};
+use crate::{command_title, loading, notify_success, prelude::*};
 
 /// Generate and store a fresh identity key in the Nexus CLI configuration.
 /// WARNING: This will invalidate all existing sessions!
 pub(crate) async fn crypto_generate_identity_key(
     conf_path: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
-    let mut conf = CryptoConf::load_from_path(&conf_path)
-        .await
-        .unwrap_or_default();
-
     command_title!("Generating a fresh identity key");
 
     let conf_handle = loading!("Generating identity key...");
 
     // Generate a fresh identity key.
-    conf.identity_key = Some(Secret::new(IdentityKey::generate()));
-    conf.sessions.clear();
-
-    json_output(&serde_json::to_value(&conf).unwrap())?;
-
-    match conf.save_to_path(&conf_path).await {
+    match CryptoConf::set_identity_key(IdentityKey::generate(), Some(&conf_path)).await {
         Ok(()) => {
             conf_handle.success();
 
@@ -30,6 +21,7 @@ pub(crate) async fn crypto_generate_identity_key(
         }
         Err(e) => {
             conf_handle.error();
+
             Err(NexusCliError::Any(e))
         }
     }
@@ -71,11 +63,8 @@ mod tests {
             .expect("crypto_generate_identity_key should succeed");
 
         // Load config and verify identity key exists
-        let crypto_conf = CryptoConf::load_from_path(&conf_path)
+        let _ik = CryptoConf::get_identity_key(Some(&conf_path))
             .await
-            .expect("should load crypto config");
-
-        assert!(crypto_conf.identity_key.is_some());
-        assert!(crypto_conf.sessions.is_empty());
+            .expect("should load ik");
     }
 }

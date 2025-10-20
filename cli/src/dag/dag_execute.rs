@@ -56,7 +56,16 @@ pub(crate) async fn execute_dag(
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
-    let session = get_active_session().await?;
+    let session = CryptoConf::get_active_session(None).await.map_err(|e|
+        NexusCliError::Any(
+            anyhow!(
+                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+                e,
+                init_key = "$ nexus crypto init-key --force",
+                crypto_auth = "$ nexus crypto auth"
+            )
+        )
+    )?;
 
     // Fetch information about entry ports that need to be encrypted.
     let encrypt = fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
@@ -136,17 +145,10 @@ pub(crate) async fn execute_dag(
         id = object_id.to_string().truecolor(100, 100, 100)
     );
 
-    // TODO: should have like Arc::clone(Bag).
     // Update the session in the configuration.
-    let mut crypto_conf = CryptoConf::load().await.unwrap_or_default();
-    let Ok(session) = Arc::try_unwrap(session) else {
-        return Err(NexusCliError::Any(anyhow!(
-            "Failed to unwrap session Arc for saving"
-        )));
-    };
-    let session = session.into_inner();
-    crypto_conf.sessions.insert(*session.id(), session);
-    crypto_conf.save().await.map_err(NexusCliError::Any)?;
+    CryptoConf::release_session(session, None)
+        .await
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
     if inspect {
         inspect_dag_execution(object_id, response.digest).await?;

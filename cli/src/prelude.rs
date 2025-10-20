@@ -140,10 +140,10 @@ impl Into<StorageConf> for DataStorageConf {
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct CryptoConf {
     /// User's long-term identity key (None until first generated)
-    pub(crate) identity_key: Option<Secret<IdentityKey>>,
+    identity_key: Option<Secret<IdentityKey>>,
     /// Stored Double-Ratchet sessions keyed by their 32-byte session-id.
     #[serde(default)]
-    pub(crate) sessions: Secret<HashMap<[u8; 32], Session>>,
+    sessions: Secret<HashMap<[u8; 32], Session>>,
 }
 
 // Custom implementations because `IdentityKey` does not implement common traits.
@@ -151,32 +151,113 @@ impl std::fmt::Debug for CryptoConf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CryptoConf")
             // Avoid printing sensitive material.
-            .field("Key exists:", &self.identity_key.is_some())
-            .field("# of sessions:", &self.sessions.value.len())
+            .field("Key exists: ", &self.identity_key.is_some())
+            .field("# of sessions: ", &self.sessions.value.len())
             .finish()
     }
 }
 
 impl CryptoConf {
-    pub(crate) async fn load() -> AnyResult<Self> {
-        let conf_path = expand_tilde(CRYPTO_CONF_PATH)?;
+    /// Truncate the configuration (remove identity key and all sessions).
+    pub(crate) async fn truncate(path: Option<&PathBuf>) -> AnyResult<()> {
+        let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
+        let conf_path = path.unwrap_or(&default_path);
 
-        Self::load_from_path(&conf_path).await
+        CryptoConf::default().save_to_path(conf_path).await
     }
 
-    pub(crate) async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
+    /// Return the identity key if it exists.
+    pub(crate) async fn get_identity_key(path: Option<&PathBuf>) -> AnyResult<Secret<IdentityKey>> {
+        let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
+        let conf_path = path.unwrap_or(&default_path);
+
+        let crypto_conf = CryptoConf::load_from_path(conf_path).await?;
+        Ok(crypto_conf
+            .identity_key
+            .ok_or_else(|| anyhow!("No identity key found"))?)
+    }
+
+    /// Update the identity key in the configuration.
+    pub(crate) async fn set_identity_key(
+        identity_key: IdentityKey,
+        path: Option<&PathBuf>,
+    ) -> AnyResult<()> {
+        let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
+        let conf_path = path.unwrap_or(&default_path);
+
+        let mut crypto_conf = CryptoConf::load_from_path(conf_path)
+            .await
+            .unwrap_or_default();
+
+        crypto_conf.identity_key = Some(Secret::new(identity_key));
+
+        crypto_conf.save_to_path(conf_path).await
+    }
+
+    /// Get an [`Arc<Mutex>`] of an active session.
+    pub(crate) async fn get_active_session(
+        path: Option<&PathBuf>,
+    ) -> AnyResult<Arc<Mutex<Session>>> {
+        let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
+        let conf_path = path.unwrap_or(&default_path);
+
+        let mut crypto_conf = CryptoConf::load_from_path(conf_path)
+            .await
+            .unwrap_or_default();
+
+        let session_id = crypto_conf
+            .sessions
+            .keys()
+            .cloned()
+            .next()
+            .ok_or_else(|| anyhow!("No active sessions found"))?;
+
+        let session = crypto_conf
+            .sessions
+            .remove(&session_id)
+            .ok_or_else(|| anyhow!("Session not found"))?;
+
+        // Save the crypto conf with the removed session to prevent reuse.
+        crypto_conf.save_to_path(conf_path).await?;
+
+        Ok(Arc::new(Mutex::new(session)))
+    }
+
+    /// Release the updated session back to the configuration.
+    pub(crate) async fn release_session(
+        session: Arc<Mutex<Session>>,
+        path: Option<&PathBuf>,
+    ) -> AnyResult<()> {
+        let Ok(session) = Arc::try_unwrap(session).map(|session| session.into_inner()) else {
+            bail!("Failed to unwrap session Arc for saving");
+        };
+
+        CryptoConf::insert_session(session, path).await
+    }
+
+    /// Insert a session directly.
+    pub(crate) async fn insert_session(session: Session, path: Option<&PathBuf>) -> AnyResult<()> {
+        let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
+        let conf_path = path.unwrap_or(&default_path);
+
+        let mut crypto_conf = CryptoConf::load_from_path(conf_path)
+            .await
+            .unwrap_or_default();
+
+        crypto_conf.sessions.insert(*session.id(), session);
+
+        crypto_conf.save_to_path(conf_path).await
+    }
+
+    /// Helper to load from a specific path.
+    async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
         let conf = tokio::fs::read_to_string(path).await?;
 
         Ok(toml::from_str(&conf)?)
     }
 
-    pub(crate) async fn save(&self) -> AnyResult<()> {
-        let conf_path = expand_tilde(CRYPTO_CONF_PATH)?;
-
-        self.save_to_path(&conf_path).await
-    }
-
-    pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
+    /// Helper to save to a specific path.
+    async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
         let parent_folder = path.parent().expect("Parent folder must exist.");
         let conf = toml::to_string_pretty(&self)?;
 
@@ -185,24 +266,6 @@ impl CryptoConf {
 
         Ok(())
     }
-}
-
-/// Gets the active session for encryption/decryption
-pub async fn get_active_session() -> Result<Arc<Mutex<Session>>, NexusCliError> {
-    let crypto_conf = CryptoConf::load().await.unwrap_or_default();
-
-    let session = crypto_conf
-        .sessions
-        .value
-        .into_values()
-        .next()
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!(
-                "Authentication required — run `nexus crypto auth` first"
-            ))
-        })?;
-
-    Ok(Arc::new(Mutex::new(session)))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -340,8 +403,12 @@ mod tests {
             sessions: Secret::new(sessions),
         };
 
-        conf.save().await.unwrap();
-        let loaded = CryptoConf::load().await.unwrap();
+        // Save using the new interface
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        // Load using the new interface
+        let loaded = CryptoConf::load_from_path(&path).await.unwrap();
 
         assert!(loaded.identity_key.is_some());
         assert_eq!(loaded.sessions.value.len(), 1);
@@ -356,7 +423,8 @@ mod tests {
     async fn test_crypto_conf_default() {
         let secret_home = setup_env();
 
-        let conf = CryptoConf::load().await.unwrap_or_default();
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        let conf = CryptoConf::load_from_path(&path).await.unwrap_or_default();
         assert!(conf.identity_key.is_none());
         assert_eq!(conf.sessions.value.len(), 0);
 
@@ -377,9 +445,10 @@ mod tests {
             identity_key: Some(Secret::new(IdentityKey::generate())),
             sessions: Secret::new(sessions),
         };
-        conf.save().await.unwrap();
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
 
-        let session = get_active_session().await;
+        let session = CryptoConf::get_active_session(Some(&path)).await;
         assert!(session.is_ok());
 
         cleanup_env();
@@ -392,13 +461,188 @@ mod tests {
         let secret_home = setup_env();
 
         let conf = CryptoConf::default();
-        conf.save().await.unwrap();
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
 
-        let result = get_active_session().await;
+        let result = CryptoConf::get_active_session(Some(&path)).await;
         assert!(result.is_err());
-        assert!(
-            matches!(result, Err(NexusCliError::Any(e)) if e.to_string().contains("Authentication required"))
-        );
+        assert!(result
+            .as_ref()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("No active sessions found"));
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_get_active_session_multiple_sessions() {
+        let secret_home = setup_env();
+
+        // Insert two sessions
+        let mut sessions = HashMap::new();
+        let dummy_session_1 = create_test_session();
+        let session_id_1 = *dummy_session_1.id();
+        sessions.insert(session_id_1, dummy_session_1);
+
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(IdentityKey::generate())),
+            sessions: Secret::new(sessions),
+        };
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        // Take out first session
+        let _session1 = CryptoConf::get_active_session(Some(&path)).await.unwrap();
+
+        // Try to take out third session (should fail)
+        let result = CryptoConf::get_active_session(Some(&path)).await;
+        assert!(result.is_err());
+        assert!(result
+            .as_ref()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("No active sessions found"));
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_crypto_conf_truncate() {
+        let secret_home = setup_env();
+
+        // Create and save a config with identity key and sessions
+        let mut sessions = HashMap::new();
+        let dummy_session = create_test_session();
+        sessions.insert([3u8; 32], dummy_session);
+
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(IdentityKey::generate())),
+            sessions: Secret::new(sessions),
+        };
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        // Truncate the config
+        CryptoConf::truncate(Some(&path)).await.unwrap();
+
+        // Load and check that identity_key and sessions are cleared
+        let loaded = CryptoConf::load_from_path(&path).await.unwrap();
+        assert!(loaded.identity_key.is_none());
+        assert_eq!(loaded.sessions.value.len(), 0);
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_crypto_conf_release_session() {
+        let secret_home = setup_env();
+
+        // Create and save a config with one session
+        let mut sessions = HashMap::new();
+        let dummy_session = create_test_session();
+        let session_id = *dummy_session.id();
+        sessions.insert(session_id, dummy_session);
+
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(IdentityKey::generate())),
+            sessions: Secret::new(sessions),
+        };
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        // Get and remove the active session
+        let session = CryptoConf::get_active_session(Some(&path)).await.unwrap();
+
+        // Release the session back to the config
+        CryptoConf::release_session(session, Some(&path))
+            .await
+            .expect("Failed to release session");
+
+        // Load and check that the session is present again
+        let loaded = CryptoConf::load_from_path(&path).await.unwrap();
+
+        println!("Loaded sessions: {:?}", loaded);
+        assert_eq!(loaded.sessions.len(), 1);
+        assert!(loaded.sessions.contains_key(&session_id));
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_insert_session() {
+        let secret_home = setup_env();
+
+        let session = create_test_session();
+        let session_id = *session.id();
+
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+
+        // Start with empty config
+        CryptoConf::truncate(Some(&path)).await.unwrap();
+
+        // Insert session
+        CryptoConf::insert_session(session, Some(&path))
+            .await
+            .unwrap();
+
+        // Load and check session exists
+        let loaded = CryptoConf::load_from_path(&path).await.unwrap();
+        assert_eq!(loaded.sessions.len(), 1);
+        assert!(loaded.sessions.contains_key(&session_id));
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_get_identity_key_success() {
+        let secret_home = setup_env();
+
+        let identity_key = IdentityKey::generate();
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(identity_key)),
+            sessions: Secret::new(HashMap::new()),
+        };
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        let _loaded_key = CryptoConf::get_identity_key(Some(&path))
+            .await
+            .expect("Failed to get identity key");
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_get_identity_key_error() {
+        let secret_home = setup_env();
+
+        let conf = CryptoConf::default();
+        let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
+        conf.save_to_path(&path).await.unwrap();
+
+        let result = CryptoConf::get_identity_key(Some(&path)).await;
+        assert!(result.is_err());
+        assert!(result
+            .as_ref()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("No identity key found"));
 
         cleanup_env();
         drop(secret_home);
