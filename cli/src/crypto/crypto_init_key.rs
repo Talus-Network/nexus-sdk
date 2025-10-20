@@ -34,28 +34,7 @@ pub async fn crypto_init_key(force: bool, conf_path: PathBuf) -> AnyResult<(), N
 
     check_handle.success();
 
-    // 2. Remove crypto section from CLI configuration before rotating the key
-    let cleanup_handle = loading!("Clearing crypto section from configuration...");
-
-    let mut crypto_conf = CryptoConf::load_from_path(&conf_path)
-        .await
-        .unwrap_or_default();
-
-    crypto_conf.identity_key = None;
-    crypto_conf.sessions.clear();
-
-    match crypto_conf.save_to_path(&conf_path).await {
-        Ok(()) => {
-            cleanup_handle.success();
-        }
-        Err(e) => {
-            cleanup_handle.error();
-
-            return Err(NexusCliError::Any(e));
-        }
-    };
-
-    // 3. Generate and store a new 32-byte key
+    // 2. Generate and store a new 32-byte key
     let generate_handle = loading!("Generating and storing master key...");
 
     let mut key = [0u8; KEY_LEN];
@@ -70,11 +49,34 @@ pub async fn crypto_init_key(force: bool, conf_path: PathBuf) -> AnyResult<(), N
             // Remove any stale pass-phrase entry so that key-status reports the new raw key.
             let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
             notify_success!("32-byte master key saved to the OS key-ring");
-            Ok(())
         }
         Err(e) => {
             generate_handle.error();
-            Err(NexusCliError::Any(e.into()))
+
+            return Err(NexusCliError::Any(e.into()));
+        }
+    };
+
+    // 3. Remove crypto section from CLI configuration before rotating the key
+    let cleanup_handle = loading!("Clearing crypto section from configuration...");
+
+    let mut crypto_conf = CryptoConf::load_from_path(&conf_path)
+        .await
+        .unwrap_or_default();
+
+    crypto_conf.identity_key = None;
+    crypto_conf.sessions.clear();
+
+    match crypto_conf.save_to_path(&conf_path).await {
+        Ok(()) => {
+            cleanup_handle.success();
+
+            Ok(())
+        }
+        Err(e) => {
+            cleanup_handle.error();
+
+            Err(NexusCliError::Any(e))
         }
     }
 }

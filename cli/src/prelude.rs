@@ -170,7 +170,6 @@ impl CryptoConf {
         Ok(toml::from_str(&conf)?)
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn save(&self) -> AnyResult<()> {
         let conf_path = expand_tilde(CRYPTO_CONF_PATH)?;
 

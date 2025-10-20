@@ -122,12 +122,13 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     let save_handle = loading!("Saving session to configuration...");
 
-    match conf.save().await {
+    match crypto_conf.save().await {
         Ok(()) => {
             save_handle.success();
         }
         Err(e) => {
             save_handle.error();
+
             return Err(NexusCliError::Any(e));
         }
     }
