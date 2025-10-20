@@ -7,11 +7,11 @@ use crate::{
 
 // == `nexus_workflow::default_tap` ==
 
-pub struct DefaultTap;
+pub struct DefaultTAP;
 
 const DEFAULT_TAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_tap");
 
-impl DefaultTap {
+impl DefaultTAP {
     /// This function is called when a DAG is to be executed using the default
     /// TAP implementation.
     ///
@@ -27,12 +27,19 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("dag_begin_execution_from_scheduler"),
     };
-    /// The DefaultTap struct type.
+    /// The DefaultTAP struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("DefaultTAP"),
+    };
+    /// Register DAG execution configuration on the execution policy.
+    ///
+    /// `nexus_workflow::default_tap::register_begin_execution`
+    pub const REGISTER_BEGIN_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("register_begin_execution"),
     };
 }
 
@@ -50,6 +57,14 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("add_occurrence_absolute_for_task"),
     };
+    /// Enqueue a new occurrence relative to the current time.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_with_offsets_from_now_for_task`
+    pub const ADD_OCCURRENCE_WITH_OFFSETS_FROM_NOW_FOR_TASK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: SCHEDULER_MODULE,
+            name: sui::move_ident_str!("add_occurrence_with_offsets_from_now_for_task"),
+        };
     /// Enqueue a new occurrence with deadline offset.
     ///
     /// `nexus_workflow::scheduler::add_occurrence_with_offset_for_task`
@@ -78,12 +93,47 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("disable_periodic_for_task"),
     };
-    /// Modify periodic schedule parameters for a task.
+    /// Execute the DAG witness advancing logic.
     ///
-    /// `nexus_workflow::scheduler::modify_periodic_for_task`
-    pub const MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::execute`
+    pub const EXECUTE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("modify_periodic_for_task"),
+        name: sui::move_ident_str!("execute"),
+    };
+    /// Finalize a task run ensuring policies reached accepting states.
+    ///
+    /// `nexus_workflow::scheduler::finish`
+    pub const FINISH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("finish"),
+    };
+    /// Creates a new task with metadata and policies.
+    ///
+    /// `nexus_workflow::scheduler::new`
+    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new"),
+    };
+    /// Creates a metadata container from key/value pairs.
+    ///
+    /// `nexus_workflow::scheduler::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_metadata"),
+    };
+    /// Configure or update periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::new_or_modify_periodic_for_task`
+    pub const NEW_OR_MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_or_modify_periodic_for_task"),
+    };
+    /// Build a new time-constraint configuration instance.
+    ///
+    /// `nexus_workflow::scheduler::new_time_constraint_config`
+    pub const NEW_TIME_CONSTRAINT_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_time_constraint_config"),
     };
     /// Pause the scheduler for a task.
     ///
@@ -92,6 +142,13 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("pause_time_constraint_for_task"),
     };
+    /// Register the initial time-constraint configuration.
+    ///
+    /// `nexus_workflow::scheduler::register_time_constraint`
+    pub const REGISTER_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_time_constraint"),
+    };
     /// Resume the scheduler for a task.
     ///
     /// `nexus_workflow::scheduler::resume_time_constraint_for_task`
@@ -99,8 +156,14 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("resume_time_constraint_for_task"),
     };
+    /// Updates task metadata with the provided values.
+    ///
+    /// `nexus_workflow::scheduler::update_metadata`
+    pub const UPDATE_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("update_metadata"),
+    };
 }
-
 // == `nexus_workflow::dag` ==
 
 pub struct Dag;

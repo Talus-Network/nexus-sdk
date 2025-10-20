@@ -504,8 +504,8 @@ pub fn execute(
     // `workflow::default_tap::begin_dag_execution()`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.into(),
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.into(),
+        workflow::DefaultTAP::BEGIN_DAG_EXECUTION.module.into(),
+        workflow::DefaultTAP::BEGIN_DAG_EXECUTION.name.into(),
         vec![],
         vec![
             default_tap,
@@ -764,11 +764,11 @@ mod tests {
         assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.to_string(),
+            workflow::DefaultTAP::BEGIN_DAG_EXECUTION.module.to_string(),
         );
         assert_eq!(
             call.function,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.to_string()
+            workflow::DefaultTAP::BEGIN_DAG_EXECUTION.name.to_string()
         );
     }
 

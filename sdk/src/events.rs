@@ -277,12 +277,12 @@ pub struct MissedOccurrenceEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub start_time: u64,
+    pub start_time_ms: u64,
     #[serde(
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
     )]
-    pub deadline: Option<u64>,
+    pub deadline_ms: Option<u64>,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -338,12 +338,12 @@ pub struct OccurrenceConsumedEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub start_time: u64,
+    pub start_time_ms: u64,
     #[serde(
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
     )]
-    pub deadline: Option<u64>,
+    pub deadline_ms: Option<u64>,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -390,7 +390,7 @@ pub struct PeriodicScheduleConfiguredEvent {
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
     )]
-    pub last_generated_start: Option<u64>,
+    pub last_generated_start_ms: Option<u64>,
 }
 
 /// Fired by the Nexus Workflow when a new founding LeaderCap is created.
