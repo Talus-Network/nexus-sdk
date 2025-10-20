@@ -67,7 +67,7 @@ pub(crate) async fn execute_dag(
         &input_json,
         &storage_conf,
         preferred_remote_storage,
-        session,
+        Arc::clone(&session),
         &encrypt,
         &remote,
     )
@@ -136,14 +136,23 @@ pub(crate) async fn execute_dag(
         id = object_id.to_string().truecolor(100, 100, 100)
     );
 
+    // TODO: should have like Arc::clone(Bag).
+    // Update the session in the configuration.
+    let mut crypto_conf = CryptoConf::load().await.unwrap_or_default();
+    let Ok(session) = Arc::try_unwrap(session) else {
+        return Err(NexusCliError::Any(anyhow!(
+            "Failed to unwrap session Arc for saving"
+        )));
+    };
+    let session = session.into_inner();
+    crypto_conf.sessions.insert(*session.id(), session);
+    crypto_conf.save().await.map_err(NexusCliError::Any)?;
+
     if inspect {
         inspect_dag_execution(object_id, response.digest).await?;
     } else {
         json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
     }
-
-    // Always save the updated config
-    conf.save().await.map_err(NexusCliError::Any)?;
 
     Ok(())
 }

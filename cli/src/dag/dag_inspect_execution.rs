@@ -197,8 +197,17 @@ pub(crate) async fn inspect_dag_execution(
         }
     }
 
-    // Always save the updated config
-    conf.save().await.map_err(NexusCliError::Any)?;
+    // TODO: should have like SessionBag.
+    // Update the session in the configuration.
+    let mut crypto_conf = CryptoConf::load().await.unwrap_or_default();
+    let Ok(session) = Arc::try_unwrap(session) else {
+        return Err(NexusCliError::Any(anyhow!(
+            "Failed to unwrap session Arc for saving"
+        )));
+    };
+    let session = session.into_inner();
+    crypto_conf.sessions.insert(*session.id(), session);
+    crypto_conf.save().await.map_err(NexusCliError::Any)?;
 
     json_output(&json_trace)?;
 
