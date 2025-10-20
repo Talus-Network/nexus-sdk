@@ -7,11 +7,11 @@ use crate::{
 
 // == `nexus_workflow::default_tap` ==
 
-pub struct DefaultTAP;
+pub struct DefaultTap;
 
 const DEFAULT_TAP_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("default_tap");
 
-impl DefaultTAP {
+impl DefaultTap {
     /// This function is called when a DAG is to be executed using the default
     /// TAP implementation.
     ///

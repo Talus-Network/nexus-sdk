@@ -428,8 +428,8 @@ pub fn register_begin_execution(
 ) -> anyhow::Result<sui::Argument> {
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultTAP::REGISTER_BEGIN_EXECUTION.module.into(),
-        workflow::DefaultTAP::REGISTER_BEGIN_EXECUTION.name.into(),
+        workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.module.into(),
+        workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.name.into(),
         vec![],
         vec![policy, config],
     ))
@@ -481,10 +481,10 @@ pub fn dag_begin_execution_from_scheduler(
 
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::DefaultTAP::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
+        workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
             .module
             .into(),
-        workflow::DefaultTAP::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
+        workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
             .name
             .into(),
         vec![],
