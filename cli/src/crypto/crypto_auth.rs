@@ -92,18 +92,16 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     // 6. Ensure IdentityKey
     // Ensure crypto config exists, initialize if needed
-    let crypto_secret = conf
-        .crypto
-        .get_or_insert_with(|| Secret::new(CryptoConf::default()));
+    let mut crypto_conf = CryptoConf::load().await.unwrap_or_default();
 
-    crypto_secret
+    crypto_conf
         .identity_key
-        .get_or_insert_with(IdentityKey::generate);
+        .get_or_insert_with(|| Secret::new(IdentityKey::generate()));
 
     // 7. Run X3DH & store session
     let first_message = b"nexus auth";
     let (initial_msg, session) = {
-        let identity_key = crypto_secret.identity_key.as_ref().unwrap();
+        let identity_key = crypto_conf.identity_key.as_ref().unwrap();
         Session::initiate(identity_key, &peer_bundle, first_message)
             .map_err(|e| NexusCliError::Any(e.into()))?
     };
@@ -120,7 +118,7 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 
     // Store session and save config
     let session_id = *session.id();
-    crypto_secret.sessions.insert(session_id, session);
+    crypto_conf.sessions.insert(session_id, session);
 
     let save_handle = loading!("Saving session to configuration...");
 
@@ -190,7 +188,7 @@ mod tests {
         // Arrange
         // Isolate the filesystem & environment so the test is self-contained.
         let tmp = TempDir::new().expect("temp dir");
-        let conf_path = tmp.path().join("conf.toml");
+        let conf_path = tmp.path().join("crypto.toml");
 
         env::set_var("XDG_CONFIG_HOME", tmp.path());
 
@@ -219,28 +217,20 @@ mod tests {
         let mut sessions = HashMap::new();
         sessions.insert(session_id, session);
         let crypto_conf = CryptoConf {
-            identity_key: Some(sender_identity),
-            sessions,
-        };
-        let secret_crypto = Secret::new(crypto_conf);
-
-        // Compose full CLI configuration and persist to disk.
-        let cli_conf = CliConf {
-            sui: SuiConf::default(),
-            nexus: None,
-            tools: HashMap::new(),
-            crypto: Some(secret_crypto),
-            ..Default::default()
+            identity_key: Some(Secret::new(sender_identity)),
+            sessions: Secret::new(sessions),
         };
 
-        cli_conf.save_to_path(&conf_path).await.expect("save conf");
+        crypto_conf
+            .save_to_path(&conf_path)
+            .await
+            .expect("save conf");
 
         // Reload and check that the session is still present & decrypts cleanly.
-        let loaded_conf = CliConf::load_from_path(&conf_path)
+        let loaded_conf = CryptoConf::load_from_path(&conf_path)
             .await
             .expect("load conf");
-        let loaded_crypto = loaded_conf.crypto.expect("crypto section");
-        let saved_session = loaded_crypto
+        let saved_session = loaded_conf
             .sessions
             .get(&session_id)
             .expect("session stored");

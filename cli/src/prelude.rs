@@ -1,4 +1,3 @@
-use nexus_sdk::types::{StorageConf, StorageKind};
 pub(crate) use {
     crate::{error::NexusCliError, utils::secrets::Secret},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
@@ -18,9 +17,15 @@ pub(crate) use {
         sync::atomic::{AtomicBool, Ordering},
     },
 };
+use {
+    nexus_sdk::types::{StorageConf, StorageKind},
+    std::sync::Arc,
+    tokio::sync::Mutex,
+};
 
-/// Where to find config file.
+/// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 
 /// objects.toml locations for each network.
 pub(crate) const DEVNET_OBJECTS_TOML: &str =
@@ -49,13 +54,12 @@ impl std::fmt::Display for SuiNet {
 }
 
 /// Struct holding the config structure.
-#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CliConf {
     pub(crate) sui: SuiConf,
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
-    pub(crate) crypto: Option<Secret<CryptoConf>>,
     #[serde(default)]
     pub(crate) data_storage: DataStorageConf,
 }
@@ -110,36 +114,6 @@ impl Default for SuiConf {
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
-pub(crate) struct CryptoConf {
-    /// User's long-term identity key (None until first generated)
-    pub(crate) identity_key: Option<IdentityKey>,
-    /// Stored Double-Ratchet sessions keyed by their 32-byte session-id.
-    #[serde(default)]
-    pub(crate) sessions: HashMap<[u8; 32], Session>,
-}
-
-// Custom implementations because `IdentityKey` does not implement common traits.
-
-impl std::fmt::Debug for CryptoConf {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CryptoConf")
-            // Avoid printing sensitive material.
-            .field("identity_key", &self.identity_key.is_some())
-            .field("sessions", &self.sessions.len())
-            .finish()
-    }
-}
-
-impl PartialEq for CryptoConf {
-    fn eq(&self, _other: &Self) -> bool {
-        // All equal for now
-        true
-    }
-}
-
-impl Eq for CryptoConf {}
-
 /// Remote data storage configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DataStorageConf {
@@ -161,6 +135,75 @@ impl Into<StorageConf> for DataStorageConf {
             walrus_save_for_epochs: self.walrus_save_for_epochs,
         }
     }
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub(crate) struct CryptoConf {
+    /// User's long-term identity key (None until first generated)
+    pub(crate) identity_key: Option<Secret<IdentityKey>>,
+    /// Stored Double-Ratchet sessions keyed by their 32-byte session-id.
+    #[serde(default)]
+    pub(crate) sessions: Secret<HashMap<[u8; 32], Session>>,
+}
+
+// Custom implementations because `IdentityKey` does not implement common traits.
+impl std::fmt::Debug for CryptoConf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CryptoConf")
+            // Avoid printing sensitive material.
+            .field("Key exists:", &self.identity_key.is_some())
+            .field("# of sessions:", &self.sessions.value.len())
+            .finish()
+    }
+}
+
+impl CryptoConf {
+    pub(crate) async fn load() -> AnyResult<Self> {
+        let conf_path = expand_tilde(CRYPTO_CONF_PATH)?;
+
+        Self::load_from_path(&conf_path).await
+    }
+
+    pub(crate) async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
+        let conf = tokio::fs::read_to_string(path).await?;
+
+        Ok(toml::from_str(&conf)?)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn save(&self) -> AnyResult<()> {
+        let conf_path = expand_tilde(CRYPTO_CONF_PATH)?;
+
+        self.save_to_path(&conf_path).await
+    }
+
+    pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
+        let parent_folder = path.parent().expect("Parent folder must exist.");
+        let conf = toml::to_string_pretty(&self)?;
+
+        tokio::fs::create_dir_all(parent_folder).await?;
+        tokio::fs::write(path, conf).await?;
+
+        Ok(())
+    }
+}
+
+/// Gets the active session for encryption/decryption
+pub async fn get_active_session() -> Result<Arc<Mutex<Session>>, NexusCliError> {
+    let crypto_conf = CryptoConf::load().await.unwrap_or_default();
+
+    let session = crypto_conf
+        .sessions
+        .value
+        .into_values()
+        .next()
+        .ok_or_else(|| {
+            NexusCliError::Any(anyhow!(
+                "Authentication required — run `nexus crypto auth` first"
+            ))
+        })?;
+
+    Ok(Arc::new(Mutex::new(session)))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,7 +263,7 @@ fn default_sui_wallet_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, tempfile};
 
     #[test]
     fn test_expand_tilde() {
@@ -244,5 +287,121 @@ mod tests {
         assert_eq!(SuiNet::Devnet.to_string(), "devnet");
         assert_eq!(SuiNet::Testnet.to_string(), "testnet");
         assert_eq!(SuiNet::Mainnet.to_string(), "mainnet");
+    }
+
+    fn setup_env() -> tempfile::TempDir {
+        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+        let secret_home = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
+        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+        secret_home
+    }
+
+    fn cleanup_env() {
+        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    fn create_test_session() -> Session {
+        // Create sender and receiver identities
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+
+        let spk_secret = {
+            use rand::{rngs::OsRng, RngCore};
+            let mut rng = OsRng;
+            let mut bytes = [0u8; 32];
+            rng.fill_bytes(&mut bytes);
+            nexus_sdk::crypto::x3dh::IdentityKey::generate()
+                .secret()
+                .clone()
+        };
+        let spk_id = 1;
+        let bundle = PreKeyBundle::new(&receiver_id, spk_id, &spk_secret, None, None);
+
+        // Initiate a session (sender side)
+        let (_, sender_session) = Session::initiate(&sender_id, &bundle, b"test session message")
+            .expect("Failed to initiate session");
+
+        sender_session
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_crypto_conf_save_and_load() {
+        let secret_home = setup_env();
+
+        let mut sessions = HashMap::new();
+        let dummy_session = create_test_session();
+        sessions.insert([1u8; 32], dummy_session);
+
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(IdentityKey::generate())),
+            sessions: Secret::new(sessions),
+        };
+
+        conf.save().await.unwrap();
+        let loaded = CryptoConf::load().await.unwrap();
+
+        assert!(loaded.identity_key.is_some());
+        assert_eq!(loaded.sessions.value.len(), 1);
+        assert!(loaded.sessions.value.contains_key(&[1u8; 32]));
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_crypto_conf_default() {
+        let secret_home = setup_env();
+
+        let conf = CryptoConf::load().await.unwrap_or_default();
+        assert!(conf.identity_key.is_none());
+        assert_eq!(conf.sessions.value.len(), 0);
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_get_active_session_success() {
+        let secret_home = setup_env();
+
+        let mut sessions = HashMap::new();
+        let dummy_session = create_test_session();
+        sessions.insert([2u8; 32], dummy_session);
+
+        let conf = CryptoConf {
+            identity_key: Some(Secret::new(IdentityKey::generate())),
+            sessions: Secret::new(sessions),
+        };
+        conf.save().await.unwrap();
+
+        let session = get_active_session().await;
+        assert!(session.is_ok());
+
+        cleanup_env();
+        drop(secret_home);
+    }
+
+    #[tokio::test]
+    #[serial(master_key_env)]
+    async fn test_get_active_session_error() {
+        let secret_home = setup_env();
+
+        let conf = CryptoConf::default();
+        conf.save().await.unwrap();
+
+        let result = get_active_session().await;
+        assert!(result.is_err());
+        assert!(
+            matches!(result, Err(NexusCliError::Any(e)) if e.to_string().contains("Authentication required"))
+        );
+
+        cleanup_env();
+        drop(secret_home);
     }
 }

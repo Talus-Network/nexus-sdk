@@ -51,7 +51,7 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
-types = ["sui_types", "crypto", "enum_dispatch", "walrus"]
+types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures"]
 
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
@@ -103,6 +103,10 @@ workspace = true
 optional = true
 
 [dependencies.enum_dispatch]
+workspace = true
+optional = true
+
+[dependencies.futures]
 workspace = true
 optional = true
 

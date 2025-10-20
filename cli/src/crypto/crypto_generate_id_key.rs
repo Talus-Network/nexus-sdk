@@ -5,7 +5,7 @@ use crate::{command_title, display::json_output, loading, notify_success, prelud
 pub(crate) async fn crypto_generate_identity_key(
     conf_path: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
-    let mut conf = CliConf::load_from_path(&conf_path)
+    let mut conf = CryptoConf::load_from_path(&conf_path)
         .await
         .unwrap_or_default();
 
@@ -13,31 +13,69 @@ pub(crate) async fn crypto_generate_identity_key(
 
     let conf_handle = loading!("Generating identity key...");
 
-    // Ensure crypto config exists, initialize if needed
-    if conf.crypto.is_none() {
-        conf.crypto = Some(Secret::new(CryptoConf::default()));
-    }
-
     // Generate a fresh identity key.
-    if let Some(ref mut crypto_secret) = conf.crypto {
-        crypto_secret.identity_key = Some(IdentityKey::generate());
-        // wipe all sessions
-        // TODO: think of something better than this
-        crypto_secret.sessions.clear();
-    }
+    conf.identity_key = Some(Secret::new(IdentityKey::generate()));
+    conf.sessions.clear();
 
     json_output(&serde_json::to_value(&conf).unwrap())?;
 
     match conf.save_to_path(&conf_path).await {
         Ok(()) => {
             conf_handle.success();
+
             notify_success!("Identity key generated successfully");
             notify_success!("All existing sessions have been invalidated");
+
             Ok(())
         }
         Err(e) => {
             conf_handle.error();
             Err(NexusCliError::Any(e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::utils::secrets::master_key::{SERVICE, USER},
+        keyring::{mock, set_default_credential_builder, Entry},
+        std::env,
+        tempfile::TempDir,
+    };
+
+    #[tokio::test]
+    #[serial_test::serial(master_key_env)]
+    async fn test_crypto_generate_identity_key() {
+        // Use in-memory mock keyring to avoid needing a system keychain
+        set_default_credential_builder(mock::default_credential_builder());
+
+        // Isolate XDG config so salt lives under the temp dir
+        let tmp_xdg = TempDir::new().expect("temp xdg");
+        env::set_var("XDG_CONFIG_HOME", tmp_xdg.path());
+
+        // Ensure no lingering keyring entries
+        let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
+        let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
+
+        // Provide a passphrase-based key so we can serialize an encrypted crypto section
+        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test-passphrase-clear-crypto");
+
+        let tmp = TempDir::new().expect("temp home");
+        let conf_path = tmp.path().join("crypto.toml");
+
+        // Generate identity key
+        crypto_generate_identity_key(conf_path.clone())
+            .await
+            .expect("crypto_generate_identity_key should succeed");
+
+        // Load config and verify identity key exists
+        let crypto_conf = CryptoConf::load_from_path(&conf_path)
+            .await
+            .expect("should load crypto config");
+
+        assert!(crypto_conf.identity_key.is_some());
+        assert!(crypto_conf.sessions.is_empty());
     }
 }

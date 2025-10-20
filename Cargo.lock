@@ -5037,6 +5037,7 @@ dependencies = [
  "ciborium",
  "dirs 6.0.0",
  "enum_dispatch",
+ "futures",
  "futures-util",
  "hex",
  "hkdf",

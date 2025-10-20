@@ -100,14 +100,7 @@ mod tests {
     use {super::*, assert_matches::assert_matches, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
-    #[serial_test::serial(master_key_env)]
     async fn test_conf_loads_and_saves() {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
-
-        let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
-
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
@@ -216,22 +209,10 @@ mod tests {
             conf.data_storage.preferred_remote_storage,
             Some(StorageKind::Walrus)
         );
-
-        // Clean up env vars.
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
     }
 
     #[tokio::test]
-    #[serial_test::serial(master_key_env)]
     async fn test_data_storage_testnet_preset() {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
-
-        let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
-
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf_testnet.toml");
 
@@ -266,21 +247,10 @@ mod tests {
             conf.data_storage.preferred_remote_storage,
             Some(StorageKind::Walrus)
         );
-
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
     }
 
     #[tokio::test]
-    #[serial_test::serial(master_key_env)]
     async fn test_inline_preferred_storage_error() {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
-
-        let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
-
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf_inline.toml");
 
@@ -299,9 +269,5 @@ mod tests {
         .await;
 
         assert_matches!(result, Err(NexusCliError::Any(_)));
-
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
     }
 }

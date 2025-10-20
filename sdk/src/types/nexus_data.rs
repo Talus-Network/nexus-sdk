@@ -14,7 +14,8 @@ use {
     crate::{crypto::session::Session, types::StorageKind, walrus::WalrusClient},
     enum_dispatch::enum_dispatch,
     serde::{Deserialize, Serialize},
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
+    tokio::sync::Mutex,
 };
 
 /// Nexus submit walk evaluation transaction size base size without any data.
@@ -46,7 +47,7 @@ impl NexusData {
     pub async fn fetch(
         mut self,
         conf: &StorageConf,
-        session: &mut Session,
+        session: Arc<Mutex<Session>>,
     ) -> anyhow::Result<DataStorage> {
         self.data.fetch(conf, session).await?;
 
@@ -57,7 +58,7 @@ impl NexusData {
     pub async fn commit(
         mut self,
         conf: &StorageConf,
-        session: &mut Session,
+        session: Arc<Mutex<Session>>,
     ) -> anyhow::Result<DataStorage> {
         self.data.commit(conf, session).await?;
 
@@ -187,17 +188,24 @@ pub struct InlineStorage {
 }
 
 impl Storable for InlineStorage {
-    async fn fetch(&mut self, _: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+    async fn fetch(&mut self, _: &StorageConf, session: Arc<Mutex<Session>>) -> anyhow::Result<()> {
         if self.encrypted {
-            self.data = session.decrypt_nexus_data_json(&self.data)?;
+            self.data = session.lock().await.decrypt_nexus_data_json(&self.data)?;
         }
 
         Ok(())
     }
 
-    async fn commit(&mut self, _: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+    async fn commit(
+        &mut self,
+        _: &StorageConf,
+        session: Arc<Mutex<Session>>,
+    ) -> anyhow::Result<()> {
         if self.encrypted {
-            session.encrypt_nexus_data_json(&mut self.data)?;
+            session
+                .lock()
+                .await
+                .encrypt_nexus_data_json(&mut self.data)?;
         }
 
         Ok(())
@@ -229,7 +237,11 @@ pub struct WalrusStorage {
 }
 
 impl Storable for WalrusStorage {
-    async fn fetch(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+    async fn fetch(
+        &mut self,
+        conf: &StorageConf,
+        session: Arc<Mutex<Session>>,
+    ) -> anyhow::Result<()> {
         let walrus_aggregator_url = conf
             .walrus_aggregator_url
             .as_ref()
@@ -269,7 +281,7 @@ impl Storable for WalrusStorage {
 
         // Decrypt the data if needed.
         if self.encrypted {
-            data = session.decrypt_nexus_data_json(&data)?;
+            data = session.lock().await.decrypt_nexus_data_json(&data)?;
         }
 
         self.data = data;
@@ -277,7 +289,11 @@ impl Storable for WalrusStorage {
         Ok(())
     }
 
-    async fn commit(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()> {
+    async fn commit(
+        &mut self,
+        conf: &StorageConf,
+        session: Arc<Mutex<Session>>,
+    ) -> anyhow::Result<()> {
         let walrus_publisher_url = conf
             .walrus_publisher_url
             .as_ref()
@@ -293,7 +309,10 @@ impl Storable for WalrusStorage {
 
         // Encrypt the data if needed.
         if self.encrypted {
-            session.encrypt_nexus_data_json(&mut self.data)?;
+            session
+                .lock()
+                .await
+                .encrypt_nexus_data_json(&mut self.data)?;
         }
 
         // Store data on Walrus using the client. If it's an array, we store
@@ -373,10 +392,18 @@ impl Storable for WalrusStorage {
 #[allow(async_fn_in_trait)]
 pub trait Storable {
     /// Fetch the data from its storage location.
-    async fn fetch(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()>;
+    async fn fetch(
+        &mut self,
+        conf: &StorageConf,
+        session: Arc<Mutex<Session>>,
+    ) -> anyhow::Result<()>;
 
     /// Commit the data to its storage location.
-    async fn commit(&mut self, conf: &StorageConf, session: &mut Session) -> anyhow::Result<()>;
+    async fn commit(
+        &mut self,
+        conf: &StorageConf,
+        session: Arc<Mutex<Session>>,
+    ) -> anyhow::Result<()>;
 
     /// Get the kind of storage used.
     fn storage_kind(&self) -> StorageKind;
@@ -804,7 +831,7 @@ mod tests {
     /// Returns (nexus_session, user_session) where:
     /// - nexus_session: represents the Nexus system that encrypts output data
     /// - user_session: represents the user inspecting execution and decrypting data
-    fn create_test_sessions() -> (Session, Session) {
+    fn create_test_sessions() -> (Arc<Mutex<Session>>, Arc<Mutex<Session>>) {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
         let spk_secret = IdentityKey::generate().secret().clone();
@@ -830,7 +857,10 @@ mod tests {
             .decrypt(&setup_msg)
             .expect("Failed to decrypt setup message");
 
-        (sender_sess, receiver_sess)
+        (
+            Arc::new(Mutex::new(sender_sess)),
+            Arc::new(Mutex::new(receiver_sess)),
+        )
     }
 
     /// Setup mock server for Walrus testing
@@ -852,7 +882,7 @@ mod tests {
     #[tokio::test]
     async fn test_inline_plain_roundrip() {
         let storage_conf = StorageConf::default();
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
         let nexus_data = NexusData::new_inline(data.clone());
@@ -864,7 +894,7 @@ mod tests {
 
         // Nothing should change when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -875,7 +905,7 @@ mod tests {
 
         // Nothing should change when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -886,7 +916,7 @@ mod tests {
     #[tokio::test]
     async fn test_inline_non_array_encrypted_roundrip() {
         let storage_conf = StorageConf::default();
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
@@ -898,7 +928,7 @@ mod tests {
 
         // Data should be encrypted when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -909,7 +939,7 @@ mod tests {
 
         // Data should be decrypted when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -920,7 +950,7 @@ mod tests {
     #[tokio::test]
     async fn test_inline_array_encrypted_roundrip() {
         let storage_conf = StorageConf::default();
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
         let nexus_data = NexusData::new_inline_encrypted(data.clone());
@@ -933,7 +963,7 @@ mod tests {
         // Data should be encrypted when we commit as Nexus. Elements should
         // also be encrypted individually.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -948,7 +978,7 @@ mod tests {
 
         // Data should be decrypted when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -961,7 +991,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
         // Setup mock Walrus response
@@ -1001,7 +1031,7 @@ mod tests {
 
         // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -1013,7 +1043,7 @@ mod tests {
 
         // Data should be fetched from walrus when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -1027,8 +1057,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_walrus_empty_arr_plain_roundrip() {
-        let storage_conf = StorageConf::default();
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some("https://publisher.url".to_string()),
+            walrus_aggregator_url: Some("https://aggregator.url".to_string()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!([]);
 
         let nexus_data = NexusData::new_walrus(data.clone());
@@ -1040,7 +1074,7 @@ mod tests {
 
         // Nothing should change when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -1051,7 +1085,7 @@ mod tests {
 
         // Nothing should change when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -1064,7 +1098,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!({"key": "value"});
 
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
@@ -1091,6 +1125,8 @@ mod tests {
 
         let mut encrypted_data = data.clone();
         nexus_session
+            .lock()
+            .await
             .encrypt_nexus_data_json(&mut encrypted_data)
             .expect("Must encrypt data");
 
@@ -1109,7 +1145,7 @@ mod tests {
 
         // Data should be encrypted and stored on walrus when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -1120,7 +1156,7 @@ mod tests {
         let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -1137,7 +1173,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
         let nexus_data = NexusData::new_walrus(data.clone());
@@ -1177,7 +1213,7 @@ mod tests {
 
         // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -1193,7 +1229,7 @@ mod tests {
 
         // Data should be fetched from walrus when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 
@@ -1210,7 +1246,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
-        let (mut nexus_session, mut user_session) = create_test_sessions();
+        let (nexus_session, user_session) = create_test_sessions();
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
         let nexus_data = NexusData::new_walrus_encrypted(data.clone());
@@ -1237,6 +1273,8 @@ mod tests {
 
         let mut encrypted_data = data.clone();
         nexus_session
+            .lock()
+            .await
             .encrypt_nexus_data_json(&mut encrypted_data)
             .expect("Must encrypt data");
 
@@ -1255,7 +1293,7 @@ mod tests {
 
         // Data should be encrypted and stored on walrus when we commit as Nexus.
         let committed = nexus_data
-            .commit(&storage_conf, &mut nexus_session)
+            .commit(&storage_conf, nexus_session)
             .await
             .expect("Failed to commit data");
 
@@ -1270,7 +1308,7 @@ mod tests {
         let committed_data: NexusData = committed.into();
         // Data should be fetched from walrus and decrypted when we fetch as user.
         let fetched = committed_data
-            .fetch(&storage_conf, &mut user_session)
+            .fetch(&storage_conf, user_session)
             .await
             .expect("Failed to fetch data");
 

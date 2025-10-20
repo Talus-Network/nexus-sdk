@@ -31,7 +31,7 @@ pub(crate) enum CryptoCommand {
         #[arg(
             long = "conf-path",
             hide = true,
-            default_value = CLI_CONF_PATH,
+            default_value = CRYPTO_CONF_PATH,
             value_parser = ValueParser::from(expand_tilde)
         )]
         conf_path: PathBuf,
@@ -43,6 +43,15 @@ pub(crate) enum CryptoCommand {
         /// Will lose all existing sessions
         #[arg(long)]
         force: bool,
+        /// Hidden argument used for testing to set the path of the configuration
+        /// file.
+        #[arg(
+            long = "conf-path",
+            hide = true,
+            default_value = CRYPTO_CONF_PATH,
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        conf_path: PathBuf,
     },
     #[command(about = "Prompt for a pass-phrase and store it securely in the key-ring.")]
     SetPassphrase {
@@ -67,7 +76,7 @@ pub async fn handle(cmd: CryptoCommand) -> AnyResult<(), NexusCliError> {
         CryptoCommand::GenerateIdentityKey { conf_path } => {
             crypto_generate_identity_key(conf_path).await
         }
-        CryptoCommand::InitKey { force } => crypto_init_key(force).await,
+        CryptoCommand::InitKey { force, conf_path } => crypto_init_key(force, conf_path).await,
         CryptoCommand::SetPassphrase { stdin, force } => crypto_set_passphrase(stdin, force).await,
         CryptoCommand::KeyStatus => crypto_key_status(),
     }

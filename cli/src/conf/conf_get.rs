@@ -17,20 +17,10 @@ pub(crate) async fn get_nexus_conf(conf_path: PathBuf) -> AnyResult<CliConf, Nex
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        nexus_sdk::{crypto::x3dh::PreKeyBundle, test_utils::sui_mocks},
-    };
+    use {super::*, nexus_sdk::test_utils::sui_mocks};
 
     #[tokio::test]
-    #[serial_test::serial(master_key_env)]
     async fn test_get_nexus_conf() {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
-
-        let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
-
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
 
@@ -55,37 +45,6 @@ mod tests {
 
         let tools = HashMap::new();
 
-        // Create sessions for testing
-        let mut sessions = HashMap::new();
-
-        // Create sender and receiver identities
-        let sender_id = IdentityKey::generate();
-        let receiver_id = IdentityKey::generate();
-
-        let spk_secret = {
-            use rand::{rngs::OsRng, RngCore};
-            let mut rng = OsRng;
-            let mut bytes = [0u8; 32];
-            rng.fill_bytes(&mut bytes);
-            nexus_sdk::crypto::x3dh::IdentityKey::generate()
-                .secret()
-                .clone()
-        };
-        let spk_id = 1;
-        let bundle = PreKeyBundle::new(&receiver_id, spk_id, &spk_secret, None, None);
-
-        // Initiate a session (sender side)
-        let (_, sender_session) = Session::initiate(&sender_id, &bundle, b"test session message")
-            .expect("Failed to initiate session");
-
-        // Store the sender session
-        sessions.insert(*sender_session.id(), sender_session);
-
-        let crypto_conf = CryptoConf {
-            identity_key: Some(IdentityKey::generate()),
-            sessions,
-        };
-
         let data_storage_conf = DataStorageConf {
             walrus_aggregator_url: None,
             walrus_publisher_url: None,
@@ -97,7 +56,6 @@ mod tests {
             sui: sui_conf.clone(),
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
-            crypto: Some(Secret::new(crypto_conf)),
             data_storage: data_storage_conf.clone(),
         };
 
@@ -113,29 +71,11 @@ mod tests {
 
         assert_eq!(result, conf);
 
-        // Verify sessions field is properly handled during deserialization
-        assert_eq!(
-            result.crypto.as_ref().unwrap().sessions.len(),
-            1,
-            "Should have 1 session (shared between sender and receiver)"
-        );
-
-        // Verify we can recover the sessions from the configuration
-        for (session_id, session) in result.crypto.as_ref().unwrap().sessions.iter() {
-            // Verify session IDs are properly stored and retrieved
-            assert_eq!(
-                session.id(),
-                session_id,
-                "Session ID should match the map key"
-            );
-        }
-
         // Test loading config without crypto field
         let conf_without_crypto = CliConf {
             sui: sui_conf.clone(),
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
-            crypto: None,
             ..Default::default()
         };
 
@@ -150,14 +90,5 @@ mod tests {
             .await
             .expect("Failed to load config without crypto");
         assert_eq!(result_no_crypto, conf_without_crypto);
-        assert!(
-            result_no_crypto.crypto.is_none(),
-            "Crypto field should be None"
-        );
-
-        // Clean-up env vars
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
     }
 }

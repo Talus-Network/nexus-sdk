@@ -14,8 +14,18 @@ use {
         idents::workflow,
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
-        types::{hint_remote_fields, DataStorage, Storable, StorageConf, StorageKind, TypeName},
+        types::{
+            hint_remote_fields,
+            DataStorage,
+            PortsData,
+            Storable,
+            StorageConf,
+            StorageKind,
+            TypeName,
+        },
     },
+    std::sync::Arc,
+    tokio::sync::Mutex,
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
@@ -46,7 +56,7 @@ pub(crate) async fn execute_dag(
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
-    let session = get_active_session(&mut conf)?;
+    let session = get_active_session().await?;
 
     // Fetch information about entry ports that need to be encrypted.
     let encrypt = fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
@@ -144,10 +154,10 @@ async fn process_entry_ports(
     input: &serde_json::Value,
     storage_conf: &StorageConf,
     preferred_remote_storage: Option<StorageKind>,
-    session: &mut Session,
+    session: Arc<Mutex<Session>>,
     encrypt: &HashMap<String, Vec<String>>,
     remote: &Vec<String>,
-) -> Result<HashMap<String, HashMap<String, DataStorage>>, NexusCliError> {
+) -> Result<HashMap<String, HashMap<TypeName, DataStorage>>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
             "Input JSON must be an object with vertex names as keys."
@@ -157,8 +167,6 @@ async fn process_entry_ports(
     let mut result = HashMap::new();
 
     for (vertex, data) in vertices {
-        let mut port_data = HashMap::new();
-
         let Some(ports) = data.as_object() else {
             return Err(NexusCliError::Any(anyhow!(
                 "Input JSON for vertex '{vertex}' must be an object with port names as keys."
@@ -191,24 +199,19 @@ async fn process_entry_ports(
 
         // Commit each field - meaning it will get encrypted if necessary, and
         // uploaded to remote storage if necessary.
-        for (port, nexus_data) in nexus_data_map {
-            let committed = nexus_data
-                .commit(&storage_conf, session)
-                .await
-                .map_err(|e| {
-                    NexusCliError::Any(anyhow!(
-                        "Failed to store data for port '{port}': {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
-                        port = port,
-                        e = e,
-                        command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
-                        testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
-                    ))
-                })?;
+        let ports_data = PortsData::from_map(nexus_data_map)
+            .commit_all(&storage_conf, Arc::clone(&session))
+            .await
+            .map_err(|e| {
+                NexusCliError::Any(anyhow!(
+                    "Failed to store data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                    e = e,
+                    command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                    testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                ))
+            })?;
 
-            port_data.insert(port, committed);
-        }
-
-        result.insert(vertex.clone(), port_data);
+        result.insert(vertex.clone(), ports_data);
     }
 
     // Hint the user if they should use remote storage and for what fields.
@@ -236,34 +239,10 @@ async fn process_entry_ports(
 
     // Advance the ratchet if we need to.
     if !encrypt.is_empty() {
-        session.commit_sender(None);
+        session.lock().await.commit_sender(None);
     }
 
     Ok(result)
-}
-
-/// Gets the active session for encryption/decryption
-fn get_active_session(
-    conf: &mut CliConf,
-) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
-    match &mut conf.crypto {
-        Some(crypto_secret) => {
-            if crypto_secret.sessions.is_empty() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required — run `nexus crypto auth` first"
-                )));
-            }
-
-            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
-            crypto_secret
-                .sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
-        }
-        None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        ))),
-    }
 }
 
 /// Fetches the encrypted entry ports for a DAG.
@@ -350,7 +329,7 @@ mod tests {
     };
 
     /// Helper to create a mock session for testing
-    fn create_mock_session() -> Session {
+    fn create_mock_session() -> Arc<Mutex<Session>> {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
         let spk_secret = IdentityKey::generate().secret().clone();
@@ -376,7 +355,7 @@ mod tests {
             .decrypt(&setup_msg)
             .expect("Failed to decrypt setup message");
 
-        sender_sess
+        Arc::new(Mutex::new(sender_sess))
     }
 
     /// Setup mock server for Walrus testing
@@ -406,18 +385,17 @@ mod tests {
         let (_, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
-                .await
-                .expect("Should succeed");
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get("port1").expect("port1 missing");
-        let port2 = vertex.get("port2").expect("port2 missing");
+        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
+        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
 
         // Both should be Inline and not encrypted
         assert_matches!(port1, DataStorage::Inline(_));
@@ -440,19 +418,18 @@ mod tests {
         let (_, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let mut encrypt = HashMap::new();
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec![];
 
-        let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
-                .await
-                .expect("Should succeed");
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get("port1").expect("port1 missing");
-        let port2 = vertex.get("port2").expect("port2 missing");
+        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
+        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
 
         // port1 should be encrypted
         assert!(port1.is_encrypted());
@@ -471,7 +448,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec!["vertex1.port1".to_string()];
 
@@ -495,14 +472,13 @@ mod tests {
             .create_async()
             .await;
 
-        let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
-                .await
-                .expect("Should succeed");
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get("port1").expect("port1 missing");
-        let port2 = vertex.get("port2").expect("port2 missing");
+        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
+        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
 
         // port1 should be walrus
         assert_matches!(port1, DataStorage::Walrus(_));
@@ -524,7 +500,7 @@ mod tests {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let mut encrypt = HashMap::new();
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec!["vertex1.port1".to_string()];
@@ -549,14 +525,13 @@ mod tests {
             .create_async()
             .await;
 
-        let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote)
-                .await
-                .expect("Should succeed");
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get("port1").expect("port1 missing");
-        let port2 = vertex.get("port2").expect("port2 missing");
+        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
+        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
 
         // port1 should be encrypted and walrus
         assert!(port1.is_encrypted());
@@ -575,12 +550,12 @@ mod tests {
         let (_, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];
 
         let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote).await;
+            process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("Input JSON must be an object"));
@@ -594,12 +569,12 @@ mod tests {
         let (_, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Server must start");
-        let mut session = create_mock_session();
+        let session = create_mock_session();
         let encrypt = HashMap::new();
         let remote = vec![];
 
         let result =
-            process_entry_ports(&input, &storage_conf, None, &mut session, &encrypt, &remote).await;
+            process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("must be an object with port names as keys"));
