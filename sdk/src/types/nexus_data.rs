@@ -19,11 +19,15 @@ use {
 };
 
 /// Nexus submit walk evaluation transaction size base size without any data.
-pub const NEXUS_BASE_TRANSACTION_SIZE: usize = 3 * 1024;
+pub const NEXUS_BASE_TRANSACTION_SIZE: usize = 8 * 1024;
 /// Max transaction size supported by Sui.
 pub const MAX_TRANSACTION_SIZE: usize = 128 * 1024;
 /// The length of a Walrus blob ID.
 pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
+/// How much extra space per encrypted item is needed?
+pub const ENCRYPTION_BASE_SIZE: usize = 440;
+/// What is the inflation factor for encrypted data size?
+pub const ENCRYPTION_INFLATION_FACTOR: usize = 4;
 
 // == NexusData ==
 
@@ -470,7 +474,7 @@ pub fn json_to_nexus_data_map(
 }
 
 /// Take a [`serde_json::Value`] object, and hint the user which fields should
-/// be stored remotely to avoid exceeding [`crate::nexus_data::MAX_TRANSACTION_SIZE`].
+/// be stored remotely to avoid exceeding [`crate::types::MAX_TRANSACTION_SIZE`].
 pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String>> {
     let Some(obj) = json.as_object() else {
         anyhow::bail!("Expected JSON object");
@@ -479,7 +483,20 @@ pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String
     // Calculate the size of each field.
     let mut fields: Vec<(&String, usize)> = obj
         .iter()
-        .map(|(key, value)| (key, serde_json::to_vec(value).map(|v| v.len()).unwrap_or(0)))
+        .map(|(key, value)| {
+            let key_size = key.len();
+            let data_size = value.to_string().len();
+
+            // Assume each field is encrypted for size calculation.
+            let encrypted_data_size = match value {
+                serde_json::Value::Array(arr) => {
+                    ENCRYPTION_BASE_SIZE * arr.len() + (data_size * ENCRYPTION_INFLATION_FACTOR)
+                }
+                _ => ENCRYPTION_BASE_SIZE + (data_size * ENCRYPTION_INFLATION_FACTOR),
+            };
+
+            (key, key_size + encrypted_data_size)
+        })
         .collect();
 
     // Sort them largest to smallest.
