@@ -60,3 +60,7 @@ pub mod secret_core;
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
+
+/// Schema generation utilities for Move onchain tools.
+#[cfg(feature = "schema_gen")]
+pub mod onchain_schema_gen;

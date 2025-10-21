@@ -63,6 +63,10 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Schema generation feature enables automatic schema generation from Move modules.
+# Used for onchain tool registration.
+schema_gen = ["sui_types", "serde_json"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -88,6 +92,7 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "schema_gen",
 ]
 
 

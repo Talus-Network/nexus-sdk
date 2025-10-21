@@ -28,7 +28,7 @@ where
 }
 
 /// Fetch a dynamic field object from Sui based on the provided key.
-pub(crate) async fn dynamic_fetch_one<V>(
+pub async fn dynamic_fetch_one<V>(
     sui: &sui::Client,
     object_id: sui::ObjectID,
     field_name: sui::DynamicFieldName,

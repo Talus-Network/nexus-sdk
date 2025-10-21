@@ -1,11 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
         sui::*,
     },
     nexus_sdk::{
@@ -56,7 +51,7 @@ pub(crate) async fn register_onchain_tool(
     // Generate input schema by introspecting the Move module's "execute" function.
     notify_success!("Auto-generating input schema from Move module...");
     let base_input_schema =
-        match generate_input_schema(&sui, package_address, &module_name, "execute").await {
+        match nexus_sdk::schema_gen::generate_input_schema(&sui, package_address, &module_name, "execute").await {
             Ok(schema) => {
                 notify_success!(
                     "Generated base input schema: {}",
@@ -70,14 +65,14 @@ pub(crate) async fn register_onchain_tool(
                     fqn = fqn.to_string().truecolor(100, 100, 100),
                     error = e
                 );
-                return Err(e);
+                return Err(NexusCliError::Any(e));
             }
         };
 
     // Generate output schema by introspecting the Move module's "Output" enum.
     notify_success!("Auto-generating output schema from Move module...");
     let base_output_schema =
-        match generate_output_schema(&sui, package_address, &module_name, "Output").await {
+        match nexus_sdk::schema_gen::generate_output_schema(&sui, package_address, &module_name, "Output").await {
             Ok(schema) => {
                 notify_success!(
                     "Generated base output schema: {}",
@@ -91,7 +86,7 @@ pub(crate) async fn register_onchain_tool(
                     fqn = fqn.to_string().truecolor(100, 100, 100),
                     error = e
                 );
-                return Err(e);
+                return Err(NexusCliError::Any(e));
             }
         };
 
@@ -273,298 +268,6 @@ pub(crate) async fn register_onchain_tool(
 
     Ok(())
 }
-
-/// Generate input schema by introspecting the Move module's execute function.
-async fn generate_input_schema(
-    sui: &sui::Client,
-    package_address: sui::ObjectID,
-    module_name: &str,
-    execute_function: &str,
-) -> AnyResult<String, NexusCliError> {
-    let fetching_handle = loading!("Fetching Move module information...");
-
-    // Fetch all normalized Move modules for the package.
-    let all_modules = match sui
-        .read_api()
-        .get_normalized_move_modules_by_package(package_address)
-        .await
-    {
-        Ok(modules) => {
-            fetching_handle.success();
-            modules
-        }
-        Err(e) => {
-            fetching_handle.error();
-            return Err(NexusCliError::Any(anyhow!(
-                "Failed to fetch Move modules for package {}: {}",
-                package_address,
-                e
-            )));
-        }
-    };
-
-    // Find the specific module.
-    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
-        NexusCliError::Any(anyhow!(
-            "Module '{}' not found in package '{}'",
-            module_name,
-            package_address
-        ))
-    })?;
-
-    let parsing_handle = loading!("Parsing execute function signature...");
-
-    // Find the execute function.
-    let execute_func = normalized_module
-        .exposed_functions
-        .get(execute_function)
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!(
-                "Function '{}' not found in module '{}'",
-                execute_function,
-                module_name
-            ))
-        })?;
-
-    // Parse function parameters.
-    let mut schema_map = Map::new();
-    let mut param_index = 0;
-
-    for (i, param_type) in execute_func.parameters.iter().enumerate() {
-        let is_tx_context = is_tx_context_param(param_type);
-        println!(
-            "DEBUG: Parameter {}: type={:?}, is_tx_context={}",
-            i, param_type, is_tx_context
-        );
-
-        // Skip the first parameter (Promise/ProofOfUID) and the last parameter (TxContext).
-        if i == 0 || is_tx_context {
-            continue;
-        }
-
-        let param_schema = convert_move_type_to_schema(param_type)?;
-
-        // Store parameter information with index as the default name.
-        let mut param_obj = match param_schema {
-            Value::Object(obj) => obj,
-            other => {
-                let mut new_obj = Map::new();
-                new_obj.insert("type".to_string(), other);
-                new_obj
-            }
-        };
-
-        // Add metadata for parameter customization.
-        param_obj.insert(
-            "parameter_index".to_string(),
-            Value::Number(param_index.into()),
-        );
-        param_obj.insert("custom_name".to_string(), Value::Null);
-
-        schema_map.insert(param_index.to_string(), Value::Object(param_obj));
-        param_index += 1;
-    }
-
-    parsing_handle.success();
-
-    let schema_json = Value::Object(schema_map);
-    let schema_string = serde_json::to_string(&schema_json)
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to serialize schema: {}", e)))?;
-
-    Ok(schema_string)
-}
-
-/// Convert a Sui Move normalized type to a JSON schema representation.
-/// todo: check for all types and add test.
-/// https://github.com/Talus-Network/nexus/issues/502
-fn convert_move_type_to_schema(
-    move_type: &sui::MoveNormalizedType,
-) -> AnyResult<Value, NexusCliError> {
-    use sui::MoveNormalizedType;
-
-    match move_type {
-        MoveNormalizedType::Bool => Ok(json!({
-            "type": "bool",
-            "description": "Boolean value"
-        })),
-        MoveNormalizedType::U8 => Ok(json!({
-            "type": "u8",
-            "description": "8-bit unsigned integer"
-        })),
-        MoveNormalizedType::U16 => Ok(json!({
-            "type": "u16",
-            "description": "16-bit unsigned integer"
-        })),
-        MoveNormalizedType::U32 => Ok(json!({
-            "type": "u32",
-            "description": "32-bit unsigned integer"
-        })),
-        MoveNormalizedType::U64 => Ok(json!({
-            "type": "u64",
-            "description": "64-bit unsigned integer"
-        })),
-        MoveNormalizedType::U128 => Ok(json!({
-            "type": "u128",
-            "description": "128-bit unsigned integer"
-        })),
-        MoveNormalizedType::U256 => Ok(json!({
-            "type": "u256",
-            "description": "256-bit unsigned integer"
-        })),
-        MoveNormalizedType::Address => Ok(json!({
-            "type": "address",
-            "description": "Sui address"
-        })),
-        MoveNormalizedType::Signer => Ok(json!({
-            "type": "signer",
-            "description": "Transaction signer"
-        })),
-        MoveNormalizedType::Vector(inner_type) => {
-            let inner_schema = convert_move_type_to_schema(inner_type)?;
-            Ok(json!({
-                "type": "vector",
-                "description": "Vector of values",
-                "element_type": inner_schema
-            }))
-        }
-        MoveNormalizedType::Struct {
-            address,
-            module,
-            name,
-            type_arguments: _,
-        } => {
-            if address == &sui::FRAMEWORK_PACKAGE_ID.to_string() {
-                match (module.as_str(), name.as_str()) {
-                    ("object", "ID") => Ok(json!({
-                        "type": "object_id",
-                        "description": "Sui object ID"
-                    })),
-                    ("object", "UID") => Ok(json!({
-                        "type": "object_id",
-                        "description": "Unique identifier for an object"
-                    })),
-                    ("coin", "Coin") => Ok(json!({
-                        "type": "object",
-                        "description": "Coin object reference"
-                    })),
-                    ("tx_context", "TxContext") => Ok(json!({
-                        "type": "tx_context",
-                        "description": "Transaction context (automatically provided)"
-                    })),
-                    _ => Ok(json!({
-                        "type": "object",
-                        "description": format!("{}::{}", module, name)
-                    })),
-                }
-            } else if address == "0x1" {
-                // Handle standard library types.
-                match (module.as_str(), name.as_str()) {
-                    ("string", "String") => Ok(json!({
-                        "type": "string",
-                        "description": "UTF-8 string"
-                    })),
-                    ("ascii", "String") => Ok(json!({
-                        "type": "string",
-                        "description": "ASCII string"
-                    })),
-                    _ => Ok(json!({
-                        "type": "object",
-                        "description": format!("{}::{}::{}", address, module, name)
-                    })),
-                }
-            } else {
-                // Custom struct types are treated as object references.
-                Ok(json!({
-                    "type": "object",
-                    "description": format!("{}::{}::{}", address, module, name)
-                }))
-            }
-        }
-        MoveNormalizedType::Reference(inner_type) => {
-            let inner_schema = convert_move_type_to_schema(inner_type)?;
-            if let Value::Object(mut schema_obj) = inner_schema {
-                schema_obj.insert("mutable".to_string(), Value::Bool(false));
-                Ok(Value::Object(schema_obj))
-            } else {
-                Ok(json!({
-                    "type": "reference",
-                    "description": "Reference to an object",
-                    "referenced_type": inner_schema
-                }))
-            }
-        }
-        MoveNormalizedType::MutableReference(inner_type) => {
-            let inner_schema = convert_move_type_to_schema(inner_type)?;
-            if let Value::Object(mut schema_obj) = inner_schema {
-                schema_obj.insert("mutable".to_string(), Value::Bool(true));
-                Ok(Value::Object(schema_obj))
-            } else {
-                Ok(json!({
-                    "type": "mutable_reference",
-                    "description": "Mutable reference to an object",
-                    "referenced_type": inner_schema
-                }))
-            }
-        }
-        MoveNormalizedType::TypeParameter(_) => Ok(json!({
-            "type": "generic",
-            "description": "Generic type parameter"
-        })),
-    }
-}
-
-/// Check if a parameter is TxContext (should be excluded from schema).
-fn is_tx_context_param(move_type: &sui::MoveNormalizedType) -> bool {
-    use sui::MoveNormalizedType;
-
-    match move_type {
-        MoveNormalizedType::Struct {
-            address,
-            module,
-            name,
-            ..
-        } => {
-            // TxContext
-            (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
-                && module == "tx_context"
-                && name == "TxContext"
-        }
-        MoveNormalizedType::MutableReference(inner_type) => {
-            // &mut TxContext
-            if let MoveNormalizedType::Struct {
-                address,
-                module,
-                name,
-                ..
-            } = inner_type.as_ref()
-            {
-                (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
-                    && module == "tx_context"
-                    && name == "TxContext"
-            } else {
-                false
-            }
-        }
-        MoveNormalizedType::Reference(inner_type) => {
-            // &TxContext
-            if let MoveNormalizedType::Struct {
-                address,
-                module,
-                name,
-                ..
-            } = inner_type.as_ref()
-            {
-                (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
-                    && module == "tx_context"
-                    && name == "TxContext"
-            } else {
-                false
-            }
-        }
-        _ => false,
-    }
-}
-
 /// Allow the user to customize parameter descriptions interactively.
 fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
     use {
@@ -750,91 +453,6 @@ fn convert_schema_to_named_ports(
 
     Ok(final_schema)
 }
-
-/// Generate output schema by introspecting the Move module's `Output`` enum.
-async fn generate_output_schema(
-    sui: &sui::Client,
-    package_address: sui::ObjectID,
-    module_name: &str,
-    output_enum_name: &str,
-) -> AnyResult<String, NexusCliError> {
-    let fetching_handle = loading!("Fetching Move module information for output schema...");
-
-    // Fetch all normalized Move modules for the package.
-    let all_modules = match sui
-        .read_api()
-        .get_normalized_move_modules_by_package(package_address)
-        .await
-    {
-        Ok(modules) => {
-            fetching_handle.success();
-            modules
-        }
-        Err(e) => {
-            fetching_handle.error();
-            return Err(NexusCliError::Any(anyhow!(
-                "Failed to fetch Move modules for package {}: {}",
-                package_address,
-                e
-            )));
-        }
-    };
-
-    // Find the specific module.
-    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
-        NexusCliError::Any(anyhow!(
-            "Module '{}' not found in package '{}'",
-            module_name,
-            package_address
-        ))
-    })?;
-
-    let parsing_handle = loading!("Parsing Output enum definition...");
-
-    // Find the Output enum.
-    let output_enum = normalized_module
-        .enums
-        .get(output_enum_name)
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!(
-                "Enum '{}' not found in module '{}'",
-                output_enum_name,
-                module_name
-            ))
-        })?;
-
-    // Parse the enum variants from the normalized enum.
-    let mut schema_map = Map::new();
-
-    // Iterate through each variant in the enum.
-    for (variant_name, variant_fields) in &output_enum.variants {
-        let mut fields_schema = Map::new();
-
-        // Convert each field in the variant to schema.
-        for field in variant_fields {
-            let field_schema = convert_move_type_to_schema(&field.type_)?;
-            fields_schema.insert(field.name.clone(), field_schema);
-        }
-
-        // Create the variant schema.
-        let variant_schema = json!({
-            "type": "variant",
-            "description": format!("{} variant", variant_name),
-            "fields": fields_schema
-        });
-
-        schema_map.insert(variant_name.to_lowercase(), variant_schema);
-    }
-
-    parsing_handle.success();
-
-    let schema_json = Value::Object(schema_map);
-    let schema_string = serde_json::to_string(&schema_json)
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to serialize output schema: {}", e)))?;
-
-    Ok(schema_string)
-}
-
 /// Allow the user to customize output variant and field descriptions through an interactive prompt.
 fn customize_output_variant_and_field_descriptions(
     base_schema: String,
