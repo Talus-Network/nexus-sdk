@@ -527,3 +527,704 @@ pub fn execute_scheduled_occurrence(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::{sui, test_utils::sui_mocks},
+        assert_matches::assert_matches,
+        sui_sdk::types::transaction::ProgrammableMoveCall,
+    };
+
+    struct TxInspector {
+        tx: sui::ProgrammableTransaction,
+    }
+
+    impl TxInspector {
+        fn new(tx: sui::ProgrammableTransaction) -> Self {
+            Self { tx }
+        }
+
+        fn commands_len(&self) -> usize {
+            self.tx.commands.len()
+        }
+
+        fn move_call(&self, index: usize) -> &ProgrammableMoveCall {
+            match self.tx.commands.get(index) {
+                Some(sui::Command::MoveCall(call)) => call,
+                Some(other) => panic!("expected MoveCall at index {index}, got {other:?}"),
+                None => panic!("missing command at index {index}"),
+            }
+        }
+
+        fn call_arg(&self, argument: &sui::Argument) -> &sui::CallArg {
+            let sui::Argument::Input(index) = argument else {
+                panic!("expected Argument::Input, got {argument:?}");
+            };
+
+            self.tx
+                .inputs
+                .get(*index as usize)
+                .unwrap_or_else(|| panic!("missing input for index {index}"))
+        }
+
+        fn expect_shared_object(
+            &self,
+            argument: &sui::Argument,
+            expected: &sui::ObjectRef,
+            mutable: bool,
+        ) {
+            let sui::CallArg::Object(sui::ObjectArg::SharedObject {
+                id,
+                initial_shared_version,
+                mutable: actual_mutable,
+            }) = self.call_arg(argument)
+            else {
+                panic!(
+                    "expected shared object argument, got {:?}",
+                    self.call_arg(argument)
+                );
+            };
+
+            assert_eq!(*id, expected.object_id);
+            assert_eq!(*initial_shared_version, expected.version);
+            assert_eq!(*actual_mutable, mutable);
+        }
+
+        fn expect_owned_object(
+            &self,
+            argument: &sui::Argument,
+            expected: &(sui::ObjectID, sui::SequenceNumber, sui::ObjectDigest),
+        ) {
+            let sui::CallArg::Object(sui::ObjectArg::ImmOrOwnedObject(object)) =
+                self.call_arg(argument)
+            else {
+                panic!(
+                    "expected owned object argument, got {:?}",
+                    self.call_arg(argument)
+                );
+            };
+
+            assert_eq!(object, expected);
+        }
+
+        fn expect_clock(&self, argument: &sui::Argument) {
+            let sui::CallArg::Object(sui::ObjectArg::SharedObject {
+                id,
+                initial_shared_version,
+                mutable,
+            }) = self.call_arg(argument)
+            else {
+                panic!(
+                    "expected clock shared object, got {:?}",
+                    self.call_arg(argument)
+                );
+            };
+
+            assert_eq!(*id, sui::CLOCK_OBJECT_ID);
+            assert_eq!(*initial_shared_version, sui::CLOCK_OBJECT_SHARED_VERSION);
+            assert!(!*mutable, "clock object must be immutable");
+        }
+
+        fn expect_pure_bytes(&self, argument: &sui::Argument, expected: &[u8]) {
+            let sui::CallArg::Pure(bytes) = self.call_arg(argument) else {
+                panic!("expected pure argument, got {:?}", self.call_arg(argument));
+            };
+
+            assert_eq!(bytes.as_slice(), expected);
+        }
+
+        fn expect_u64(&self, argument: &sui::Argument, value: u64) {
+            self.expect_pure_bytes(argument, &value.to_le_bytes());
+        }
+
+        fn expect_option_u64(&self, argument: &sui::Argument, value: Option<u64>) {
+            match value {
+                Some(inner) => {
+                    let mut bytes = vec![1];
+                    bytes.extend_from_slice(&inner.to_le_bytes());
+                    self.expect_pure_bytes(argument, &bytes);
+                }
+                None => self.expect_pure_bytes(argument, &[0]),
+            }
+        }
+    }
+
+    #[test]
+    fn new_metadata_builds_vecmap_and_scheduler_calls() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let scheduler_arg =
+            new_metadata(&mut tx, &objects, [("foo", "bar")]).expect("ptb construction succeeds");
+
+        assert_matches!(scheduler_arg, sui::Argument::Result(2));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 3);
+
+        let empty_call = inspector.move_call(0);
+        assert_eq!(empty_call.package, sui::FRAMEWORK_PACKAGE_ID);
+        assert_eq!(
+            empty_call.module,
+            sui_framework::VecMap::EMPTY.module.to_string()
+        );
+        assert_eq!(
+            empty_call.function,
+            sui_framework::VecMap::EMPTY.name.to_string()
+        );
+        assert_eq!(empty_call.type_arguments.len(), 2);
+        assert!(empty_call.arguments.is_empty());
+
+        let insert_call = inspector.move_call(1);
+        assert_eq!(insert_call.package, sui::FRAMEWORK_PACKAGE_ID);
+        assert_eq!(
+            insert_call.module,
+            sui_framework::VecMap::INSERT.module.to_string()
+        );
+        assert_eq!(
+            insert_call.function,
+            sui_framework::VecMap::INSERT.name.to_string()
+        );
+        assert_eq!(insert_call.type_arguments.len(), 2);
+        assert_eq!(insert_call.arguments.len(), 3);
+
+        let final_call = inspector.move_call(2);
+        assert_eq!(final_call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            final_call.module,
+            workflow::Scheduler::NEW_METADATA.module.to_string()
+        );
+        assert_eq!(
+            final_call.function,
+            workflow::Scheduler::NEW_METADATA.name.to_string()
+        );
+        assert!(final_call.type_arguments.is_empty());
+        assert_eq!(final_call.arguments.len(), 1);
+        assert_matches!(final_call.arguments[0], sui::Argument::Result(0));
+    }
+
+    #[test]
+    fn new_metadata_handles_empty_iterators() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let result = new_metadata(
+            &mut tx,
+            &objects,
+            std::iter::empty::<(&'static str, &'static str)>(),
+        )
+        .expect("ptb construction succeeds");
+
+        assert_matches!(result, sui::Argument::Result(1));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 2);
+    }
+
+    #[test]
+    fn new_task_adds_clock_argument() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let metadata = tx.pure(1u8).expect("metadata input");
+        let constraints = tx.pure(2u8).expect("constraints input");
+        let execution = tx.pure(3u8).expect("execution input");
+
+        let result = new_task(&mut tx, &objects, metadata, constraints, execution)
+            .expect("ptb construction succeeds");
+
+        assert_matches!(result, sui::Argument::Result(0));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.module, workflow::Scheduler::NEW.module.to_string());
+        assert_eq!(call.function, workflow::Scheduler::NEW.name.to_string());
+        assert_eq!(call.arguments.len(), 4);
+        inspector.expect_pure_bytes(&call.arguments[0], &[1]);
+        inspector.expect_pure_bytes(&call.arguments[1], &[2]);
+        inspector.expect_pure_bytes(&call.arguments[2], &[3]);
+        inspector.expect_clock(&call.arguments[3]);
+    }
+
+    #[test]
+    fn update_metadata_uses_shared_task() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let metadata = tx.pure(9u8).expect("metadata input");
+
+        update_metadata(&mut tx, &objects, &task, metadata).expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(
+            call.module,
+            workflow::Scheduler::UPDATE_METADATA.module.to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::UPDATE_METADATA.name.to_string()
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_pure_bytes(&call.arguments[1], &[9]);
+    }
+
+    #[test]
+    fn register_time_constraint_invokes_scheduler() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let policy = tx.pure(11u8).expect("policy input");
+        let config = tx.pure(12u8).expect("config input");
+
+        register_time_constraint(&mut tx, &objects, policy, config)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(
+            call.module,
+            workflow::Scheduler::REGISTER_TIME_CONSTRAINT
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::REGISTER_TIME_CONSTRAINT
+                .name
+                .to_string()
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_pure_bytes(&call.arguments[0], &[11]);
+        inspector.expect_pure_bytes(&call.arguments[1], &[12]);
+    }
+
+    #[test]
+    fn new_time_constraint_config_has_no_arguments() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let arg = new_time_constraint_config(&mut tx, &objects).expect("ptb construction succeeds");
+        assert_matches!(arg, sui::Argument::Result(0));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert!(call.arguments.is_empty());
+        assert_eq!(
+            call.module,
+            workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG
+                .name
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn execute_fetches_execution_witness() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let witness = execute(&mut tx, &objects, &task).expect("ptb construction succeeds");
+        assert_matches!(witness, sui::Argument::Result(0));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 1);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        assert_eq!(call.module, workflow::Scheduler::EXECUTE.module.to_string());
+        assert_eq!(call.function, workflow::Scheduler::EXECUTE.name.to_string());
+    }
+
+    #[test]
+    fn finish_finalizes_execution_with_proof() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let proof = tx.pure(5u8).expect("proof input");
+
+        finish(&mut tx, &objects, &task, proof).expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.module, workflow::Scheduler::FINISH.module.to_string());
+        assert_eq!(call.function, workflow::Scheduler::FINISH.name.to_string());
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_pure_bytes(&call.arguments[1], &[5]);
+    }
+
+    #[test]
+    fn add_occurrence_absolute_for_task_encodes_arguments() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let start_time = 10;
+        let deadline = Some(20);
+        let gas_price = 30;
+
+        add_occurrence_absolute_for_task(&mut tx, &objects, &task, start_time, deadline, gas_price)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 5);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_u64(&call.arguments[1], start_time);
+        inspector.expect_option_u64(&call.arguments[2], deadline);
+        inspector.expect_u64(&call.arguments[3], gas_price);
+        inspector.expect_clock(&call.arguments[4]);
+    }
+
+    #[test]
+    fn add_occurrence_with_offset_for_task_encodes_optional_deadline() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let start_time = 100;
+        let gas_price = 55;
+
+        add_occurrence_with_offset_for_task(&mut tx, &objects, &task, start_time, None, gas_price)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 5);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_u64(&call.arguments[1], start_time);
+        inspector.expect_option_u64(&call.arguments[2], None);
+        inspector.expect_u64(&call.arguments[3], gas_price);
+        inspector.expect_clock(&call.arguments[4]);
+    }
+
+    #[test]
+    fn add_occurrence_with_offsets_from_now_for_task_encodes_offsets() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let start_offset = 5;
+        let deadline_offset = Some(15);
+        let gas_price = 25;
+
+        add_occurrence_with_offsets_from_now_for_task(
+            &mut tx,
+            &objects,
+            &task,
+            start_offset,
+            deadline_offset,
+            gas_price,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 5);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_u64(&call.arguments[1], start_offset);
+        inspector.expect_option_u64(&call.arguments[2], deadline_offset);
+        inspector.expect_u64(&call.arguments[3], gas_price);
+        inspector.expect_clock(&call.arguments[4]);
+    }
+
+    #[test]
+    fn new_or_modify_periodic_for_task_sets_all_arguments() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        let period = 1_000;
+        let deadline_offset = Some(500);
+        let max_iterations = Some(3);
+        let gas_price = 75;
+
+        new_or_modify_periodic_for_task(
+            &mut tx,
+            &objects,
+            &task,
+            period,
+            deadline_offset,
+            max_iterations,
+            gas_price,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 5);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_u64(&call.arguments[1], period);
+        inspector.expect_option_u64(&call.arguments[2], deadline_offset);
+        inspector.expect_option_u64(&call.arguments[3], max_iterations);
+        inspector.expect_u64(&call.arguments[4], gas_price);
+    }
+
+    #[test]
+    fn disable_periodic_for_task_uses_shared_argument() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        disable_periodic_for_task(&mut tx, &objects, &task).expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 1);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+    }
+
+    #[test]
+    fn pause_time_constraint_for_task_uses_shared_argument() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        pause_time_constraint_for_task(&mut tx, &objects, &task)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 1);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+    }
+
+    #[test]
+    fn resume_time_constraint_for_task_uses_shared_argument() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        resume_time_constraint_for_task(&mut tx, &objects, &task)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 1);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+    }
+
+    #[test]
+    fn cancel_time_constraint_for_task_uses_shared_argument() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        cancel_time_constraint_for_task(&mut tx, &objects, &task)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 1);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+    }
+
+    #[test]
+    fn check_time_constraint_uses_clock_and_shared_task() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        check_time_constraint(&mut tx, &objects, &task).expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_clock(&call.arguments[1]);
+    }
+
+    #[test]
+    fn register_begin_execution_routes_through_default_tap() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let policy = tx.pure(13u8).expect("policy input");
+        let config = tx.pure(14u8).expect("config input");
+
+        register_begin_execution(&mut tx, &objects, policy, config)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION
+                .name
+                .to_string()
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_pure_bytes(&call.arguments[0], &[13]);
+        inspector.expect_pure_bytes(&call.arguments[1], &[14]);
+    }
+
+    #[test]
+    fn dag_begin_execution_from_scheduler_builds_full_call() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let leader_cap_tuple = {
+            let object = sui_mocks::mock_sui_object_ref();
+            (object.object_id, object.version, object.digest)
+        };
+        let claim_coin_tuple = {
+            let object = sui_mocks::mock_sui_object_ref();
+            (object.object_id, object.version, object.digest)
+        };
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let leader_cap = tx
+            .obj(sui::ObjectArg::ImmOrOwnedObject(leader_cap_tuple.clone()))
+            .expect("leader cap input");
+        let claim_coin = tx
+            .obj(sui::ObjectArg::ImmOrOwnedObject(claim_coin_tuple.clone()))
+            .expect("claim coin input");
+
+        let amount_execution = 44;
+        let amount_priority = 55;
+
+        dag_begin_execution_from_scheduler(
+            &mut tx,
+            &objects,
+            &task,
+            &dag,
+            leader_cap,
+            claim_coin,
+            amount_execution,
+            amount_priority,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.arguments.len(), 9);
+
+        inspector.expect_shared_object(&call.arguments[0], &objects.default_tap, true);
+        inspector.expect_shared_object(&call.arguments[1], &task, true);
+        let sui::CallArg::Object(sui::ObjectArg::SharedObject {
+            id,
+            initial_shared_version,
+            mutable,
+        }) = inspector.call_arg(&call.arguments[2])
+        else {
+            panic!(
+                "expected shared object argument for DAG, got {:?}",
+                inspector.call_arg(&call.arguments[2])
+            );
+        };
+        assert_eq!(*id, dag.object_id);
+        assert_eq!(*initial_shared_version, dag.version);
+        assert!(!*mutable);
+
+        inspector.expect_shared_object(&call.arguments[3], &objects.gas_service, true);
+        inspector.expect_owned_object(&call.arguments[4], &leader_cap_tuple);
+        inspector.expect_owned_object(&call.arguments[5], &claim_coin_tuple);
+        inspector.expect_u64(&call.arguments[6], amount_execution);
+        inspector.expect_u64(&call.arguments[7], amount_priority);
+        inspector.expect_clock(&call.arguments[8]);
+    }
+
+    #[test]
+    fn execute_scheduled_occurrence_chains_scheduler_and_tap_calls() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let leader_cap_tuple = {
+            let object = sui_mocks::mock_sui_object_ref();
+            (object.object_id, object.version, object.digest)
+        };
+        let claim_coin_tuple = {
+            let object = sui_mocks::mock_sui_object_ref();
+            (object.object_id, object.version, object.digest)
+        };
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let leader_cap = tx
+            .obj(sui::ObjectArg::ImmOrOwnedObject(leader_cap_tuple.clone()))
+            .expect("leader cap input");
+        let claim_coin = tx
+            .obj(sui::ObjectArg::ImmOrOwnedObject(claim_coin_tuple.clone()))
+            .expect("claim coin input");
+
+        execute_scheduled_occurrence(
+            &mut tx, &objects, &task, &dag, leader_cap, claim_coin, 100, 200,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 2);
+
+        let scheduler_call = inspector.move_call(0);
+        assert_eq!(
+            scheduler_call.module,
+            workflow::Scheduler::CHECK_TIME_CONSTRAINT
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            scheduler_call.function,
+            workflow::Scheduler::CHECK_TIME_CONSTRAINT.name.to_string()
+        );
+        assert_eq!(scheduler_call.arguments.len(), 2);
+        inspector.expect_shared_object(&scheduler_call.arguments[0], &task, true);
+        inspector.expect_clock(&scheduler_call.arguments[1]);
+
+        let tap_call = inspector.move_call(1);
+        assert_eq!(
+            tap_call.module,
+            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            tap_call.function,
+            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
+                .name
+                .to_string()
+        );
+        assert_eq!(tap_call.arguments.len(), 9);
+        inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);
+        inspector.expect_shared_object(&tap_call.arguments[1], &task, true);
+        let sui::CallArg::Object(sui::ObjectArg::SharedObject {
+            id,
+            initial_shared_version,
+            mutable,
+        }) = inspector.call_arg(&tap_call.arguments[2])
+        else {
+            panic!(
+                "expected shared DAG object, got {:?}",
+                inspector.call_arg(&tap_call.arguments[2])
+            );
+        };
+        assert_eq!(*id, dag.object_id);
+        assert_eq!(*initial_shared_version, dag.version);
+        assert!(!*mutable);
+        inspector.expect_shared_object(&tap_call.arguments[3], &objects.gas_service, true);
+        inspector.expect_owned_object(&tap_call.arguments[4], &leader_cap_tuple);
+        inspector.expect_owned_object(&tap_call.arguments[5], &claim_coin_tuple);
+        inspector.expect_u64(&tap_call.arguments[6], 100);
+        inspector.expect_u64(&tap_call.arguments[7], 200);
+        inspector.expect_clock(&tap_call.arguments[8]);
+    }
+}

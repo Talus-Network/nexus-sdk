@@ -79,6 +79,14 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
+        /// Optional gas price for the DAG execution.
+        #[arg(
+            long = "gas-price",
+            help = "The gas price to pass to the DAG execution. Defaults to 0 when omitted.",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        gas_price: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -124,6 +132,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             entry_group,
             input_json,
             inspect,
+            gas_price,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -134,6 +143,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 entry_group,
                 input_json,
                 inspect,
+                gas_price,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )

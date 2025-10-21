@@ -25,6 +25,7 @@ pub(crate) async fn execute_dag(
     entry_group: String,
     mut input_json: serde_json::Value,
     inspect: bool,
+    gas_price: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -70,7 +71,7 @@ pub(crate) async fn execute_dag(
         &mut tx,
         objects,
         &dag,
-        0,
+        gas_price,
         &entry_group,
         input_json,
         &encrypt,

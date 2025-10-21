@@ -156,6 +156,13 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("resume_time_constraint_for_task"),
     };
+    /// The Task struct type. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::scheduler::Task`
+    pub const TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("Task"),
+    };
     /// Updates task metadata with the provided values.
     ///
     /// `nexus_workflow::scheduler::update_metadata`
