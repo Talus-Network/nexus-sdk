@@ -1,0 +1,121 @@
+module {{ name_snake_case }}::{{ name_snake_case }};
+
+use nexus_primitives::proof_of_uid::ProofOfUID;
+use nexus_workflow::tool_output::{Self, ToolOutput};
+use sui::bag::{Self, Bag};
+use sui::transfer::share_object;
+use std::ascii::String as AsciiString;
+use sui::clock::Clock;
+
+/// One-time witness for package initialization.
+public struct {{ name_uppercase }} has drop {}
+
+/// Witness object used to identify this tool.
+public struct {{ name_pascal_case }}Witness has key, store {
+    id: UID,
+}
+
+/// Your tool's state object (customize as needed).
+public struct {{ name_pascal_case }}State has key {
+    id: UID,
+    /// Store the witness object that identifies this tool.
+    witness: Bag,
+    // Add your application-specific fields here.
+    // Example: value: u64,
+    // ..
+}
+
+/// Tool execution output variants.
+/// This enum is used for automatic schema generation during registration.
+/// It's not used during execution. Only the ToolOutput object is used.
+public enum Output {
+    Ok {
+        result: u64,
+        // Add custom fields here as needed.
+    },
+    Err {
+        reason: AsciiString,
+    },
+    // Add custom variants as needed.
+    CustomResult {
+        data: vector<u8>,
+        timestamp: u64,
+    },
+}
+
+/// Initialize your tool's state.
+fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
+    let state = {{ name_pascal_case }}State {
+        id: object::new(ctx),
+        witness: {
+            let mut bag = bag::new(ctx);
+            bag.add(b"witness", {{ name_pascal_case }}Witness { id: object::new(ctx) });
+            bag
+        },
+        // Initialize your fields.
+        // value: 0,
+    };
+    share_object(state);
+}
+
+/// Execute function with standardized Nexus signature.
+///
+/// CRITICAL REQUIREMENTS:
+/// 1. First parameter: worksheet: &mut ProofOfUID
+/// 2. Last parameter: ctx: &mut TxContext
+/// 3. Return type: ToolOutput
+/// 4. Must stamp worksheet with witness ID
+public fun execute(
+    worksheet: &mut ProofOfUID,
+    state: &mut {{ name_pascal_case }}State,
+    // Add your custom parameters here.
+    input_value: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): ToolOutput {
+    // Get the witness for stamping.
+    let witness = state.witness();
+
+    // REQUIRED: Stamp the worksheet to prove execution.
+    worksheet.stamp_with_data(&witness.id, b"{{ name_snake_case }}_executed");
+
+    // Implement your tool logic here.
+    if (input_value == 0) {
+        // Return error variant.
+        tool_output::err(b"Input value cannot be zero")
+    } else if (input_value > 1000) {
+        // Return custom variant.
+        tool_output::variant(b"custom_result")
+            .with_field(b"data", b"large_value_processed")
+            .with_field(b"timestamp", sui::clock::timestamp_ms(clock).to_string().into_bytes())
+    } else {
+        // Return success variant.
+        let result = input_value * 2;
+        tool_output::ok()
+            .with_field(b"result", result.to_string().into_bytes())
+    }
+}
+
+// === Getters and Helper Functions ===
+
+/// Helper function to get the witness object.
+fun witness(self: &{{ name_pascal_case }}State): &{{ name_pascal_case }}Witness {
+    self.witness.borrow(b"witness")
+}
+
+/// Get the witness ID for external reference.
+/// Useful for registering the tool onchain.
+public fun witness_id(self: &{{ name_pascal_case }}State): ID {
+    self.witness().id.to_inner()
+}
+
+// Add getters for your custom fields.
+// public fun value(self: &{{ name_pascal_case }}State): u64 {
+//     self.value
+// }
+
+#[test_only]
+public fun init_for_test(otw: {{ name_uppercase }}, ctx: &mut TxContext) {
+    init(otw, ctx);
+}
+
