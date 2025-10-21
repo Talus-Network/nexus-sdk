@@ -50,45 +50,57 @@ pub(crate) async fn register_onchain_tool(
 
     // Generate input schema by introspecting the Move module's "execute" function.
     notify_success!("Auto-generating input schema from Move module...");
-    let base_input_schema =
-        match nexus_sdk::schema_gen::generate_input_schema(&sui, package_address, &module_name, "execute").await {
-            Ok(schema) => {
-                notify_success!(
-                    "Generated base input schema: {}",
-                    schema.truecolor(100, 255, 100)
-                );
-                schema
-            }
-            Err(e) => {
-                notify_error!(
-                    "Failed to generate input schema for tool '{fqn}': {error}",
-                    fqn = fqn.to_string().truecolor(100, 100, 100),
-                    error = e
-                );
-                return Err(NexusCliError::Any(e));
-            }
-        };
+    let base_input_schema = match nexus_sdk::onchain_schema_gen::generate_input_schema(
+        &sui,
+        package_address,
+        &module_name,
+        "execute",
+    )
+    .await
+    {
+        Ok(schema) => {
+            notify_success!(
+                "Generated base input schema: {}",
+                schema.truecolor(100, 255, 100)
+            );
+            schema
+        }
+        Err(e) => {
+            notify_error!(
+                "Failed to generate input schema for tool '{fqn}': {error}",
+                fqn = fqn.to_string().truecolor(100, 100, 100),
+                error = e
+            );
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     // Generate output schema by introspecting the Move module's "Output" enum.
     notify_success!("Auto-generating output schema from Move module...");
-    let base_output_schema =
-        match nexus_sdk::schema_gen::generate_output_schema(&sui, package_address, &module_name, "Output").await {
-            Ok(schema) => {
-                notify_success!(
-                    "Generated base output schema: {}",
-                    schema.truecolor(100, 255, 100)
-                );
-                schema
-            }
-            Err(e) => {
-                notify_error!(
-                    "Failed to generate output schema for tool '{fqn}': {error}",
-                    fqn = fqn.to_string().truecolor(100, 100, 100),
-                    error = e
-                );
-                return Err(NexusCliError::Any(e));
-            }
-        };
+    let base_output_schema = match nexus_sdk::onchain_schema_gen::generate_output_schema(
+        &sui,
+        package_address,
+        &module_name,
+        "Output",
+    )
+    .await
+    {
+        Ok(schema) => {
+            notify_success!(
+                "Generated base output schema: {}",
+                schema.truecolor(100, 255, 100)
+            );
+            schema
+        }
+        Err(e) => {
+            notify_error!(
+                "Failed to generate output schema for tool '{fqn}': {error}",
+                fqn = fqn.to_string().truecolor(100, 100, 100),
+                error = e
+            );
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     // Allow user to customize parameter descriptions.
     let input_schema = match customize_parameter_descriptions(base_input_schema) {
