@@ -1,0 +1,53 @@
+{
+  "name": "nexus-cli-wasm",
+  "version": "0.2.0-rc.7",
+  "description": "Nexus CLI WASM bindings for browser/web usage",
+  "main": "pkg/nexus_cli_wasm.js",
+  "types": "pkg/nexus_cli_wasm.d.ts",
+  "files": [
+    "pkg"
+  ],
+  "scripts": {
+    "build": "wasm-pack build --target web --out-dir pkg",
+    "build:node": "wasm-pack build --target nodejs --out-dir pkg-node",
+    "build:bundler": "wasm-pack build --target bundler --out-dir pkg-bundler",
+    "build:all": "npm run build && npm run build:node && npm run build:bundler",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Talus-Network/nexus-sdk"
+  },
+  "keywords": [
+    "wasm",
+    "nexus",
+    "dag",
+    "validation",
+    "blockchain"
+  ],
+  "author": "Talus Engineers <engineering@taluslabs.xyz>",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "jest": "^30.0.2",
+    "@jest/globals": "^30.0.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.js",
+      "**/?(*.)+(spec|test).js"
+    ],
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/pkg*/**"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/pkg/",
+      "<rootDir>/pkg-node/",
+      "<rootDir>/pkg-bundler/"
+    ]
+  }
+}

@@ -44,7 +44,10 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
 # Types feature enables the use of the `types` module. Also adds reqwest as a
 # dependency.
-types = ["sui_types", "reqwest"]
+types = ["sui_types", "reqwest", "serde_json"]
+
+# WASM-compatible types feature - only includes DAG types without system deps
+wasm_types = ["tool_fqn", "serde_json"]
 
 # Events feature enables the use of the `events` module.
 events = ["sui_idents", "types"]
