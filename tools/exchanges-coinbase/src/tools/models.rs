@@ -40,6 +40,31 @@ pub struct ProductTickerData {
     pub conversions_volume: Option<String>,
 }
 
+/// Product stats data from Coinbase Exchange API
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ProductStatsData {
+    /// Opening price (in quote currency)
+    pub open: String,
+    /// Highest price (in quote currency)
+    pub high: String,
+    /// Lowest price (in quote currency)
+    pub low: String,
+    /// 24h volume (in base currency)
+    pub volume: String,
+    /// Last price (in quote currency)
+    pub last: String,
+    /// 30-day volume (in base currency) (optional field)
+    pub volume_30day: Option<String>,
+    /// 24h RFQ volume (optional field)
+    pub rfq_volume_24hour: Option<String>,
+    /// 24h conversions volume (optional field)
+    pub conversions_volume_24hour: Option<String>,
+    /// 30-day RFQ volume (optional field)
+    pub rfq_volume_30day: Option<String>,
+    /// 30-day conversions volume (optional field)
+    pub conversions_volume_30day: Option<String>,
+}
+
 /// Coinbase API response with potential errors
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CoinbaseApiResponse<T> {
