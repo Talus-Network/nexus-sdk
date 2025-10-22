@@ -24,10 +24,8 @@ impl PortsData {
     }
 
     /// Creates a [`PortsData`] from a [`HashMap`].
-    pub fn from_map(map: HashMap<String, NexusData>) -> Self {
-        PortsData {
-            values: map.into_iter().map(|(k, v)| (k.into(), v)).collect(),
-        }
+    pub fn from_map(values: HashMap<String, NexusData>) -> Self {
+        PortsData { values }
     }
 
     /// Function to commit all [`NexusData`] values to storage. This is done in
