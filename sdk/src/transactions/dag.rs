@@ -12,7 +12,6 @@ use {
             NexusObjects,
             Storable,
             StorageKind,
-            TypeName,
             Vertex,
             VertexKind,
             DEFAULT_ENTRY_GROUP,
@@ -383,7 +382,7 @@ pub fn execute(
     objects: &NexusObjects,
     dag: &sui::ObjectRef,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<TypeName, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut DefaultTAP`
     let default_tap = tx.obj(sui::ObjectArg::SharedObject {
@@ -456,11 +455,9 @@ pub fn execute(
                 true => workflow::Dag::encrypted_input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
-                    &port.name,
+                    &port,
                 )?,
-                false => {
-                    workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port.name)?
-                }
+                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
             };
 
             // `value: NexusData`
@@ -742,7 +739,7 @@ mod tests {
         input_data.insert(
             "vertex1".to_string(),
             HashMap::from([(
-                TypeName::new("port1"),
+                "port1".to_string(),
                 serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
                     .try_into()
                     .expect("Failed to convert JSON to DataStorage"),

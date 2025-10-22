@@ -125,12 +125,12 @@ pub(crate) async fn inspect_dag_execution(
                     for (port, data) in fetched_data {
                         let (display_data, json_data_value) = (
                             format!("{}", data.as_json()),
-                            json!({ "port": port.name, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                            json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
                         );
 
                         item!(
                             "Port '{port}' produced data: {data}",
-                            port = port.name.truecolor(100, 100, 100),
+                            port = port.truecolor(100, 100, 100),
                             data = display_data.truecolor(100, 100, 100),
                         );
 
@@ -169,12 +169,12 @@ pub(crate) async fn inspect_dag_execution(
                     for (port, data) in fetched_data {
                         let (display_data, json_data_value) = (
                             format!("{}", data.as_json()),
-                            json!({ "port": port.name, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                            json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
                         );
 
                         item!(
                             "Port '{port}' produced data: {data}",
-                            port = port.name.truecolor(100, 100, 100),
+                            port = port.truecolor(100, 100, 100),
                             data = display_data.truecolor(100, 100, 100),
                         );
 

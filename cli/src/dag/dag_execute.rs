@@ -168,7 +168,7 @@ async fn process_entry_ports(
     session: Arc<Mutex<Session>>,
     encrypt: &HashMap<String, Vec<String>>,
     remote: &Vec<String>,
-) -> Result<HashMap<String, HashMap<TypeName, DataStorage>>, NexusCliError> {
+) -> Result<HashMap<String, HashMap<String, DataStorage>>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
             "Input JSON must be an object with vertex names as keys."
@@ -405,8 +405,8 @@ mod tests {
             .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
-        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
 
         // Both should be Inline and not encrypted
         assert_matches!(port1, DataStorage::Inline(_));
@@ -439,8 +439,8 @@ mod tests {
             .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
-        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
 
         // port1 should be encrypted
         assert!(port1.is_encrypted());
@@ -488,8 +488,8 @@ mod tests {
             .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
-        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
 
         // port1 should be walrus
         assert_matches!(port1, DataStorage::Walrus(_));
@@ -541,8 +541,8 @@ mod tests {
             .expect("Should succeed");
 
         let vertex = result.get("vertex1").expect("vertex1 missing");
-        let port1 = vertex.get(&TypeName::new("port1")).expect("port1 missing");
-        let port2 = vertex.get(&TypeName::new("port2")).expect("port2 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
 
         // port1 should be encrypted and walrus
         assert!(port1.is_encrypted());

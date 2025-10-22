@@ -14,17 +14,17 @@ use {
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsData {
-    values: HashMap<TypeName, NexusData>,
+    values: HashMap<String, NexusData>,
 }
 
 impl PortsData {
     /// Consumes self and returns the inner [`HashMap`].
-    pub fn into_map(self) -> HashMap<TypeName, NexusData> {
+    pub fn into_map(self) -> HashMap<String, NexusData> {
         self.values
     }
 
     /// Creates a [`PortsData`] from a [`HashMap`].
-    pub fn from_map<T: Into<TypeName>>(map: HashMap<T, NexusData>) -> Self {
+    pub fn from_map(map: HashMap<String, NexusData>) -> Self {
         PortsData {
             values: map.into_iter().map(|(k, v)| (k.into(), v)).collect(),
         }
@@ -36,7 +36,7 @@ impl PortsData {
         self,
         storage_conf: &StorageConf,
         session: Arc<Mutex<Session>>,
-    ) -> anyhow::Result<HashMap<TypeName, DataStorage>> {
+    ) -> anyhow::Result<HashMap<String, DataStorage>> {
         let commit_futures = self.values.into_iter().map(|(key, data)| {
             let storage_conf = storage_conf.clone();
             let session = Arc::clone(&session);
@@ -52,7 +52,7 @@ impl PortsData {
         try_join_all(commit_futures).await.map(|results| {
             results
                 .into_iter()
-                .collect::<HashMap<TypeName, DataStorage>>()
+                .collect::<HashMap<String, DataStorage>>()
         })
     }
 
@@ -62,7 +62,7 @@ impl PortsData {
         self,
         storage_conf: &StorageConf,
         session: Arc<Mutex<Session>>,
-    ) -> anyhow::Result<HashMap<TypeName, DataStorage>> {
+    ) -> anyhow::Result<HashMap<String, DataStorage>> {
         let fetch_futures = self.values.into_iter().map(|(key, data)| {
             let storage_conf = storage_conf.clone();
             let session = Arc::clone(&session);
@@ -78,13 +78,13 @@ impl PortsData {
         try_join_all(fetch_futures).await.map(|results| {
             results
                 .into_iter()
-                .collect::<HashMap<TypeName, DataStorage>>()
+                .collect::<HashMap<String, DataStorage>>()
         })
     }
 }
 
 impl std::ops::Deref for PortsData {
-    type Target = HashMap<TypeName, NexusData>;
+    type Target = HashMap<String, NexusData>;
 
     fn deref(&self) -> &Self::Target {
         &self.values
@@ -119,7 +119,7 @@ impl<'de> serde::Deserialize<'de> for PortsData {
             values: values
                 .contents
                 .into_iter()
-                .map(|entry| (entry.key, entry.value))
+                .map(|entry| (entry.key.name, entry.value))
                 .collect(),
         })
     }
@@ -131,20 +131,23 @@ impl serde::Serialize for PortsData {
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct VecMapEntry<'a> {
-            key: &'a TypeName,
-            value: &'a NexusData,
+        struct VecMapEntry {
+            key: TypeName,
+            value: NexusData,
         }
 
         #[derive(Serialize)]
-        struct VecMapWrapper<'a> {
-            contents: Vec<VecMapEntry<'a>>,
+        struct VecMapWrapper {
+            contents: Vec<VecMapEntry>,
         }
 
         let contents: Vec<VecMapEntry> = self
             .values
             .iter()
-            .map(|(key, value)| VecMapEntry { key, value })
+            .map(|(key, value)| VecMapEntry {
+                key: TypeName::new(key),
+                value: value.clone(),
+            })
             .collect();
 
         VecMapWrapper { contents }.serialize(serializer)
@@ -165,7 +168,7 @@ mod tests {
     fn sample_ports_data() -> PortsData {
         let mut values = HashMap::new();
         values.insert(
-            TypeName::new("port1"),
+            "port1".to_string(),
             NexusData::new_inline(json!({ "key": "value" })),
         );
         PortsData { values }
@@ -192,11 +195,8 @@ mod tests {
 
         // The map should contain the same entries as the original PortsData
         assert_eq!(map.len(), 1);
-        assert!(map.contains_key(&TypeName::new("port1")));
-        assert_eq!(
-            map.get(&TypeName::new("port1")),
-            ports_data.values.get(&TypeName::new("port1"))
-        );
+        assert!(map.contains_key("port1"));
+        assert_eq!(map.get("port1"), ports_data.values.get("port1"));
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
     async fn test_commit_all_success() {
         let mut values = HashMap::new();
         values.insert(
-            TypeName::new("port1"),
+            "port1".to_string(),
             NexusData::new_inline(json!({ "key": "value" })),
         );
         let ports_data = PortsData { values };
@@ -256,14 +256,14 @@ mod tests {
         assert!(result.is_ok());
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
-        assert!(map.contains_key(&TypeName::new("port1")));
+        assert!(map.contains_key("port1"));
     }
 
     #[tokio::test]
     async fn test_fetch_all_success() {
         let mut values = HashMap::new();
         values.insert(
-            TypeName::new("port1"),
+            "port1".to_string(),
             NexusData::new_inline(json!({ "key": "value" })),
         );
         let ports_data = PortsData { values };
@@ -278,7 +278,7 @@ mod tests {
         assert!(result.is_ok());
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
-        assert!(map.contains_key(&TypeName::new("port1")));
+        assert!(map.contains_key("port1"));
     }
 
     #[tokio::test]
