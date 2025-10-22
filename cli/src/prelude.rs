@@ -98,7 +98,7 @@ pub(crate) fn parse_json_string(json: &str) -> AnyResult<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, tempfile};
+    use super::*;
 
     #[test]
     fn test_expand_tilde() {
