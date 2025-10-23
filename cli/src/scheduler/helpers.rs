@@ -1,7 +1,6 @@
 use {
     crate::{prelude::*, workflow},
     nexus_sdk::crypto::session::Session,
-    serde_json::Value,
     std::collections::HashMap,
 };
 
@@ -22,23 +21,6 @@ pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)
         result.push((key.trim().to_owned(), value.trim().to_owned()));
     }
     Ok(result)
-}
-
-pub(crate) fn choices_are_mutually_exclusive(
-    pairs: &[(&str, bool)],
-) -> AnyResult<(), NexusCliError> {
-    let selected: Vec<_> = pairs.iter().filter(|(_, present)| *present).collect();
-    if selected.len() > 1 {
-        let flags = selected
-            .into_iter()
-            .map(|(flag, _)| *flag)
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(NexusCliError::Any(anyhow!(
-            "Flags {flags} are mutually exclusive"
-        )));
-    }
-    Ok(())
 }
 
 pub(crate) fn ensure_start_before_deadline(
@@ -62,19 +44,6 @@ pub(crate) fn validate_schedule_options(
     deadline_offset_ms: Option<u64>,
     require_start: bool,
 ) -> AnyResult<(), NexusCliError> {
-    choices_are_mutually_exclusive(&[
-        ("--schedule-start-ms", start_ms.is_some()),
-        ("--schedule-start-offset-ms", start_offset_ms.is_some()),
-    ])?;
-
-    choices_are_mutually_exclusive(&[
-        ("--schedule-deadline-ms", deadline_ms.is_some()),
-        (
-            "--schedule-deadline-offset-ms",
-            deadline_offset_ms.is_some(),
-        ),
-    ])?;
-
     if require_start && start_ms.is_none() && start_offset_ms.is_none() {
         return Err(NexusCliError::Any(anyhow!(
             "Provide either --schedule-start-ms or --schedule-start-offset-ms"
@@ -119,14 +88,6 @@ pub(crate) async fn fetch_encryption_targets(
     workflow::fetch_encrypted_entry_ports(sui, entry_group.to_owned(), dag_id).await
 }
 
-pub(crate) fn encrypt_inputs_once(
-    session: &mut nexus_sdk::crypto::session::Session,
-    input_json: &mut Value,
-    handles: &HashMap<String, Vec<String>>,
-) -> AnyResult<(), NexusCliError> {
-    workflow::encrypt_entry_ports_once(session, input_json, handles)
-}
-
 pub(crate) fn get_active_session(conf: &mut CliConf) -> Result<&mut Session, NexusCliError> {
     match &mut conf.crypto {
         Some(crypto_secret) => {
@@ -165,12 +126,6 @@ mod tests {
     fn parse_metadata_rejects_missing_equals() {
         let err = parse_metadata(&["invalid".to_string()]).unwrap_err();
         assert!(err.to_string().contains("Invalid metadata entry"));
-    }
-
-    #[test]
-    fn choices_exclusive_detects_conflict() {
-        let err = choices_are_mutually_exclusive(&[("a", true), ("b", true)]).unwrap_err();
-        assert!(err.to_string().contains("mutually exclusive"));
     }
 
     #[test]

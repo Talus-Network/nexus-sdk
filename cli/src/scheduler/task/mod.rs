@@ -9,6 +9,28 @@ use {
     nexus_sdk::types::DEFAULT_ENTRY_GROUP,
 };
 
+#[derive(Args, Debug, Clone)]
+#[group(id = "schedule-start", multiple = false)]
+pub(crate) struct ScheduleStartOptions {
+    /// Absolute start time in milliseconds since epoch for the first occurrence.
+    #[arg(long = "schedule-start-ms", value_name = "MILLIS")]
+    schedule_start_ms: Option<u64>,
+    /// Start offset in milliseconds from now for the first occurrence.
+    #[arg(long = "schedule-start-offset-ms", value_name = "MILLIS")]
+    schedule_start_offset_ms: Option<u64>,
+}
+
+#[derive(Args, Debug, Clone)]
+#[group(id = "schedule-deadline", multiple = false)]
+pub(crate) struct ScheduleDeadlineOptions {
+    /// Absolute deadline time in milliseconds since epoch for the first occurrence.
+    #[arg(long = "schedule-deadline-ms", value_name = "MILLIS")]
+    schedule_deadline_ms: Option<u64>,
+    /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
+    #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
+    schedule_deadline_offset_ms: Option<u64>,
+}
+
 #[derive(Subcommand)]
 pub(crate) enum TaskCommand {
     #[command(about = "Create a new scheduler task")]
@@ -42,18 +64,10 @@ pub(crate) enum TaskCommand {
             default_value_t = 0u64
         )]
         execution_gas_price: u64,
-        /// Absolute start time in milliseconds since epoch for the first occurrence.
-        #[arg(long = "schedule-start-ms", value_name = "MILLIS")]
-        schedule_start_ms: Option<u64>,
-        /// Absolute deadline time in milliseconds since epoch for the first occurrence.
-        #[arg(long = "schedule-deadline-ms", value_name = "MILLIS")]
-        schedule_deadline_ms: Option<u64>,
-        /// Start offset in milliseconds from now for the first occurrence.
-        #[arg(long = "schedule-start-offset-ms", value_name = "MILLIS")]
-        schedule_start_offset_ms: Option<u64>,
-        /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
-        #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
-        schedule_deadline_offset_ms: Option<u64>,
+        #[command(flatten)]
+        schedule_start: ScheduleStartOptions,
+        #[command(flatten)]
+        schedule_deadline: ScheduleDeadlineOptions,
         /// Gas price paid as priority fee associated with this occurrence.
         #[arg(
             long = "schedule-gas-price",
@@ -120,13 +134,20 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             input_json,
             metadata,
             execution_gas_price,
-            schedule_start_ms,
-            schedule_deadline_ms,
-            schedule_start_offset_ms,
-            schedule_deadline_offset_ms,
+            schedule_start,
+            schedule_deadline,
             schedule_gas_price,
             gas,
         } => {
+            let ScheduleStartOptions {
+                schedule_start_ms,
+                schedule_start_offset_ms,
+            } = schedule_start;
+            let ScheduleDeadlineOptions {
+                schedule_deadline_ms,
+                schedule_deadline_offset_ms,
+            } = schedule_deadline;
+
             task_create::create_task(
                 dag_id,
                 entry_group,

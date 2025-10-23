@@ -14,6 +14,7 @@ use {
             get_nexus_objects,
             sign_and_execute_transaction,
         },
+        workflow,
     },
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
@@ -76,7 +77,7 @@ pub(crate) async fn create_task(
     let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
     if !encrypt_handles.is_empty() {
         let session = helpers::get_active_session(&mut conf)?;
-        helpers::encrypt_inputs_once(session, &mut input_json, &encrypt_handles)?;
+        workflow::encrypt_entry_ports_once(session, &mut input_json, &encrypt_handles)?;
     }
 
     // Craft the task creation transaction.
