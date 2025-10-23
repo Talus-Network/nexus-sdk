@@ -18,10 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler periodic set` / `disable`
 - `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
 
-#### Fixed
-
-- `nexus scheduler task create` and `nexus scheduler occurrence add` now honour deadline offsets relative to the scheduled start, accept deadlines equal to the start time, and require a start offset when a deadline offset is provided
-
 ### `nexus-sdk`
 
 #### Changed
@@ -36,12 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - made faucet requests compatible with old and latest versions of the `sui-faucet`
-
-### `docs`
-
-#### Added
-
-- Documented the `nexus scheduler` command group, including deadline-offset semantics and gas requirements
 
 ## [`0.2.0`] - 2025-08-12
 
