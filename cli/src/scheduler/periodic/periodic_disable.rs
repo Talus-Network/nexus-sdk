@@ -21,20 +21,14 @@ use {
     serde_json::json,
 };
 
-#[derive(Args, Debug)]
-pub(crate) struct DisableArgs {
-    /// Task object ID to update.
-    #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-    task_id: sui::ObjectID,
-    #[command(flatten)]
-    gas: GasArgs,
-}
-
 /// Disable the periodic schedule for a scheduler task.
-pub(crate) async fn disable_periodic(args: DisableArgs) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn disable_periodic_task(
+    task_id: sui::ObjectID,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
     command_title!(
         "Disabling periodic schedule for task '{task_id}'",
-        task_id = args.task_id
+        task_id = task_id
     );
 
     // Load CLI configuration.
@@ -44,9 +38,13 @@ pub(crate) async fn disable_periodic(args: DisableArgs) -> AnyResult<(), NexusCl
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
     let objects = &get_nexus_objects(&mut conf).await?;
+    let GasArgs {
+        sui_gas_coin,
+        sui_gas_budget,
+    } = gas;
 
     // Fetch the target task object.
-    let task = fetch_one::<Structure<Task>>(&sui, args.task_id)
+    let task = fetch_one::<Structure<Task>>(&sui, task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
@@ -56,14 +54,14 @@ pub(crate) async fn disable_periodic(args: DisableArgs) -> AnyResult<(), NexusCl
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
     // Fetch gas coin and reference gas price.
-    let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        args.gas.sui_gas_budget,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -76,7 +74,7 @@ pub(crate) async fn disable_periodic(args: DisableArgs) -> AnyResult<(), NexusCl
 
     json_output(&json!({
         "digest": response.digest,
-        "task_id": args.task_id,
+        "task_id": task_id,
     }))?;
 
     Ok(())

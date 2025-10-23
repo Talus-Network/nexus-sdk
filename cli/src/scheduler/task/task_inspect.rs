@@ -15,19 +15,9 @@ use {
     serde_json::json,
 };
 
-#[derive(Args, Debug)]
-pub(crate) struct InspectArgs {
-    /// Task object ID to inspect.
-    #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-    pub(crate) task_id: sui::ObjectID,
-}
-
 /// Inspect a scheduler task and display metadata plus raw JSON output.
-pub(crate) async fn inspect_task(args: InspectArgs) -> AnyResult<(), NexusCliError> {
-    command_title!(
-        "Inspecting scheduler task '{task_id}'",
-        task_id = args.task_id
-    );
+pub(crate) async fn inspect_task(task_id: sui::ObjectID) -> AnyResult<(), NexusCliError> {
+    command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
 
     // Load CLI configuration.
     let conf_handle = loading!("Loading CLI configuration...");
@@ -38,7 +28,7 @@ pub(crate) async fn inspect_task(args: InspectArgs) -> AnyResult<(), NexusCliErr
     let sui = build_sui_client(&conf.sui).await?;
     let objects_handle = loading!("Fetching task object...");
     // Fetch the task object from chain.
-    let task = fetch_one::<Structure<Task>>(&sui, args.task_id)
+    let task = fetch_one::<Structure<Task>>(&sui, task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
     objects_handle.success();

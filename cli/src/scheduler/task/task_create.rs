@@ -21,77 +21,35 @@ use {
         object_crawler::{fetch_one, Structure},
         sui::{self, move_ident_str},
         transactions::scheduler as scheduler_tx,
-        types::{Task, DEFAULT_ENTRY_GROUP},
+        types::Task,
     },
 };
 
-#[derive(Args, Debug)]
-pub(crate) struct CreateArgs {
-    /// DAG object ID providing the execution definition.
-    #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
-    dag_id: sui::ObjectID,
-    /// Entry group to invoke when executing the DAG.
-    #[arg(
-        long = "entry-group",
-        short = 'e',
-        default_value = DEFAULT_ENTRY_GROUP,
-        value_name = "NAME",
-    )]
-    entry_group: String,
-    /// Initial input JSON for the DAG execution.
-    #[arg(
-        long = "input-json",
-        short = 'i',
-        value_parser = ValueParser::from(parse_json_string),
-        value_name = "JSON",
-    )]
-    input_json: Option<serde_json::Value>,
-    /// Metadata entries to attach to the task as key=value pairs.
-    #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
-    metadata: Vec<String>,
-    /// Gas price paid as priority fee for the DAG execution.
-    #[arg(
-        long = "execution-gas-price",
-        value_name = "AMOUNT",
-        default_value_t = 0u64
-    )]
-    execution_gas_price: u64,
-    /// Absolute start time in milliseconds since epoch for the first occurrence.
-    #[arg(long = "schedule-start-ms", value_name = "MILLIS")]
-    schedule_start_ms: Option<u64>,
-    /// Absolute deadline time in milliseconds since epoch for the first occurrence.
-    #[arg(long = "schedule-deadline-ms", value_name = "MILLIS")]
-    schedule_deadline_ms: Option<u64>,
-    /// Start offset in milliseconds from now for the first occurrence.
-    #[arg(long = "schedule-start-offset-ms", value_name = "MILLIS")]
-    schedule_start_offset_ms: Option<u64>,
-    /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
-    #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
-    schedule_deadline_offset_ms: Option<u64>,
-    /// Gas price paid as priority fee associated with this occurrence.
-    #[arg(
-        long = "schedule-gas-price",
-        value_name = "AMOUNT",
-        default_value_t = 0u64
-    )]
-    schedule_gas_price: u64,
-    #[command(flatten)]
-    gas: GasArgs,
-}
-
 /// Create a scheduler task and optionally enqueue the initial occurrence.
-pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn create_task(
+    dag_id: sui::ObjectID,
+    entry_group: String,
+    mut input_json: Option<serde_json::Value>,
+    metadata: Vec<String>,
+    execution_gas_price: u64,
+    schedule_start_ms: Option<u64>,
+    schedule_deadline_ms: Option<u64>,
+    schedule_start_offset_ms: Option<u64>,
+    schedule_deadline_offset_ms: Option<u64>,
+    schedule_gas_price: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
     command_title!(
         "Creating scheduler task for DAG '{dag_id}'",
-        dag_id = args.dag_id
+        dag_id = dag_id
     );
 
     // Validate schedule options provided via CLI flags.
     helpers::validate_schedule_options(
-        args.schedule_start_ms,
-        args.schedule_deadline_ms,
-        args.schedule_start_offset_ms,
-        args.schedule_deadline_offset_ms,
+        schedule_start_ms,
+        schedule_deadline_ms,
+        schedule_start_offset_ms,
+        schedule_deadline_offset_ms,
         false,
     )?;
 
@@ -105,14 +63,17 @@ pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError
 
     // Nexus objects must be present in the configuration.
     let objects = &get_nexus_objects(&mut conf).await?;
+    let GasArgs {
+        sui_gas_coin,
+        sui_gas_budget,
+    } = gas;
 
     // Parse metadata arguments and prepare the DAG input payload.
-    let metadata_pairs = helpers::parse_metadata(&args.metadata)?;
-    let mut input_json = args.input_json.unwrap_or_else(|| serde_json::json!({}));
+    let metadata_pairs = helpers::parse_metadata(&metadata)?;
+    let mut input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
 
     // Fetch encrypted entry ports and encrypt inputs when necessary.
-    let encrypt_handles =
-        helpers::fetch_encryption_targets(&sui, &args.dag_id, &args.entry_group).await?;
+    let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
     if !encrypt_handles.is_empty() {
         let session = helpers::get_active_session(&mut conf)?;
         helpers::encrypt_inputs_once(session, &mut input_json, &encrypt_handles)?;
@@ -127,10 +88,10 @@ pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError
     let execution_arg = helpers::execution_policy_argument(
         &mut tx,
         objects,
-        args.dag_id,
-        args.execution_gas_price,
+        dag_id,
+        execution_gas_price,
         &input_json,
-        Some(&args.entry_group),
+        Some(&entry_group),
         if encrypt_handles.is_empty() {
             None
         } else {
@@ -158,14 +119,14 @@ pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError
     );
 
     // Fetch gas coin and reference gas price.
-    let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        args.gas.sui_gas_budget,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -201,7 +162,7 @@ pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError
     let mut scheduled_event: Option<serde_json::Value> = None;
 
     // Optionally schedule the first occurrence for the new task.
-    if args.schedule_start_ms.is_some() || args.schedule_start_offset_ms.is_some() {
+    if schedule_start_ms.is_some() || schedule_start_offset_ms.is_some() {
         let schedule_handle = loading!("Scheduling initial occurrence...");
         // Load the newly created task as a shared object.
         let task = fetch_one::<Structure<Task>>(&sui, task_id)
@@ -210,36 +171,36 @@ pub(crate) async fn create_task(args: CreateArgs) -> AnyResult<(), NexusCliError
 
         let mut schedule_tx = sui::ProgrammableTransactionBuilder::new();
 
-        if let Some(start_ms) = args.schedule_start_ms {
+        if let Some(start_ms) = schedule_start_ms {
             scheduler_tx::add_occurrence_absolute_for_task(
                 &mut schedule_tx,
                 objects,
                 &task.object_ref(),
                 start_ms,
-                args.schedule_deadline_ms,
-                args.schedule_gas_price,
+                schedule_deadline_ms,
+                schedule_gas_price,
             )
             .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
         } else {
-            let start_offset = args.schedule_start_offset_ms.expect("validated above");
+            let start_offset = schedule_start_offset_ms.expect("validated above");
             scheduler_tx::add_occurrence_with_offsets_from_now_for_task(
                 &mut schedule_tx,
                 objects,
                 &task.object_ref(),
                 start_offset,
-                args.schedule_deadline_offset_ms,
-                args.schedule_gas_price,
+                schedule_deadline_offset_ms,
+                schedule_gas_price,
             )
             .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
         }
 
         // Submit the scheduling transaction.
-        let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+        let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
         let schedule_tx_data = sui::TransactionData::new_programmable(
             address,
             vec![gas_coin.object_ref()],
             schedule_tx.finish(),
-            args.gas.sui_gas_budget,
+            sui_gas_budget,
             reference_gas_price,
         );
         let schedule_response =

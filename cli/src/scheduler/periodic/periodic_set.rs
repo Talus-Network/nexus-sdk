@@ -21,32 +21,18 @@ use {
     serde_json::json,
 };
 
-#[derive(Args, Debug)]
-pub(crate) struct SetArgs {
-    /// Task object ID.
-    #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-    task_id: sui::ObjectID,
-    /// Period between occurrences in milliseconds.
-    #[arg(long = "period-ms", value_name = "MILLIS")]
-    period_ms: u64,
-    /// Deadline offset from each start time in milliseconds.
-    #[arg(long = "deadline-offset-ms", value_name = "MILLIS")]
-    deadline_offset_ms: Option<u64>,
-    /// Maximum number of generated occurrences (None for infinite).
-    #[arg(long = "max-iterations", value_name = "COUNT")]
-    max_iterations: Option<u64>,
-    /// Gas price associated with occurrences.
-    #[arg(long = "gas-price", value_name = "AMOUNT", default_value_t = 0u64)]
-    gas_price: u64,
-    #[command(flatten)]
-    gas: GasArgs,
-}
-
 /// Configure or update the periodic schedule for a scheduler task.
-pub(crate) async fn set_periodic(args: SetArgs) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn set_periodic_task(
+    task_id: sui::ObjectID,
+    period_ms: u64,
+    deadline_offset_ms: Option<u64>,
+    max_iterations: Option<u64>,
+    gas_price: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
     command_title!(
         "Configuring periodic schedule for task '{task_id}'",
-        task_id = args.task_id
+        task_id = task_id
     );
 
     // Load CLI configuration.
@@ -56,9 +42,13 @@ pub(crate) async fn set_periodic(args: SetArgs) -> AnyResult<(), NexusCliError> 
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
     let objects = &get_nexus_objects(&mut conf).await?;
+    let GasArgs {
+        sui_gas_coin,
+        sui_gas_budget,
+    } = gas;
 
     // Fetch the target task object.
-    let task = fetch_one::<Structure<Task>>(&sui, args.task_id)
+    let task = fetch_one::<Structure<Task>>(&sui, task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
@@ -69,22 +59,22 @@ pub(crate) async fn set_periodic(args: SetArgs) -> AnyResult<(), NexusCliError> 
         &mut tx,
         objects,
         &task.object_ref(),
-        args.period_ms,
-        args.deadline_offset_ms,
-        args.max_iterations,
-        args.gas_price,
+        period_ms,
+        deadline_offset_ms,
+        max_iterations,
+        gas_price,
     )
     .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
     // Fetch gas coin and reference gas price.
-    let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        args.gas.sui_gas_budget,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -97,11 +87,11 @@ pub(crate) async fn set_periodic(args: SetArgs) -> AnyResult<(), NexusCliError> 
 
     json_output(&json!({
         "digest": response.digest,
-        "task_id": args.task_id,
-        "period_ms": args.period_ms,
-        "deadline_offset_ms": args.deadline_offset_ms,
-        "max_iterations": args.max_iterations,
-        "gas_price": args.gas_price,
+        "task_id": task_id,
+        "period_ms": period_ms,
+        "deadline_offset_ms": deadline_offset_ms,
+        "max_iterations": max_iterations,
+        "gas_price": gas_price,
     }))?;
 
     Ok(())

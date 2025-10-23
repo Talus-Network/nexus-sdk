@@ -28,18 +28,10 @@ pub(crate) enum TaskStateRequest {
     Cancel,
 }
 
-#[derive(Args, Debug)]
-pub(crate) struct StateArgs {
-    /// Task object ID to mutate.
-    #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-    pub(crate) task_id: sui::ObjectID,
-    #[command(flatten)]
-    pub(crate) gas: GasArgs,
-}
-
 /// Toggle scheduler task state between paused, resumed, or canceled.
 pub(crate) async fn set_task_state(
-    args: StateArgs,
+    task_id: sui::ObjectID,
+    gas: GasArgs,
     request: TaskStateRequest,
 ) -> AnyResult<(), NexusCliError> {
     let verb = match request {
@@ -47,7 +39,7 @@ pub(crate) async fn set_task_state(
         TaskStateRequest::Resume => "Resuming",
         TaskStateRequest::Cancel => "Canceling",
     };
-    command_title!("{verb} scheduler task '{task_id}'", task_id = args.task_id);
+    command_title!("{verb} scheduler task '{task_id}'", task_id = task_id);
 
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
@@ -56,9 +48,13 @@ pub(crate) async fn set_task_state(
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
     let objects = &get_nexus_objects(&mut conf).await?;
+    let GasArgs {
+        sui_gas_coin,
+        sui_gas_budget,
+    } = gas;
 
     // Fetch the target task object.
-    let task = fetch_one::<Structure<Task>>(&sui, args.task_id)
+    let task = fetch_one::<Structure<Task>>(&sui, task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
@@ -78,14 +74,14 @@ pub(crate) async fn set_task_state(
     }
     .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
-    let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        args.gas.sui_gas_budget,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -102,7 +98,7 @@ pub(crate) async fn set_task_state(
 
     json_output(&json!({
         "digest": response.digest,
-        "task_id": args.task_id,
+        "task_id": task_id,
         "state": match request {
             TaskStateRequest::Pause => "paused",
             TaskStateRequest::Resume => "resumed",

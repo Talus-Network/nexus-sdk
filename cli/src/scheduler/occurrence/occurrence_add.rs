@@ -22,43 +22,27 @@ use {
     serde_json::json,
 };
 
-#[derive(Args, Debug)]
-pub(crate) struct AddArgs {
-    /// Task object ID receiving the occurrence.
-    #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-    task_id: sui::ObjectID,
-    /// Absolute start time in milliseconds since epoch.
-    #[arg(long = "start-ms", value_name = "MILLIS")]
-    start_ms: Option<u64>,
-    /// Absolute deadline time in milliseconds since epoch.
-    #[arg(long = "deadline-ms", value_name = "MILLIS")]
-    deadline_ms: Option<u64>,
-    /// Start offset in milliseconds from now.
-    #[arg(long = "start-offset-ms", value_name = "MILLIS")]
-    start_offset_ms: Option<u64>,
-    /// Deadline offset in milliseconds after the scheduled start.
-    #[arg(long = "deadline-offset-ms", value_name = "MILLIS")]
-    deadline_offset_ms: Option<u64>,
-    /// Gas price paid as priority fee associated with the occurrence.
-    #[arg(long = "gas-price", value_name = "AMOUNT", default_value_t = 0u64)]
-    gas_price: u64,
-    #[command(flatten)]
-    gas: GasArgs,
-}
-
 /// Schedule a one-off occurrence for a scheduler task.
-pub(crate) async fn add_occurrence(args: AddArgs) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn add_occurrence_to_task(
+    task_id: sui::ObjectID,
+    start_ms: Option<u64>,
+    deadline_ms: Option<u64>,
+    start_offset_ms: Option<u64>,
+    deadline_offset_ms: Option<u64>,
+    gas_price: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
     command_title!(
         "Scheduling occurrence for task '{task_id}'",
-        task_id = args.task_id
+        task_id = task_id
     );
 
     // Validate schedule options.
     helpers::validate_schedule_options(
-        args.start_ms,
-        args.deadline_ms,
-        args.start_offset_ms,
-        args.deadline_offset_ms,
+        start_ms,
+        deadline_ms,
+        start_offset_ms,
+        deadline_offset_ms,
         true,
     )?;
 
@@ -69,24 +53,28 @@ pub(crate) async fn add_occurrence(args: AddArgs) -> AnyResult<(), NexusCliError
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
     let objects = &get_nexus_objects(&mut conf).await?;
+    let GasArgs {
+        sui_gas_coin,
+        sui_gas_budget,
+    } = gas;
 
     // Fetch the target task object.
-    let task = fetch_one::<Structure<Task>>(&sui, args.task_id)
+    let task = fetch_one::<Structure<Task>>(&sui, task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
     // Craft the occurrence scheduling transaction.
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Some(start) = args.start_ms {
+    if let Some(start) = start_ms {
         // Use absolute start and deadline timestamps.
         scheduler_tx::add_occurrence_absolute_for_task(
             &mut tx,
             objects,
             &task.object_ref(),
             start,
-            args.deadline_ms,
-            args.gas_price,
+            deadline_ms,
+            gas_price,
         )
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
     } else {
@@ -95,22 +83,22 @@ pub(crate) async fn add_occurrence(args: AddArgs) -> AnyResult<(), NexusCliError
             &mut tx,
             objects,
             &task.object_ref(),
-            args.start_offset_ms.expect("validated above"),
-            args.deadline_offset_ms,
-            args.gas_price,
+            start_offset_ms.expect("validated above"),
+            deadline_offset_ms,
+            gas_price,
         )
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
     }
 
     // Fetch gas coin and reference gas price.
-    let gas_coin = fetch_gas_coin(&sui, address, args.gas.sui_gas_coin).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
         address,
         vec![gas_coin.object_ref()],
         tx.finish(),
-        args.gas.sui_gas_budget,
+        sui_gas_budget,
         reference_gas_price,
     );
 
@@ -123,12 +111,12 @@ pub(crate) async fn add_occurrence(args: AddArgs) -> AnyResult<(), NexusCliError
 
     json_output(&json!({
         "digest": response.digest,
-        "task_id": args.task_id,
-        "start_ms": args.start_ms,
-        "deadline_ms": args.deadline_ms,
-        "start_offset_ms": args.start_offset_ms,
-        "deadline_offset_ms": args.deadline_offset_ms,
-        "gas_price": args.gas_price,
+        "task_id": task_id,
+        "start_ms": start_ms,
+        "deadline_ms": deadline_ms,
+        "start_offset_ms": start_offset_ms,
+        "deadline_offset_ms": deadline_offset_ms,
+        "gas_price": gas_price,
     }))?;
 
     Ok(())
