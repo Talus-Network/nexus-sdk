@@ -28,18 +28,28 @@ pub(crate) enum TaskStateRequest {
     Cancel,
 }
 
+impl std::fmt::Display for TaskStateRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let verb = match self {
+            TaskStateRequest::Pause => "Pausing",
+            TaskStateRequest::Resume => "Resuming",
+            TaskStateRequest::Cancel => "Canceling",
+        };
+        write!(f, "{verb}")
+    }
+}
+
 /// Toggle scheduler task state between paused, resumed, or canceled.
 pub(crate) async fn set_task_state(
     task_id: sui::ObjectID,
     gas: GasArgs,
     request: TaskStateRequest,
 ) -> AnyResult<(), NexusCliError> {
-    let verb = match request {
-        TaskStateRequest::Pause => "Pausing",
-        TaskStateRequest::Resume => "Resuming",
-        TaskStateRequest::Cancel => "Canceling",
-    };
-    command_title!("{verb} scheduler task '{task_id}'", task_id = task_id);
+    command_title!(
+        "{request} scheduler task '{task_id}'",
+        request = request,
+        task_id = task_id
+    );
 
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
