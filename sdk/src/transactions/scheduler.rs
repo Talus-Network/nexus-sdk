@@ -661,8 +661,8 @@ pub fn dag_begin_execution_from_scheduler(
     objects: &NexusObjects,
     task: &sui::ObjectRef,
     dag: &sui::ObjectRef,
-    leader_cap: sui::Argument,
-    claim_coin: sui::Argument,
+    leader_cap: &sui::ObjectRef,
+    claim_coin: &sui::ObjectRef,
     amount_execution: u64,
     amount_priority: u64,
 ) -> anyhow::Result<sui::Argument> {
@@ -699,6 +699,12 @@ pub fn dag_begin_execution_from_scheduler(
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
+    // `leader_cap: &CloneableOwnerCap<OverNetwork>`
+    let leader_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(leader_cap.to_object_ref()))?;
+
+    // `claim_coin: Coin<SUI>`
+    let claim_coin = tx.obj(sui::ObjectArg::ImmOrOwnedObject(claim_coin.to_object_ref()))?;
+
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER
@@ -728,8 +734,8 @@ pub fn execute_scheduled_occurrence(
     objects: &NexusObjects,
     task: &sui::ObjectRef,
     dag: &sui::ObjectRef,
-    leader_cap: sui::Argument,
-    claim_coin: sui::Argument,
+    leader_cap: &sui::ObjectRef,
+    claim_coin: &sui::ObjectRef,
     amount_execution: u64,
     amount_priority: u64,
 ) -> anyhow::Result<()> {
@@ -1305,21 +1311,11 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = {
-            let object = sui_mocks::mock_sui_object_ref();
-            (object.object_id, object.version, object.digest)
-        };
-        let claim_coin_tuple = {
-            let object = sui_mocks::mock_sui_object_ref();
-            (object.object_id, object.version, object.digest)
-        };
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+        let claim_coin = sui_mocks::mock_sui_object_ref();
+        let leader_cap_tuple = leader_cap.to_object_ref();
+        let claim_coin_tuple = claim_coin.to_object_ref();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        let leader_cap = tx
-            .obj(sui::ObjectArg::ImmOrOwnedObject(leader_cap_tuple.clone()))
-            .expect("leader cap input");
-        let claim_coin = tx
-            .obj(sui::ObjectArg::ImmOrOwnedObject(claim_coin_tuple.clone()))
-            .expect("claim coin input");
 
         let amount_execution = 44;
         let amount_priority = 55;
@@ -1329,8 +1325,8 @@ mod tests {
             &objects,
             &task,
             &dag,
-            leader_cap,
-            claim_coin,
+            &leader_cap,
+            &claim_coin,
             amount_execution,
             amount_priority,
         )
@@ -1371,24 +1367,21 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = {
-            let object = sui_mocks::mock_sui_object_ref();
-            (object.object_id, object.version, object.digest)
-        };
-        let claim_coin_tuple = {
-            let object = sui_mocks::mock_sui_object_ref();
-            (object.object_id, object.version, object.digest)
-        };
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+        let claim_coin = sui_mocks::mock_sui_object_ref();
+        let leader_cap_tuple = leader_cap.to_object_ref();
+        let claim_coin_tuple = claim_coin.to_object_ref();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        let leader_cap = tx
-            .obj(sui::ObjectArg::ImmOrOwnedObject(leader_cap_tuple.clone()))
-            .expect("leader cap input");
-        let claim_coin = tx
-            .obj(sui::ObjectArg::ImmOrOwnedObject(claim_coin_tuple.clone()))
-            .expect("claim coin input");
 
         execute_scheduled_occurrence(
-            &mut tx, &objects, &task, &dag, leader_cap, claim_coin, 100, 200,
+            &mut tx,
+            &objects,
+            &task,
+            &dag,
+            &leader_cap,
+            &claim_coin,
+            100,
+            200,
         )
         .expect("ptb construction succeeds");
 
