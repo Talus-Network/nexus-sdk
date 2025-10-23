@@ -188,6 +188,80 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+### `nexus scheduler`
+
+Manage scheduler tasks, one-off occurrences, and periodic schedules.
+
+---
+
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--metadata key=value ...] [--schedule-*]`**
+
+Creates a new scheduler task tied to the specified DAG. You can optionally attach metadata, supply initial DAG inputs, and immediately schedule the first occurrence. When `--schedule-start-offset-ms` is used, the optional `--schedule-deadline-offset-ms` is interpreted as milliseconds after that start time (e.g. `--schedule-start-offset-ms 60000 --schedule-deadline-offset-ms 30000` opens a 30 s window beginning in one minute).
+
+Data for encrypted entry ports is automatically encrypted when a session is available.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task inspect --task-id <id>`**
+
+Fetches the on-chain task object, prints high-level metadata (owner, metadata entries, payload sizes), and emits a JSON payload containing the raw task structure for tooling.
+
+---
+
+**`nexus scheduler task metadata --task-id <id> --metadata key=value [...]`**
+
+Replaces all task metadata entries with the provided key/value pairs.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task pause|resume|cancel --task-id <id>`**
+
+Mutates the scheduling state for a task. `pause` and `resume` toggle consumption of occurrences, while `cancel` clears pending occurrences and permanently disables scheduling.
+
+{% hint style="info" %}
+These commands require that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-ms <ms> | --deadline-offset-ms <ms>] [--gas-price <mist>]`**
+
+Schedules a one-off occurrence for the task. Absolute timestamps are interpreted as milliseconds since epoch. Offsets are measured from the current Sui clock, and deadline offsets are expressed relative to the chosen start time.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic set --task-id <id> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--gas-price <mist>]`**
+
+Configures or updates a periodic schedule for the task. The deadline offset is applied after each generated start time, and `max-iterations` limits how many future occurrences can be produced automatically.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic disable --task-id <id>`**
+
+Removes the periodic schedule while leaving any existing sporadic occurrences untouched.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
 ### `nexus gas`
 
 Set of commands to manage Nexus gas budgets and tickets.

@@ -4,6 +4,7 @@ use crate::{
     types::NexusObjects,
 };
 
+// Shared helper for turning a scheduler task object ref into a mutable shared argument.
 fn shared_task_arg(
     tx: &mut sui::ProgrammableTransactionBuilder,
     task: &sui::ObjectRef,
@@ -14,6 +15,8 @@ fn shared_task_arg(
         mutable: true,
     })
 }
+
+// == Metadata ==
 
 /// PTB template to build task metadata from key/value pairs.
 pub fn new_metadata<K, V>(
@@ -61,6 +64,8 @@ where
         vec![metadata],
     ))
 }
+
+// == Task lifecycle ==
 
 /// PTB template to create a new scheduler task.
 pub fn new_task(
@@ -165,6 +170,8 @@ pub fn finish(
         vec![task, proof],
     ))
 }
+
+// == Occurrence scheduling ==
 
 /// PTB template to enqueue a new occurrence with absolute deadline.
 pub fn add_occurrence_absolute_for_task(
@@ -277,6 +284,8 @@ pub fn add_occurrence_with_offsets_from_now_for_task(
     ))
 }
 
+// == Periodic scheduling ==
+
 /// PTB template to configure or update periodic scheduling.
 pub fn new_or_modify_periodic_for_task(
     tx: &mut sui::ProgrammableTransactionBuilder,
@@ -337,6 +346,8 @@ pub fn disable_periodic_for_task(
         vec![task],
     ))
 }
+
+// == Constraint state management ==
 
 /// PTB template to pause scheduling for a task.
 pub fn pause_time_constraint_for_task(
@@ -400,6 +411,8 @@ pub fn cancel_time_constraint_for_task(
         vec![task],
     ))
 }
+
+// == Execution flow ==
 
 /// PTB template to evaluate the scheduler and consume the next occurrence.
 pub fn check_time_constraint(
