@@ -71,7 +71,7 @@ where
 }
 
 /// Fetch all dynamic field objects for this resource.
-pub async fn dynamic_fetch_many<K, V>(
+pub(crate) async fn dynamic_fetch_many<K, V>(
     sui: &sui::Client,
     object_id: sui::ObjectID,
 ) -> anyhow::Result<Vec<(K, V)>>

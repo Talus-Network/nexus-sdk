@@ -45,11 +45,7 @@ pub(crate) async fn set_task_state(
     gas: GasArgs,
     request: TaskStateRequest,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!(
-        "{request} scheduler task '{task_id}'",
-        request = request,
-        task_id = task_id
-    );
+    command_title!("{request} scheduler task '{task_id}'");
 
     // Load CLI configuration.
     let mut conf = CliConf::load().await.unwrap_or_default();
