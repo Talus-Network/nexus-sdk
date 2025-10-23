@@ -81,3 +81,63 @@ The ticker request failed due to an error.
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong
 - **`err.kind`: [`String`]** - Type of error (invalid_request, not_found, parse, etc.)
 - **`err.status_code`: [`u16`] (optional)** - HTTP status code if available
+
+---
+
+# `xyz.taluslabs.exchanges.coinbase.get-product-stats@1`
+
+Standard Nexus Tool that retrieves 24-hour and 30-day statistics for a product from Coinbase Exchange API. Coinbase Exchange API [reference](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-stats)
+
+## Input
+
+**`product_id`: [`String` | `Vec<String>`]**
+
+The product ID (currency pair) to get stats for. Can be provided in multiple formats:
+
+- **Full pair string**: `"BTC-USD"`, `"ETH-EUR"`, `"SUI-USD"`
+- **Array format**: `["BTC", "USD"]`, `["ETH", "EUR"]`, `["SUI", "USD"]`
+- **Base currency only**: `"BTC"`, `"ETH"`, `"SUI"` (when `quote_currency` is provided)
+
+**`quote_currency`: [`String`] (optional)**
+
+The quote currency to pair with the base currency. When provided, `product_id` should contain only the base currency (e.g., `"BTC"` with `quote_currency: "USD"`).
+
+## Output Variants & Ports
+
+**`ok`**
+
+The product statistics were retrieved successfully.
+
+- **`ok.open`: [`String`]** - Opening price (in quote currency)
+- **`ok.high`: [`String`]** - Highest price (in quote currency)
+- **`ok.low`: [`String`]** - Lowest price (in quote currency)
+- **`ok.volume`: [`String`]** - 24h volume (in base currency)
+- **`ok.last`: [`String`]** - Last price (in quote currency)
+- **`ok.volume_30day`: [`String`] (optional)** - 30-day volume (in base currency) (only included if present)
+- **`ok.rfq_volume_24hour`: [`String`] (optional)** - 24h RFQ volume (only included if present)
+- **`ok.conversions_volume_24hour`: [`String`] (optional)** - 24h conversions volume (only included if present)
+- **`ok.rfq_volume_30day`: [`String`] (optional)** - 30-day RFQ volume (only included if present)
+- **`ok.conversions_volume_30day`: [`String`] (optional)** - 30-day conversions volume (only included if present)
+
+They can return decimal values like
+
+```json
+  "open": "5414.18000000",
+  "high": "6441.37000000",
+  "low": "5261.69000000",
+  "volume": "53687.76764233",
+  "last": "6250.02000000",
+  "volume_30day": "786763.72930864",
+  "rfq_volume_24hour": "78.23",
+  "conversions_volume_24hour": "0.000000",
+  "rfq_volume_30day": "0.000000",
+  "conversions_volume_30day": "0.000000"
+```
+
+**`err`**
+
+The stats request failed due to an error.
+
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong
+- **`err.kind`: [`String`]** - Type of error (invalid_request, not_found, parse, etc.)
+- **`err.status_code`: [`u16`] (optional)** - HTTP status code if available
