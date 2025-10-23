@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+
+#### Fixed
+
+- `nexus scheduler task create` and `nexus scheduler occurrence add` now honour deadline offsets relative to the scheduled start, accept deadlines equal to the start time, and require a start offset when a deadline offset is provided
 
 ### `nexus-sdk`
 
@@ -22,10 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - .nightly-version
+- scheduler transaction templates (task lifecycle, sporadic occurrences, periodic scheduling, constraint state, TAP execution) for CLI and integrators
 
 #### Fixed
 
 - made faucet requests compatible with old and latest versions of the `sui-faucet`
+
+### `docs`
+
+#### Added
+
+- Documented the `nexus scheduler` command group, including deadline-offset semantics and gas requirements
 
 ## [`0.2.0`] - 2025-08-12
 
