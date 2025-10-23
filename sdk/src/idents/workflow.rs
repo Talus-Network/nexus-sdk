@@ -20,6 +20,13 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
+    /// The witness type needed to register DAG execution.
+    ///
+    /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
+    pub const BEGIN_DAG_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("BeginDagExecutionWitness"),
+    };
     /// Scheduler entry point to invoke DAG execution via the default TAP.
     ///
     /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
@@ -114,6 +121,20 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("new"),
     };
+    /// Creates the default constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::new_constraints_policy`
+    pub const NEW_CONSTRAINTS_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_constraints_policy"),
+    };
+    /// Creates the default execution policy.
+    ///
+    /// `nexus_workflow::scheduler::new_execution_policy`
+    pub const NEW_EXECUTION_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_execution_policy"),
+    };
     /// Creates a metadata container from key/value pairs.
     ///
     /// `nexus_workflow::scheduler::new_metadata`
@@ -162,6 +183,13 @@ impl Scheduler {
     pub const TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("Task"),
+    };
+    /// The TimeConstraint struct type.
+    ///
+    /// `nexus_workflow::scheduler::TimeConstraint`
+    pub const TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("TimeConstraint"),
     };
     /// Updates task metadata with the provided values.
     ///
@@ -268,6 +296,13 @@ impl Dag {
     pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("new"),
+    };
+    /// Create a new DAG execution config value.
+    ///
+    /// `nexus_workflow::dag::new_dag_execution_config`
+    pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("new_dag_execution_config"),
     };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///

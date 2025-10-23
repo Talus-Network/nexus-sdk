@@ -83,21 +83,24 @@ pub(crate) async fn create_task(
     let tx_handle = loading!("Crafting transaction...");
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    let metadata_arg = helpers::metadata_argument(&mut tx, objects, &metadata_pairs)?;
-    let constraints_arg = helpers::constraints_policy_argument(&mut tx, objects)?;
-    let execution_arg = helpers::execution_policy_argument(
+    let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata_pairs.iter().cloned())
+        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+    let constraints_arg = scheduler_tx::new_constraints_policy(&mut tx, objects)
+        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+    let execution_arg = scheduler_tx::new_execution_policy(
         &mut tx,
         objects,
         dag_id,
         execution_gas_price,
         &input_json,
-        Some(&entry_group),
+        Some(entry_group.as_str()),
         if encrypt_handles.is_empty() {
             None
         } else {
             Some(&encrypt_handles)
         },
-    )?;
+    )
+    .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
     let task = scheduler_tx::new_task(
         &mut tx,

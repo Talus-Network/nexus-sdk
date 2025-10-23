@@ -1,7 +1,11 @@
-use crate::{
-    idents::{sui_framework, workflow},
-    sui,
-    types::NexusObjects,
+use {
+    crate::{
+        idents::{move_std, primitives, sui_framework, workflow},
+        sui,
+        types::{NexusObjects, DEFAULT_ENTRY_GROUP},
+    },
+    serde_json::Value,
+    std::collections::HashMap,
 };
 
 // Shared helper for turning a scheduler task object ref into a mutable shared argument.
@@ -28,12 +32,7 @@ where
     K: AsRef<str>,
     V: AsRef<str>,
 {
-    let string_type = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-        address: *sui::MOVE_STDLIB_PACKAGE_ID,
-        module: sui::move_ident_str!("string").into(),
-        name: sui::move_ident_str!("String").into(),
-        type_params: vec![],
-    }));
+    let string_type = move_std::StdString::type_tag();
 
     let metadata = tx.programmable_move_call(
         sui::FRAMEWORK_PACKAGE_ID,
@@ -134,6 +133,214 @@ pub fn new_time_constraint_config(
         vec![],
         vec![],
     ))
+}
+
+/// PTB template to construct and register the default constraints policy.
+pub fn new_constraints_policy(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+) -> anyhow::Result<sui::Argument> {
+    let symbol_type =
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
+    let time_constraint_tag = workflow::into_type_tag(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::TIME_CONSTRAINT,
+    );
+
+    let constraint_symbol = tx.programmable_move_call(
+        objects.primitives_pkg_id,
+        primitives::Policy::WITNESS_SYMBOL.module.into(),
+        primitives::Policy::WITNESS_SYMBOL.name.into(),
+        vec![time_constraint_tag],
+        vec![],
+    );
+
+    let constraint_sequence = tx.programmable_move_call(
+        sui::MOVE_STDLIB_PACKAGE_ID,
+        move_std::Vector::SINGLETON.module.into(),
+        move_std::Vector::SINGLETON.name.into(),
+        vec![symbol_type.clone()],
+        vec![constraint_symbol],
+    );
+
+    let constraints = tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::NEW_CONSTRAINTS_POLICY.module.into(),
+        workflow::Scheduler::NEW_CONSTRAINTS_POLICY.name.into(),
+        vec![],
+        vec![constraint_sequence],
+    );
+
+    let config = new_time_constraint_config(tx, objects)?;
+    register_time_constraint(tx, objects, constraints.clone(), config)?;
+
+    Ok(constraints)
+}
+
+/// PTB template to construct and register the default execution policy.
+#[allow(clippy::too_many_arguments)]
+pub fn new_execution_policy(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    dag_id: sui::ObjectID,
+    gas_price: u64,
+    inputs: &Value,
+    entry_group: Option<&str>,
+    encrypt_handles: Option<&HashMap<String, Vec<String>>>,
+) -> anyhow::Result<sui::Argument> {
+    let symbol_type =
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
+    let witness_tag = workflow::into_type_tag(
+        objects.workflow_pkg_id,
+        workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS,
+    );
+
+    let execution_symbol = tx.programmable_move_call(
+        objects.primitives_pkg_id,
+        primitives::Policy::WITNESS_SYMBOL.module.into(),
+        primitives::Policy::WITNESS_SYMBOL.name.into(),
+        vec![witness_tag],
+        vec![],
+    );
+
+    let execution_sequence = tx.programmable_move_call(
+        sui::MOVE_STDLIB_PACKAGE_ID,
+        move_std::Vector::SINGLETON.module.into(),
+        move_std::Vector::SINGLETON.name.into(),
+        vec![symbol_type.clone()],
+        vec![execution_symbol],
+    );
+
+    let execution = tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::NEW_EXECUTION_POLICY.module.into(),
+        workflow::Scheduler::NEW_EXECUTION_POLICY.name.into(),
+        vec![],
+        vec![execution_sequence],
+    );
+
+    let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
+    let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+    let gas_price_arg = tx.pure(gas_price)?;
+
+    let entry_group = workflow::Dag::entry_group_from_str(
+        tx,
+        objects.workflow_pkg_id,
+        entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
+    )?;
+
+    let with_vertex_inputs = build_inputs_vec_map(tx, objects, inputs, encrypt_handles)?;
+
+    let config = tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module.into(),
+        workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name.into(),
+        vec![],
+        vec![
+            dag_id_arg,
+            network_id_arg,
+            gas_price_arg,
+            entry_group,
+            with_vertex_inputs,
+        ],
+    );
+
+    register_begin_execution(tx, objects, execution.clone(), config)?;
+
+    Ok(execution)
+}
+
+fn build_inputs_vec_map(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    inputs: &Value,
+    encrypt_handles: Option<&HashMap<String, Vec<String>>>,
+) -> anyhow::Result<sui::Argument> {
+    let inner_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
+    ];
+
+    let outer_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: *sui::FRAMEWORK_PACKAGE_ID,
+            module: sui_framework::VecMap::VEC_MAP.module.into(),
+            name: sui_framework::VecMap::VEC_MAP.name.into(),
+            type_params: inner_vec_map_type.clone(),
+        })),
+    ];
+
+    let with_vertex_inputs = tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::VecMap::EMPTY.module.into(),
+        sui_framework::VecMap::EMPTY.name.into(),
+        outer_vec_map_type.clone(),
+        vec![],
+    );
+
+    let data = inputs.as_object().ok_or_else(|| {
+        anyhow::anyhow!("Input JSON must map vertex names to objects of port -> value")
+    })?;
+
+    for (vertex_name, value) in data {
+        let vertex_inputs = value.as_object().ok_or_else(|| {
+            anyhow::anyhow!("Vertex '{vertex_name}' value must be an object mapping ports to data")
+        })?;
+
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+
+        let inner_map = tx.programmable_move_call(
+            sui::FRAMEWORK_PACKAGE_ID,
+            sui_framework::VecMap::EMPTY.module.into(),
+            sui_framework::VecMap::EMPTY.name.into(),
+            inner_vec_map_type.clone(),
+            vec![],
+        );
+
+        for (port_name, port_value) in vertex_inputs {
+            let encrypted = encrypt_handles.map_or(false, |handles| {
+                handles
+                    .get(vertex_name)
+                    .map_or(false, |ports| ports.iter().any(|p| p == port_name))
+            });
+
+            let port = if encrypted {
+                workflow::Dag::encrypted_input_port_from_str(
+                    tx,
+                    objects.workflow_pkg_id,
+                    port_name,
+                )?
+            } else {
+                workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port_name)?
+            };
+
+            let nexus_data = primitives::Data::nexus_data_from_json(
+                tx,
+                objects.primitives_pkg_id,
+                port_value,
+                encrypted,
+            )?;
+
+            tx.programmable_move_call(
+                sui::FRAMEWORK_PACKAGE_ID,
+                sui_framework::VecMap::INSERT.module.into(),
+                sui_framework::VecMap::INSERT.name.into(),
+                inner_vec_map_type.clone(),
+                vec![inner_map.clone(), port, nexus_data],
+            );
+        }
+
+        tx.programmable_move_call(
+            sui::FRAMEWORK_PACKAGE_ID,
+            sui_framework::VecMap::INSERT.module.into(),
+            sui_framework::VecMap::INSERT.name.into(),
+            outer_vec_map_type.clone(),
+            vec![with_vertex_inputs.clone(), vertex, inner_map],
+        );
+    }
+
+    Ok(with_vertex_inputs)
 }
 
 /// PTB template to obtain the execution witness for a task.

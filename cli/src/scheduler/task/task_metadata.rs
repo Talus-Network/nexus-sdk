@@ -54,7 +54,8 @@ pub(crate) async fn update_task_metadata(
 
     // Craft the metadata update transaction.
     let mut tx = sui::ProgrammableTransactionBuilder::new();
-    let metadata_arg = helpers::metadata_argument(&mut tx, objects, &metadata_pairs)?;
+    let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata_pairs.iter().cloned())
+        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
     scheduler_tx::update_metadata(&mut tx, objects, &task.object_ref(), metadata_arg)
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;

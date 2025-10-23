@@ -156,6 +156,25 @@ impl OwnerCap {
     };
 }
 
+// == `nexus_primitives::policy` ==
+
+pub struct Policy;
+
+const POLICY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("policy");
+
+impl Policy {
+    /// `nexus_primitives::policy::Symbol`
+    pub const SYMBOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: POLICY_MODULE,
+        name: sui::move_ident_str!("Symbol"),
+    };
+    /// `nexus_primitives::policy::witness_symbol`
+    pub const WITNESS_SYMBOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: POLICY_MODULE,
+        name: sui::move_ident_str!("witness_symbol"),
+    };
+}
+
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
 /// creating generic types.
 pub fn into_type_tag(
