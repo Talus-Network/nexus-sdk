@@ -52,7 +52,7 @@ where
             sui_framework::VecMap::INSERT.module.into(),
             sui_framework::VecMap::INSERT.name.into(),
             vec![string_type.clone(), string_type.clone()],
-            vec![metadata.clone(), key, value],
+            vec![metadata, key, value],
         );
     }
 
