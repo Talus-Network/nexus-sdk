@@ -381,6 +381,7 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::ObjectRef,
+    gas_price: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
@@ -407,6 +408,9 @@ pub fn execute(
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `gas_price: u64`
+    let gas_price_arg = tx.pure(gas_price)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -510,6 +514,7 @@ pub fn execute(
             dag,
             gas_service,
             network,
+            gas_price_arg,
             entry_group,
             with_vertex_inputs,
             clock,
@@ -524,8 +529,9 @@ mod tests {
         crate::{
             fqn,
             test_utils::sui_mocks,
-            types::{Data, EdgeKind, FromPort, ToPort},
+            types::{Data, EdgeKind, FromPort, NexusData, ToPort},
         },
+        std::collections::HashMap,
     };
 
     #[test]
@@ -734,20 +740,25 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
-        let mut input_data = HashMap::new();
-
-        input_data.insert(
-            "vertex1".to_string(),
-            HashMap::from([(
-                "port1".to_string(),
-                serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
-                    .try_into()
-                    .expect("Failed to convert JSON to DataStorage"),
-            )]),
+        let gas_price = 42;
+        let mut input_data: HashMap<String, HashMap<String, DataStorage>> = HashMap::new();
+        let mut ports = HashMap::new();
+        ports.insert(
+            "port1".to_string(),
+            NexusData::new_inline(serde_json::json!({"key": "value"})).commit_inline_plain(),
         );
+        input_data.insert("vertex1".to_string(), ports);
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(&mut tx, &nexus_objects, &dag, entry_group, &input_data).unwrap();
+        execute(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            gas_price,
+            entry_group,
+            &input_data,
+        )
+        .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
