@@ -1,3 +1,4 @@
+//! This module contains a struct representation of the task used by the scheduler.
 use {
     super::{
         serde_parsers::{
