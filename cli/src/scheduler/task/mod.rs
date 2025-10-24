@@ -54,6 +54,15 @@ pub(crate) enum TaskCommand {
             value_name = "JSON",
         )]
         input_json: Option<serde_json::Value>,
+        /// Which input json keys should be stored remotely.
+        #[arg(
+            long = "remote",
+            short = 'r',
+            help = "Which input json keys should be stored remotely. Provide a comma-separated list of {vertex}.{port} values. By default, all fields are stored inline.",
+            value_delimiter = ',',
+            value_name = "VERTEX.PORT"
+        )]
+        remote: Vec<String>,
         /// Metadata entries to attach to the task as key=value pairs.
         #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
         metadata: Vec<String>,
@@ -132,6 +141,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             dag_id,
             entry_group,
             input_json,
+            remote,
             metadata,
             execution_gas_price,
             schedule_start,
@@ -152,6 +162,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 dag_id,
                 entry_group,
                 input_json,
+                remote,
                 metadata,
                 execution_gas_price,
                 schedule_start_ms,

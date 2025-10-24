@@ -2,9 +2,8 @@ use {
     crate::{
         idents::{move_std, primitives, sui_framework, workflow},
         sui,
-        types::{NexusObjects, DEFAULT_ENTRY_GROUP},
+        types::{DataStorage, NexusObjects, Storable, StorageKind},
     },
-    serde_json::Value,
     std::collections::HashMap,
 };
 
@@ -184,9 +183,8 @@ pub fn new_execution_policy(
     objects: &NexusObjects,
     dag_id: sui::ObjectID,
     gas_price: u64,
-    inputs: &Value,
-    entry_group: Option<&str>,
-    encrypt_handles: Option<&HashMap<String, Vec<String>>>,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -223,13 +221,10 @@ pub fn new_execution_policy(
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
     let gas_price_arg = tx.pure(gas_price)?;
 
-    let entry_group = workflow::Dag::entry_group_from_str(
-        tx,
-        objects.workflow_pkg_id,
-        entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-    )?;
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
-    let with_vertex_inputs = build_inputs_vec_map(tx, objects, inputs, encrypt_handles)?;
+    let with_vertex_inputs = build_inputs_vec_map(tx, objects, input_data)?;
 
     let config = tx.programmable_move_call(
         objects.workflow_pkg_id,
@@ -253,8 +248,7 @@ pub fn new_execution_policy(
 fn build_inputs_vec_map(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
-    inputs: &Value,
-    encrypt_handles: Option<&HashMap<String, Vec<String>>>,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
     let inner_vec_map_type = vec![
         workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
@@ -279,18 +273,12 @@ fn build_inputs_vec_map(
         vec![],
     );
 
-    let data = inputs.as_object().ok_or_else(|| {
-        anyhow::anyhow!("Input JSON must map vertex names to objects of port -> value")
-    })?;
-
-    for (vertex_name, value) in data {
-        let vertex_inputs = value.as_object().ok_or_else(|| {
-            anyhow::anyhow!("Vertex '{vertex_name}' value must be an object mapping ports to data")
-        })?;
-
+    for (vertex_name, data) in input_data {
+        // `vertex: Vertex`
         let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
-        let inner_map = tx.programmable_move_call(
+        // `with_vertex_input: VecMap<InputPort, NexusData>`
+        let with_vertex_input = tx.programmable_move_call(
             sui::FRAMEWORK_PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module.into(),
             sui_framework::VecMap::EMPTY.name.into(),
@@ -298,45 +286,50 @@ fn build_inputs_vec_map(
             vec![],
         );
 
-        for (port_name, port_value) in vertex_inputs {
-            let encrypted = encrypt_handles.map_or(false, |handles| {
-                handles
-                    .get(vertex_name)
-                    .map_or(false, |ports| ports.iter().any(|p| p == port_name))
-            });
-
-            let port = if encrypted {
-                workflow::Dag::encrypted_input_port_from_str(
+        for (port, value) in data {
+            // `port: InputPort`
+            let port = match value.is_encrypted() {
+                true => workflow::Dag::encrypted_input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
-                    port_name,
-                )?
-            } else {
-                workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port_name)?
+                    &port,
+                )?,
+                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
             };
 
-            let nexus_data = primitives::Data::nexus_data_from_json(
-                tx,
-                objects.primitives_pkg_id,
-                port_value,
-                encrypted,
-            )?;
+            // `value: NexusData`
+            let value = match value.storage_kind() {
+                StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                    value.is_encrypted(),
+                )?,
+                StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                    value.is_encrypted(),
+                )?,
+            };
 
+            // `with_vertex_input.insert(port, value)`
             tx.programmable_move_call(
                 sui::FRAMEWORK_PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module.into(),
                 sui_framework::VecMap::INSERT.name.into(),
                 inner_vec_map_type.clone(),
-                vec![inner_map.clone(), port, nexus_data],
+                vec![with_vertex_input, port, value],
             );
         }
 
+        // `with_vertex_inputs.insert(vertex, with_vertex_input)`
         tx.programmable_move_call(
             sui::FRAMEWORK_PACKAGE_ID,
             sui_framework::VecMap::INSERT.module.into(),
             sui_framework::VecMap::INSERT.name.into(),
             outer_vec_map_type.clone(),
-            vec![with_vertex_inputs.clone(), vertex, inner_map],
+            vec![with_vertex_inputs, vertex, with_vertex_input],
         );
     }
 

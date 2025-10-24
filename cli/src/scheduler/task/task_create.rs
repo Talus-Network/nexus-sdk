@@ -1,6 +1,7 @@
 use {
     crate::{
         command_title,
+        dag::dag_execute,
         display::json_output,
         loading,
         notify_success,
@@ -14,7 +15,6 @@ use {
             get_nexus_objects,
             sign_and_execute_transaction,
         },
-        workflow,
     },
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
@@ -22,8 +22,9 @@ use {
         object_crawler::{fetch_one, Structure},
         sui::{self, move_ident_str},
         transactions::scheduler as scheduler_tx,
-        types::Task,
+        types::{StorageConf, Task},
     },
+    std::sync::Arc,
 };
 
 /// Create a scheduler task and optionally enqueue the initial occurrence.
@@ -31,6 +32,7 @@ pub(crate) async fn create_task(
     dag_id: sui::ObjectID,
     entry_group: String,
     mut input_json: Option<serde_json::Value>,
+    remote: Vec<String>,
     metadata: Vec<String>,
     execution_gas_price: u64,
     schedule_start_ms: Option<u64>,
@@ -71,14 +73,40 @@ pub(crate) async fn create_task(
 
     // Parse metadata arguments and prepare the DAG input payload.
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
-    let mut input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
+    let input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
 
-    // Fetch encrypted entry ports and encrypt inputs when necessary.
+    // Fetch encrypted entry ports.
     let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
-    if !encrypt_handles.is_empty() {
-        let session = helpers::get_active_session(&mut conf)?;
-        workflow::encrypt_entry_ports_once(session, &mut input_json, &encrypt_handles)?;
-    }
+
+    // Build the remote storage configuration.
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let storage_conf: StorageConf = conf.data_storage.clone().into();
+
+    // Acquire a session for potential encryption/remote storage commits.
+    let session = CryptoConf::get_active_session(None).await.map_err(|e| {
+        NexusCliError::Any(anyhow!(
+            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+            e,
+            init_key = "$ nexus crypto init-key --force",
+            crypto_auth = "$ nexus crypto auth"
+        ))
+    })?;
+
+    let input_data_result = dag_execute::process_entry_ports(
+        &input_json,
+        &storage_conf,
+        preferred_remote_storage,
+        Arc::clone(&session),
+        &encrypt_handles,
+        &remote,
+    )
+    .await;
+
+    CryptoConf::release_session(session, None)
+        .await
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
+
+    let input_data = input_data_result?;
 
     // Craft the task creation transaction.
     let tx_handle = loading!("Crafting transaction...");
@@ -93,13 +121,8 @@ pub(crate) async fn create_task(
         objects,
         dag_id,
         execution_gas_price,
-        &input_json,
-        Some(entry_group.as_str()),
-        if encrypt_handles.is_empty() {
-            None
-        } else {
-            Some(&encrypt_handles)
-        },
+        entry_group.as_str(),
+        &input_data,
     )
     .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 

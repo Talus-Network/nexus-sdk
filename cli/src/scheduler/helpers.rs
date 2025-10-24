@@ -1,6 +1,5 @@
 use {
     crate::{prelude::*, workflow},
-    nexus_sdk::crypto::session::Session,
     std::collections::HashMap,
 };
 
@@ -86,27 +85,6 @@ pub(crate) async fn fetch_encryption_targets(
     entry_group: &str,
 ) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
     workflow::fetch_encrypted_entry_ports(sui, entry_group.to_owned(), dag_id).await
-}
-
-pub(crate) fn get_active_session(conf: &mut CliConf) -> Result<&mut Session, NexusCliError> {
-    match &mut conf.crypto {
-        Some(crypto_secret) => {
-            if crypto_secret.sessions.is_empty() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required — run `nexus crypto auth` first"
-                )));
-            }
-
-            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
-            crypto_secret
-                .sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
-        }
-        None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        ))),
-    }
 }
 
 #[cfg(test)]
