@@ -1,0 +1,21 @@
+[package]
+name = "prompt-template"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+minijinja.workspace = true
+schemars.workspace = true
+serde.workspace = true
+tokio.workspace = true
+
+# === Nexus deps ===
+nexus-toolkit.workspace = true
+nexus-sdk.workspace = true
