@@ -1,7 +1,6 @@
 use {
     crate::{
         command_title,
-        dag::dag_execute,
         display::json_output,
         loading,
         notify_success,
@@ -15,6 +14,7 @@ use {
             get_nexus_objects,
             sign_and_execute_transaction,
         },
+        workflow,
     },
     nexus_sdk::{
         events::{NexusEvent, NexusEventKind},
@@ -92,7 +92,7 @@ pub(crate) async fn create_task(
         ))
     })?;
 
-    let input_data_result = dag_execute::process_entry_ports(
+    let input_data_result = workflow::process_entry_ports(
         &input_json,
         &storage_conf,
         preferred_remote_storage,
