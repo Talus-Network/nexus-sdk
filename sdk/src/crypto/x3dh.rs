@@ -350,48 +350,29 @@ impl PreKeyBundle {
 pub mod x25519_serde {
     use {
         super::X25519PublicKey,
-        serde::{
-            de::{Error, Visitor},
-            Deserializer,
-            Serializer,
-        },
-        std::fmt,
+        serde::{de::Deserialize, Deserializer, Serialize, Serializer},
     };
 
     pub fn serialize<S>(key: &X25519PublicKey, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.serialize_bytes(key.as_bytes())
-    }
-
-    struct PublicKeyVisitor;
-
-    impl Visitor<'_> for PublicKeyVisitor {
-        type Value = X25519PublicKey;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("a 32‑byte X25519 public key")
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            if v.len() != 32 {
-                return Err(E::custom(format!("expected 32 bytes, got {}", v.len())));
-            }
-            let mut bytes = [0u8; 32];
-            bytes.copy_from_slice(v);
-            Ok(X25519PublicKey::from(bytes))
-        }
+        key.as_bytes().to_vec().serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<X25519PublicKey, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_bytes(PublicKeyVisitor)
+        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
+
+        if bytes.len() != 32 {
+            return Err(serde::de::Error::custom("invalid X25519 public key length"));
+        }
+
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        Ok(X25519PublicKey::from(arr))
     }
 }
 
@@ -404,19 +385,27 @@ pub mod option_x25519_serde {
         x25519_dalek::PublicKey as X25519PublicKey,
     };
 
-    pub fn serialize<S>(maybe: &Option<X25519PublicKey>, ser: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(maybe: &Option<X25519PublicKey>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        maybe.as_ref().map(|pk| pk.as_bytes()).serialize(ser)
+        maybe
+            .as_ref()
+            .map(|pk| pk.as_bytes().to_vec())
+            .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(de: D) -> Result<Option<X25519PublicKey>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<X25519PublicKey>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let maybe_bytes: Option<[u8; 32]> = Option::deserialize(de)?;
-        Ok(maybe_bytes.map(X25519PublicKey::from))
+        let maybe_bytes: Option<Vec<u8>> = Option::deserialize(deserializer)?;
+
+        Ok(maybe_bytes.map(|bytes| {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            X25519PublicKey::from(arr)
+        }))
     }
 }
 
@@ -1095,30 +1084,49 @@ mod tests {
             Some(&otpk_secret),
         );
 
-        // Serialize PreKeyBundle to binary format using bincode
+        // Serialize/deserialize PreKeyBundle to binary format using bincode
         let bundle_bytes =
             bincode::serialize(&original_bundle).expect("Failed to serialize PreKeyBundle");
-
-        // Deserialize PreKeyBundle from binary format
         let deserialized_bundle: PreKeyBundle =
             bincode::deserialize(&bundle_bytes).expect("Failed to deserialize PreKeyBundle");
 
+        // Attempt JSON serialization/deserialization as well
+        let json_string = serde_json::to_string(&original_bundle)
+            .expect("Failed to serialize PreKeyBundle to JSON");
+        let deserialized_json_bundle: PreKeyBundle = serde_json::from_str(&json_string)
+            .expect("Failed to deserialize PreKeyBundle from JSON");
+
         // Verify that all fields match
         assert_eq!(original_bundle.spk_id, deserialized_bundle.spk_id);
+        assert_eq!(original_bundle.spk_id, deserialized_json_bundle.spk_id);
         assert_eq!(
             original_bundle.spk_pub.as_bytes(),
             deserialized_bundle.spk_pub.as_bytes()
         );
+        assert_eq!(
+            original_bundle.spk_pub.as_bytes(),
+            deserialized_json_bundle.spk_pub.as_bytes()
+        );
         assert_eq!(original_bundle.spk_sig, deserialized_bundle.spk_sig);
+        assert_eq!(original_bundle.spk_sig, deserialized_json_bundle.spk_sig);
         assert_eq!(
             original_bundle.identity_verify_bytes,
             deserialized_bundle.identity_verify_bytes
         );
         assert_eq!(
+            original_bundle.identity_verify_bytes,
+            deserialized_json_bundle.identity_verify_bytes
+        );
+        assert_eq!(
             original_bundle.identity_pk.as_bytes(),
             deserialized_bundle.identity_pk.as_bytes()
         );
+        assert_eq!(
+            original_bundle.identity_pk.as_bytes(),
+            deserialized_json_bundle.identity_pk.as_bytes()
+        );
         assert_eq!(original_bundle.otpk_id, deserialized_bundle.otpk_id);
+        assert_eq!(original_bundle.otpk_id, deserialized_json_bundle.otpk_id);
 
         // Check OTPK public key
         match (original_bundle.otpk_pub, deserialized_bundle.otpk_pub) {

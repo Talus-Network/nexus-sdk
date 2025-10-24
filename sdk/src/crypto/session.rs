@@ -1289,7 +1289,7 @@ mod tests {
         // == Send an array ==
 
         let mut data = json!([{"key1": "value1"}, {"key2": "value2"}]);
-        let _ = sender_sess
+        sender_sess
             .encrypt_nexus_data_json(&mut data)
             .expect("Sender encrypt array failed");
 
@@ -1317,7 +1317,7 @@ mod tests {
         // == Send an object ==
 
         let mut data = json!({"key1": "value1", "key2": "value2"});
-        let _ = sender_sess
+        sender_sess
             .encrypt_nexus_data_json(&mut data)
             .expect("Sender encrypt object failed");
 
@@ -1345,7 +1345,7 @@ mod tests {
         // Encrypt a message and read it back
         let mut data = json!({"own_key": "own_value"});
 
-        let _ = receiver_sess
+        receiver_sess
             .encrypt_nexus_data_json(&mut data)
             .expect("Sender encrypt own message failed");
 
@@ -1363,7 +1363,7 @@ mod tests {
         // Sender should also be able to read own messages in an array
         let mut arr_data = json!([{"own_key": "own_value"}, {"another_key": "another_value"}]);
 
-        let _ = receiver_sess
+        receiver_sess
             .encrypt_nexus_data_json(&mut arr_data)
             .expect("Sender encrypt own array message failed");
 

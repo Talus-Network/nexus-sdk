@@ -3,7 +3,10 @@
 //! configuration and vice versa, if it succeeds, we should be certain that the
 //! configuration structure is correct.
 
-use {crate::ToolFqn, serde::Deserialize};
+use {
+    crate::{types::StorageKind, ToolFqn},
+    serde::Deserialize,
+};
 
 /// Name of the default entry group.
 pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
@@ -64,15 +67,9 @@ pub struct DefaultValue {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "storage", rename_all = "snake_case")]
-pub enum Data {
-    Inline {
-        data: serde_json::Value,
-        /// Whether the [`Data::Inline::data`] is encrypted. If `true`, the
-        /// leader will decrypt before passing the data to the tool. Defaults to
-        /// `false`.
-        #[serde(default)]
-        encrypted: bool,
-    },
+pub struct Data {
+    pub storage: StorageKind,
+    pub data: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize)]
