@@ -49,42 +49,6 @@ where
     bytes.serialize(serializer)
 }
 
-/// Deserialize a `Vec<Vec<u8>>` into a `serde_json::Value`.
-///
-/// If the outer `Vec` is len 1, it will be deserialized as a single JSON value.
-/// Otherwise it will be deserialized as a JSON array.
-#[allow(dead_code)]
-pub fn deserialize_array_of_bytes_to_json_value<'de, D>(
-    deserializer: D,
-) -> Result<serde_json::Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let array_of_bytes: Vec<Vec<u8>> = Deserialize::deserialize(deserializer)?;
-    let mut result = Vec::with_capacity(array_of_bytes.len());
-
-    for bytes in array_of_bytes {
-        let value = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
-
-        // TODO: This is temporarily added here to automatically fallback to
-        // a JSON String if we can't parse the bytes as JSON. In the future,
-        // this should fail the execution.
-        //
-        // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
-        let value = match serde_json::from_str(&value) {
-            Ok(value) => value,
-            Err(_) => serde_json::Value::String(value),
-        };
-
-        result.push(value);
-    }
-
-    match result.len() {
-        1 => Ok(result.pop().expect("Len is 1")),
-        _ => Ok(serde_json::Value::Array(result)),
-    }
-}
-
 /// Inverse of [deserialize_array_of_bytes_to_json_value].
 #[allow(dead_code)]
 pub fn serialize_json_value_to_array_of_bytes<S>(
@@ -112,6 +76,67 @@ where
     }
 
     result.serialize(serializer)
+}
+
+/// Check if a string represents a large number (u128/u256 range).
+/// Handles both positive and negative integers.
+fn is_large_number(s: &str) -> bool {
+    if s.starts_with('-') {
+        s[1..].chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    } else {
+        s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
+    }
+}
+
+/// Wrap large numbers as JSON strings to preserve precision for u128/u256.
+fn wrap_large_numbers_as_string(value: &str) -> String {
+    let trimmed = value.trim();
+    if is_large_number(trimmed) {
+        format!(r#""{}""#, trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Deserialize a `Vec<Vec<u8>>` into a `serde_json::Value`.
+///
+/// If the outer `Vec` is len 1, it will be deserialized as a single JSON value.
+/// Otherwise it will be deserialized as a JSON array.
+#[allow(dead_code)]
+pub fn deserialize_array_of_bytes_to_json_value<'de, D>(
+    deserializer: D,
+) -> Result<serde_json::Value, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let array_of_bytes: Vec<Vec<u8>> = Deserialize::deserialize(deserializer)?;
+    let mut result = Vec::with_capacity(array_of_bytes.len());
+
+    for bytes in array_of_bytes {
+        let value = String::from_utf8(bytes).map_err(serde::de::Error::custom)?;
+
+        // TODO: This is temporarily added here to automatically fallback to
+        // a JSON String if we can't parse the bytes as JSON. In the future,
+        // this should fail the execution.
+        //
+        // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
+
+        // Wrap large numbers as strings to preserve precision. 
+        // We also trim the value to remove any leading or trailing whitespace.
+        let adjusted_value = wrap_large_numbers_as_string(&value);
+
+        let value = match serde_json::from_str(&adjusted_value) {
+            Ok(value) => value,
+            Err(_) => serde_json::Value::String(value),
+        };
+
+        result.push(value);
+    }
+
+    match result.len() {
+        1 => Ok(result.pop().expect("Len is 1")),
+        _ => Ok(serde_json::Value::Array(result)),
+    }
 }
 
 /// Custom parser for deserializing to a [u64] from Sui Events. They wrap this
@@ -309,5 +334,23 @@ mod tests {
 
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_large_number_precision_preserved() {
+        // Test that large numbers (like u256) are converted to strings to preserve precision.
+        let large_u256 =
+            "105792089237316195563853351929625371316844592863025172891227567439681422591090";
+        let input = format!(
+            r#"{{"value":[{}]}}"#,
+            serde_json::to_string(&large_u256).unwrap()
+        );
+
+        let result: TestStruct = serde_json::from_str(&input).unwrap();
+        // The large number should be stored as a string to avoid precision loss.
+        assert_eq!(
+            result.value,
+            serde_json::Value::String(large_u256.to_string())
+        );
     }
 }
