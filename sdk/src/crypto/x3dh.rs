@@ -364,7 +364,6 @@ pub mod x25519_serde {
     {
         serializer.serialize_bytes(key.as_bytes())
     }
-
     struct PublicKeyVisitor;
 
     impl<'de> Visitor<'de> for PublicKeyVisitor {
@@ -424,27 +423,19 @@ pub mod option_x25519_serde {
         x25519_dalek::PublicKey as X25519PublicKey,
     };
 
-    pub fn serialize<S>(maybe: &Option<X25519PublicKey>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(maybe: &Option<X25519PublicKey>, ser: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        maybe
-            .as_ref()
-            .map(|pk| pk.as_bytes().to_vec())
-            .serialize(serializer)
+        maybe.as_ref().map(|pk| pk.as_bytes()).serialize(ser)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<X25519PublicKey>, D::Error>
+    pub fn deserialize<'de, D>(de: D) -> Result<Option<X25519PublicKey>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let maybe_bytes: Option<Vec<u8>> = Option::deserialize(deserializer)?;
-
-        Ok(maybe_bytes.map(|bytes| {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes);
-            X25519PublicKey::from(arr)
-        }))
+        let maybe_bytes: Option<[u8; 32]> = Option::deserialize(de)?;
+        Ok(maybe_bytes.map(X25519PublicKey::from))
     }
 }
 
