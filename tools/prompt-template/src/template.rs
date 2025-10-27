@@ -77,9 +77,8 @@ impl NexusTool for PromptTemplate {
 
         let mut all_args = input.args.unwrap_or_default();
 
-        // If name and value are provided, add them to all_args
-        if let (Some(name), Some(value)) = (input.name, input.value) {
-            all_args.insert(name, value);
+        if let Some(name) = input.name {
+            all_args.insert(name, input.value.unwrap());
         }
 
         // Validate: at least one parameter must be provided
