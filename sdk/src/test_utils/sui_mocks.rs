@@ -42,3 +42,15 @@ pub fn mock_nexus_objects() -> NexusObjects {
         pre_key_vault: mock_sui_object_ref(),
     }
 }
+
+/// Generate a new Sui address and its corresponding mnemonic.
+pub fn mock_sui_mnemonic() -> (sui::Address, String) {
+    let derivation_path = None;
+    let word_length = None;
+
+    let (addr, _, _, secret_mnemonic) =
+        sui::generate_new_key(sui::SignatureScheme::ED25519, derivation_path, word_length)
+            .expect("Failed to generate key.");
+
+    (addr, secret_mnemonic)
+}

@@ -64,7 +64,7 @@ transactions = ["sui_idents", "bincode", "types"]
 dag = ["petgraph"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
-nexus = ["transactions", "dag"]
+nexus = ["transactions", "dag", "object_crawler"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and

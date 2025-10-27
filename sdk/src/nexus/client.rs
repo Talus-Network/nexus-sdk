@@ -3,8 +3,9 @@
 
 use {
     crate::{
-        nexus::error::NexusError,
+        nexus::{error::NexusError, gas::GasActions},
         sui::{self, traits::*},
+        types::NexusObjects,
     },
     std::sync::Arc,
     sui_keys::keystore::AccountKeystore,
@@ -31,6 +32,29 @@ impl Signer {
                 Ok(Arc::new(client))
             }
             Signer::Mnemonic(client, _) => Ok(Arc::clone(client)),
+        }
+    }
+
+    /// Get the active address from the signer.
+    pub async fn get_active_address(&self) -> Result<sui::Address, NexusError> {
+        match self {
+            Signer::Wallet(ctx) => {
+                let mut wallet = ctx.lock().await;
+                let address = wallet
+                    .active_address()
+                    .map_err(|e| NexusError::WalletError(anyhow::anyhow!(e)))?;
+
+                Ok(address)
+            }
+            Signer::Mnemonic(_, keystore) => {
+                let keystore = keystore.lock().await;
+                let addresses = keystore.addresses();
+                let address = addresses.first().ok_or_else(|| {
+                    NexusError::WalletError(anyhow::anyhow!("No address found in keystore"))
+                })?;
+
+                Ok(*address)
+            }
         }
     }
 
@@ -125,7 +149,7 @@ pub struct Gas {
 
 impl Gas {
     /// Acquire a gas coin from the pool.
-    pub async fn acquire_gas_coin(&mut self) -> sui::ObjectRef {
+    pub async fn acquire_gas_coin(&self) -> sui::ObjectRef {
         loop {
             // Try to grab one
             if let Some(coin) = self.coins.lock().await.pop() {
@@ -138,7 +162,7 @@ impl Gas {
     }
 
     /// Release a gas coin back to the pool.
-    pub async fn release_gas_coin(&mut self, coin: sui::ObjectRef) {
+    pub async fn release_gas_coin(&self, coin: sui::ObjectRef) {
         self.coins.lock().await.push(coin);
         self.notify.notify_one();
     }
@@ -153,6 +177,7 @@ impl Gas {
 pub struct NexusClientBuilder {
     signer: Option<Signer>,
     gas: Option<Gas>,
+    nexus_objects: Option<NexusObjects>,
 }
 
 impl NexusClientBuilder {
@@ -161,6 +186,7 @@ impl NexusClientBuilder {
         Self {
             signer: None,
             gas: None,
+            nexus_objects: None,
         }
     }
 
@@ -214,8 +240,14 @@ impl NexusClientBuilder {
         Ok(self)
     }
 
+    /// Set Nexus objects to use.
+    pub fn with_nexus_objects(mut self, nexus_objects: NexusObjects) -> Self {
+        self.nexus_objects = Some(nexus_objects);
+        self
+    }
+
     /// Build the [`NexusClient`].
-    pub fn build(self) -> Result<NexusClient, NexusError> {
+    pub async fn build(self) -> Result<NexusClient, NexusError> {
         let signer = self
             .signer
             .ok_or_else(|| NexusError::ConfigurationError("Signer is required".into()))?;
@@ -224,7 +256,24 @@ impl NexusClientBuilder {
             NexusError::ConfigurationError("Gas configuration is required".into())
         })?;
 
-        Ok(NexusClient { signer, gas })
+        let nexus_objects = self
+            .nexus_objects
+            .ok_or_else(|| NexusError::ConfigurationError("Nexus objects are required".into()))?;
+
+        let client = signer.get_client().await?;
+
+        let reference_gas_price = client
+            .read_api()
+            .get_reference_gas_price()
+            .await
+            .map_err(|e| NexusError::RpcError(e.into()))?;
+
+        Ok(NexusClient {
+            signer,
+            gas,
+            nexus_objects,
+            reference_gas_price,
+        })
     }
 }
 
@@ -232,20 +281,48 @@ impl NexusClientBuilder {
 pub struct NexusClient {
     /// The wallet context to use for transactions. This defines the TX sender
     /// address and the RPC connection.
-    signer: Signer,
+    pub(super) signer: Signer,
     /// Gas configuration for Nexus operations.
-    gas: Gas,
+    pub(super) gas: Gas,
+    /// Nexus objects to use.
+    pub(super) nexus_objects: NexusObjects,
+    /// Save reference gas price to avoid fetching it multiple times.
+    pub(super) reference_gas_price: u64,
 }
 
 impl NexusClient {
-    /// Add a [`sui::Coin`] as Nexus budget.
-    pub async fn add_budget(&self, coin: &sui::ObjectRef) -> Result<(), NexusError> {
-        todo!();
+    /// Return a [`NexusClientBuilder`] instance for building a Nexus client.
+    pub fn builder() -> NexusClientBuilder {
+        NexusClientBuilder::new()
+    }
+
+    /// Return a [`sui::Client`] instance for interacting with the Sui network.
+    pub async fn get_sui_client(&self) -> Result<Arc<sui::Client>, NexusError> {
+        self.signer.get_client().await
+    }
+
+    /// Return a [`GasActions`] instance for performing gas-related operations.
+    pub fn gas(&self) -> GasActions {
+        GasActions {
+            client: self.clone(),
+        }
     }
 }
+
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::test_utils::sui_mocks::mock_sui_object_ref};
+    use {
+        super::*,
+        crate::test_utils::{
+            sui_mocks::{
+                mock_nexus_objects,
+                mock_sui_coin,
+                mock_sui_mnemonic,
+                mock_sui_object_ref,
+            },
+            wallet::create_ephemeral_wallet_context_testnet,
+        },
+    };
 
     #[tokio::test]
     async fn test_acquire_and_release_gas_coin() {
@@ -257,8 +334,6 @@ mod tests {
             notify: Arc::new(Notify::new()),
             budget: 1000,
         };
-
-        let mut gas = gas;
 
         // Acquire coins
         let acquired1 = gas.acquire_gas_coin().await;
@@ -289,13 +364,13 @@ mod tests {
     #[tokio::test]
     async fn test_acquire_gas_coin_waits_for_release() {
         let coin = mock_sui_object_ref();
-        let mut gas = Gas {
+        let gas = Gas {
             coins: Arc::new(Mutex::new(vec![])),
             notify: Arc::new(Notify::new()),
             budget: 100,
         };
 
-        let mut gas_clone = gas.clone();
+        let gas_clone = gas.clone();
 
         let handle = tokio::spawn(async move { gas_clone.acquire_gas_coin().await });
 
@@ -307,5 +382,101 @@ mod tests {
 
         let acquired = handle.await.unwrap();
         assert_eq!(acquired, coin);
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_wallet_context() {
+        let (wallet_context, _) =
+            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
+        let coin = mock_sui_coin(100);
+        let objects = mock_nexus_objects();
+        let coins = vec![&coin];
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_wallet_context(wallet_context)
+            .with_nexus_objects(objects)
+            .with_gas(coins, budget)
+            .unwrap();
+
+        let client = builder.build().await.unwrap();
+        assert_eq!(client.gas.get_budget(), budget);
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_mnemonic() {
+        let (_, mnemonic) = mock_sui_mnemonic();
+        let client = sui::ClientBuilder::default()
+            .build_testnet()
+            .await
+            .expect("Failed to build sui client");
+        let coin = mock_sui_coin(100);
+        let objects = mock_nexus_objects();
+        let coins = vec![&coin];
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_nexus_objects(objects)
+            .with_mnemonic(client, &mnemonic, sui::SignatureScheme::ED25519)
+            .unwrap()
+            .with_gas(coins, budget)
+            .unwrap();
+
+        let nexus_client = builder.build().await.unwrap();
+        assert_eq!(nexus_client.gas.get_budget(), budget);
+    }
+
+    #[tokio::test]
+    async fn test_builder_missing_signer() {
+        let coin = mock_sui_coin(100);
+        let coins = vec![&coin];
+        let objects = mock_nexus_objects();
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_nexus_objects(objects)
+            .with_gas(coins, budget)
+            .unwrap();
+
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_builder_missing_gas() {
+        let objects = mock_nexus_objects();
+        let (wallet_context, _) =
+            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
+
+        let builder = NexusClientBuilder::new()
+            .with_wallet_context(wallet_context)
+            .with_nexus_objects(objects);
+
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_gas_empty_coins() {
+        let builder = NexusClientBuilder::new();
+        let result = builder.with_gas(vec![], 1000);
+        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_builder_missing_nexus_objects() {
+        let (wallet_context, _) =
+            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
+        let coin = mock_sui_coin(100);
+        let coins = vec![&coin];
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_wallet_context(wallet_context)
+            .with_gas(coins, budget)
+            .unwrap();
+
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
     }
 }
