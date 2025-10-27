@@ -1,5 +1,5 @@
 //! This module contains a struct representation of the task used by the scheduler.
-//! It provides a way to serialize and deserialize the task.
+//! It provides a way to serialize and deserialize the task and any helper structures.
 use {
     super::{
         serde_parsers::{
