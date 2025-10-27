@@ -89,11 +89,6 @@ impl CryptoActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        println!(
-            "Fetched PreKey object: {:#?}",
-            raw_pre_key.data.inner().bytes
-        );
-
         let bundle = bincode::deserialize::<PreKeyBundle>(&raw_pre_key.data.inner().bytes)
             .map_err(|e| NexusError::Parsing(e.into()))?;
 
