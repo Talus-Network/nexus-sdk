@@ -58,7 +58,7 @@ keyring = { workspace = true, features = ["windows-native"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
 # Use the native keyutils backend on Unix-like systems.
-keyring = { workspace = true, features = ["linux-native-sync-persistent"] }
+keyring = { workspace = true, features = ["linux-native"] }
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]
