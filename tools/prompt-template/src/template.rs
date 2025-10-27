@@ -89,7 +89,7 @@ impl NexusTool for PromptTemplate {
     }
 
     fn description() -> &'static str {
-        "Tool that news prompt templates using minijinja templating engine with flexible input options."
+        "Tool that parses prompt templates using Jinja2 templating engine with flexible input options."
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {

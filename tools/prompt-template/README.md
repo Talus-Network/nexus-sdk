@@ -1,6 +1,6 @@
 # `xyz.taluslabs.prompt.template.new@1`
 
-Standard Nexus Tool that renders prompt templates using minijinja templating engine with flexible input options.
+Standard Nexus Tool that parses prompt templates using Jinja2 templating engine with flexible input options.
 
 ## Input
 
