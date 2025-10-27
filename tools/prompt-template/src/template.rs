@@ -85,7 +85,7 @@ impl NexusTool for PromptTemplate {
     }
 
     fn path() -> &'static str {
-        "/prompt-template/new"
+        "/prompt-template"
     }
 
     fn description() -> &'static str {
