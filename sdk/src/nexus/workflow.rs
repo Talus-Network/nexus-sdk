@@ -1,33 +1,45 @@
 //! Commands related to gas management in Nexus.
 
-use crate::{
-    nexus::{client::NexusClient, error::NexusError},
-    sui,
-    transactions::gas,
+use {
+    crate::{
+        idents::workflow,
+        nexus::{client::NexusClient, error::NexusError},
+        sui,
+        transactions::dag,
+        types::Dag,
+    },
+    anyhow::anyhow,
 };
 
-pub struct AddBudgetResult {
+pub struct PublishResult {
     pub tx_digest: sui::TransactionDigest,
+    pub dag_object_id: sui::ObjectID,
 }
 
-pub struct GasActions {
+pub struct WorkflowActions {
     pub(super) client: NexusClient,
 }
 
-impl GasActions {
-    /// Deploy the provided JSON DAG.
-    pub async fn add_budget(
-        &self,
-        budget_coin: &sui::ObjectRef,
-    ) -> Result<AddBudgetResult, NexusError> {
+impl WorkflowActions {
+    /// Publish the provided JSON [`Dag`].
+    pub async fn publish(&self, json_dag: Dag) -> Result<PublishResult, NexusError> {
         let address = self.client.signer.get_active_address().await?;
         let nexus_objects = &self.client.nexus_objects;
 
+        // == Craft and submit the publish DAG transaction ==
+
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address.into(), &budget_coin) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
+        let mut dag_arg = dag::empty(&mut tx, nexus_objects);
+
+        dag_arg = match dag::create(&mut tx, nexus_objects, dag_arg, json_dag) {
+            Ok(dag_arg) => dag_arg,
+            Err(e) => {
+                return Err(NexusError::TransactionBuilding(e));
+            }
+        };
+
+        dag::publish(&mut tx, nexus_objects, dag_arg);
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
@@ -49,8 +61,32 @@ impl GasActions {
 
         self.client.gas.release_gas_coin(gas_coin).await;
 
-        Ok(AddBudgetResult {
+        // == Find the published DAG object ID ==
+
+        let dag_object_id = response
+            .object_changes
+            .unwrap_or_default()
+            .into_iter()
+            .find_map(|change| match change {
+                sui::ObjectChange::Created {
+                    object_type,
+                    object_id,
+                    ..
+                } if object_type.address == *nexus_objects.workflow_pkg_id
+                    && object_type.module == workflow::Dag::DAG.module.into()
+                    && object_type.name == workflow::Dag::DAG.name.into() =>
+                {
+                    Some(object_id)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!("DAG object ID not found in TX response"))
+            })?;
+
+        Ok(PublishResult {
             tx_digest: response.digest,
+            dag_object_id,
         })
     }
 }

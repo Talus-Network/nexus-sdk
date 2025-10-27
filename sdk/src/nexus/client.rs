@@ -3,7 +3,12 @@
 
 use {
     crate::{
-        nexus::{crypto::CryptoActions, error::NexusError, gas::GasActions},
+        nexus::{
+            crypto::CryptoActions,
+            error::NexusError,
+            gas::GasActions,
+            workflow::WorkflowActions,
+        },
         sui::{self, traits::*},
         types::NexusObjects,
     },
@@ -314,6 +319,13 @@ impl NexusClient {
     /// Return a [`CryptoActions`] instance for performing crypto-related operations.
     pub fn crypto(&self) -> CryptoActions {
         CryptoActions {
+            client: self.clone(),
+        }
+    }
+
+    /// Return a [`WorkflowActions`] instance for performing workflow-related operations.
+    pub fn workflow(&self) -> WorkflowActions {
+        WorkflowActions {
             client: self.clone(),
         }
     }

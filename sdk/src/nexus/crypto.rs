@@ -15,7 +15,6 @@ use {
     sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI,
 };
 
-/// Struct that results from [`CryptoActions::handshake`].
 pub struct HandshakeResult {
     pub session: Session,
     pub claim_tx_digest: sui::TransactionDigest,
