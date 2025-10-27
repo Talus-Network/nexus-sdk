@@ -350,29 +350,67 @@ impl PreKeyBundle {
 pub mod x25519_serde {
     use {
         super::X25519PublicKey,
-        serde::{de::Deserialize, Deserializer, Serialize, Serializer},
+        serde::{
+            de::{Error, SeqAccess, Visitor},
+            Deserializer,
+            Serializer,
+        },
+        std::fmt,
     };
 
     pub fn serialize<S>(key: &X25519PublicKey, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        key.as_bytes().to_vec().serialize(serializer)
+        serializer.serialize_bytes(key.as_bytes())
+    }
+    struct PublicKeyVisitor;
+
+    impl<'de> Visitor<'de> for PublicKeyVisitor {
+        type Value = X25519PublicKey;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a 32‑byte X25519 public key")
+        }
+
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            if v.len() != 32 {
+                return Err(E::custom(format!("expected 32 bytes, got {}", v.len())));
+            }
+            let mut bytes = [0u8; 32];
+            bytes.copy_from_slice(v);
+            Ok(X25519PublicKey::from(bytes))
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut bytes = [0u8; 32];
+
+            for (idx, slot) in bytes.iter_mut().enumerate() {
+                let Some(value) = seq.next_element::<u8>()? else {
+                    return Err(A::Error::invalid_length(idx, &self));
+                };
+                *slot = value;
+            }
+
+            if seq.next_element::<u8>()?.is_some() {
+                return Err(A::Error::invalid_length(33, &self));
+            }
+
+            Ok(X25519PublicKey::from(bytes))
+        }
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<X25519PublicKey, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
-
-        if bytes.len() != 32 {
-            return Err(serde::de::Error::custom("invalid X25519 public key length"));
-        }
-
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        Ok(X25519PublicKey::from(arr))
+        deserializer.deserialize_bytes(PublicKeyVisitor)
     }
 }
 
