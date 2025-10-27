@@ -81,7 +81,7 @@ impl NexusTool for PromptTemplate {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.prompt.template.new@1")
+        fqn!("xyz.taluslabs.prompt-template@1")
     }
 
     fn path() -> &'static str {
