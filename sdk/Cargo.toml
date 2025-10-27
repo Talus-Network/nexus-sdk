@@ -63,6 +63,9 @@ transactions = ["sui_idents", "bincode", "types"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Provides various Nexus utilities like deployment and execution of workflows.
+nexus = ["transactions", "dag"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -88,6 +91,7 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "nexus",
 ]
 
 
