@@ -16,17 +16,17 @@ use {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {
     /// The template string to render
-    pub template: String,
+    template: String,
     /// Template arguments - can be either a HashMap<String, String> or a single String.
     /// Can be used together with name/value parameters.
     #[serde(default, deserialize_with = "deserialize_args_option")]
-    pub args: Option<Args>,
+    args: Option<Args>,
     /// Optional single value to substitute. Must be used with 'name' parameter.
     /// Can be combined with 'args' parameter.
-    pub value: Option<String>,
+    value: Option<String>,
     /// Optional name for the single variable. Must be used with 'value' parameter.
     /// Can be combined with 'args' parameter.
-    pub name: Option<String>,
+    name: Option<String>,
 }
 
 /// Enum to represent either a HashMap or a String for template arguments
