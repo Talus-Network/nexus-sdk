@@ -154,7 +154,7 @@ mod tests {
 
         let input = Input {
             template: "Hello {{custom_var}}!".to_string(),
-            args: None, // args opsiyonel artık
+            args: None,
             value: Some("World".to_string()),
             name: Some("custom_var".to_string()),
         };
@@ -193,7 +193,7 @@ mod tests {
     async fn test_template_invalid_args_combination() {
         let tool = PromptTemplate::new().await;
 
-        // name olmadan value verilmiş - bu hata vermeli
+        // Test: value without name should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
             args: None,
