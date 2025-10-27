@@ -37,7 +37,7 @@ The template was rendered successfully.
 
 The template rendering failed due to an error.
 
-- **`err.message`: [`String`]** - A detailed error message describing what went wrong. This could be:
+- **`err.reason`: [`String`]** - A detailed error message describing what went wrong. This could be:
   - `"Either 'args' or 'name'/'value' parameters must be provided"` - No parameters were provided
   - `"args cannot be empty when name and value are not provided"` - Empty args object with no name/value
   - `"name and value must both be provided or both be None"` - Only one of name/value was provided
@@ -143,7 +143,7 @@ The template rendering failed due to an error.
 ```json
 {
   "type": "err",
-  "message": "Either 'args' or 'name'/'value' parameters must be provided"
+  "reason": "Either 'args' or 'name'/'value' parameters must be provided"
 }
 ```
 
@@ -163,6 +163,6 @@ The template rendering failed due to an error.
 ```json
 {
   "type": "err",
-  "message": "Template rendering failed: undefined value (in tmpl:1)"
+  "reason": "Template rendering failed: undefined value (in tmpl:1)"
 }
 ```

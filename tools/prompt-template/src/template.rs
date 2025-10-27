@@ -67,7 +67,7 @@ where
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Output {
     Ok { result: String },
-    Err { message: String },
+    Err { reason: String },
 }
 
 pub(crate) struct PromptTemplate;
@@ -105,7 +105,7 @@ impl NexusTool for PromptTemplate {
         // Validate: at least one of args or (name/value) must be provided
         if input.args.is_none() && input.name.is_none() && input.value.is_none() {
             return Output::Err {
-                message: "Either 'args' or 'name'/'value' parameters must be provided".to_string(),
+                reason: "Either 'args' or 'name'/'value' parameters must be provided".to_string(),
             };
         }
 
@@ -113,8 +113,7 @@ impl NexusTool for PromptTemplate {
         if let Some(Args::Map(ref args_map)) = input.args {
             if args_map.is_empty() && input.name.is_none() && input.value.is_none() {
                 return Output::Err {
-                    message: "args cannot be empty when name and value are not provided"
-                        .to_string(),
+                    reason: "args cannot be empty when name and value are not provided".to_string(),
                 };
             }
         }
@@ -124,7 +123,7 @@ impl NexusTool for PromptTemplate {
             match (&input.name, &input.value) {
                 (Some(_), None) | (None, Some(_)) => {
                     return Output::Err {
-                        message: "name and value must both be provided or both be None".to_string(),
+                        reason: "name and value must both be provided or both be None".to_string(),
                     };
                 }
                 _ => {}
@@ -137,7 +136,7 @@ impl NexusTool for PromptTemplate {
                 Some(ref value) => HashMap::from([(variable_name, value.clone())]),
                 None => {
                     return Output::Err {
-                        message: "When args is a String, 'value' must be provided".to_string(),
+                        reason: "When args is a String, 'value' must be provided".to_string(),
                     };
                 }
             },
@@ -160,7 +159,7 @@ impl NexusTool for PromptTemplate {
         match tmpl.render(all_args) {
             Ok(result) => Output::Ok { result },
             Err(e) => Output::Err {
-                message: format!("Template rendering failed: {}", e),
+                reason: format!("Template rendering failed: {}", e),
             },
         }
     }
@@ -187,7 +186,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => assert_eq!(result, "Hello Alice from Paris!"),
-            Output::Err { message } => panic!("Expected success, got error: {}", message),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
@@ -205,7 +204,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => assert_eq!(result, "Hello Bob!"),
-            Output::Err { message } => panic!("Expected success, got error: {}", message),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
@@ -223,7 +222,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => assert_eq!(result, "Hello World!"),
-            Output::Err { message } => panic!("Expected success, got error: {}", message),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
@@ -242,9 +241,9 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for template with no parameters"),
-            Output::Err { message } => {
+            Output::Err { reason } => {
                 assert!(
-                    message.contains("Either 'args' or 'name'/'value' parameters must be provided")
+                    reason.contains("Either 'args' or 'name'/'value' parameters must be provided")
                 )
             }
         }
@@ -265,8 +264,8 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for invalid args combination"),
-            Output::Err { message } => {
-                assert!(message.contains("name and value must both be provided"))
+            Output::Err { reason } => {
+                assert!(reason.contains("name and value must both be provided"))
             }
         }
     }
@@ -289,7 +288,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for undefined variable"),
-            Output::Err { message } => assert!(message.contains("Template rendering failed")),
+            Output::Err { reason } => assert!(reason.contains("Template rendering failed")),
         }
     }
 
@@ -311,7 +310,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => assert_eq!(result, "Hello Alice from Paris!"),
-            Output::Err { message } => panic!("Expected success, got error: {}", message),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
@@ -330,7 +329,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => assert_eq!(result, "Hello Bob!"),
-            Output::Err { message } => panic!("Expected success, got error: {}", message),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
@@ -352,8 +351,8 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for value without name"),
-            Output::Err { message } => {
-                assert!(message.contains("name and value must both be provided"))
+            Output::Err { reason } => {
+                assert!(reason.contains("name and value must both be provided"))
             }
         }
     }
@@ -373,8 +372,8 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for name without value"),
-            Output::Err { message } => {
-                assert!(message.contains("name and value must both be provided"))
+            Output::Err { reason } => {
+                assert!(reason.contains("name and value must both be provided"))
             }
         }
     }
@@ -394,10 +393,8 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { .. } => panic!("Expected error for empty args without name/value"),
-            Output::Err { message } => {
-                assert!(
-                    message.contains("args cannot be empty when name and value are not provided")
-                )
+            Output::Err { reason } => {
+                assert!(reason.contains("args cannot be empty when name and value are not provided"))
             }
         }
     }
