@@ -8,7 +8,6 @@ use {
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json::Value,
     std::collections::HashMap,
 };
 
@@ -17,49 +16,16 @@ use {
 pub(crate) struct Input {
     /// The template string to render
     template: String,
-    /// Template arguments - can be either a HashMap<String, String> or a single String.
+    /// Template arguments as a HashMap<String, String>.
     /// Can be used together with name/value parameters.
-    #[serde(default, deserialize_with = "deserialize_args_option")]
-    args: Option<Args>,
+    #[serde(default)]
+    args: Option<HashMap<String, String>>,
     /// Optional single value to substitute. Must be used with 'name' parameter.
     /// Can be combined with 'args' parameter.
     value: Option<String>,
     /// Optional name for the single variable. Must be used with 'value' parameter.
     /// Can be combined with 'args' parameter.
     name: Option<String>,
-}
-
-/// Enum to represent either a HashMap or a String for template arguments
-#[derive(Debug, Clone, JsonSchema)]
-#[serde(untagged)]
-pub(crate) enum Args {
-    Map(HashMap<String, String>),
-    String(String),
-}
-
-fn deserialize_args_option<'de, D>(deserializer: D) -> Result<Option<Args>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<Value>::deserialize(deserializer)?;
-    match value {
-        None => Ok(None),
-        Some(Value::Object(map)) => {
-            let mut args_map = HashMap::new();
-            for (k, v) in map {
-                if let Some(s) = v.as_str() {
-                    args_map.insert(k, s.to_string());
-                } else {
-                    args_map.insert(k, v.to_string());
-                }
-            }
-            Ok(Some(Args::Map(args_map)))
-        }
-        Some(Value::String(s)) => Ok(Some(Args::String(s))),
-        _ => Err(serde::de::Error::custom(
-            "args must be either an object or a string",
-        )),
-    }
 }
 
 /// Output model for the prompt template tool
@@ -99,53 +65,28 @@ impl NexusTool for PromptTemplate {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         let mut env = Environment::new();
 
-        // Check if args is a String type
-        let args_is_string = matches!(input.args, Some(Args::String(_)));
-
-        // Validate: at least one of args or (name/value) must be provided
-        if input.args.is_none() && input.name.is_none() && input.value.is_none() {
-            return Output::Err {
-                reason: "Either 'args' or 'name'/'value' parameters must be provided".to_string(),
-            };
-        }
-
-        // Validate: if args is an empty HashMap and no name/value provided, return error
-        if let Some(Args::Map(ref args_map)) = input.args {
-            if args_map.is_empty() && input.name.is_none() && input.value.is_none() {
+        // Validate: if name or value is provided, both must be provided
+        match (&input.name, &input.value) {
+            (Some(_), None) | (None, Some(_)) => {
                 return Output::Err {
-                    reason: "args cannot be empty when name and value are not provided".to_string(),
+                    reason: "name and value must both be provided or both be None".to_string(),
                 };
             }
+            _ => {}
         }
 
-        // Validate: if name or value is provided (and args is NOT a String), both must be provided
-        if !args_is_string {
-            match (&input.name, &input.value) {
-                (Some(_), None) | (None, Some(_)) => {
-                    return Output::Err {
-                        reason: "name and value must both be provided or both be None".to_string(),
-                    };
-                }
-                _ => {}
-            }
-        }
-
-        let mut all_args = match input.args {
-            Some(Args::Map(args_map)) => args_map,
-            Some(Args::String(variable_name)) => match input.value {
-                Some(ref value) => HashMap::from([(variable_name, value.clone())]),
-                None => {
-                    return Output::Err {
-                        reason: "When args is a String, 'value' must be provided".to_string(),
-                    };
-                }
-            },
-            None => HashMap::new(),
-        };
+        let mut all_args = input.args.unwrap_or_default();
 
         // If name and value are provided, add them to all_args
         if let (Some(name), Some(value)) = (input.name, input.value) {
             all_args.insert(name, value);
+        }
+
+        // Validate: at least one parameter must be provided
+        if all_args.is_empty() {
+            return Output::Err {
+                reason: "Either 'args' or 'name'/'value' parameters must be provided".to_string(),
+            };
         }
 
         // Enable strict mode to catch undefined variables
@@ -175,10 +116,10 @@ mod tests {
 
         let input = Input {
             template: "Hello {{name}} from {{city}}!".to_string(),
-            args: Some(Args::Map(HashMap::from([
+            args: Some(HashMap::from([
                 ("name".to_string(), "Alice".to_string()),
                 ("city".to_string(), "Paris".to_string()),
-            ]))),
+            ])),
             value: None,
             name: None,
         };
@@ -191,14 +132,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_template_with_args_string_and_value() {
+    async fn test_template_with_name_and_value() {
         let tool = PromptTemplate::new().await;
 
         let input = Input {
             template: "Hello {{user}}!".to_string(),
-            args: Some(Args::String("user".to_string())),
+            args: None,
             value: Some("Bob".to_string()),
-            name: None,
+            name: Some("user".to_string()),
         };
 
         let result = tool.invoke(input).await;
@@ -277,10 +218,10 @@ mod tests {
         // Test: Template with undefined variable should fail during rendering
         let input = Input {
             template: "Hello {{undefined_var}}!".to_string(),
-            args: Some(Args::Map(HashMap::from([(
+            args: Some(HashMap::from([(
                 "other_var".to_string(),
                 "value".to_string(),
-            )]))), // Non-empty args but missing the required variable
+            )])), // Non-empty args but missing the required variable
             value: None,
             name: None,
         };
@@ -299,10 +240,7 @@ mod tests {
         // Test: args Map + name/value should work together
         let input = Input {
             template: "Hello {{name}} from {{city}}!".to_string(),
-            args: Some(Args::Map(HashMap::from([(
-                "city".to_string(),
-                "Paris".to_string(),
-            )]))),
+            args: Some(HashMap::from([("city".to_string(), "Paris".to_string())])),
             value: Some("Alice".to_string()),
             name: Some("name".to_string()),
         };
@@ -315,35 +253,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_args_string_and_value_combined() {
-        let tool = PromptTemplate::new().await;
-
-        // Test: args String + value should work together
-        let input = Input {
-            template: "Hello {{user}}!".to_string(),
-            args: Some(Args::String("user".to_string())),
-            value: Some("Bob".to_string()),
-            name: None,
-        };
-
-        let result = tool.invoke(input).await;
-        match result {
-            Output::Ok { result } => assert_eq!(result, "Hello Bob!"),
-            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
-        }
-    }
-
-    #[tokio::test]
     async fn test_value_without_name_fails() {
         let tool = PromptTemplate::new().await;
 
         // Test: value without name should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: Some(Args::Map(HashMap::from([(
-                "name".to_string(),
-                "Alice".to_string(),
-            )]))),
+            args: Some(HashMap::from([("name".to_string(), "Alice".to_string())])),
             value: Some("Bob".to_string()),
             name: None,
         };
@@ -385,7 +301,7 @@ mod tests {
         // Test: empty args without name/value should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: Some(Args::Map(HashMap::new())),
+            args: Some(HashMap::new()),
             value: None,
             name: None,
         };
@@ -394,7 +310,9 @@ mod tests {
         match result {
             Output::Ok { .. } => panic!("Expected error for empty args without name/value"),
             Output::Err { reason } => {
-                assert!(reason.contains("args cannot be empty when name and value are not provided"))
+                assert!(
+                    reason.contains("Either 'args' or 'name'/'value' parameters must be provided")
+                )
             }
         }
     }
