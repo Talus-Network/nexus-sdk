@@ -15,7 +15,7 @@ pub struct GasActions {
 }
 
 impl GasActions {
-    /// Add a Coin [`sui::ObjectRef`] as gas budget for Nexus workflows.
+    /// Deploy the provided JSON DAG.
     pub async fn add_budget(
         &self,
         budget_coin: &sui::ObjectRef,

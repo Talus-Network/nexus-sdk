@@ -3,7 +3,7 @@
 
 use {
     crate::{
-        nexus::{error::NexusError, gas::GasActions},
+        nexus::{crypto::CryptoActions, error::NexusError, gas::GasActions},
         sui::{self, traits::*},
         types::NexusObjects,
     },
@@ -23,11 +23,11 @@ pub enum Signer {
 
 impl Signer {
     /// Get a reference to the Sui client.
-    pub async fn get_client(&self) -> Result<Arc<sui::Client>, NexusError> {
+    pub(super) async fn get_client(&self) -> Result<Arc<sui::Client>, NexusError> {
         match self {
             Signer::Wallet(ctx) => {
                 let wallet = ctx.lock().await;
-                let client = wallet.get_client().await.map_err(NexusError::WalletError)?;
+                let client = wallet.get_client().await.map_err(NexusError::Wallet)?;
 
                 Ok(Arc::new(client))
             }
@@ -36,13 +36,13 @@ impl Signer {
     }
 
     /// Get the active address from the signer.
-    pub async fn get_active_address(&self) -> Result<sui::Address, NexusError> {
+    pub(super) async fn get_active_address(&self) -> Result<sui::Address, NexusError> {
         match self {
             Signer::Wallet(ctx) => {
                 let mut wallet = ctx.lock().await;
                 let address = wallet
                     .active_address()
-                    .map_err(|e| NexusError::WalletError(anyhow::anyhow!(e)))?;
+                    .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
 
                 Ok(address)
             }
@@ -50,7 +50,7 @@ impl Signer {
                 let keystore = keystore.lock().await;
                 let addresses = keystore.addresses();
                 let address = addresses.first().ok_or_else(|| {
-                    NexusError::WalletError(anyhow::anyhow!("No address found in keystore"))
+                    NexusError::Wallet(anyhow::anyhow!("No address found in keystore"))
                 })?;
 
                 Ok(*address)
@@ -59,7 +59,10 @@ impl Signer {
     }
 
     /// Sign a transaction block using the signer.
-    pub async fn sign_tx(&self, tx: sui::TransactionData) -> Result<sui::Transaction, NexusError> {
+    pub(super) async fn sign_tx(
+        &self,
+        tx: sui::TransactionData,
+    ) -> Result<sui::Transaction, NexusError> {
         match self {
             Signer::Wallet(ctx) => {
                 let wallet = ctx.lock().await;
@@ -71,12 +74,12 @@ impl Signer {
 
                 let addresses = keystore.addresses();
                 let addr = addresses.first().ok_or_else(|| {
-                    NexusError::WalletError(anyhow::anyhow!("No address found in keystore"))
+                    NexusError::Wallet(anyhow::anyhow!("No address found in keystore"))
                 })?;
 
                 let signature = keystore
                     .sign_secure(addr, &tx, sui::Intent::sui_transaction())
-                    .map_err(|e| NexusError::WalletError(anyhow::anyhow!(e)))?;
+                    .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
 
                 Ok(sui::Transaction::from_data(tx, vec![signature]))
             }
@@ -84,7 +87,7 @@ impl Signer {
     }
 
     /// Execute a transaction block and return the response.
-    pub async fn execute_tx(
+    pub(super) async fn execute_tx(
         &self,
         tx: sui::Transaction,
         gas_coin: &mut sui::ObjectRef,
@@ -103,24 +106,24 @@ impl Signer {
             .quorum_driver_api()
             .execute_transaction_block(tx, resp_options, Some(resp_finality))
             .await
-            .map_err(|e| NexusError::WalletError(anyhow::anyhow!(e)))?;
+            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
 
         if !response.errors.is_empty() {
-            return Err(NexusError::WalletError(anyhow::anyhow!(
+            return Err(NexusError::Wallet(anyhow::anyhow!(
                 "Transaction execution failed: {:?}",
                 response.errors
             )));
         }
 
         let Some(sui::TransactionBlockEffects::V1(effects)) = response.effects.clone() else {
-            return Err(NexusError::WalletError(anyhow::anyhow!(
+            return Err(NexusError::Wallet(anyhow::anyhow!(
                 "Transactions has no effects."
             )));
         };
 
         // Check if any effects failed in the TX.
         if effects.clone().into_status().is_err() {
-            return Err(NexusError::WalletError(anyhow::anyhow!(
+            return Err(NexusError::Wallet(anyhow::anyhow!(
                 "Transaction has erroneous effects: {effects:?}"
             )));
         }
@@ -149,7 +152,7 @@ pub struct Gas {
 
 impl Gas {
     /// Acquire a gas coin from the pool.
-    pub async fn acquire_gas_coin(&self) -> sui::ObjectRef {
+    pub(super) async fn acquire_gas_coin(&self) -> sui::ObjectRef {
         loop {
             // Try to grab one
             if let Some(coin) = self.coins.lock().await.pop() {
@@ -162,13 +165,13 @@ impl Gas {
     }
 
     /// Release a gas coin back to the pool.
-    pub async fn release_gas_coin(&self, coin: sui::ObjectRef) {
+    pub(super) async fn release_gas_coin(&self, coin: sui::ObjectRef) {
         self.coins.lock().await.push(coin);
         self.notify.notify_one();
     }
 
     /// Get the gas budget.
-    pub fn get_budget(&self) -> u64 {
+    pub(super) fn get_budget(&self) -> u64 {
         self.budget
     }
 }
@@ -213,7 +216,7 @@ impl NexusClientBuilder {
 
         keystore
             .import_from_mnemonic(mnemonic, sig_scheme, derivation_path, alias)
-            .map_err(|e| NexusError::WalletError(anyhow::anyhow!(e)))?;
+            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
 
         let signer = Signer::Mnemonic(Arc::new(client), Arc::new(Mutex::new(keystore)));
 
@@ -225,7 +228,7 @@ impl NexusClientBuilder {
     pub fn with_gas(mut self, coins: Vec<&sui::Coin>, budget: u64) -> Result<Self, NexusError> {
         // Need at least one gas coin.
         if coins.is_empty() {
-            return Err(NexusError::ConfigurationError(
+            return Err(NexusError::Configuration(
                 "At least one gas coin is required".into(),
             ));
         }
@@ -250,15 +253,15 @@ impl NexusClientBuilder {
     pub async fn build(self) -> Result<NexusClient, NexusError> {
         let signer = self
             .signer
-            .ok_or_else(|| NexusError::ConfigurationError("Signer is required".into()))?;
+            .ok_or_else(|| NexusError::Configuration("Signer is required".into()))?;
 
-        let gas = self.gas.ok_or_else(|| {
-            NexusError::ConfigurationError("Gas configuration is required".into())
-        })?;
+        let gas = self
+            .gas
+            .ok_or_else(|| NexusError::Configuration("Gas configuration is required".into()))?;
 
         let nexus_objects = self
             .nexus_objects
-            .ok_or_else(|| NexusError::ConfigurationError("Nexus objects are required".into()))?;
+            .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
 
         let client = signer.get_client().await?;
 
@@ -266,7 +269,7 @@ impl NexusClientBuilder {
             .read_api()
             .get_reference_gas_price()
             .await
-            .map_err(|e| NexusError::RpcError(e.into()))?;
+            .map_err(|e| NexusError::Rpc(e.into()))?;
 
         Ok(NexusClient {
             signer,
@@ -304,6 +307,13 @@ impl NexusClient {
     /// Return a [`GasActions`] instance for performing gas-related operations.
     pub fn gas(&self) -> GasActions {
         GasActions {
+            client: self.clone(),
+        }
+    }
+
+    /// Return a [`CryptoActions`] instance for performing crypto-related operations.
+    pub fn crypto(&self) -> CryptoActions {
+        CryptoActions {
             client: self.clone(),
         }
     }
@@ -439,7 +449,7 @@ mod tests {
             .unwrap();
 
         let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 
     #[tokio::test]
@@ -453,14 +463,14 @@ mod tests {
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 
     #[tokio::test]
     async fn test_builder_with_gas_empty_coins() {
         let builder = NexusClientBuilder::new();
         let result = builder.with_gas(vec![], 1000);
-        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 
     #[tokio::test]
@@ -477,6 +487,6 @@ mod tests {
             .unwrap();
 
         let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::ConfigurationError(_))));
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 }

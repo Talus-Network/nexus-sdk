@@ -1,15 +1,19 @@
 //! Common error types for Nexus-related functionality.
 
-use thiserror::Error;
+use {crate::crypto::session::SessionError, thiserror::Error};
 
 #[derive(Debug, Error)]
 pub enum NexusError {
     #[error("Sui wallet error: {0}")]
-    WalletError(anyhow::Error),
+    Wallet(anyhow::Error),
     #[error("Client configuration error: {0}")]
-    ConfigurationError(String),
+    Configuration(String),
     #[error("Transaction building error: {0}")]
-    TransactionBuildingError(anyhow::Error),
+    TransactionBuilding(anyhow::Error),
     #[error("RPC error: {0}")]
-    RpcError(anyhow::Error),
+    Rpc(anyhow::Error),
+    #[error("Parsing error: {0}")]
+    Parsing(anyhow::Error),
+    #[error("Crypto error: {0}")]
+    Crypto(SessionError),
 }

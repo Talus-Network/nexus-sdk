@@ -33,10 +33,10 @@ pub(crate) async fn add_gas_budget(
 
     notify_success!(
         "Transaction digest: {digest}",
-        digest = response.digest.to_string().truecolor(100, 100, 100)
+        digest = response.tx_digest.to_string().truecolor(100, 100, 100)
     );
 
-    json_output(&json!({ "digest": response.digest }))?;
+    json_output(&json!({ "digest": response.tx_digest }))?;
 
     Ok(())
 }

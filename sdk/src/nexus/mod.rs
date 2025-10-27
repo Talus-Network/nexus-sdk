@@ -5,5 +5,7 @@
 //! All CLI functionality should be exported to this module in the future.
 
 pub mod client;
+pub mod crypto;
 pub mod error;
 pub mod gas;
+pub mod workflow;
