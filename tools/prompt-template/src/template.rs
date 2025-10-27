@@ -88,8 +88,7 @@ impl NexusTool for PromptTemplate {
             };
         }
 
-        // Enable strict mode to catch undefined variables
-        env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Chainable);
 
         env.add_template("tmpl", &input.template)
             .expect("Failed to add template");
