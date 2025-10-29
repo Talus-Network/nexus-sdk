@@ -76,6 +76,7 @@ test_utils = [
     "sui_move_build",
     "sui_package_management",
     "testcontainers-modules",
+    "mockito",
 ]
 
 # Enable all features apart from `test_utils`.
@@ -203,6 +204,10 @@ version = "0.3"
 optional = true
 
 [dependencies.lazy-regex]
+workspace = true
+optional = true
+
+[dependencies.mockito]
 workspace = true
 optional = true
 

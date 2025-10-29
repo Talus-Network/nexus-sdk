@@ -1,4 +1,7 @@
 //! Commands related to handling cryptographic operations in Nexus.
+//!
+//! - [`CryptoActions::handshake`] to perform a crypto handshake with Nexus
+//!   and retrieve a session for secure communication.
 
 use {
     crate::{
@@ -135,5 +138,112 @@ impl CryptoActions {
             claim_tx_digest: claim_response.digest,
             associate_tx_digest: associate_response.digest,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        crate::{
+            crypto::x3dh::{IdentityKey, PreKeyBundle},
+            idents::workflow,
+            sui,
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+        std::collections::BTreeMap,
+    };
+
+    #[tokio::test]
+    async fn test_crypto_actions_handshake() {
+        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let ik = IdentityKey::generate();
+        let address = nexus_client
+            .signer
+            .get_active_address()
+            .await
+            .expect("Failed to get active address");
+
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = IdentityKey::generate().secret().clone();
+        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
+
+        let pre_key_object_ref = sui::ObjectRef {
+            object_id: sui::ObjectID::random(),
+            version: sui::SequenceNumber::from_u64(1),
+            digest: sui::ObjectDigest::random(),
+        };
+
+        let claim_tx_digest = sui::TransactionDigest::random();
+        let (claim_execute_call, claim_confirm_call) =
+            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
+                &mut server,
+                claim_tx_digest,
+                Some(sui_mocks::mock_sui_transaction_block_effects(
+                    None,
+                    None,
+                    Some(vec![sui::OwnedObjectRef {
+                        owner: sui::Owner::AddressOwner(address),
+                        reference: pre_key_object_ref.clone(),
+                    }]),
+                    None,
+                )),
+                None,
+                None,
+                None,
+            );
+
+        let pre_key_object = sui::ParsedMoveObject {
+            type_: sui::MoveStructTag {
+                address: *nexus_client.nexus_objects.workflow_pkg_id,
+                module: workflow::PreKeyVault::PRE_KEY.module.into(),
+                name: workflow::PreKeyVault::PRE_KEY.name.into(),
+                type_params: vec![],
+            },
+            has_public_transfer: false,
+            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
+                "bytes".into(),
+                sui::MoveValue::Vector(
+                    bincode::serialize(&bundle)
+                        .expect("Failed to serialize PreKeyBundle")
+                        .into_iter()
+                        .map(|b| sui::MoveValue::Number(b.into()))
+                        .collect(),
+                ),
+            )])),
+        };
+
+        let get_object_call = sui_mocks::rpc::mock_read_api_get_object(
+            &mut server,
+            pre_key_object_ref.object_id,
+            pre_key_object,
+        );
+
+        let associate_tx_digest = sui::TransactionDigest::random();
+        let (associate_execute_call, associate_confirm_call) =
+            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
+                &mut server,
+                associate_tx_digest,
+                None,
+                None,
+                None,
+                None,
+            );
+
+        let result = nexus_client
+            .crypto()
+            .handshake(&ik)
+            .await
+            .expect("Failed to perform handshake");
+
+        claim_execute_call.assert_async().await;
+        claim_confirm_call.assert_async().await;
+
+        get_object_call.assert_async().await;
+
+        associate_execute_call.assert_async().await;
+        associate_confirm_call.assert_async().await;
+
+        assert_eq!(result.claim_tx_digest, claim_tx_digest);
+        assert_eq!(result.associate_tx_digest, associate_tx_digest);
     }
 }

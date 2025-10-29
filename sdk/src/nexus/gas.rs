@@ -1,4 +1,6 @@
 //! Commands related to gas management in Nexus.
+//!
+//! - [`GasActions::add_budget`] to add gas budget for Nexus workflows.
 
 use crate::{
     nexus::{client::NexusClient, error::NexusError},
@@ -52,5 +54,42 @@ impl GasActions {
         Ok(AddBudgetResult {
             tx_digest: response.digest,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
+    };
+
+    #[tokio::test]
+    async fn test_gas_actions_add_budget() {
+        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+
+        let tx_digest = sui::TransactionDigest::random();
+        let (execute_call, confirm_call) =
+            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
+                &mut server,
+                tx_digest,
+                None,
+                None,
+                None,
+                None,
+            );
+
+        let coin = sui_mocks::mock_sui_object_ref();
+
+        let result = nexus_client
+            .gas()
+            .add_budget(&coin)
+            .await
+            .expect("Failed to add budget");
+
+        execute_call.assert_async().await;
+        confirm_call.assert_async().await;
+
+        assert_eq!(result.tx_digest, tx_digest);
     }
 }

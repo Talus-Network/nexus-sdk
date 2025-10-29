@@ -279,7 +279,7 @@ impl NexusClientBuilder {
         Ok(NexusClient {
             signer,
             gas,
-            nexus_objects,
+            nexus_objects: Arc::new(nexus_objects),
             reference_gas_price,
         })
     }
@@ -293,7 +293,7 @@ pub struct NexusClient {
     /// Gas configuration for Nexus operations.
     pub(super) gas: Gas,
     /// Nexus objects to use.
-    pub(super) nexus_objects: NexusObjects,
+    pub(super) nexus_objects: Arc<NexusObjects>,
     /// Save reference gas price to avoid fetching it multiple times.
     pub(super) reference_gas_price: u64,
 }
@@ -336,7 +336,9 @@ mod tests {
     use {
         super::*,
         crate::test_utils::{
+            nexus_mocks,
             sui_mocks::{
+                self,
                 mock_nexus_objects,
                 mock_sui_coin,
                 mock_sui_mnemonic,
@@ -500,5 +502,68 @@ mod tests {
 
         let result = builder.build().await;
         assert!(matches!(result, Err(NexusError::Configuration(_))));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tx_mutates_gas_coin() {
+        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+
+        let tx = sui::ProgrammableTransactionBuilder::new();
+
+        let mut gas_coin = nexus_client.gas.acquire_gas_coin().await;
+        let gas_coin_initial = gas_coin.clone();
+        let gas_coin_mutated = sui::ObjectRef {
+            object_id: gas_coin.object_id,
+            version: sui::SequenceNumber::from_u64(gas_coin.version.value() + 1),
+            digest: sui::ObjectDigest::random(),
+        };
+
+        let tx_data = sui::TransactionData::new_programmable(
+            nexus_client
+                .signer
+                .get_active_address()
+                .await
+                .expect("Failed to get address"),
+            vec![gas_coin.to_object_ref()],
+            tx.finish(),
+            nexus_client.gas.get_budget(),
+            nexus_client.reference_gas_price,
+        );
+
+        let envelope = nexus_client
+            .signer
+            .sign_tx(tx_data)
+            .await
+            .expect("Failed to sign tx");
+
+        let (execute_mock, confirm_mock) =
+            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
+                &mut server,
+                sui::TransactionDigest::random(),
+                Some(sui_mocks::mock_sui_transaction_block_effects(
+                    None,
+                    Some(vec![sui::OwnedObjectRef {
+                        owner: sui::Owner::AddressOwner(sui::ObjectID::random().into()),
+                        reference: gas_coin_mutated.clone(),
+                    }]),
+                    None,
+                    None,
+                )),
+                None,
+                None,
+                None,
+            );
+
+        let _response = nexus_client
+            .signer
+            .execute_tx(envelope, &mut gas_coin)
+            .await
+            .expect("Failed to execute tx");
+
+        assert_ne!(gas_coin, gas_coin_initial);
+        assert_eq!(gas_coin, gas_coin_mutated);
+
+        execute_mock.assert_async().await;
+        confirm_mock.assert_async().await;
     }
 }
