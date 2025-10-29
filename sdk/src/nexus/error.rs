@@ -1,10 +1,6 @@
 //! Common error types for Nexus-related functionality.
 
-use {
-    crate::{crypto::session::SessionError, events::NexusEvent},
-    thiserror::Error,
-    tokio::sync::mpsc::error::SendError,
-};
+use {crate::crypto::session::SessionError, thiserror::Error};
 
 #[derive(Debug, Error)]
 pub enum NexusError {
