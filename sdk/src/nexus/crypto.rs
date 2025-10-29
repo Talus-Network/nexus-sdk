@@ -87,7 +87,7 @@ impl CryptoActions {
             bytes: Vec<u8>,
         }
 
-        let raw_pre_key = fetch_one::<Structure<RawPreKey>>(&sui_client, pre_key_object_id)
+        let raw_pre_key = fetch_one::<Structure<RawPreKey>>(sui_client, pre_key_object_id)
             .await
             .map_err(NexusError::Rpc)?;
 

@@ -4,16 +4,21 @@
 
 use {
     crate::{
+        crypto::session::Session,
         events::{NexusEvent, NexusEventKind},
         idents::{primitives, workflow},
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::dag,
-        types::Dag,
+        types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
+    std::{collections::HashMap, sync::Arc},
     tokio::{
-        sync::mpsc::{unbounded_channel, UnboundedReceiver},
+        sync::{
+            mpsc::{unbounded_channel, UnboundedReceiver},
+            Mutex,
+        },
         task::JoinHandle,
         time::{Duration, Instant},
     },
@@ -22,6 +27,11 @@ use {
 pub struct PublishResult {
     pub tx_digest: sui::TransactionDigest,
     pub dag_object_id: sui::ObjectID,
+}
+
+pub struct ExecuteResult {
+    pub tx_digest: sui::TransactionDigest,
+    pub execution_object_id: sui::ObjectID,
 }
 
 pub struct InspectExecutionResult {
@@ -103,6 +113,35 @@ impl WorkflowActions {
         })
     }
 
+    /// Execute a published DAG with the given object ID.
+    ///
+    /// The `entry_data` [`HashMap`] already holds information about encryption
+    /// and storage kind for each port.
+    ///
+    /// `session` is committed after all entry ports are encrypted if and only
+    /// if encryption was required.
+    ///
+    /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
+    /// is expected.
+    ///
+    /// Use [`WorkflowActions::get_encrypted_entry_ports`] to fetch the list of
+    /// ports that require encryption before execution. This can also be
+    /// provided manually to the [`NexusData`] instances.
+    ///
+    /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
+    pub async fn execute(
+        &self,
+        _dag_object_id: sui::ObjectID,
+        _entry_data: HashMap<String, PortsData>,
+        entry_group: Option<&str>,
+        _storage_conf: &StorageConf,
+        _session: Arc<Mutex<Session>>,
+    ) -> Result<ExecuteResult, NexusError> {
+        let _entry_group = entry_group.unwrap_or(DEFAULT_ENTRY_GROUP);
+
+        todo!()
+    }
+
     /// Inspect a DAG execution based on the provided execution object ID and
     /// transaction digest.
     ///
@@ -182,12 +221,12 @@ impl WorkflowActions {
                     found_event = true;
 
                     if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-                        tx.send(event).map_err(NexusError::Channel)?;
+                        tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
 
                         return Ok(());
                     }
 
-                    tx.send(event).map_err(NexusError::Channel)?;
+                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
                 }
 
                 // If no new events were found, increase the polling interval.

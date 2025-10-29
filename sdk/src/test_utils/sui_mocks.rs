@@ -239,7 +239,7 @@ pub mod rpc {
                 json!({
                     "result": sui::ObjectResponse::new_with_data(
                         sui::ObjectData {
-                            object_id: object_id.clone(),
+                            object_id,
                             version: sui::SequenceNumber::from_u64(1),
                             digest: sui::ObjectDigest::random(),
                             type_: None,

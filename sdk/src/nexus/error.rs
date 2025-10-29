@@ -23,5 +23,5 @@ pub enum NexusError {
     #[error("Timeout error: {0}")]
     Timeout(anyhow::Error),
     #[error("Channel error: {0}")]
-    Channel(SendError<NexusEvent>),
+    Channel(anyhow::Error),
 }

@@ -188,6 +188,12 @@ pub struct NexusClientBuilder {
     nexus_objects: Option<NexusObjects>,
 }
 
+impl Default for NexusClientBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NexusClientBuilder {
     /// Create a new builder instance.
     pub fn new() -> Self {
