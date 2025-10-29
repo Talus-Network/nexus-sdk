@@ -20,4 +20,6 @@ pub enum NexusError {
     Timeout(anyhow::Error),
     #[error("Channel error: {0}")]
     Channel(anyhow::Error),
+    #[error("Storage error: {0}")]
+    Storage(anyhow::Error),
 }

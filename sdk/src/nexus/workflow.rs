@@ -8,9 +8,10 @@ use {
         events::{NexusEvent, NexusEventKind},
         idents::{primitives, workflow},
         nexus::{client::NexusClient, error::NexusError},
+        object_crawler::fetch_one,
         sui,
         transactions::dag,
-        types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{Dag, PortsData, Storable, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
     std::{collections::HashMap, sync::Arc},
@@ -124,22 +125,105 @@ impl WorkflowActions {
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
-    /// Use [`WorkflowActions::get_encrypted_entry_ports`] to fetch the list of
-    /// ports that require encryption before execution. This can also be
-    /// provided manually to the [`NexusData`] instances.
-    ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
     pub async fn execute(
         &self,
-        _dag_object_id: sui::ObjectID,
-        _entry_data: HashMap<String, PortsData>,
+        dag_object_id: sui::ObjectID,
+        entry_data: HashMap<String, PortsData>,
         entry_group: Option<&str>,
-        _storage_conf: &StorageConf,
-        _session: Arc<Mutex<Session>>,
+        storage_conf: &StorageConf,
+        session: Arc<Mutex<Session>>,
     ) -> Result<ExecuteResult, NexusError> {
-        let _entry_group = entry_group.unwrap_or(DEFAULT_ENTRY_GROUP);
+        // == Commit data to their respective storage ==
 
-        todo!()
+        let mut input_data = HashMap::new();
+        let mut encryption_was_used = false;
+
+        for (vertex, ports_data) in entry_data {
+            let committed_data = ports_data
+                .commit_all(storage_conf, Arc::clone(&session))
+                .await
+                .map_err(|e| {
+                    NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
+                })?;
+
+            encryption_was_used =
+                encryption_was_used || committed_data.iter().any(|(_, d)| d.is_encrypted());
+            input_data.insert(vertex, committed_data);
+        }
+
+        if encryption_was_used {
+            session.lock().await.commit_sender(None);
+        }
+
+        // == Craft and submit the execute DAG transaction ==
+
+        let address = self.client.signer.get_active_address().await?;
+        let sui_client = &self.client.signer.get_client().await?;
+        let nexus_objects = &self.client.nexus_objects;
+        let dag = fetch_one::<serde_json::Value>(sui_client, dag_object_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        if let Err(e) = dag::execute(
+            &mut tx,
+            nexus_objects,
+            &dag.object_ref(),
+            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
+            &input_data,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        let tx_data = sui::TransactionData::new_programmable(
+            address,
+            vec![gas_coin.to_object_ref()],
+            tx.finish(),
+            self.client.gas.get_budget(),
+            self.client.reference_gas_price,
+        );
+
+        let envelope = self.client.signer.sign_tx(tx_data).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(envelope, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        // == Find the created DAG execution object ID ==
+
+        let execution_object_id = response
+            .object_changes
+            .unwrap_or_default()
+            .into_iter()
+            .find_map(|change| match change {
+                sui::ObjectChange::Created {
+                    object_type,
+                    object_id,
+                    ..
+                } if object_type.address == *nexus_objects.workflow_pkg_id
+                    && object_type.module == workflow::Dag::DAG_EXECUTION.module.into()
+                    && object_type.name == workflow::Dag::DAG_EXECUTION.name.into() =>
+                {
+                    Some(object_id)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!("DAG execution object ID not found in TX response"))
+            })?;
+
+        Ok(ExecuteResult {
+            tx_digest: response.digest,
+            execution_object_id,
+        })
     }
 
     /// Inspect a DAG execution based on the provided execution object ID and
@@ -262,9 +346,10 @@ mod tests {
             nexus::error::NexusError,
             sui,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{Dag, PortsData, RuntimeVertex, TypeName},
+            types::{Dag, NexusData, PortsData, RuntimeVertex, StorageConf, TypeName},
         },
-        std::collections::HashMap,
+        serde_json::json,
+        std::collections::{BTreeMap, HashMap},
     };
 
     #[tokio::test]
@@ -274,7 +359,9 @@ mod tests {
         let dag_object_id = sui::ObjectID::random();
         let dag_created = sui::ObjectChange::Created {
             sender: sui::ObjectID::random().into(),
-            owner: sui::Owner::AddressOwner(sui::ObjectID::random().into()),
+            owner: sui::Owner::Shared {
+                initial_shared_version: sui::SequenceNumber::from_u64(1),
+            },
             object_type: sui::MoveStructTag {
                 address: *nexus_client.nexus_objects.workflow_pkg_id,
                 module: workflow::Dag::DAG.module.into(),
@@ -315,6 +402,92 @@ mod tests {
         confirm_call.assert_async().await;
 
         assert_eq!(result.dag_object_id, dag_object_id);
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_actions_execute() {
+        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let (sender, _) = nexus_mocks::mock_session();
+
+        let dag_object_id = sui::ObjectID::random();
+        let execution_object_id = sui::ObjectID::random();
+        let execution_created = sui::ObjectChange::Created {
+            sender: sui::ObjectID::random().into(),
+            owner: sui::Owner::Shared {
+                initial_shared_version: sui::SequenceNumber::from_u64(1),
+            },
+            object_type: sui::MoveStructTag {
+                address: *nexus_client.nexus_objects.workflow_pkg_id,
+                module: workflow::Dag::DAG_EXECUTION.module.into(),
+                name: workflow::Dag::DAG_EXECUTION.name.into(),
+                type_params: vec![],
+            },
+            object_id: execution_object_id,
+            version: sui::SequenceNumber::from_u64(1),
+            digest: sui::ObjectDigest::random(),
+        };
+
+        let dag_object = sui::ParsedMoveObject {
+            type_: sui::MoveStructTag {
+                address: *nexus_client.nexus_objects.workflow_pkg_id,
+                module: workflow::Dag::DAG.module.into(),
+                name: workflow::Dag::DAG.name.into(),
+                type_params: vec![],
+            },
+            has_public_transfer: false,
+            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
+                "test".into(),
+                sui::MoveValue::Number(1),
+            )])),
+        };
+
+        let get_object_call =
+            sui_mocks::rpc::mock_read_api_get_object(&mut server, dag_object_id, dag_object);
+
+        let tx_digest = sui::TransactionDigest::random();
+        let (execute_call, confirm_call) =
+            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
+                &mut server,
+                tx_digest,
+                None,
+                None,
+                None,
+                Some(vec![execution_created]),
+            );
+
+        let entry_data = HashMap::from([(
+            "entry_vertex".to_string(),
+            PortsData::from_map(HashMap::from([
+                (
+                    "entry_port".to_string(),
+                    NexusData::new_inline(json!("data")),
+                ),
+                (
+                    "entry_port_encrypted".to_string(),
+                    NexusData::new_inline_encrypted(json!("data")),
+                ),
+            ])),
+        )]);
+
+        let result = nexus_client
+            .workflow()
+            .execute(
+                dag_object_id,
+                entry_data,
+                None,
+                &StorageConf::default(),
+                sender,
+            )
+            .await
+            .expect("Failed to execute DAG");
+
+        get_object_call.assert_async().await;
+
+        execute_call.assert_async().await;
+        confirm_call.assert_async().await;
+
+        assert_eq!(result.execution_object_id, execution_object_id);
         assert_eq!(result.tx_digest, tx_digest);
     }
 

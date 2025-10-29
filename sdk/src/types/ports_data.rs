@@ -154,14 +154,7 @@ impl serde::Serialize for PortsData {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::crypto::{
-            session::Message,
-            x3dh::{IdentityKey, PreKeyBundle},
-        },
-        serde_json::json,
-    };
+    use {super::*, crate::test_utils::nexus_mocks, serde_json::json};
 
     fn sample_ports_data() -> PortsData {
         let mut values = HashMap::new();
@@ -206,35 +199,6 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    fn create_mock_session() -> Arc<Mutex<Session>> {
-        let sender_id = IdentityKey::generate();
-        let receiver_id = IdentityKey::generate();
-        let spk_secret = IdentityKey::generate().secret().clone();
-        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
-
-        let (message, mut sender_sess) =
-            Session::initiate(&sender_id, &bundle, b"test").expect("Failed to initiate session");
-
-        let initial_msg = match message {
-            Message::Initial(msg) => msg,
-            _ => panic!("Expected Initial message type"),
-        };
-
-        let (mut receiver_sess, _) =
-            Session::recv(&receiver_id, &spk_secret, &bundle, &initial_msg, None)
-                .expect("Failed to receive session");
-
-        // Exchange messages to establish the ratchet properly
-        let setup_msg = sender_sess
-            .encrypt(b"setup")
-            .expect("Failed to encrypt setup message");
-        let _ = receiver_sess
-            .decrypt(&setup_msg)
-            .expect("Failed to decrypt setup message");
-
-        Arc::new(Mutex::new(sender_sess))
-    }
-
     #[tokio::test]
     async fn test_commit_all_success() {
         let mut values = HashMap::new();
@@ -245,7 +209,7 @@ mod tests {
         let ports_data = PortsData { values };
 
         let storage_conf = StorageConf::default();
-        let session = create_mock_session();
+        let (session, _) = nexus_mocks::mock_session();
 
         let result = ports_data
             .clone()
@@ -267,7 +231,7 @@ mod tests {
         let ports_data = PortsData { values };
 
         let storage_conf = StorageConf::default();
-        let session = create_mock_session();
+        let (session, _) = nexus_mocks::mock_session();
 
         let result = ports_data
             .clone()
@@ -285,7 +249,7 @@ mod tests {
             values: HashMap::new(),
         };
         let storage_conf = StorageConf::default();
-        let session = create_mock_session();
+        let (session, _) = nexus_mocks::mock_session();
 
         let result = ports_data.commit_all(&storage_conf, session).await;
         assert!(result.is_ok());
@@ -298,7 +262,7 @@ mod tests {
             values: HashMap::new(),
         };
         let storage_conf = StorageConf::default();
-        let session = create_mock_session();
+        let (session, _) = nexus_mocks::mock_session();
 
         let result = ports_data.fetch_all(&storage_conf, session).await;
         assert!(result.is_ok());
