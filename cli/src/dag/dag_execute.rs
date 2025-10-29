@@ -56,8 +56,7 @@ pub(crate) async fn execute_dag(
     let input_data =
         process_entry_ports(&input_json, preferred_remote_storage, &encrypt, &remote).await?;
 
-    // Craft a TX to publish the DAG.
-    let tx_handle = loading!("Crafting transaction...");
+    let tx_handle = loading!("Crafting and executing transaction...");
 
     let result = match nexus_client
         .workflow()

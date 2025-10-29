@@ -14,13 +14,11 @@ pub(crate) async fn add_gas_budget(
         )));
     }
 
-    let (nexus_client, sui_client) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-
-    let budget_coin = fetch_object_by_id(&sui_client, coin).await?;
+    let (nexus_client, _) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     let tx_handle = loading!("Crafting and executing transaction...");
 
-    let response = match nexus_client.gas().add_budget(&budget_coin).await {
+    let response = match nexus_client.gas().add_budget(coin).await {
         Ok(resp) => resp,
         Err(e) => {
             tx_handle.error();
