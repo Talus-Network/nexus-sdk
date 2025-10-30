@@ -99,7 +99,9 @@ impl NexusTool for PromptTemplate {
             }
         }
 
-        let tmpl = env.get_template("tmpl").expect("Failed to get template");
+        let tmpl = env
+            .get_template("tmpl")
+            .expect("Template must exist because it was added.");
 
         match tmpl.render(all_args.clone()) {
             Ok(_rendered) => {
