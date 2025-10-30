@@ -11,17 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key
+- `nexus dag inspect-execution` now also shows the data storage kind for each port
+
+#### Changed
+
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+
+#### Fixed
+
+- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
 ### `nexus-sdk`
+
+#### Added
+
+- `.nightly-version` file that specifies the Rust nightly version to use
 
 #### Changed
 
 - standardized array and single value serialization of `NexusData` in `serde_parsers`
-
-#### Added
-
-- .nightly-version
+- `NexusData` can now represent data stored remotely in Walrus
 
 #### Fixed
 
