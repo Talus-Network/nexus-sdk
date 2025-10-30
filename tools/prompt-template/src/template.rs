@@ -90,13 +90,28 @@ impl NexusTool for PromptTemplate {
 
         env.set_undefined_behavior(minijinja::UndefinedBehavior::Chainable);
 
-        env.add_template("tmpl", &input.template)
-            .expect("Failed to add template");
+        // First, validate template syntax by attempting to add it
+        match env.add_template("tmpl", &input.template) {
+            Ok(_) => {}
+            Err(e) => {
+                return Output::Err {
+                    reason: format!("Template syntax error: {}", e),
+                };
+            }
+        }
 
         let tmpl = env.get_template("tmpl").expect("Failed to get template");
 
-        match tmpl.render(all_args) {
-            Ok(result) => Output::Ok { result },
+        match tmpl.render(all_args.clone()) {
+            Ok(_rendered) => {
+                let mut result = input.template.clone();
+                for (var, value) in &all_args {
+                    let placeholder = format!("{{{{{}}}}}", var);
+                    result = result.replace(&placeholder, value);
+                }
+
+                Output::Ok { result }
+            }
             Err(e) => Output::Err {
                 reason: format!("Template rendering failed: {}", e),
             },
@@ -210,23 +225,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_template_rendering_error() {
+    async fn test_template_with_undefined_variable_preserves_placeholder() {
         let tool = PromptTemplate::new().await;
 
-        // Test: Template with undefined variable should fail during rendering
+        // Test: Template with undefined variable should preserve placeholder for chaining
         let input = Input {
-            template: "Hello {{undefined_var}}!".to_string(),
-            args: Some(HashMap::from([(
-                "other_var".to_string(),
-                "value".to_string(),
-            )])), // Non-empty args but missing the required variable
+            template: "Hi, this is {{name}}, from {{city}}".to_string(),
+            args: Some(HashMap::from([("name".to_string(), "Pavel".to_string())])),
             value: None,
             name: None,
         };
 
         let result = tool.invoke(input).await;
         match result {
-            Output::Ok { result } => assert_eq!(result, "Hello !"),
+            Output::Ok { result } => assert_eq!(result, "Hi, this is Pavel, from {{city}}"),
             Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
@@ -312,6 +324,27 @@ mod tests {
                     reason.contains("Either 'args' or 'name'/'value' parameters must be provided")
                 )
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_partial_variables_preserved_for_chaining() {
+        let tool = PromptTemplate::new().await;
+
+        // Test: Multiple undefined variables should all be preserved
+        let input = Input {
+            template: "Hello {{name}} from {{city}}! Your age is {{age}}.".to_string(),
+            args: Some(HashMap::from([("name".to_string(), "Alice".to_string())])),
+            value: None,
+            name: None,
+        };
+
+        let result = tool.invoke(input).await;
+        match result {
+            Output::Ok { result } => {
+                assert_eq!(result, "Hello Alice from {{city}}! Your age is {{age}}.")
+            }
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 }
