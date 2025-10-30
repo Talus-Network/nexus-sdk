@@ -106,6 +106,9 @@ impl NexusTool for PromptTemplate {
         match tmpl.render(all_args.clone()) {
             Ok(_rendered) => {
                 let mut result = input.template.clone();
+                // Manually replace Jinja2-style placeholders ({{variable}}) with their values.
+                // This allows undefined variables to be preserved as placeholders for potential
+                // chaining with other tools, rather than being rendered as empty strings.
                 for (var, value) in &all_args {
                     let placeholder = format!("{{{{{}}}}}", var);
                     result = result.replace(&placeholder, value);
