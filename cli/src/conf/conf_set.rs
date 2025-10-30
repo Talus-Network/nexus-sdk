@@ -14,7 +14,7 @@ pub(crate) async fn set_nexus_conf(
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
     data_storage_walrus_publisher_url: Option<reqwest::Url>,
-    data_storage_walrus_save_for_epochs: Option<u64>,
+    data_storage_walrus_save_for_epochs: Option<u8>,
     data_storage_preferred_remote_storage: Option<StorageKind>,
     data_storage_testnet: bool,
     conf_path: PathBuf,

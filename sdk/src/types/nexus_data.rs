@@ -11,7 +11,11 @@
 //! times where N is the length of the array.
 
 use {
-    crate::{crypto::session::Session, types::StorageKind, walrus::WalrusClient},
+    crate::{
+        crypto::session::Session,
+        types::StorageKind,
+        walrus::{WalrusClient, WALRUS_MAX_EPOCHS},
+    },
     enum_dispatch::enum_dispatch,
     serde::{Deserialize, Serialize},
     std::{collections::HashMap, sync::Arc},
@@ -140,7 +144,7 @@ impl NexusData {
 pub struct StorageConf {
     pub walrus_publisher_url: Option<String>,
     pub walrus_aggregator_url: Option<String>,
-    pub walrus_save_for_epochs: Option<u64>,
+    pub walrus_save_for_epochs: Option<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -306,6 +310,13 @@ impl Storable for WalrusStorage {
         let store_for_epochs = conf.walrus_save_for_epochs.ok_or_else(|| {
             anyhow::anyhow!("Walrus save for epochs is not set in storage config")
         })?;
+
+        if store_for_epochs > WALRUS_MAX_EPOCHS {
+            return Err(anyhow::anyhow!(
+                "Walrus save for epochs exceeds maximum allowed ({})",
+                WALRUS_MAX_EPOCHS
+            ));
+        }
 
         let client = WalrusClient::builder()
             .with_publisher_url(walrus_publisher_url)

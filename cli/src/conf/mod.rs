@@ -5,7 +5,7 @@ use {
     crate::{display::json_output, prelude::*},
     conf_get::*,
     conf_set::*,
-    nexus_sdk::types::StorageKind,
+    nexus_sdk::{types::StorageKind, walrus::WALRUS_MAX_EPOCHS},
 };
 
 #[derive(Subcommand, Clone, Debug)]
@@ -67,9 +67,10 @@ pub(crate) enum ConfCommand {
         #[arg(
             long = "data-storage.walrus-save-for-epochs",
             help = "Set how many epochs to save data for in Walrus",
-            value_name = "EPOCHS"
+            value_name = "EPOCHS",
+            value_parser = clap::value_parser!(u8).range(0..=WALRUS_MAX_EPOCHS as i64)
         )]
-        data_storage_walrus_save_for_epochs: Option<u64>,
+        data_storage_walrus_save_for_epochs: Option<u8>,
         #[arg(
             long = "data-storage.preferred-remote-storage",
             help = "Set the preferred remote storage backend",

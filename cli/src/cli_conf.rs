@@ -74,7 +74,7 @@ pub(crate) struct DataStorageConf {
     /// The preferred Walrus publisher URL.
     pub(crate) walrus_publisher_url: Option<reqwest::Url>,
     /// How many epochs to save remote data for?
-    pub(crate) walrus_save_for_epochs: Option<u64>,
+    pub(crate) walrus_save_for_epochs: Option<u8>,
     /// What is the preferred remote storage backend?
     pub(crate) preferred_remote_storage: Option<StorageKind>,
 }
