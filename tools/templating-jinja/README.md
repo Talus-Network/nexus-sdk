@@ -1,12 +1,12 @@
-# `xyz.taluslabs.prompt-template@1`
+# `xyz.taluslabs.templating.jinja@1`
 
-Standard Nexus Tool that parses prompt templates using Jinja2 templating engine with flexible input options.
+Standard Nexus Tool that parses templates using the Jinja2 (MiniJinja) templating engine with flexible input options. Undefined variables are preserved as `{{placeholders}}` to support chaining with other tools.
 
 ## Input
 
 **`template`: [`String`]**
 
-The template string to render. Supports template syntax with variable substitution using double curly braces (e.g., `{{variable_name}}`). The tool operates in strict mode, meaning all template variables must be defined.
+The template string to render. Supports template syntax with variable substitution using double curly braces (e.g., `{{variable_name}}`). Undefined variables are preserved in the output (not an error), allowing partial rendering.
 
 _opt_ **`args`: [`HashMap<String, String>`]** _default_: `{}`
 
@@ -30,12 +30,13 @@ The template was rendered successfully.
 
 **`err`**
 
-The template rendering failed due to an error.
+The template processing failed due to an error.
 
 - **`err.reason`: [`String`]** - A detailed error message describing what went wrong. This could be:
   - `"Either 'args' or 'name'/'value' parameters must be provided"` - No parameters were provided or args is empty
   - `"name and value must both be provided or both be None"` - Only one of name/value was provided
-  - `"Template rendering failed: [error details]"` - Template syntax error or undefined variable (e.g., `"Template rendering failed: undefined value (in tmpl:1)"`)
+  - `"Template syntax error: [error details]"` - Template has invalid syntax
+  - `"Template rendering failed: [error details]"` - Rendering error
 
 ---
 
@@ -159,13 +160,13 @@ The template rendering failed due to an error.
 }
 ```
 
-### Example 7: Error - Undefined variable
+### Example 7: Undefined variables are preserved
 
 ```json
 {
-  "template": "Hello {{undefined_var}}!",
+  "template": "Hi, this is {{name}}, from {{city}}",
   "args": {
-    "other_var": "value"
+    "name": "Alice"
   }
 }
 ```
@@ -174,7 +175,7 @@ The template rendering failed due to an error.
 
 ```json
 {
-  "type": "err",
-  "reason": "Template rendering failed: undefined value (in tmpl:1)"
+  "type": "ok",
+  "result": "Hi, this is Alice, from {{city}}"
 }
 ```

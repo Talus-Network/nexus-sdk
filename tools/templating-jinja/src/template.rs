@@ -1,6 +1,6 @@
-//! # `xyz.taluslabs.prompt.template.new@1`
+//! # `xyz.taluslabs.templating.jinja@1`
 //!
-//! Tool that renders prompt templates using minijinja templating engine.
+//! Tool that renders templates using minijinja templating engine.
 
 use {
     minijinja::Environment,
@@ -28,7 +28,7 @@ pub(crate) struct Input {
     name: Option<String>,
 }
 
-/// Output model for the prompt template tool
+/// Output model for the templating tool
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Output {
@@ -36,9 +36,9 @@ pub(crate) enum Output {
     Err { reason: String },
 }
 
-pub(crate) struct PromptTemplate;
+pub(crate) struct TemplatingJinja;
 
-impl NexusTool for PromptTemplate {
+impl NexusTool for TemplatingJinja {
     type Input = Input;
     type Output = Output;
 
@@ -47,15 +47,15 @@ impl NexusTool for PromptTemplate {
     }
 
     fn fqn() -> ToolFqn {
-        fqn!("xyz.taluslabs.prompt-template@1")
+        fqn!("xyz.taluslabs.templating.jinja@1")
     }
 
     fn path() -> &'static str {
-        "/prompt-template"
+        "/templating-jinja"
     }
 
     fn description() -> &'static str {
-        "Tool that parses prompt templates using Jinja2 templating engine with flexible input options."
+        "Tool that parses templates using Jinja2 templating engine with flexible input options."
     }
 
     async fn health(&self) -> AnyResult<StatusCode> {
@@ -129,7 +129,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_with_args_map() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         let input = Input {
             template: "Hello {{name}} from {{city}}!".to_string(),
@@ -150,7 +150,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_with_name_and_value() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         let input = Input {
             template: "Hello {{user}}!".to_string(),
@@ -168,7 +168,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_with_name_and_value_only() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         let input = Input {
             template: "Hello {{custom_var}}!".to_string(),
@@ -186,7 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_no_parameters_fails() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: No args, no name, no value should fail
         let input = Input {
@@ -209,7 +209,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_invalid_args_combination() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: value without name should fail
         let input = Input {
@@ -230,7 +230,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_template_with_undefined_variable_preserves_placeholder() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: Template with undefined variable should preserve placeholder for chaining
         let input = Input {
@@ -249,7 +249,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_args_and_name_value_combined() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: args Map + name/value should work together
         let input = Input {
@@ -268,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_value_without_name_fails() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: value without name should fail
         let input = Input {
@@ -289,7 +289,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_name_without_value_fails() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: name without value should fail
         let input = Input {
@@ -310,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_args_without_name_value_fails() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: empty args without name/value should fail
         let input = Input {
@@ -333,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_partial_variables_preserved_for_chaining() {
-        let tool = PromptTemplate::new().await;
+        let tool = TemplatingJinja::new().await;
 
         // Test: Multiple undefined variables should all be preserved
         let input = Input {

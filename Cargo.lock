@@ -6042,19 +6042,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prompt-template"
-version = "0.3.0-rc.1"
-dependencies = [
- "minijinja",
- "nexus-sdk",
- "nexus-toolkit",
- "schemars 1.0.0-alpha.17",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "proptest"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8303,6 +8290,19 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "templating-jinja"
+version = "0.3.0-rc.1"
+dependencies = [
+ "minijinja",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
