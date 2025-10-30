@@ -19,7 +19,7 @@ pub(crate) struct Input {
     /// Template arguments as a HashMap<String, String>.
     /// Can be used together with name/value parameters.
     #[serde(default)]
-    args: Option<HashMap<String, String>>,
+    args: HashMap<String, String>,
     /// Optional single value to substitute. Must be used with 'name' parameter.
     /// Can be combined with 'args' parameter.
     value: Option<String>,
@@ -75,7 +75,7 @@ impl NexusTool for PromptTemplate {
             _ => {}
         }
 
-        let mut all_args = input.args.unwrap_or_default();
+        let mut all_args = input.args.clone();
 
         if let Some(name) = input.name {
             all_args.insert(name, input.value.unwrap());
@@ -129,10 +129,10 @@ mod tests {
 
         let input = Input {
             template: "Hello {{name}} from {{city}}!".to_string(),
-            args: Some(HashMap::from([
+            args: HashMap::from([
                 ("name".to_string(), "Alice".to_string()),
                 ("city".to_string(), "Paris".to_string()),
-            ])),
+            ]),
             value: None,
             name: None,
         };
@@ -150,7 +150,7 @@ mod tests {
 
         let input = Input {
             template: "Hello {{user}}!".to_string(),
-            args: None,
+            args: HashMap::new(),
             value: Some("Bob".to_string()),
             name: Some("user".to_string()),
         };
@@ -168,7 +168,7 @@ mod tests {
 
         let input = Input {
             template: "Hello {{custom_var}}!".to_string(),
-            args: None,
+            args: HashMap::new(),
             value: Some("World".to_string()),
             name: Some("custom_var".to_string()),
         };
@@ -187,7 +187,7 @@ mod tests {
         // Test: No args, no name, no value should fail
         let input = Input {
             template: "Simple template without variables".to_string(),
-            args: None,
+            args: HashMap::new(),
             value: None,
             name: None,
         };
@@ -210,7 +210,7 @@ mod tests {
         // Test: value without name should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: None,
+            args: HashMap::new(),
             value: Some("World".to_string()),
             name: None,
         };
@@ -231,7 +231,7 @@ mod tests {
         // Test: Template with undefined variable should preserve placeholder for chaining
         let input = Input {
             template: "Hi, this is {{name}}, from {{city}}".to_string(),
-            args: Some(HashMap::from([("name".to_string(), "Pavel".to_string())])),
+            args: HashMap::from([("name".to_string(), "Pavel".to_string())]),
             value: None,
             name: None,
         };
@@ -250,7 +250,7 @@ mod tests {
         // Test: args Map + name/value should work together
         let input = Input {
             template: "Hello {{name}} from {{city}}!".to_string(),
-            args: Some(HashMap::from([("city".to_string(), "Paris".to_string())])),
+            args: HashMap::from([("city".to_string(), "Paris".to_string())]),
             value: Some("Alice".to_string()),
             name: Some("name".to_string()),
         };
@@ -269,7 +269,7 @@ mod tests {
         // Test: value without name should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: Some(HashMap::from([("name".to_string(), "Alice".to_string())])),
+            args: HashMap::from([("name".to_string(), "Alice".to_string())]),
             value: Some("Bob".to_string()),
             name: None,
         };
@@ -290,7 +290,7 @@ mod tests {
         // Test: name without value should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: None,
+            args: HashMap::new(),
             value: None,
             name: Some("name".to_string()),
         };
@@ -311,7 +311,7 @@ mod tests {
         // Test: empty args without name/value should fail
         let input = Input {
             template: "Hello {{name}}!".to_string(),
-            args: Some(HashMap::new()),
+            args: HashMap::new(),
             value: None,
             name: None,
         };
@@ -334,7 +334,7 @@ mod tests {
         // Test: Multiple undefined variables should all be preserved
         let input = Input {
             template: "Hello {{name}} from {{city}}! Your age is {{age}}.".to_string(),
-            args: Some(HashMap::from([("name".to_string(), "Alice".to_string())])),
+            args: HashMap::from([("name".to_string(), "Alice".to_string())]),
             value: None,
             name: None,
         };

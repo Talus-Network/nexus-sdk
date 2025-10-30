@@ -8,7 +8,7 @@ Standard Nexus Tool that parses prompt templates using Jinja2 templating engine 
 
 The template string to render. Supports template syntax with variable substitution using double curly braces (e.g., `{{variable_name}}`). The tool operates in strict mode, meaning all template variables must be defined.
 
-_opt_ **`args`: [`Option<HashMap<String, String>>`]** _default_: [`None`]
+_opt_ **`args`: [`HashMap<String, String>`]** _default_: `{}`
 
 Template arguments as a HashMap mapping variable names to their values. This parameter can be combined with `name`/`value` parameters to provide additional variables. At least one of `args` or the `name`/`value` pair must be provided.
 
