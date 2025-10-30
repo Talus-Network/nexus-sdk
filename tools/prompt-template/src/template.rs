@@ -226,8 +226,8 @@ mod tests {
 
         let result = tool.invoke(input).await;
         match result {
-            Output::Ok { .. } => panic!("Expected error for undefined variable"),
-            Output::Err { reason } => assert!(reason.contains("Template rendering failed")),
+            Output::Ok { result } => assert_eq!(result, "Hello !"),
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
     }
 
