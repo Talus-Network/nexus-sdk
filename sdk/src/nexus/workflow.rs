@@ -119,8 +119,7 @@ impl WorkflowActions {
     /// The `entry_data` [`HashMap`] already holds information about encryption
     /// and storage kind for each port.
     ///
-    /// `session` is committed after all entry ports are encrypted if and only
-    /// if encryption was required.
+    /// `session` is NOT committed in this function.
     ///
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
@@ -137,7 +136,6 @@ impl WorkflowActions {
         // == Commit data to their respective storage ==
 
         let mut input_data = HashMap::new();
-        let mut encryption_was_used = false;
 
         for (vertex, ports_data) in entry_data {
             let committed_data = ports_data
@@ -147,13 +145,7 @@ impl WorkflowActions {
                     NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
                 })?;
 
-            encryption_was_used =
-                encryption_was_used || committed_data.iter().any(|(_, d)| d.is_encrypted());
             input_data.insert(vertex, committed_data);
-        }
-
-        if encryption_was_used {
-            session.lock().await.commit_sender(None);
         }
 
         // == Craft and submit the execute DAG transaction ==

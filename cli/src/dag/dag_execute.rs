@@ -87,6 +87,11 @@ pub(crate) async fn execute_dag(
         }
     };
 
+    // Advance the session ratchet if encryption was used.
+    if !encrypt.is_empty() {
+        session.lock().await.commit_sender(None);
+    }
+
     tx_handle.success();
 
     notify_success!(
