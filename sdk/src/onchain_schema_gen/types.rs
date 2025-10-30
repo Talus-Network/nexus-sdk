@@ -65,11 +65,11 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
                 match (module.as_str(), name.as_str()) {
                     ("string", "String") => Ok(json!({
                         "type": "string",
-                        "description": "UTF-8 string"
+                        "description": "0x1::string::String"
                     })),
                     ("ascii", "String") => Ok(json!({
                         "type": "string",
-                        "description": "ASCII string"
+                        "description": "0x1::ascii::String"
                     })),
                     // All other standard library types are object references.
                     _ => Ok(json!({
