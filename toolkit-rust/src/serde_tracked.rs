@@ -44,7 +44,6 @@ mod tests {
     use {
         super::*,
         serde::{Deserialize, Serialize},
-        serde_json,
         std::cell::RefCell,
     };
     // A dummy type for testing.

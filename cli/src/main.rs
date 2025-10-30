@@ -1,3 +1,4 @@
+mod cli_conf;
 mod completion;
 mod conf;
 mod crypto;

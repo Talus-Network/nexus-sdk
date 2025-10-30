@@ -7,7 +7,6 @@ use {
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
     tempfile::tempdir,
-    tokio,
 };
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -16,7 +15,7 @@ struct SampleData {
     value: i32,
 }
 
-const EPOCHS: u64 = 1;
+const EPOCHS: u8 = 1;
 const TEST_CONTENT: &[u8] = b"Hello, World!";
 
 /// Setup mock server for Walrus testing
