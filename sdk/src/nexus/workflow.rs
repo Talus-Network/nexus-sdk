@@ -11,7 +11,7 @@ use {
         object_crawler::fetch_one,
         sui,
         transactions::dag,
-        types::{Dag, PortsData, Storable, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
     std::{collections::HashMap, sync::Arc},
