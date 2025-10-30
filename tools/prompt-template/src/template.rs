@@ -65,14 +65,10 @@ impl NexusTool for PromptTemplate {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         let mut env = Environment::new();
 
-        // Validate: if name or value is provided, both must be provided
-        match (&input.name, &input.value) {
-            (Some(_), None) | (None, Some(_)) => {
-                return Output::Err {
-                    reason: "name and value must both be provided or both be None".to_string(),
-                };
-            }
-            _ => {}
+        if input.name.is_some() != input.value.is_some() {
+            return Output::Err {
+                reason: "name and value must both be provided or both be None".to_string(),
+            };
         }
 
         let mut all_args = input.args.clone();
