@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - `.nightly-version` file that specifies the Rust nightly version to use
+- `nexus_sdk::nexus` module that holds `NexusClient` functionality to interact with the Nexus network
+- `NexusEventKind::name` method that returns a string representation of the event kind
 
 #### Changed
 

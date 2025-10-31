@@ -8,12 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{
-        self,
-        events::{NexusEvent, NexusEventKind},
-        idents::primitives,
-        types::Storable,
-    },
+    nexus_sdk::{events::NexusEventKind, sui, types::Storable},
     std::sync::Arc,
 };
 
@@ -25,22 +20,16 @@ pub(crate) async fn inspect_dag_execution(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
-    // Load CLI configuration.
-    let mut conf = CliConf::load().await.unwrap_or_default();
+    let (nexus_client, _) = get_nexus_client(None, sui::MIST_PER_SUI / 10).await?;
 
-    // Nexus objects must be present in the configuration.
-    let primitives_pkg_id = {
-        let NexusObjects {
-            primitives_pkg_id, ..
-        } = &get_nexus_objects(&mut conf).await?;
-        *primitives_pkg_id // ObjectID is Copy
-    };
-
-    // Build Sui client.
-    let sui_conf = conf.sui.clone();
-    let sui = build_sui_client(&sui_conf).await?;
+    let mut result = nexus_client
+        .workflow()
+        .inspect_execution(dag_execution_id, execution_digest, None)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     // Remote storage conf.
+    let conf = CliConf::load().await.unwrap_or_default();
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
@@ -55,154 +44,118 @@ pub(crate) async fn inspect_dag_execution(
         )
     )?;
 
-    let limit = None;
-    let descending_order = false;
-
-    // Starting cursor is the provided event digest and `event_seq` always 0.
-    let mut cursor = Some(sui::EventID {
-        tx_digest: execution_digest,
-        event_seq: 0,
-    });
-
     let mut json_trace = Vec::new();
 
-    // Loop until we find an `ExecutionFinished` event.
-    'query: loop {
-        let query = sui::EventFilter::MoveEventModule {
-            package: primitives_pkg_id,
-            module: primitives::Event::EVENT_WRAPPER.module.into(),
-        };
+    while let Some(event) = result.next_event.recv().await {
+        match event.data {
+            NexusEventKind::WalkAdvanced(e) => {
+                notify_success!(
+                    "Vertex '{vertex}' evaluated with output variant '{variant}'.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                    variant = e.variant.name.truecolor(100, 100, 100),
+                );
 
-        let events = match sui
-            .event_api()
-            .query_events(query, cursor, limit, descending_order)
-            .await
-        {
-            Ok(page) => {
-                cursor = page.next_cursor;
+                let mut json_data = Vec::new();
 
-                page.data
-            }
-            Err(_) => {
-                // If RPC call fails, wait and retry.
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let fetched_data = e
+                    .variant_ports_to_data
+                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .await
+                    .map_err(|e| NexusCliError::Any(anyhow!(
+                        "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                        e = e,
+                        command = "$ nexus conf set --data-storage.walrus-aggregator-url <URL>",
+                        testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                    )))?;
 
-                continue;
-            }
-        };
-
-        // Parse `SuiEvent` into `NexusEvent`.
-        let events = events.into_iter().filter_map(|e| match e.try_into() {
-            Ok(event) => Some::<NexusEvent>(event),
-            Err(e) => {
-                eprintln!("Failed to parse event: {:?}", e);
-                None
-            }
-        });
-
-        for event in events {
-            match event.data {
-                NexusEventKind::WalkAdvanced(e) if e.execution == dag_execution_id => {
-                    notify_success!(
-                        "Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
-                        variant = e.variant.name.truecolor(100, 100, 100),
+                for (port, data) in fetched_data {
+                    let (display_data, json_data_value) = (
+                        format!("{}", data.as_json()),
+                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
                     );
 
-                    let mut json_data = Vec::new();
-
-                    let fetched_data = e
-                        .variant_ports_to_data
-                        .fetch_all(&storage_conf, Arc::clone(&session))
-                        .await
-                        .map_err(|e| NexusCliError::Any(anyhow!(
-                            "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
-                            e = e,
-                            command = "$ nexus conf set --data-storage.walrus-aggregator-url <URL>",
-                            testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
-                        )))?;
-
-                    for (port, data) in fetched_data {
-                        let (display_data, json_data_value) = (
-                            format!("{}", data.as_json()),
-                            json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
-                        );
-
-                        item!(
-                            "Port '{port}' produced data: {data}",
-                            port = port.truecolor(100, 100, 100),
-                            data = display_data.truecolor(100, 100, 100),
-                        );
-
-                        json_data.push(json_data_value);
-                    }
-
-                    json_trace.push(json!({
-                        "end_state": false,
-                        "vertex": e.vertex,
-                        "variant": e.variant.name,
-                        "data": json_data,
-                    }));
-                }
-
-                NexusEventKind::EndStateReached(e) if e.execution == dag_execution_id => {
-                    notify_success!(
-                        "{end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
-                        vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
-                        variant = e.variant.name.truecolor(100, 100, 100),
-                        end_state = "END STATE".truecolor(100, 100, 100)
+                    item!(
+                        "Port '{port}' produced data: {data}",
+                        port = port.truecolor(100, 100, 100),
+                        data = display_data.truecolor(100, 100, 100),
                     );
 
-                    let mut json_data = Vec::new();
-
-                    let fetched_data = e
-                        .variant_ports_to_data
-                        .fetch_all(&storage_conf, Arc::clone(&session))
-                        .await
-                        .map_err(|e| NexusCliError::Any(anyhow!(
-                            "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
-                            e = e,
-                            command = "$ nexus conf set --data-storage.walrus-aggregator-url <URL>",
-                            testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
-                        )))?;
-
-                    for (port, data) in fetched_data {
-                        let (display_data, json_data_value) = (
-                            format!("{}", data.as_json()),
-                            json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
-                        );
-
-                        item!(
-                            "Port '{port}' produced data: {data}",
-                            port = port.truecolor(100, 100, 100),
-                            data = display_data.truecolor(100, 100, 100),
-                        );
-
-                        json_data.push(json_data_value);
-                    }
-
-                    json_trace.push(json!({
-                        "end_state": true,
-                        "vertex": e.vertex,
-                        "variant": e.variant.name,
-                        "data": json_data,
-                    }));
+                    json_data.push(json_data_value);
                 }
 
-                NexusEventKind::ExecutionFinished(e) if e.execution == dag_execution_id => {
-                    if e.has_any_walk_failed {
-                        notify_error!("DAG execution finished unsuccessfully");
-
-                        break 'query;
-                    }
-
-                    notify_success!("DAG execution finished successfully");
-
-                    break 'query;
-                }
-
-                _ => {}
+                json_trace.push(json!({
+                    "end_state": false,
+                    "vertex": e.vertex,
+                    "variant": e.variant.name,
+                    "data": json_data,
+                }));
             }
+
+            NexusEventKind::EndStateReached(e) => {
+                notify_success!(
+                    "{end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                    variant = e.variant.name.truecolor(100, 100, 100),
+                    end_state = "END STATE".truecolor(100, 100, 100)
+                );
+
+                let mut json_data = Vec::new();
+
+                let fetched_data = e
+                    .variant_ports_to_data
+                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .await
+                    .map_err(|e| NexusCliError::Any(anyhow!(
+                        "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                        e = e,
+                        command = "$ nexus conf set --data-storage.walrus-aggregator-url <URL>",
+                        testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                    )))?;
+
+                for (port, data) in fetched_data {
+                    let (display_data, json_data_value) = (
+                        format!("{}", data.as_json()),
+                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                    );
+
+                    item!(
+                        "Port '{port}' produced data: {data}",
+                        port = port.truecolor(100, 100, 100),
+                        data = display_data.truecolor(100, 100, 100),
+                    );
+
+                    json_data.push(json_data_value);
+                }
+
+                json_trace.push(json!({
+                    "end_state": true,
+                    "vertex": e.vertex,
+                    "variant": e.variant.name,
+                    "data": json_data,
+                }));
+            }
+
+            NexusEventKind::WalkFailed(e) => {
+                notify_error!(
+                    "Vertex '{vertex}' failed to execute: '{reason}'.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                    reason = e.reason.truecolor(100, 100, 100),
+                );
+            }
+
+            NexusEventKind::ExecutionFinished(e) => {
+                if e.has_any_walk_failed {
+                    notify_error!("DAG execution finished unsuccessfully");
+
+                    break;
+                }
+
+                notify_success!("DAG execution finished successfully");
+
+                break;
+            }
+
+            _ => {}
         }
     }
 

@@ -60,3 +60,7 @@ pub mod secret_core;
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
+
+/// Provides various Nexus utilities like deployment and execution of workflows.
+#[cfg(feature = "nexus")]
+pub mod nexus;
