@@ -118,12 +118,14 @@ pub struct StandardMessage {
 
 /// Union covering all messages that can traverse the transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Message {
     /// First packet in the X3DH handshake (sent by Sender).
     Initial(InitialMessage),
     /// Ordinary Double-Ratchet message exchanged after the handshake.
     Standard(StandardMessage),
+    /// Double-Ratchet message whose key should remain cached for limited reuse.
+    LimitedPersistent(StandardMessage),
 }
 
 /// A live end-to-end encrypted session.
@@ -346,6 +348,25 @@ impl Session {
             .map_err(|_| SessionError::InvalidState("Encryption failed".into()))
     }
 
+    /// Encrypts a plaintext while marking the result as limited persistent.
+    ///
+    /// The receiver keeps the derived message key cached so the ciphertext can
+    /// be replayed a bounded number of times without rewinding the ratchet.
+    pub fn encrypt_limited_persistent(
+        &mut self,
+        plaintext: &[u8],
+    ) -> Result<Message, SessionError> {
+        match self.encrypt(plaintext)? {
+            Message::Standard(msg) => Ok(Message::LimitedPersistent(msg)),
+            Message::Initial(_) => Err(SessionError::InvalidState(
+                "Cannot emit an Initial message in persistent mode".into(),
+            )),
+            Message::LimitedPersistent(_) => Err(SessionError::InvalidState(
+                "Message already tagged as persistent".into(),
+            )),
+        }
+    }
+
     /// Decrypts an incoming `message`, performing DH/PN ratchets as required.
     ///
     /// *Errors*:
@@ -369,6 +390,19 @@ impl Session {
                     .ratchet_decrypt_he(header, ciphertext, &ad)
                     .map_err(|_| SessionError::DecryptionFailed)
             }
+            Message::LimitedPersistent(StandardMessage {
+                version,
+                header,
+                ciphertext,
+            }) => {
+                if *version != PROTOCOL_VERSION {
+                    return Err(SessionError::Version(*version));
+                }
+                let ad = self.make_associated_data();
+                self.ratchet
+                    .ratchet_decrypt_he_persistent(header, ciphertext, &ad)
+                    .map_err(|_| SessionError::DecryptionFailed)
+            }
         }
     }
 
@@ -380,7 +414,7 @@ impl Session {
     ///   already forgotten or the header does not belong to this session.
     pub fn read_own_msg(&mut self, msg: &Message) -> Option<Vec<u8>> {
         match msg {
-            Message::Standard(sm) => {
+            Message::Standard(sm) | Message::LimitedPersistent(sm) => {
                 let ad = self.make_associated_data();
                 self.ratchet
                     .decrypt_outgoing(&sm.header, &sm.ciphertext, &ad)
@@ -471,6 +505,30 @@ impl Session {
         Ok(())
     }
 
+    /// Encrypts the provided JSON using the limited persistent variant.
+    pub fn encrypt_limited_persistent_nexus_data_json(
+        &mut self,
+        data: &mut serde_json::Value,
+    ) -> anyhow::Result<()> {
+        if let serde_json::Value::Array(values) = data {
+            let mut encrypted_values = Vec::with_capacity(values.len());
+
+            for value in values {
+                let bytes = serde_json::to_vec(value)?;
+                let message = self.encrypt_limited_persistent(&bytes)?;
+                encrypted_values.push(serde_json::to_value(&message)?);
+            }
+
+            *data = serde_json::Value::Array(encrypted_values);
+            return Ok(());
+        }
+
+        let bytes = serde_json::to_vec(data)?;
+        let message = self.encrypt_limited_persistent(&bytes)?;
+        *data = serde_json::to_value(&message)?;
+        Ok(())
+    }
+
     /// Opposite of [`Self::encrypt_nexus_data_json`], decrypts the provided
     /// `serde_json::Value` and returns the decrypted JSON data. If the value
     /// is an array, it decrypts each object individually.
@@ -483,34 +541,34 @@ impl Session {
 
             // Decrypt each element.
             for value in values {
-                let msg: StandardMessage = serde_json::from_value(value.clone())?;
-                let msg = Message::Standard(msg);
+                let msg = if value.get("kind").is_some() {
+                    serde_json::from_value::<Message>(value.clone())?
+                } else {
+                    Message::Standard(serde_json::from_value::<StandardMessage>(value.clone())?)
+                };
 
-                // Was this message sent by us?
                 if let Some(bytes) = self.read_own_msg(&msg) {
                     decrypted_values.push(serde_json::from_slice(&bytes)?);
-
                     continue;
                 }
 
-                // If not, just decrypt it normally.
                 let bytes = self.decrypt(&msg)?;
-
                 decrypted_values.push(serde_json::from_slice(&bytes)?);
             }
 
             return Ok(serde_json::Value::Array(decrypted_values));
         }
 
-        let msg: StandardMessage = serde_json::from_value(data.clone())?;
-        let msg = Message::Standard(msg);
+        let msg = if data.get("kind").is_some() {
+            serde_json::from_value::<Message>(data.clone())?
+        } else {
+            Message::Standard(serde_json::from_value::<StandardMessage>(data.clone())?)
+        };
 
-        // Was this message sent by us?
         if let Some(bytes) = self.read_own_msg(&msg) {
             return Ok(serde_json::from_slice(&bytes)?);
         }
 
-        // If not, just decrypt it normally.
         let bytes = self.decrypt(&msg)?;
 
         Ok(serde_json::from_slice(&bytes)?)
@@ -1261,6 +1319,52 @@ mod tests {
 
         // Test receiver commit for future use cases
         receiver_sess.commit_receiver(None, Some(100)); // This should be a no-op for current state
+    }
+
+    #[test]
+    fn test_limited_persistent_replay() {
+        use serde_json::json;
+
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
+        let bundle = PreKeyBundle::new(&receiver_id, 7, &spk_secret, None, None);
+
+        let (init_msg, mut sender_sess) =
+            Session::initiate(&sender_id, &bundle, b"handshake").unwrap();
+
+        let initial_message = match &init_msg {
+            Message::Initial(m) => m,
+            _ => unreachable!("initiate must return Initial message"),
+        };
+
+        let (mut receiver_sess, _) =
+            Session::recv(&receiver_id, &spk_secret, &bundle, initial_message, None).unwrap();
+
+        let original = json!({
+            "foo": "bar",
+            "count": 42
+        });
+        let mut payload = original.clone();
+
+        sender_sess
+            .encrypt_limited_persistent_nexus_data_json(&mut payload)
+            .expect("encrypt limited persistent");
+
+        assert!(
+            payload.get("kind").is_some(),
+            "kind tag should exist for persistent payloads"
+        );
+
+        let first = receiver_sess
+            .decrypt_nexus_data_json(&payload)
+            .expect("first decrypt should succeed");
+        assert_eq!(first, original, "first decrypt must round-trip");
+
+        let second = receiver_sess
+            .decrypt_nexus_data_json(&payload)
+            .expect("second decrypt should reuse message key");
+        assert_eq!(second, original, "replayed decrypt must match");
     }
 
     #[test]

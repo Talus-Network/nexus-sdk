@@ -11,22 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus dag inspect-execution` now also shows the data storage kind for each port
-
-#### Changed
-
-- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
-- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
 
 #### Fixed
 
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
 ### `nexus-sdk`
 
 #### Added
 
-- `.nightly-version` file that specifies the Rust nightly version to use
+- `nexus dag inspect-execution` now also shows the data storage kind for each port
+- .nightly-version
+- scheduler transaction templates (task lifecycle, sporadic occurrences, periodic scheduling, constraint state, TAP execution) for CLI and integrators
 
 #### Changed
 
