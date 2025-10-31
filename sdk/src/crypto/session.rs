@@ -118,14 +118,13 @@ pub struct StandardMessage {
 
 /// Union covering all messages that can traverse the transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Message {
     /// First packet in the X3DH handshake (sent by Sender).
     Initial(InitialMessage),
     /// Ordinary Double-Ratchet message exchanged after the handshake.
     Standard(StandardMessage),
     /// Double-Ratchet message whose key should remain cached for limited reuse.
-    #[serde(rename = "limited_persistent")]
     LimitedPersistent(StandardMessage),
 }
 

@@ -82,7 +82,6 @@ impl NexusData {
     ///
     /// ```
     /// use nexus_sdk::types::{NexusData, StorageKind};
-    /// # use nexus_sdk::types::Storable;
     ///
     /// let data = NexusData::new_inline(serde_json::json!({"key": "value"})).commit_inline_plain();
     ///
