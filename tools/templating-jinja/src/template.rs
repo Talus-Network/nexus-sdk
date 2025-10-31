@@ -119,37 +119,57 @@ impl NexusTool for TemplatingJinja {
             }
         }
 
-        // use split and join approach
+        // Parse template and handle variables with optional whitespace
         let mut result = input.template.clone();
 
         for (var_name, value) in &all_args {
-            // Split by variable pattern and process each part
-            let pattern = format!("{{{{{}", var_name);
-            let parts: Vec<&str> = result.split(&pattern).collect();
+            let mut new_result = String::new();
+            let mut remaining = result.as_str();
 
-            if parts.len() <= 1 {
-                continue; // No occurrences of this variable
+            while let Some(start_pos) = remaining.find("{{") {
+                // Add everything before {{
+                new_result.push_str(&remaining[..start_pos]);
+
+                // Look for closing }}
+                let after_open = &remaining[start_pos + 2..];
+                if let Some(end_pos) = after_open.find("}}") {
+                    let content = &after_open[..end_pos];
+                    let trimmed = content.trim();
+
+                    // Check if this variable matches (with optional filters/spaces)
+                    let matches = trimmed == var_name
+                        || trimmed.starts_with(&format!("{} ", var_name))
+                        || trimmed.starts_with(&format!("{}|", var_name))
+                        || trimmed.starts_with(&format!("{} |", var_name));
+
+                    if matches {
+                        // Extract filter part if any
+                        let filter_part = if trimmed.len() > var_name.len() {
+                            &trimmed[var_name.len()..]
+                        } else {
+                            ""
+                        };
+
+                        let expr = format!("{{{{{}{}}}}}", var_name, filter_part);
+                        let rendered = render_variable_expression(&expr, var_name, value);
+                        new_result.push_str(&rendered);
+                    } else {
+                        // Not our variable, keep original
+                        new_result.push_str("{{");
+                        new_result.push_str(content);
+                        new_result.push_str("}}");
+                    }
+
+                    remaining = &after_open[end_pos + 2..];
+                } else {
+                    // No closing }}, keep original
+                    new_result.push_str("{{");
+                    remaining = after_open;
+                }
             }
 
-            let mut new_result = parts[0].to_string();
-
-            for part in &parts[1..] {
-                let Some(close_pos) = part.find("}}") else {
-                    new_result.push_str(&pattern);
-                    new_result.push_str(part);
-                    continue;
-                };
-
-                let filter_part = &part[..close_pos];
-                let remaining = &part[close_pos + 2..];
-                let expr = format!("{{{{{}{}}}}}", var_name, filter_part);
-
-                // Try to render this expression
-                let rendered_value = render_variable_expression(&expr, var_name, value);
-                new_result.push_str(&rendered_value);
-                new_result.push_str(remaining);
-            }
-
+            // Add remaining text
+            new_result.push_str(remaining);
             result = new_result;
         }
 
@@ -392,7 +412,7 @@ mod tests {
 
         // Test: Template with filters on both defined and undefined variables
         let input = Input {
-            template: "Hello {{name | upper}}, Im from {{city | upper}}!".to_string(),
+            template: "Hello {{name | upper}}, Im from {{ city | upper }}!".to_string(),
             args: HashMap::from([("name".to_string(), "Alice".to_string())]),
             value: None,
             name: None,
@@ -401,7 +421,7 @@ mod tests {
         let result = tool.invoke(input).await;
         match result {
             Output::Ok { result } => {
-                assert_eq!(result, "Hello ALICE, Im from {{city | upper}}!")
+                assert_eq!(result, "Hello ALICE, Im from {{ city | upper }}!")
             }
             Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
