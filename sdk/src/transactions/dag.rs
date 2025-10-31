@@ -529,7 +529,7 @@ mod tests {
         crate::{
             fqn,
             test_utils::sui_mocks,
-            types::{Data, EdgeKind, FromPort, NexusData, ToPort},
+            types::{Data, EdgeKind, FromPort, ToPort},
         },
         std::collections::HashMap,
     };
@@ -740,25 +740,20 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
-        let gas_price = 42;
-        let mut input_data: HashMap<String, HashMap<String, DataStorage>> = HashMap::new();
-        let mut ports = HashMap::new();
-        ports.insert(
-            "port1".to_string(),
-            NexusData::new_inline(serde_json::json!({"key": "value"})).commit_inline_plain(),
+        let mut input_data = HashMap::new();
+
+        input_data.insert(
+            "vertex1".to_string(),
+            HashMap::from([(
+                "port1".to_string(),
+                serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
+                    .try_into()
+                    .expect("Failed to convert JSON to DataStorage"),
+            )]),
         );
-        input_data.insert("vertex1".to_string(), ports);
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(
-            &mut tx,
-            &nexus_objects,
-            &dag,
-            gas_price,
-            entry_group,
-            &input_data,
-        )
-        .unwrap();
+        execute(&mut tx, &nexus_objects, &dag, entry_group, &input_data).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {

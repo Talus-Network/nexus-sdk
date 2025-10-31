@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
 
 #### Fixed
+- `nexus dag inspect-execution` now also shows the data storage kind for each port
+
+- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
+
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+
+#### Fixed
 
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
@@ -33,8 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - standardized array and single value serialization of `NexusData` in `serde_parsers`
 - `NexusData` can now represent data stored remotely in Walrus
-- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
-- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
 
 #### Fixed
 

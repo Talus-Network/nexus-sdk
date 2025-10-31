@@ -1,5 +1,6 @@
 mod json_dag;
 mod nexus_data;
+mod nexus_data_parser;
 mod nexus_objects;
 mod ports_data;
 mod runtime_vertex;
