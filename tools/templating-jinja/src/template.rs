@@ -36,6 +36,26 @@ pub(crate) enum Output {
     Err { reason: String },
 }
 
+/// Helper function to render a variable expression using MiniJinja
+fn render_variable_expression(expr: &str, var_name: &str, value: &str) -> String {
+    let mut temp_env = Environment::new();
+
+    // Try to render with MiniJinja
+    if temp_env.add_template("temp", expr).is_ok() {
+        if let Ok(tmpl) = temp_env.get_template("temp") {
+            let mut ctx = HashMap::new();
+            ctx.insert(var_name.to_string(), value.to_string());
+
+            if let Ok(rendered) = tmpl.render(ctx) {
+                return rendered;
+            }
+        }
+    }
+
+    // If rendering fails, return original expression
+    expr.to_string()
+}
+
 pub(crate) struct TemplatingJinja;
 
 impl NexusTool for TemplatingJinja {
@@ -99,27 +119,41 @@ impl NexusTool for TemplatingJinja {
             }
         }
 
-        let tmpl = env
-            .get_template("tmpl")
-            .expect("Template must exist because it was added.");
+        // use split and join approach
+        let mut result = input.template.clone();
 
-        match tmpl.render(all_args.clone()) {
-            Ok(_rendered) => {
-                let mut result = input.template.clone();
-                // Manually replace Jinja2-style placeholders ({{variable}}) with their values.
-                // This allows undefined variables to be preserved as placeholders for potential
-                // chaining with other tools, rather than being rendered as empty strings.
-                for (var, value) in &all_args {
-                    let placeholder = format!("{{{{{}}}}}", var);
-                    result = result.replace(&placeholder, value);
-                }
+        for (var_name, value) in &all_args {
+            // Split by variable pattern and process each part
+            let pattern = format!("{{{{{}", var_name);
+            let parts: Vec<&str> = result.split(&pattern).collect();
 
-                Output::Ok { result }
+            if parts.len() <= 1 {
+                continue; // No occurrences of this variable
             }
-            Err(e) => Output::Err {
-                reason: format!("Template rendering failed: {}", e),
-            },
+
+            let mut new_result = parts[0].to_string();
+
+            for part in &parts[1..] {
+                let Some(close_pos) = part.find("}}") else {
+                    new_result.push_str(&pattern);
+                    new_result.push_str(part);
+                    continue;
+                };
+
+                let filter_part = &part[..close_pos];
+                let remaining = &part[close_pos + 2..];
+                let expr = format!("{{{{{}{}}}}}", var_name, filter_part);
+
+                // Try to render this expression
+                let rendered_value = render_variable_expression(&expr, var_name, value);
+                new_result.push_str(&rendered_value);
+                new_result.push_str(remaining);
+            }
+
+            result = new_result;
         }
+
+        Output::Ok { result }
     }
 }
 
@@ -347,6 +381,48 @@ mod tests {
         match result {
             Output::Ok { result } => {
                 assert_eq!(result, "Hello Alice from {{city}}! Your age is {{age}}.")
+            }
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_template_with_filters_on_defined_and_undefined_variables() {
+        let tool = TemplatingJinja::new().await;
+
+        // Test: Template with filters on both defined and undefined variables
+        let input = Input {
+            template: "Hello {{name | upper}}, Im from {{city | upper}}!".to_string(),
+            args: HashMap::from([("name".to_string(), "Alice".to_string())]),
+            value: None,
+            name: None,
+        };
+
+        let result = tool.invoke(input).await;
+        match result {
+            Output::Ok { result } => {
+                assert_eq!(result, "Hello ALICE, Im from {{city | upper}}!")
+            }
+            Output::Err { reason } => panic!("Expected success, got error: {}", reason),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_template_with_filter_and_simple_undefined_variable() {
+        let tool = TemplatingJinja::new().await;
+
+        // Test: Template with filter on defined variable and simple undefined variable
+        let input = Input {
+            template: "Hello {{name | upper}}, Im from {{city}}!".to_string(),
+            args: HashMap::from([("name".to_string(), "Alice".to_string())]),
+            value: None,
+            name: None,
+        };
+
+        let result = tool.invoke(input).await;
+        match result {
+            Output::Ok { result } => {
+                assert_eq!(result, "Hello ALICE, Im from {{city}}!")
             }
             Output::Err { reason } => panic!("Expected success, got error: {}", reason),
         }
