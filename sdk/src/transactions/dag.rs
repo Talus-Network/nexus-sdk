@@ -753,7 +753,16 @@ mod tests {
         );
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(&mut tx, &nexus_objects, &dag, entry_group, &input_data).unwrap();
+        let gas_price = 0;
+        execute(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            gas_price,
+            entry_group,
+            &input_data,
+        )
+        .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
