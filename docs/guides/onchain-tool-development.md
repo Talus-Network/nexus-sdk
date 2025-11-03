@@ -227,17 +227,16 @@ After publishing, you'll need:
 1. **Package Address**: From publish output
 1. **Module Name**: Your module name (e.g., "my_tool")
 1. **Witness ID**: Object ID of your witness object
-1. ***ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
+1. **\*ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
 
 You can find the witness ID in the explorer by looking up the Witness object in the dynamic field ID that is given
 to you in the publish output. This object has type: `0x2::dynamic_field::Field<vector<u8>, PACKAGE_ID::my_onchain_tool::MyToolWitness>`
 
-Alternatively, you can find the witness ID by using the CLI: 
+Alternatively, you can find the witness ID by using the CLI:
 
 ```bash
 sui client object <DYNAMIC_FIELD_ID>
 ```
-
 
 ### Step 3: Register with Nexus
 
@@ -272,11 +271,11 @@ nexus tool list
 
 Once registered, your onchain tool can be used in Nexus workflows the same way offchain tools are used.
 
-An example JSON DAG using the onchain tool is as follows: 
+An example JSON DAG using the onchain tool is as follows:
 
-```
+```json
 {
-    "default_values": [
+  "default_values": [
     {
       "vertex": "just_execute_first",
       "input_port": "2",
@@ -286,68 +285,67 @@ An example JSON DAG using the onchain tool is as follows:
       }
     },
     {
-        "vertex": "just_execute_second",
-        "input_port": "2",
-        "value": {
-          "storage": "inline",
-          "data": "0x6"
-        }
+      "vertex": "just_execute_second",
+      "input_port": "2",
+      "value": {
+        "storage": "inline",
+        "data": "0x6"
       }
+    }
   ],
-    "vertices": [
-      {
-        "kind": {
-          "variant": "on_chain",
-          "tool_fqn": "xyz.mydomain.my_tool@1"
-        },
-        "name": "just_execute_first",
-        "entry_ports": [
-          {
-            "name": "0",
-            "encrypted": false
-          },
-          {
-            "name": "1",
-            "encrypted": false
-          }
-        ]
+  "vertices": [
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.mydomain.my_tool@1"
       },
-      {
-        "kind": {
-          "variant": "on_chain",
-          "tool_fqn": "xyz.mydomain.my_tool@1"
+      "name": "just_execute_first",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
         },
-        "name": "just_execute_second",
-        "entry_ports": [
-          {
-            "name": "0",
-            "encrypted": false
-          }
-        ]
-      }
-    ],
-    "edges": [
-      {
-        "from": {
-          "vertex": "just_execute_first",
-          "output_variant": "ok",
-          "output_port": "result"
-        },
-        "to": {
-          "vertex": "just_execute_second",
-          "input_port": "1"
+        {
+          "name": "1",
+          "encrypted": false
         }
+      ]
+    },
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.mydomain.my_tool@1"
+      },
+      "name": "just_execute_second",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "vertex": "just_execute_first",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": {
+        "vertex": "just_execute_second",
+        "input_port": "1"
       }
-    ]
-  }
-    
+    }
+  ]
+}
 ```
+
 This workflow only executes the onchain tool twice if the output variant is Success. Else it only executes it once.
 
 ### Useful Sources
 
-todo: link docs here
-- **Nexus Documentation**: Check the main [tool documentation]()
-- **Examples**: Study the [onchain tool examples]()
+- **Nexus Documentation**: Check the main [tool documentation](../../nexus-next/docs/tool.md)
+- **Examples**: Study the [onchain tool example modules](../../nexus-next/sui/examples/) and [corresponding json dag workflows](../../sdk/src/dag/_dags/)
 
 Remember that onchain tools are powerful building blocks in the Nexus ecosystem. Well-designed tools can be composed with others to create sophisticated autonomous agents and workflows.
