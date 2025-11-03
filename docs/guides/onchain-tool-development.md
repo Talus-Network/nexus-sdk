@@ -5,11 +5,11 @@ This comprehensive guide walks you through developing and deploying onchain tool
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Project Setup](#project-setup)
-3. [Step-by-Step Development](#step-by-step-development)
-4. [Testing](#testing)
-5. [Deployment and Tool Registration](#deployment-and-tool-registration)
-6. [Integration with Workflows](#integration-with-workflows)
+1. [Project Setup](#project-setup)
+1. [Step-by-Step Development](#step-by-step-development)
+1. [Testing](#testing)
+1. [Deployment and Tool Registration](#deployment-and-tool-registration)
+1. [Integration with Workflows](#integration-with-workflows)
 
 ## Prerequisites
 
@@ -225,9 +225,9 @@ export PACKAGE_ID="0x..."
 After publishing, you'll need:
 
 1. **Package Address**: From publish output
-2. **Module Name**: Your module name (e.g., "my_tool")
-3. **Witness ID**: Object ID of your witness object
-4. ***ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
+1. **Module Name**: Your module name (e.g., "my_tool")
+1. **Witness ID**: Object ID of your witness object
+1. ***ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
 
 You can find the witness ID in the explorer by looking up the Witness object in the dynamic field ID that is given
 to you in the publish output. This object has type: `0x2::dynamic_field::Field<vector<u8>, PACKAGE_ID::my_onchain_tool::MyToolWitness>`
@@ -255,9 +255,9 @@ nexus tool register-onchain \
 The CLI will:
 
 1. **Analyze your `execute` function** to generate input schema
-2. **Generate output schema** from your `Output` enum
-3. **Prompt for parameter descriptions** (interactive customization)
-4. **Register the tool** in the Nexus tool registry
+1. **Generate output schema** from your `Output` enum
+1. **Prompt for parameter descriptions** (interactive customization)
+1. **Register the tool** in the Nexus tool registry
 
 ### Step 4: Verify Registration
 
