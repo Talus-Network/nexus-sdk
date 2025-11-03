@@ -442,6 +442,67 @@ impl Dag {
             vec![str, witness_id],
         ))
     }
+
+    /// Create an edge kind from an enum variant.
+    pub fn edge_kind_from_enum(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        edge_kind: &EdgeKind,
+    ) -> sui::Argument {
+        let ident = match edge_kind {
+            EdgeKind::Normal => Self::EDGE_KIND_NORMAL,
+            EdgeKind::ForEach => Self::EDGE_KIND_FOR_EACH,
+            EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
+            EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
+            EdgeKind::Break => Self::EDGE_KIND_BREAK,
+        };
+
+        tx.programmable_move_call(
+            workflow_pkg_id,
+            ident.module.into(),
+            ident.name.into(),
+            vec![],
+            vec![],
+        )
+    }
+
+    /// Create a runtime vertex from an enum variant
+    pub fn runtime_vertex_from_enum(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        runtime_vertex: &RuntimeVertex,
+    ) -> anyhow::Result<sui::Argument> {
+        match runtime_vertex {
+            RuntimeVertex::Plain { vertex } => {
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+
+                Ok(tx.programmable_move_call(
+                    workflow_pkg_id,
+                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module.into(),
+                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.name.into(),
+                    vec![],
+                    vec![name],
+                ))
+            }
+            RuntimeVertex::WithIterator {
+                vertex,
+                iteration,
+                out_of,
+            } => {
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let iteration = tx.pure(*iteration)?;
+                let out_of = tx.pure(*out_of)?;
+
+                Ok(tx.programmable_move_call(
+                    workflow_pkg_id,
+                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module.into(),
+                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.name.into(),
+                    vec![],
+                    vec![name, iteration, out_of],
+                ))
+            }
+        }
+    }
 }
 
 // == `nexus_workflow::tool_output` ==
@@ -507,66 +568,6 @@ impl ToolOutput {
         module: TOOL_OUTPUT_MODULE,
         name: sui::move_ident_str!("with_fields"),
     };
-    /// Create an edge kind from an enum variant.
-    pub fn edge_kind_from_enum(
-        tx: &mut sui::ProgrammableTransactionBuilder,
-        workflow_pkg_id: sui::ObjectID,
-        edge_kind: &EdgeKind,
-    ) -> sui::Argument {
-        let ident = match edge_kind {
-            EdgeKind::Normal => Self::EDGE_KIND_NORMAL,
-            EdgeKind::ForEach => Self::EDGE_KIND_FOR_EACH,
-            EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
-            EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
-            EdgeKind::Break => Self::EDGE_KIND_BREAK,
-        };
-
-        tx.programmable_move_call(
-            workflow_pkg_id,
-            ident.module.into(),
-            ident.name.into(),
-            vec![],
-            vec![],
-        )
-    }
-
-    /// Create a runtime vertex from an enum variant
-    pub fn runtime_vertex_from_enum(
-        tx: &mut sui::ProgrammableTransactionBuilder,
-        workflow_pkg_id: sui::ObjectID,
-        runtime_vertex: &RuntimeVertex,
-    ) -> anyhow::Result<sui::Argument> {
-        match runtime_vertex {
-            RuntimeVertex::Plain { vertex } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
-
-                Ok(tx.programmable_move_call(
-                    workflow_pkg_id,
-                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module.into(),
-                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.name.into(),
-                    vec![],
-                    vec![name],
-                ))
-            }
-            RuntimeVertex::WithIterator {
-                vertex,
-                iteration,
-                out_of,
-            } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
-                let iteration = tx.pure(*iteration)?;
-                let out_of = tx.pure(*out_of)?;
-
-                Ok(tx.programmable_move_call(
-                    workflow_pkg_id,
-                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module.into(),
-                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.name.into(),
-                    vec![],
-                    vec![name, iteration, out_of],
-                ))
-            }
-        }
-    }
 }
 
 // == `nexus_workflow::tool_registry` ==
