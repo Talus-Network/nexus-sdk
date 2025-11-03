@@ -1,7 +1,7 @@
 use {
     crate::sui,
     anyhow::bail,
-    reqwest::{header, Client, StatusCode},
+    reqwest::{header, Client},
     serde::Deserialize,
     std::time::Duration,
     tokio_retry::{strategy::ExponentialBackoff, Retry},
@@ -33,11 +33,11 @@ pub async fn request_tokens(url: &str, addr: sui::Address) -> anyhow::Result<()>
             .send()
             .await?;
 
-        // Only consider response successful if we get a 202 Accepted or 201 Created.
-        match resp.status() {
-            StatusCode::ACCEPTED | StatusCode::CREATED => Ok(resp),
-            _ => Err(anyhow::anyhow!("Unexpected status: {}", resp.status())),
+        if !resp.status().is_success() {
+            anyhow::bail!("Unexpected status: {}", resp.status())
         }
+
+        Ok(resp)
     })
     .await?;
 

@@ -8,10 +8,13 @@ use {
     tokio::{fs::File, io::AsyncWriteExt},
 };
 
-// Publisher and Aggregator URLs are from <https://github.com/MystenLabs/walrus/blob/232d27ff7b3c2ba08aa4e10729b095f300b46384/docs/book/assets/operators.json>
-// Walrus Default API Endpoints
+/// Publisher and Aggregator URLs are from <https://github.com/MystenLabs/walrus/blob/232d27ff7b3c2ba08aa4e10729b095f300b46384/docs/book/assets/operators.json>
+/// Walrus Default API Endpoints
 pub const WALRUS_PUBLISHER_URL: &str = "https://publisher.walrus-testnet.walrus.space";
 pub const WALRUS_AGGREGATOR_URL: &str = "https://aggregator.walrus-testnet.walrus.space";
+
+/// Maximum number of epochs Walrus allows for storing data
+pub const WALRUS_MAX_EPOCHS: u8 = 53;
 
 /// Errors that can occur when interacting with the Walrus API
 #[derive(Error, Debug)]
@@ -156,7 +159,7 @@ impl WalrusClient {
     pub async fn upload_file(
         &self,
         file_path: &PathBuf,
-        epochs: u64,
+        epochs: u8,
         send_to: Option<String>,
     ) -> Result<StorageInfo> {
         // Read file content
@@ -219,7 +222,7 @@ impl WalrusClient {
     pub async fn upload_json<T: Serialize>(
         &self,
         data: &T,
-        epochs: u64,
+        epochs: u8,
         send_to: Option<String>,
     ) -> Result<StorageInfo> {
         // Serialize data to JSON

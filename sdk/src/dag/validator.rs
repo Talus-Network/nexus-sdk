@@ -1,11 +1,17 @@
 use {
-    crate::types::{Dag, DEFAULT_ENTRY_GROUP},
+    crate::types::{Dag, EdgeKind, DEFAULT_ENTRY_GROUP},
     anyhow::{bail, Result as AnyResult},
-    petgraph::graph::{DiGraph, NodeIndex},
+    petgraph::{
+        graph::{DiGraph, NodeIndex},
+        visit::EdgeRef,
+    },
     std::collections::{HashMap, HashSet},
 };
 
-type GraphAndVertexEntryGroups = (DiGraph<GraphNode, ()>, HashMap<GraphNode, Vec<String>>);
+type GraphAndVertexEntryGroups = (
+    DiGraph<GraphNode, EdgeKind>,
+    HashMap<GraphNode, Vec<String>>,
+);
 
 /// Validate function takes a DAG and validates it based on nexus execution
 /// rules.
@@ -27,10 +33,16 @@ pub fn validate(dag: Dag) -> AnyResult<()> {
     // Check that no walks in the graph violate the concurrency rules.
     follows_concurrency_rules(&graph, &vertex_entry_groups)?;
 
+    // Check that for-each and collect edges are correctly paired and not nesting.
+    validate_for_each_pairs(&graph, &vertex_entry_groups)?;
+
+    // Check that do-whiles don't nest.
+    validate_do_while_nesting(&graph)?;
+
     Ok(())
 }
 
-fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()> {
+fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, EdgeKind>) -> AnyResult<()> {
     for node in graph.node_indices() {
         let vertex = &graph[node];
         let neighbors = graph
@@ -79,7 +91,7 @@ fn has_correct_order_of_actions(graph: &DiGraph<GraphNode, ()>) -> AnyResult<()>
 /// For each distinct group of entry vertices, check that the net concurrency
 /// leading from these nodes into any input port is always 0.
 fn follows_concurrency_rules(
-    graph: &DiGraph<GraphNode, ()>,
+    graph: &DiGraph<GraphNode, EdgeKind>,
     vertex_entry_groups: &HashMap<GraphNode, Vec<String>>,
 ) -> AnyResult<()> {
     // Get all distinct groups of entry vertices.
@@ -159,7 +171,7 @@ fn follows_concurrency_rules(
 }
 
 fn get_net_concurrency_in_subgraph(
-    graph: &DiGraph<GraphNode, ()>,
+    graph: &DiGraph<GraphNode, EdgeKind>,
     nodes: &HashSet<NodeIndex>,
 ) -> isize {
     let net_concurrency = nodes.iter().fold(0, |acc, &node| {
@@ -193,6 +205,133 @@ fn get_net_concurrency_in_subgraph(
 
     // If the net concurrency is 0, the graph follows the concurrency rules.
     net_concurrency
+}
+
+/// Check the for-each and collect edges are correctly paired and not nesting.
+fn validate_for_each_pairs(
+    graph: &DiGraph<GraphNode, EdgeKind>,
+    vertex_entry_groups: &HashMap<GraphNode, Vec<String>>,
+) -> AnyResult<()> {
+    #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+    enum ForEachState {
+        Idle,
+        InForEach,
+    }
+
+    use ForEachState::*;
+
+    // Stack for DFS: (node, vertex, state)
+    let mut stack = vec![];
+
+    for vertex in vertex_entry_groups.keys() {
+        let node = graph
+            .node_indices()
+            .find(|&n| &graph[n] == vertex)
+            .ok_or_else(|| anyhow::anyhow!("'{vertex}' not found in graph nodes."))?;
+
+        stack.push((node, vertex, Idle));
+    }
+
+    while let Some((node, vertex, state)) = stack.pop() {
+        if graph.edges(node).count() == 0 {
+            if state == InForEach {
+                bail!(
+                    "'{}' has a for-each edge without a corresponding collect",
+                    vertex
+                );
+            }
+
+            continue;
+        }
+
+        for edge in graph.edges(node) {
+            let next_state = match (state, edge.weight()) {
+                (Idle, EdgeKind::Normal) => Idle,
+                (Idle, EdgeKind::DoWhile) => Idle,
+                (Idle, EdgeKind::Break) => Idle,
+                (Idle, EdgeKind::ForEach) => InForEach,
+                (Idle, EdgeKind::Collect) => {
+                    bail!("'{vertex}' has a collect edge without for-each");
+                }
+
+                (InForEach, EdgeKind::Normal) => InForEach,
+                (InForEach, EdgeKind::ForEach) => {
+                    bail!("'{vertex}' has a nested for-each");
+                }
+                (InForEach, EdgeKind::Collect) => Idle,
+                (InForEach, EdgeKind::DoWhile) | (InForEach, EdgeKind::Break) => {
+                    bail!("'{vertex}' has a do-while or break edge inside a for-each");
+                }
+            };
+
+            stack.push((edge.target(), &graph[edge.target()], next_state));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_do_while_nesting(graph: &DiGraph<GraphNode, EdgeKind>) -> AnyResult<()> {
+    // Find original destination vertices for do-while edges.
+    let vertices = graph
+        .edge_references()
+        .filter_map(|edge| match edge.weight() {
+            EdgeKind::DoWhile => {
+                let destination_node = graph.node_indices().find(|&n| {
+                    if let GraphNode::InputPort { vertex, .. } = &graph[edge.target()] {
+                        // The destination vertex name is the input port's vertex name without the "-do-while" suffix.
+                        let original_vertex_name =
+                            vertex.strip_suffix("-do-while").unwrap_or(vertex);
+                        if let GraphNode::Vertex { name: v_name, .. } = &graph[n] {
+                            return v_name == original_vertex_name;
+                        }
+                    }
+
+                    false
+                });
+
+                destination_node.map(|n| (edge.source(), n))
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
+    for (source, target) in &vertices {
+        // Check that none of the paths in the do-while loop contain another
+        // loop edge.
+        let min_intermediate_nodes = 0;
+        let max_intermediate_nodes = None;
+
+        let paths = petgraph::algo::all_simple_paths(
+            graph,
+            *target,
+            *source,
+            min_intermediate_nodes,
+            max_intermediate_nodes,
+        )
+        .flat_map(|mut path: Vec<_>| {
+            // Ignore the last node as it's the source node.
+            path.pop();
+            path
+        })
+        .collect::<HashSet<_>>();
+
+        for path_node in paths {
+            for edge in graph.edges(path_node) {
+                if matches!(
+                    edge.weight(),
+                    EdgeKind::DoWhile | EdgeKind::Break | EdgeKind::ForEach | EdgeKind::Collect
+                ) {
+                    bail!(
+                        "Do-while edge at '{}' has a nested loop inside.",
+                        graph[*source]
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -237,7 +376,7 @@ impl std::fmt::Display for GraphNode {
 /// [Dag] to [petgraph::graph::DiGraph]. Also performs structure checks on the
 /// graph.
 fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
-    let mut graph = DiGraph::<GraphNode, ()>::new();
+    let mut graph = DiGraph::<GraphNode, EdgeKind>::new();
 
     // Build a hash map of graph nodes that are part of entry groups. If there
     // are no entry groups specified, we assume all vertices that have entry
@@ -309,12 +448,19 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
             name: edge.from.output_port.clone(),
         };
 
+        // To avoid looping, we create a "phantom" destination vertex for
+        // do-while edges.
+        let destination_vertex_name = match edge.kind {
+            EdgeKind::DoWhile => format!("{}-do-while", edge.to.vertex),
+            _ => edge.to.vertex.clone(),
+        };
+
         let destination_vertex = GraphNode::Vertex {
-            name: edge.to.vertex.clone(),
+            name: destination_vertex_name.clone(),
         };
 
         let input_port = GraphNode::InputPort {
-            vertex: edge.to.vertex.clone(),
+            vertex: destination_vertex_name.clone(),
             name: edge.to.input_port.clone(),
         };
 
@@ -376,15 +522,15 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
 
         // These are allowed.
         if !graph.contains_edge(origin_node, output_variant_node) {
-            graph.add_edge(origin_node, output_variant_node, ());
+            graph.add_edge(origin_node, output_variant_node, EdgeKind::Normal);
         }
 
         if !graph.contains_edge(input_port_node, destination_node) {
-            graph.add_edge(input_port_node, destination_node, ());
+            graph.add_edge(input_port_node, destination_node, EdgeKind::Normal);
         }
 
-        graph.add_edge(output_variant_node, output_port_node, ());
-        graph.add_edge(output_port_node, input_port_node, ());
+        graph.add_edge(output_variant_node, output_port_node, EdgeKind::Normal);
+        graph.add_edge(output_port_node, input_port_node, edge.kind.clone());
     }
 
     // Ensure we don't have duplicate vertices.
@@ -397,7 +543,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
             name: vertex.name.clone(),
         };
 
-        // If the dag has no edges and only has 1 vertex, we add this vertex as a
+        // If the dag has no edges and only 1 vertex, we add this vertex as a
         // graph node.
         if dag.edges.is_empty() && dag.vertices.len() == 1 {
             let node = graph.add_node(vertex_ident.clone());
@@ -467,6 +613,57 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
         if has_outputs && has_edges {
             bail!("'{vertex_ident}' cannot have both outgoing edges and ports marked as output.");
         }
+    }
+
+    // Check that each vertex that has a do-while edge also has a break edge and vice versa.
+    let do_while_edge_vertices = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == EdgeKind::DoWhile)
+        .map(|edge| edge.from.vertex.clone())
+        .collect::<HashSet<_>>();
+
+    let break_edge_vertices = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == EdgeKind::Break)
+        .map(|edge| edge.from.vertex.clone())
+        .collect::<HashSet<_>>();
+
+    for vertex in &do_while_edge_vertices {
+        if !break_edge_vertices.contains(vertex) {
+            bail!("Vertex '{vertex}' has a do-while edge but no corresponding break edge.");
+        }
+    }
+
+    for vertex in &break_edge_vertices {
+        if !do_while_edge_vertices.contains(vertex) {
+            bail!("Vertex '{vertex}' has a break edge but no corresponding do-while edge.");
+        }
+    }
+
+    // Check that do-whiles and breaks always branch.
+    let do_while_variants = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == EdgeKind::DoWhile)
+        .map(|edge| (edge.from.vertex.clone(), edge.from.output_variant.clone()))
+        .collect::<HashSet<_>>();
+
+    let break_variants = dag
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == EdgeKind::Break)
+        .map(|edge| (edge.from.vertex.clone(), edge.from.output_variant.clone()))
+        .collect::<HashSet<_>>();
+
+    if let Some(variant) = do_while_variants.intersection(&break_variants).next() {
+        let node = GraphNode::OutputVariant {
+            vertex: variant.0.clone(),
+            name: variant.1.clone(),
+        };
+
+        bail!("'{node}' has both a do-while and a break edge, but they must branch.");
     }
 
     Ok((graph, vertex_entry_groups))
@@ -623,6 +820,96 @@ mod tests {
         let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
+    }
+
+    #[test]
+    fn both_loops_valid() {
+        let dag: Dag = serde_json::from_str(include_str!("_dags/both_loops_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
+    #[test]
+    fn missing_do_while_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/missing_do_while_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Vertex 'until_11' has a break edge but no corresponding do-while edge."));
+    }
+
+    #[test]
+    fn missing_break_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/missing_break_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Vertex 'until_11' has a do-while edge but no corresponding break edge."));
+    }
+
+    #[test]
+    fn collect_without_for_each_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/collect_without_for_each_invalid.json"))
+                .unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Output port: a.ok.result' has a collect edge without for-each"));
+    }
+
+    #[test]
+    fn nested_for_each_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/nested_for_each_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Output port: b.ok.result' has a nested for-each"));
+    }
+
+    #[test]
+    fn do_while_in_for_each_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/do_while_in_for_each_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Output port: b.also_ok.loop' has a do-while or break edge inside a for-each"));
+    }
+
+    #[test]
+    fn unclosed_for_each_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/unclosed_for_each_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' has a for-each edge without a corresponding collect"));
+    }
+
+    #[test]
+    fn do_while_and_break_same_variant_invalid() {
+        let dag: Dag = serde_json::from_str(include_str!(
+            "_dags/do_while_and_break_same_variant_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Output variant: b.ok' has both a do-while and a break edge, but they must branch."));
+    }
+
+    #[test]
+    fn do_while_nested_invalid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/do_while_nested_invalid.json")).unwrap();
+
+        let res = validate(dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Do-while edge at 'Output port: c.also_ok.loop' has a nested loop inside."));
     }
 
     // == Cyclic or no input graphs ==

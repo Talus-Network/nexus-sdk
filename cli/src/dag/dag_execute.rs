@@ -9,22 +9,31 @@ use {
         sui::*,
     },
     anyhow::anyhow,
-    bincode,
     nexus_sdk::{
-        crypto::session::{Message, Session},
+        crypto::session::Session,
         idents::workflow,
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         transactions::dag,
-        types::TypeName,
+        types::{
+            hint_remote_fields,
+            DataStorage,
+            PortsData,
+            Storable,
+            StorageConf,
+            StorageKind,
+            TypeName,
+        },
     },
-    serde_json::Value,
+    std::sync::Arc,
+    tokio::sync::Mutex,
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
-    mut input_json: serde_json::Value,
+    input_json: serde_json::Value,
+    remote: Vec<String>,
     inspect: bool,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
@@ -42,15 +51,36 @@ pub(crate) async fn execute_dag(
     // Nexus objects must be present in the configuration.
     let objects = &get_nexus_objects(&mut conf).await?;
 
+    // Build the remote storage conf.
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let storage_conf = conf.data_storage.clone().into();
+
     // Get the active session for potential encryption
-    let session = get_active_session(&mut conf)?;
+    let session = CryptoConf::get_active_session(None).await.map_err(|e|
+        NexusCliError::Any(
+            anyhow!(
+                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+                e,
+                init_key = "$ nexus crypto init-key --force",
+                crypto_auth = "$ nexus crypto auth"
+            )
+        )
+    )?;
 
     // Fetch information about entry ports that need to be encrypted.
     let encrypt = fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
 
-    if !encrypt.is_empty() {
-        encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
-    }
+    // Encrypt ports that need to be encrypted and store ports remote if they
+    // need to be stored remotely.
+    let input_data = process_entry_ports(
+        &input_json,
+        &storage_conf,
+        preferred_remote_storage,
+        Arc::clone(&session),
+        &encrypt,
+        &remote,
+    )
+    .await?;
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
@@ -66,7 +96,7 @@ pub(crate) async fn execute_dag(
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, &encrypt) {
+    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, &input_data) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
@@ -115,87 +145,115 @@ pub(crate) async fn execute_dag(
         id = object_id.to_string().truecolor(100, 100, 100)
     );
 
+    // Update the session in the configuration.
+    CryptoConf::release_session(session, None)
+        .await
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
+
     if inspect {
         inspect_dag_execution(object_id, response.digest).await?;
     } else {
         json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
     }
 
-    // Always save the updated config
-    conf.save().await.map_err(NexusCliError::Any)?;
-
     Ok(())
 }
 
-fn encrypt_entry_ports_once(
-    session: &mut Session,
-    input: &mut Value,
-    targets: &HashMap<String, Vec<String>>,
-) -> Result<(), NexusCliError> {
-    if targets.is_empty() {
-        return Ok(()); // nothing to do, avoid ratchet advance
+/// Process entry ports: encrypt and/or store remotely as needed. `input` must
+/// be at least a 2-level JSON object (vertex -> port -> value).
+async fn process_entry_ports(
+    input: &serde_json::Value,
+    storage_conf: &StorageConf,
+    preferred_remote_storage: Option<StorageKind>,
+    session: Arc<Mutex<Session>>,
+    encrypt: &HashMap<String, Vec<String>>,
+    remote: &Vec<String>,
+) -> Result<HashMap<String, HashMap<String, DataStorage>>, NexusCliError> {
+    let Some(vertices) = input.as_object() else {
+        return Err(NexusCliError::Any(anyhow!(
+            "Input JSON must be an object with vertex names as keys."
+        )));
+    };
+
+    let mut result = HashMap::new();
+
+    for (vertex, data) in vertices {
+        let Some(ports) = data.as_object() else {
+            return Err(NexusCliError::Any(anyhow!(
+                "Input JSON for vertex '{vertex}' must be an object with port names as keys."
+            )));
+        };
+
+        // Figure out which ports need to be encrypted and stored remotely for
+        // this vertex.
+        let encrypt_fields = encrypt.get(vertex);
+        let remote_fields = ports
+            .iter()
+            .filter_map(|(port, _)| {
+                let handle = format!("{vertex}.{port}");
+                if remote.contains(&handle) {
+                    Some(port.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // Convert this json into a map of port -> NexusData.
+        let nexus_data_map = types::json_to_nexus_data_map(
+            data,
+            encrypt_fields.unwrap_or(&vec![]),
+            &remote_fields,
+            preferred_remote_storage.clone(),
+        )
+        .map_err(NexusCliError::Any)?;
+
+        // Commit each field - meaning it will get encrypted if necessary, and
+        // uploaded to remote storage if necessary.
+        let ports_data = PortsData::from_map(nexus_data_map)
+            .commit_all(&storage_conf, Arc::clone(&session))
+            .await
+            .map_err(|e| {
+                NexusCliError::Any(anyhow!(
+                    "Failed to store data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                    e = e,
+                    command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                    testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                ))
+            })?;
+
+        result.insert(vertex.clone(), ports_data);
     }
 
-    for (vertex, ports) in targets {
-        for port in ports {
-            // Take the plaintext for ownership
-            let slot = input
-                .get_mut(vertex)
-                .and_then(|v| v.get_mut(port))
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
+    // Hint the user if they should use remote storage and for what fields.
+    let flattened = result
+        .iter()
+        .flat_map(|(vertex, ports)| {
+            ports.iter().map(|(port, data)| {
+                (
+                    format!("{}.{}", vertex.clone(), port.clone()),
+                    data.as_json(),
+                )
+            })
+        })
+        .collect::<HashMap<String, &serde_json::Value>>();
 
-            let plaintext = slot.take();
-            let bytes =
-                serde_json::to_vec(&plaintext).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+    let remote_hints = hint_remote_fields(&json!(flattened)).unwrap_or_default();
 
-            // Encrypt
-            let msg = session
-                .encrypt(&bytes)
-                .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-
-            // Session must always return a Standard packet here
-            let Message::Standard(pkt) = msg else {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Session returned non-standard packet"
-                )));
-            };
-
-            // Serialize the StandardMessage with bincode
-            let serialized =
-                bincode::serialize(&pkt).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-            *slot =
-                serde_json::to_value(&serialized).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-        }
+    if !remote_hints.is_empty() {
+        return Err(NexusCliError::Any(anyhow!(
+            "Some input fields must be stored remotely to fit within transaction size limits. Please add the following argument to your command:\n\n{command} {fields}",
+            command = "--remote",
+            fields = remote_hints.join(",")
+        )));
     }
 
-    // commit the session state
-    session.commit_sender(None);
-
-    Ok(())
-}
-
-/// Gets the active session for encryption/decryption
-fn get_active_session(
-    conf: &mut CliConf,
-) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
-    match &mut conf.crypto {
-        Some(crypto_secret) => {
-            if crypto_secret.sessions.is_empty() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required — run `nexus crypto auth` first"
-                )));
-            }
-
-            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
-            crypto_secret
-                .sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
-        }
-        None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        ))),
+    // Advance the ratchet if we need to.
+    if !encrypt.is_empty() {
+        session.lock().await.commit_sender(None);
     }
+
+    Ok(result)
 }
 
 /// Fetches the encrypted entry ports for a DAG.
@@ -267,15 +325,22 @@ async fn fetch_encrypted_entry_ports(
 mod tests {
     use {
         super::*,
-        nexus_sdk::crypto::{
-            session::{Message, Session},
-            x3dh::{IdentityKey, PreKeyBundle},
+        assert_matches::assert_matches,
+        mockito::{Server, ServerGuard},
+        nexus_sdk::{
+            crypto::{
+                session::{Message, Session},
+                x3dh::{IdentityKey, PreKeyBundle},
+            },
+            types::{DataStorage, Storable},
+            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
         },
         serde_json::json,
+        std::collections::HashMap,
     };
 
     /// Helper to create a mock session for testing
-    fn create_mock_session() -> Session {
+    fn create_mock_session() -> Arc<Mutex<Session>> {
         let sender_id = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
         let spk_secret = IdentityKey::generate().secret().clone();
@@ -301,198 +366,228 @@ mod tests {
             .decrypt(&setup_msg)
             .expect("Failed to decrypt setup message");
 
-        sender_sess
+        Arc::new(Mutex::new(sender_sess))
     }
 
-    #[test]
-    fn test_encrypt_entry_ports_once_empty_targets() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets = HashMap::new();
+    /// Setup mock server for Walrus testing
+    async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
+        // Create mock server
+        let server = Server::new_async().await;
+        let server_url = server.url();
 
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+        // Create a Walrus client that points to our mock server
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(server_url.clone()),
+            walrus_aggregator_url: Some(server_url),
+            walrus_save_for_epochs: Some(2),
+        };
 
-        assert!(result.is_ok());
-        // Input should remain unchanged when no targets are specified
-        assert_eq!(input["vertex1"]["port1"], "test_value");
+        Ok((server, storage_conf))
     }
 
-    #[test]
-    fn test_encrypt_entry_ports_once_single_target() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value",
-                "port2": "other_value"
-            }
-        });
-        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // port1 should be encrypted (no longer the original string)
-        assert_ne!(input["vertex1"]["port1"], "test_value");
-        // port2 should remain unchanged
-        assert_eq!(input["vertex1"]["port2"], "other_value");
-
-        // The encrypted value should be a JSON array of bytes
-        assert!(input["vertex1"]["port1"].is_array());
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_multiple_targets() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "value1",
-                "port2": "value2"
-            },
-            "vertex2": {
-                "port3": "value3"
-            }
-        });
-
-        let targets = HashMap::from([
-            (
-                "vertex1".to_string(),
-                vec!["port1".to_string(), "port2".to_string()],
-            ),
-            ("vertex2".to_string(), vec!["port3".to_string()]),
-        ]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // All targeted ports should be encrypted
-        assert!(input["vertex1"]["port1"].is_array());
-        assert!(input["vertex1"]["port2"].is_array());
-        assert!(input["vertex2"]["port3"].is_array());
-
-        // Original values should no longer be present
-        assert_ne!(input["vertex1"]["port1"], "value1");
-        assert_ne!(input["vertex1"]["port2"], "value2");
-        assert_ne!(input["vertex2"]["port3"], "value3");
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_bad_handle_format() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets = HashMap::from([(
-            "vertex1".to_string(),
-            vec!["invalid_handle_format".to_string()],
-        )]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no vertex1.invalid_handle_format"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_nonexistent_vertex() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets =
-            HashMap::from([("nonexistent_vertex".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no nonexistent_vertex.port1"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_nonexistent_port() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets =
-            HashMap::from([("vertex1".to_string(), vec!["nonexistent_port".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no vertex1.nonexistent_port"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_complex_data_types() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": {
-                    "nested": {
-                        "data": [1, 2, 3],
-                        "string": "test"
-                    }
-                }
-            }
-        });
-        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // The complex JSON should be encrypted
-        assert!(input["vertex1"]["port1"].is_array());
-        // It should no longer contain the original nested structure
-        assert!(input["vertex1"]["port1"].get("nested").is_none());
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_ratchet_advancement() {
-        let mut session = create_mock_session();
-        let mut input = json!({
+    #[tokio::test]
+    async fn test_process_entry_ports_success_no_encrypt_no_remote() {
+        let input = json!({
             "vertex1": {
                 "port1": "value1",
                 "port2": "value2"
             }
         });
-        let targets = HashMap::from([(
-            "vertex1".to_string(),
-            vec!["port1".to_string(), "port2".to_string()],
-        )]);
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let encrypt = HashMap::new();
+        let remote = vec![];
 
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
 
-        assert!(result.is_ok());
+        let vertex = result.get("vertex1").expect("vertex1 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
 
-        // Both values should be encrypted, but since we advance the ratchet only once,
-        // subsequent encryptions should use static encryption
-        assert!(input["vertex1"]["port1"].is_array());
-        assert!(input["vertex1"]["port2"].is_array());
+        // Both should be Inline and not encrypted
+        assert_matches!(port1, DataStorage::Inline(_));
+        assert_eq!(port1.as_json(), &json!("value1"));
+        assert!(!port1.is_encrypted());
 
-        // The encrypted values should be different even for the same session
-        // (due to nonces), but we can't easily test the ratchet state directly
-        // without access to session internals
+        assert_matches!(port2, DataStorage::Inline(_));
+        assert_eq!(port2.as_json(), &json!("value2"));
+        assert!(!port2.is_encrypted());
+    }
+
+    #[tokio::test]
+    async fn test_process_entry_ports_encrypt_only() {
+        let input = json!({
+            "vertex1": {
+                "port1": "secret_value",
+                "port2": "plain_value"
+            }
+        });
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let mut encrypt = HashMap::new();
+        encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
+        let remote = vec![];
+
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
+
+        let vertex = result.get("vertex1").expect("vertex1 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
+
+        // port1 should be encrypted
+        assert!(port1.is_encrypted());
+        // port2 should not be encrypted
+        assert!(!port2.is_encrypted());
+    }
+
+    #[tokio::test]
+    async fn test_process_entry_ports_remote_only() {
+        let input = json!({
+            "vertex1": {
+                "port1": "remote_value",
+                "port2": "local_value"
+            }
+        });
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let encrypt = HashMap::new();
+        let remote = vec!["vertex1.port1".to_string()];
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
+
+        let vertex = result.get("vertex1").expect("vertex1 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
+
+        // port1 should be walrus
+        assert_matches!(port1, DataStorage::Walrus(_));
+        // port2 should be Inline
+        assert_matches!(port2, DataStorage::Inline(_));
+
+        // Verify the request was made
+        mock_put.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_process_entry_ports_encrypt_and_remote() {
+        let input = json!({
+            "vertex1": {
+                "port1": "secret_remote_value",
+                "port2": "plain_local_value"
+            }
+        });
+        let (mut server, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let mut encrypt = HashMap::new();
+        encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
+        let remote = vec!["vertex1.port1".to_string()];
+
+        // Setup mock Walrus response
+        let mock_put_response = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: "json_blob_id".to_string(),
+                    id: "json_object_id".to_string(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+
+        let mock_put = server
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_put_response).expect("Must serialize"))
+            .create_async()
+            .await;
+
+        let result = process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote)
+            .await
+            .expect("Should succeed");
+
+        let vertex = result.get("vertex1").expect("vertex1 missing");
+        let port1 = vertex.get("port1").expect("port1 missing");
+        let port2 = vertex.get("port2").expect("port2 missing");
+
+        // port1 should be encrypted and walrus
+        assert!(port1.is_encrypted());
+        assert_matches!(port1, DataStorage::Walrus(_));
+        // port2 should be Inline and not encrypted
+        assert_matches!(port2, DataStorage::Inline(_));
+        assert!(!port2.is_encrypted());
+
+        // Verify the request was made
+        mock_put.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_process_entry_ports_invalid_input_not_object() {
+        let input = json!("not_an_object");
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let encrypt = HashMap::new();
+        let remote = vec![];
+
+        let result =
+            process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote).await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Input JSON must be an object"));
+    }
+
+    #[tokio::test]
+    async fn test_process_entry_ports_invalid_vertex_not_object() {
+        let input = json!({
+            "vertex1": "not_an_object"
+        });
+        let (_, storage_conf) = setup_mock_server_and_conf()
+            .await
+            .expect("Server must start");
+        let session = create_mock_session();
+        let encrypt = HashMap::new();
+        let remote = vec![];
+
+        let result =
+            process_entry_ports(&input, &storage_conf, None, session, &encrypt, &remote).await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("must be an object with port names as keys"));
     }
 }

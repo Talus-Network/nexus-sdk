@@ -94,3 +94,29 @@ The first number is less than the second.
 
 - **`lt.a`: [`prim@i64`]** - The first number.
 - **`lt.b`: [`prim@i64`]** - The second number.
+
+---
+
+# `xyz.taluslabs.math.i64.sum@1`
+
+Standard Nexus Tool that sums an array of [`i64`] numbers and returns the result.
+
+## Input
+
+**`vec`: [`Vec<prim@i64>`]**
+
+The array of numbers to sum.
+
+## Output Variants & Ports
+
+**`ok`**
+
+The summation was successful.
+
+- **`ok.result`: [`prim@i64`]** - The result of the summation.
+
+**`err`**
+
+The summation failed due to overflow.
+
+- **`err.reason`: [`String`]** - The reason for the error. This is always overflow.

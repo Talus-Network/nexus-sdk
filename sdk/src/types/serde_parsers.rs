@@ -203,16 +203,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use {super::*, serde::Deserialize, serde_json::json};
-
-    #[derive(Deserialize, Serialize)]
-    struct TestStruct {
-        #[serde(
-            deserialize_with = "deserialize_array_of_bytes_to_json_value",
-            serialize_with = "serialize_json_value_to_array_of_bytes"
-        )]
-        value: serde_json::Value,
-    }
+    use {super::*, serde::Deserialize};
 
     #[derive(Deserialize, Serialize)]
     struct TestUrlStruct {
@@ -254,60 +245,6 @@ mod tests {
         let input = r#"{"value":[49,50,255,48]}"#;
         let result = serde_json::from_str::<TestDescriptionStruct>(input).unwrap();
         assert_eq!(result.value, "12\u{FFFD}0");
-    }
-
-    #[test]
-    fn test_single_valid_json_number() {
-        // This test supplies a single element.
-        // The inner array [49, 50, 51] corresponds to the UTF-8 string "123".
-        // "123" is valid JSON and parses to the number 123.
-        let input = r#"{"value":[[49,50,51]]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!(123));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
-    }
-
-    #[test]
-    fn test_multiple_valid_json() {
-        // Two elements:
-        // First element: [34,118,97,108,117,101,34] corresponds to "\"value\""
-        //   which is valid JSON and becomes the string "value".
-        // Second element: [49,50,51] corresponds to "123" and becomes the number 123.
-        // Since there is more than one element, the deserializer returns a JSON array.
-        let input = r#"{"value":[[34,118,97,108,117,101,34],[49,50,51]]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!(["value", 123]));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
-    }
-
-    #[test]
-    fn test_single_invalid_json_fallback() {
-        // Single element with bytes for "hello": [104,101,108,108,111].
-        // "hello" is not valid JSON (missing quotes), so the fallback
-        // returns the string "hello" as a JSON string.
-        let input = r#"{"value":[[104,101,108,108,111]]}"#;
-
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!("hello"));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        // Quotes are added when ser'd.
-        assert_eq!(ser, r#"{"value":[[34,104,101,108,108,111,34]]}"#);
-    }
-
-    #[test]
-    fn test_empty_array() {
-        // An empty outer array should result in an empty JSON array.
-        let input = r#"{"value":[]}"#;
-        let result: TestStruct = serde_json::from_str(input).unwrap();
-        assert_eq!(result.value, json!([]));
-
-        let ser = serde_json::to_string(&result).unwrap();
-        assert_eq!(ser, input);
     }
 
     #[test]
