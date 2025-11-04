@@ -8324,6 +8324,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "templating-jinja"
+version = "0.3.0-rc.1"
+dependencies = [
+ "minijinja",
+ "nexus-sdk",
+ "nexus-toolkit",
+ "schemars 1.0.0-alpha.17",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
