@@ -1725,7 +1725,7 @@ mod tests {
         let (mut sender, mut receiver) = setup_ratchet_pair();
         let ad = b"associated data";
 
-        // Sender → receiver to establish initial chain.
+        // Sender -> receiver to establish initial chain.
         let (hdr0, payload0) = sender
             .ratchet_encrypt_he(b"initial sync", ad)
             .expect("sender encrypt failed");
@@ -1741,7 +1741,7 @@ mod tests {
             .ratchet_decrypt_he(&hdr1, &payload1, ad)
             .expect("sender failed to decrypt reply");
 
-        // Sender now transmits the first message on the new chain (n = 0) — drop it.
+        // Sender now transmits the first message on the new chain (n = 0) - drop it.
         let _ = sender
             .ratchet_encrypt_he(b"dropped message", ad)
             .expect("sender encrypt failed");
