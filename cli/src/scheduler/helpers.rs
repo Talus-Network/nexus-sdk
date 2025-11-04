@@ -22,6 +22,7 @@ pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)
     Ok(result)
 }
 
+/// Ensure the absolute deadline does not precede the start when both are set.
 pub(crate) fn ensure_start_before_deadline(
     start_ms: Option<u64>,
     deadline_ms: Option<u64>,
@@ -36,6 +37,7 @@ pub(crate) fn ensure_start_before_deadline(
     Ok(())
 }
 
+/// Validate combinations of absolute and relative scheduling flags provided to the CLI.
 pub(crate) fn validate_schedule_options(
     start_ms: Option<u64>,
     deadline_ms: Option<u64>,
@@ -67,6 +69,7 @@ pub(crate) fn validate_schedule_options(
     Ok(())
 }
 
+/// Ensure that a deadline offset is only accepted when a matching start offset is present.
 pub(crate) fn ensure_offset_deadline_valid(
     start_offset: Option<u64>,
     deadline_offset: Option<u64>,
@@ -79,6 +82,7 @@ pub(crate) fn ensure_offset_deadline_valid(
     Ok(())
 }
 
+/// Fetch the encrypted entry port mapping for the provided DAG entry group.
 pub(crate) async fn fetch_encryption_targets(
     sui: &sui::Client,
     dag_id: &sui::ObjectID,
