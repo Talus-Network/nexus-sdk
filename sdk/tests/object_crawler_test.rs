@@ -72,7 +72,7 @@ enum HeterogeneousValue {
     AnotherValue(AnotherPlainValue),
 }
 
-// TODO: <https://github.com/Talus-Network/nexus/issues/559>
+// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/318>
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
