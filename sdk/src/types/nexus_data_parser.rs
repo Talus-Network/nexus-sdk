@@ -38,6 +38,26 @@ struct NexusDataAsStruct {
     encrypted: bool,
 }
 
+/// Check if a string represents a large number (u128/u256 range).
+/// Handles both positive and negative integers.
+fn is_large_number(s: &str) -> bool {
+    if s.starts_with('-') {
+        s[1..].chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    } else {
+        s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
+    }
+}
+
+/// Wrap large numbers as JSON strings to preserve precision for u128/u256.
+fn wrap_large_numbers_as_string(value: &str) -> String {
+    let trimmed = value.trim();
+    if is_large_number(trimmed) {
+        format!(r#""{}""#, trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl<'de> Deserialize<'de> for NexusData {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -50,7 +70,11 @@ impl<'de> Deserialize<'de> for NexusData {
             // the data is a JSON string that can be parsed directly.
             let str = String::from_utf8(data.one).map_err(serde::de::Error::custom)?;
 
-            serde_json::from_str(&str).map_err(serde::de::Error::custom)?
+            // Wrap large numbers as strings to preserve precision.
+            // We also trim the value to remove any leading or trailing whitespace.
+            let adjusted_value = wrap_large_numbers_as_string(&str);
+
+            serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?
         } else {
             // If we're dealing with multiple values, we assume that
             // the data is an array of JSON strings that can be parsed.
@@ -59,7 +83,12 @@ impl<'de> Deserialize<'de> for NexusData {
             for value in data.many {
                 let str = String::from_utf8(value).map_err(serde::de::Error::custom)?;
 
-                values.push(serde_json::from_str(&str).map_err(serde::de::Error::custom)?);
+                // Wrap large numbers as strings to preserve precision.
+                // We also trim the value to remove any leading or trailing whitespace.
+                let adjusted_value = wrap_large_numbers_as_string(&str);
+
+                values
+                    .push(serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?);
             }
 
             serde_json::Value::Array(values)
