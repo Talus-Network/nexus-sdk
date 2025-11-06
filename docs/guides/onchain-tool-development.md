@@ -165,16 +165,36 @@ public fun execute(
     } else if (input_value > 1000) {
         // Return custom variant
         tool_output::variant(b"custom_result")
-            .with_field(b"data", b"large_value_processed")
-            .with_field(b"timestamp", sui::clock::timestamp_ms(clock).to_string().into_bytes())
+            .with_field(b"data", tool_output::string_value(b"large_value_processed"))
+            .with_field(b"timestamp", tool_output::number_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
     } else {
         // Return success variant
         let result = input_value * 2;
         tool_output::ok()
-            .with_field(b"result", result.to_string().into_bytes())
+            .with_field(b"result", tool_output::number_value(result.to_string().into_bytes()))
     }
 }
 ```
+
+#### Understanding Field Value Types
+
+When adding fields to `ToolOutput`, you must use typed constructor functions to ensure proper JSON formatting:
+
+```move
+// Numeric values (u8, u16, u32, u64, u128, u256)
+.with_field(b"count", tool_output::number_value(value.to_string().into_bytes()))
+
+// String values (will be wrapped in quotes in JSON)
+.with_field(b"message", tool_output::string_value(b"Hello world"))
+
+// Boolean values (true/false without quotes in JSON)
+.with_field(b"success", tool_output::bool_value(b"true"))
+
+// Address values (prefixed with "0x" and wrapped in quotes in JSON)
+.with_field(b"sender", tool_output::address_value(address.to_string().into_bytes()))
+```
+
+This typing ensures that the Nexus framework correctly parses and processes your tool's outputs.
 
 ### Step 5: Add Helper Functions
 

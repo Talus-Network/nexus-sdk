@@ -121,7 +121,7 @@ where
         //
         // TODO: <https://github.com/Talus-Network/nexus-next/issues/97>
 
-        // Wrap large numbers as strings to preserve precision. 
+        // Wrap large numbers as strings to preserve precision.
         // We also trim the value to remove any leading or trailing whitespace.
         let adjusted_value = wrap_large_numbers_as_string(&value);
 
