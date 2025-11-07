@@ -149,6 +149,7 @@ pub fn register_off_chain_for_self(
 }
 
 /// PTB template for registering a new onchain Nexus Tool.
+#[allow(clippy::too_many_arguments)]
 pub fn register_on_chain_for_self(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
