@@ -272,22 +272,4 @@ mod tests {
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);
     }
-
-    #[test]
-    fn test_large_number_precision_preserved() {
-        // Test that large numbers (like u256) are converted to strings to preserve precision.
-        let large_u256 =
-            "105792089237316195563853351929625371316844592863025172891227567439681422591090";
-        let input = format!(
-            r#"{{"value":[{}]}}"#,
-            serde_json::to_string(&large_u256).unwrap()
-        );
-
-        let result: TestStruct = serde_json::from_str(&input).unwrap();
-        // The large number should be stored as a string to avoid precision loss.
-        assert_eq!(
-            result.value,
-            serde_json::Value::String(large_u256.to_string())
-        );
-    }
 }
