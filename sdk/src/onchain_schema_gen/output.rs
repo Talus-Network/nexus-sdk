@@ -1,9 +1,10 @@
 //! Output schema generation for Move onchain tools.
 
-use anyhow::{anyhow, Result as AnyResult};
-use serde_json::{json, Map, Value};
-
-use super::types::convert_move_type_to_schema;
+use {
+    super::types::convert_move_type_to_schema,
+    anyhow::{anyhow, Result as AnyResult},
+    serde_json::{json, Map, Value},
+};
 
 /// Generate output schema by introspecting the Move module's Output enum.
 ///
@@ -71,4 +72,3 @@ pub async fn generate_output_schema(
 
     Ok(schema_string)
 }
-

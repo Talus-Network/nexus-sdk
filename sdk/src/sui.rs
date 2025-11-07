@@ -10,11 +10,11 @@
 
 pub use {
     move_core_types::{
+        account_address::AccountAddress as MoveAccountAddress,
         ident_str as move_ident_str,
         identifier::IdentStr as MoveIdentStr,
         language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
         u256::U256 as MoveU256,
-        account_address::AccountAddress as MoveAccountAddress
     },
     shared_crypto::intent::Intent,
     sui_config::{
@@ -77,13 +77,12 @@ pub use {
                 Transaction,
                 TransactionData,
             },
+            type_input::{StructInput as MoveStructInput, TypeInput as MoveTypeInput},
             Identifier,
             MOVE_STDLIB_PACKAGE_ID,
             SUI_CLOCK_OBJECT_ID as CLOCK_OBJECT_ID,
             SUI_CLOCK_OBJECT_SHARED_VERSION as CLOCK_OBJECT_SHARED_VERSION,
             SUI_FRAMEWORK_PACKAGE_ID as FRAMEWORK_PACKAGE_ID,
-            type_input::TypeInput as MoveTypeInput,
-            type_input::StructInput as MoveStructInput,
         },
         wallet_context::WalletContext,
         SuiClient as Client,

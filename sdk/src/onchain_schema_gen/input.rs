@@ -1,9 +1,10 @@
 //! Input schema generation for Move onchain tools.
 
-use anyhow::{anyhow, Result as AnyResult};
-use serde_json::{Map, Value};
-
-use super::types::{convert_move_type_to_schema, is_tx_context_param};
+use {
+    super::types::{convert_move_type_to_schema, is_tx_context_param},
+    anyhow::{anyhow, Result as AnyResult},
+    serde_json::{Map, Value},
+};
 
 /// Generate input schema by introspecting the execute function's parameters.
 ///
@@ -76,4 +77,3 @@ pub async fn generate_input_schema(
 
     Ok(schema_string)
 }
-

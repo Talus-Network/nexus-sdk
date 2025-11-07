@@ -1,7 +1,9 @@
 //! Type conversion utilities for Move types to JSON schema.
 
-use anyhow::Result as AnyResult;
-use serde_json::{json, Value};
+use {
+    anyhow::Result as AnyResult,
+    serde_json::{json, Value},
+};
 
 /// Convert a Sui Move normalized type to a JSON schema representation.
 ///
@@ -155,8 +157,7 @@ pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::sui::MoveNormalizedType;
+    use {super::*, crate::sui::MoveNormalizedType};
 
     // Helper function to create a struct type.
     fn make_struct(address: &str, module: &str, name: &str) -> MoveNormalizedType {
