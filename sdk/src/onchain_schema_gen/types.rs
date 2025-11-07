@@ -238,13 +238,13 @@ mod tests {
         let utf8_string = make_struct("0x1", "string", "String");
         let schema = convert_move_type_to_schema(&utf8_string).unwrap();
         assert_eq!(schema["type"], "string");
-        assert_eq!(schema["description"], "UTF-8 string");
+        assert_eq!(schema["description"], "0x1::string::String");
 
         // 0x1::ascii::String.
         let ascii_string = make_struct("0x1", "ascii", "String");
         let schema = convert_move_type_to_schema(&ascii_string).unwrap();
         assert_eq!(schema["type"], "string");
-        assert_eq!(schema["description"], "ASCII string");
+        assert_eq!(schema["description"], "0x1::ascii::String");
     }
 
     #[test]

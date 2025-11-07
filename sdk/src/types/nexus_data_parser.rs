@@ -308,14 +308,14 @@ mod tests {
         // Test that large numbers (like u256) are converted to strings to preserve precision.
         let large_u256 =
             "105792089237316195563853351929625371316844592863025172891227567439681422591090";
-        
+
         // Create NexusData with a large number as a string value.
         let nexus_data = NexusData::new_inline(serde_json::Value::String(large_u256.to_string()));
-        
+
         // Serialize and deserialize to verify precision is preserved.
         let serialized = serde_json::to_string(&nexus_data).unwrap();
         let deserialized: NexusData = serde_json::from_str(&serialized).unwrap();
-        
+
         // The large number should be stored as a string to avoid precision loss.
         match &deserialized.data {
             DataStorage::Inline(storage) => {
