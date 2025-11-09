@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - made faucet requests compatible with old and latest versions of the `sui-faucet`
+- allow skipping the first encrypted message in a new `dh` chain
 
 ## [`0.2.0`] - 2025-08-12
 
