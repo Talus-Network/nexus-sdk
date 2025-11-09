@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "exchanges-coinbase"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -3197,7 +3197,7 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "backon",
  "base64 0.21.7",
@@ -4205,7 +4205,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -4301,7 +4301,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -5010,7 +5010,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5053,7 +5053,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -5107,7 +5107,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -8325,7 +8325,7 @@ dependencies = [
 
 [[package]]
 name = "templating-jinja"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "minijinja",
  "nexus-sdk",
@@ -9197,7 +9197,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "jsonschema",
