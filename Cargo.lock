@@ -7450,7 +7450,7 @@ checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
 name = "social-twitter"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.13.1",
  "chrono",
