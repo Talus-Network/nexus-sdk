@@ -246,6 +246,6 @@ For examples of invalid DAGs and common mistakes to avoid (especially regarding 
 <!-- List of references -->
 
 [nexus-next-workflow]: ../../nexus-next/packages/workflow.md
-[example-dags]: https://github.com/Talus-Network/nexus-sdk/tree/v0.1.0/cli/src/dag/_dags
+[example-dags]: https://github.com/Talus-Network/nexus-sdk/tree/v0.3.0/sdk/src/dag/_dags
 [nexus-cli]: ../cli.md
 [looping]: ../../nexus-next/flow-controls/looping.md
