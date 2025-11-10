@@ -64,3 +64,7 @@ pub mod dag;
 /// Schema generation utilities for Move onchain tools.
 #[cfg(feature = "schema_gen")]
 pub mod onchain_schema_gen;
+
+/// Provides various Nexus utilities like deployment and execution of workflows.
+#[cfg(feature = "nexus")]
+pub mod nexus;

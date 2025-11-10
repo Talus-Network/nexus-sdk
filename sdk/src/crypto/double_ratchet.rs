@@ -740,12 +740,18 @@ impl RatchetStateHE {
             self.skip_message_keys_he(header.pn, None)?;
             self.dh_ratchet_he(&header)?;
 
-            // 2. derive and cache keys for indices 0‥(N-1) with the *current* HK_r
-            self.skip_message_keys_he(header.n, self.hkr)?;
+            // 2. derive and cache keys for indices 0‥(N-1) with the current HK_r
+            let hk_seed = self.hkr;
+            self.skip_message_keys_he(header.n, hk_seed)?;
 
-            // 3. *now* step HK_r so it points at the next expected header
-            if let Some(ref hk) = self.hkr {
-                self.hkr = Some(Self::kdf_hk(hk));
+            // 3. now step HK_r so it points at the next expected header
+            if let Some(mut hk) = hk_seed {
+                for _ in 0..=header.n {
+                    hk = Self::kdf_hk(&hk);
+                }
+                self.hkr = Some(hk);
+            } else {
+                return Err(RatchetError::MissingHeaderKey);
             }
         } else if self.ckr.is_none() {
             // We have never derived a receiving chain: perform a DH-ratchet now.
@@ -846,16 +852,10 @@ impl RatchetStateHE {
         // Before first DH ratchet (ckr = None), only accept headers with pn = 0
         if self.ckr.is_none() {
             let mut hk = self.nhkr;
-            for steps in 0..=MAX_SKIP_PER_CHAIN {
+            for _steps in 0..=MAX_SKIP_PER_CHAIN {
                 if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {
                     if hdr.pn == 0 {
-                        if steps == 0 {
-                            // Exact NHK_r match - this triggers a DH ratchet
-                            return Ok((hdr, true, None));
-                        } else {
-                            // Derived from NHK_r but with pn=0 - acceptable before first DH ratchet
-                            return Ok((hdr, false, Some(hk)));
-                        }
+                        return Ok((hdr, true, Some(hk)));
                     }
                 }
                 hk = Self::kdf_hk(&hk);
@@ -866,15 +866,9 @@ impl RatchetStateHE {
 
         // After first DH ratchet, try NHK_r path with derivations
         let mut hk = self.nhkr;
-        for steps in 0..=MAX_SKIP_PER_CHAIN {
+        for _steps in 0..=MAX_SKIP_PER_CHAIN {
             if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {
-                if steps == 0 {
-                    // Exact NHK_r match - this triggers a DH ratchet
-                    return Ok((hdr, true, None));
-                } else {
-                    // Derived from NHK_r but not exact match
-                    return Ok((hdr, false, Some(hk)));
-                }
+                return Ok((hdr, true, Some(hk)));
             }
             hk = Self::kdf_hk(&hk);
         }
@@ -1724,6 +1718,44 @@ mod tests {
             "Successfully decrypted all {} messages out of order",
             num_messages
         );
+    }
+
+    #[test]
+    fn test_skip_first_message_on_new_chain() {
+        let (mut sender, mut receiver) = setup_ratchet_pair();
+        let ad = b"associated data";
+
+        // Sender -> receiver to establish initial chain.
+        let (hdr0, payload0) = sender
+            .ratchet_encrypt_he(b"initial sync", ad)
+            .expect("sender encrypt failed");
+        receiver
+            .ratchet_decrypt_he(&hdr0, &payload0, ad)
+            .expect("receiver failed to decrypt initial message");
+
+        // Receiver replies so the sender performs a DH ratchet.
+        let (hdr1, payload1) = receiver
+            .ratchet_encrypt_he(b"reply", ad)
+            .expect("receiver encrypt failed");
+        sender
+            .ratchet_decrypt_he(&hdr1, &payload1, ad)
+            .expect("sender failed to decrypt reply");
+
+        // Sender now transmits the first message on the new chain (n = 0) - drop it.
+        let _ = sender
+            .ratchet_encrypt_he(b"dropped message", ad)
+            .expect("sender encrypt failed");
+
+        // Sender sends the second message on that chain (n = 1).
+        let (hdr2, payload2) = sender
+            .ratchet_encrypt_he(b"delivered message", ad)
+            .expect("sender encrypt failed");
+
+        // Receiver should be able to decrypt even though n = 0 was skipped.
+        let decrypted = receiver
+            .ratchet_decrypt_he(&hdr2, &payload2, ad)
+            .expect("receiver failed to decrypt message after skipping n=0");
+        assert_eq!(decrypted, b"delivered message");
     }
 
     #[test]
