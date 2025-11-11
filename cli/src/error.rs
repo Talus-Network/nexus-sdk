@@ -1,5 +1,6 @@
 use {
     crate::{display::*, prelude::*},
+    nexus_sdk::nexus::error::NexusError,
     thiserror::Error,
 };
 
@@ -17,4 +18,6 @@ pub(crate) enum NexusCliError {
     Http(reqwest::Error),
     #[error("{error}{separator}\n{0}", error = "Sui Error".red().bold(), separator = separator())]
     Sui(sui::Error),
+    #[error("{error}{separator}\n{0}", error = "Nexus Client Error".red().bold(), separator = separator())]
+    Nexus(NexusError),
 }

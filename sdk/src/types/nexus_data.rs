@@ -26,6 +26,9 @@ use {
 pub const NEXUS_BASE_TRANSACTION_SIZE: usize = 8 * 1024;
 /// Max transaction size supported by Sui.
 pub const MAX_TRANSACTION_SIZE: usize = 128 * 1024;
+/// Extra bytes we reserve for workflow metadata (DAG, proofs, etc.) when
+/// estimating how much room entry data can take inside a transaction.
+const ENTRY_PORTS_RESERVED_BYTES: usize = 64 * 1024;
 /// The length of a Walrus blob ID.
 pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 /// How much extra space per encrypted item is needed?
@@ -513,7 +516,8 @@ pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String
     // Sort them largest to smallest.
     fields.sort_by(|a, b| b.1.cmp(&a.1));
 
-    let available_size = MAX_TRANSACTION_SIZE - NEXUS_BASE_TRANSACTION_SIZE;
+    let available_size = (MAX_TRANSACTION_SIZE - NEXUS_BASE_TRANSACTION_SIZE)
+        .saturating_sub(ENTRY_PORTS_RESERVED_BYTES);
     let mut required_size = fields.iter().map(|(_, size)| size).sum::<usize>();
 
     if required_size <= available_size {
@@ -1222,8 +1226,10 @@ mod tests {
     #[test]
     fn test_hint_remote_fields_array_storage_cost() {
         // Create a large array to overflow the transaction size.
-        let arr_len =
-            ((MAX_TRANSACTION_SIZE - NEXUS_BASE_TRANSACTION_SIZE) / WALRUS_BLOB_ID_LENGTH) - 10;
+        let effective_budget = MAX_TRANSACTION_SIZE
+            .saturating_sub(NEXUS_BASE_TRANSACTION_SIZE)
+            .saturating_sub(ENTRY_PORTS_RESERVED_BYTES);
+        let arr_len = (effective_budget / WALRUS_BLOB_ID_LENGTH).saturating_sub(10);
         let arr: Vec<serde_json::Value> = (0..arr_len)
             // Make the data longer than the walrus key storage cost to ensure
             // storing remotely is beneficial.

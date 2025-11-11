@@ -70,8 +70,6 @@ const MAX_SKIP_PER_CHAIN: usize = 1_000;
 const MAX_SKIP_GLOBAL: usize = 2 * MAX_SKIP_PER_CHAIN;
 /// Maximum cached outgoing drafts (bounded LRU).
 const MAX_OUTGOING: usize = 1024;
-/// Deterministic SIV nonce (16-byte all-zero).
-const ZERO_NONCE: [u8; 16] = [0u8; 16];
 /// Each AES‑SIV nonce is 128‑bit.  We concatenate an 8‑byte random prefix with
 /// an 8‑byte big‑endian counter to get a unique value for every encryption.
 /// Note: We use AES‑128‑SIV with 32‑byte (256‑bit) keys for 128‑bit security.
@@ -537,18 +535,17 @@ impl RatchetStateHE {
     // hencrypt/hdecrypt unchanged
     fn hencrypt(&self, hk: &[u8; 32], pt: &[u8]) -> Result<Vec<u8>, RatchetError> {
         let cipher = Aes128SivAead::new_from_slice(hk)?;
+        let zero_nonce = Nonce::default();
         cipher
-            .encrypt(
-                Nonce::from_slice(&ZERO_NONCE),
-                Payload { msg: pt, aad: &[] },
-            )
+            .encrypt(&zero_nonce, Payload { msg: pt, aad: &[] })
             .map_err(Into::into)
     }
 
     fn hdecrypt(hk: &[u8; 32], data: &[u8]) -> Result<Header, RatchetError> {
         let cipher = Aes128SivAead::new_from_slice(hk)?;
+        let zero_nonce = Nonce::default();
         let pt = cipher.decrypt(
-            Nonce::from_slice(&ZERO_NONCE),
+            &zero_nonce,
             Payload {
                 msg: data,
                 aad: &[],
@@ -698,8 +695,10 @@ impl RatchetStateHE {
         full_ad.extend_from_slice(&enc_header);
         let cipher = Aes128SivAead::new_from_slice(&mk).unwrap();
         let nonce_bytes = self.nonce_seq_msg.next();
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(&nonce_bytes);
         let mut ct = cipher.encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            &nonce,
             Payload {
                 msg: plaintext,
                 aad: &full_ad,
@@ -759,9 +758,19 @@ impl RatchetStateHE {
         if used_nhk {
             self.skip_message_keys_he(header.pn, None)?;
             self.dh_ratchet_he(&header)?;
-            self.skip_message_keys_he(header.n, self.hkr)?;
-            if let Some(ref hk) = self.hkr {
-                self.hkr = Some(Self::kdf_hk(hk));
+
+            // 2. derive and cache keys for indices 0‥(N-1) with the current HK_r
+            let hk_seed = self.hkr;
+            self.skip_message_keys_he(header.n, hk_seed)?;
+
+            // 3. now step HK_r so it points at the next expected header
+            if let Some(mut hk) = hk_seed {
+                for _ in 0..=header.n {
+                    hk = Self::kdf_hk(&hk);
+                }
+                self.hkr = Some(hk);
+            } else {
+                return Err(RatchetError::MissingHeaderKey);
             }
         } else if self.ckr.is_none() {
             self.skip_message_keys_he(header.pn, None)?;
@@ -794,9 +803,11 @@ impl RatchetStateHE {
         let mut full_ad = ad.to_vec();
         full_ad.extend_from_slice(enc_header);
         let cipher = Aes128SivAead::new_from_slice(&mk).unwrap();
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(nonce_bytes);
         let result = cipher
             .decrypt(
-                Nonce::from_slice(nonce_bytes),
+                &nonce,
                 Payload {
                     msg: ct,
                     aad: &full_ad,
@@ -862,16 +873,10 @@ impl RatchetStateHE {
         // Before first DH ratchet (ckr = None), only accept headers with pn = 0
         if self.ckr.is_none() {
             let mut hk = self.nhkr;
-            for steps in 0..=MAX_SKIP_PER_CHAIN {
+            for _steps in 0..=MAX_SKIP_PER_CHAIN {
                 if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {
                     if hdr.pn == 0 {
-                        if steps == 0 {
-                            // Exact NHK_r match - this triggers a DH ratchet
-                            return Ok((hdr, true, None));
-                        } else {
-                            // Derived from NHK_r but with pn=0 - acceptable before first DH ratchet
-                            return Ok((hdr, false, Some(hk)));
-                        }
+                        return Ok((hdr, true, Some(hk)));
                     }
                 }
                 hk = Self::kdf_hk(&hk);
@@ -882,15 +887,9 @@ impl RatchetStateHE {
 
         // After first DH ratchet, try NHK_r path with derivations
         let mut hk = self.nhkr;
-        for steps in 0..=MAX_SKIP_PER_CHAIN {
+        for _steps in 0..=MAX_SKIP_PER_CHAIN {
             if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {
-                if steps == 0 {
-                    // Exact NHK_r match - this triggers a DH ratchet
-                    return Ok((hdr, true, None));
-                } else {
-                    // Derived from NHK_r but not exact match
-                    return Ok((hdr, false, Some(hk)));
-                }
+                return Ok((hdr, true, Some(hk)));
             }
             hk = Self::kdf_hk(&hk);
         }
@@ -1077,12 +1076,13 @@ impl RatchetStateHE {
         }
         let (nonce_bytes, ct) = ciphertext.split_at(NONCE_LEN);
         let cipher = Aes128SivAead::new_from_slice(mk).map_err(|_| RatchetError::CryptoError)?;
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(nonce_bytes);
         let mut full_ad = ad.to_vec();
         full_ad.extend_from_slice(enc_header);
         cipher
             .decrypt(
-                nonce,
+                &nonce,
                 Payload {
                     msg: ct,
                     aad: &full_ad,
@@ -1740,6 +1740,44 @@ mod tests {
             "Successfully decrypted all {} messages out of order",
             num_messages
         );
+    }
+
+    #[test]
+    fn test_skip_first_message_on_new_chain() {
+        let (mut sender, mut receiver) = setup_ratchet_pair();
+        let ad = b"associated data";
+
+        // Sender -> receiver to establish initial chain.
+        let (hdr0, payload0) = sender
+            .ratchet_encrypt_he(b"initial sync", ad)
+            .expect("sender encrypt failed");
+        receiver
+            .ratchet_decrypt_he(&hdr0, &payload0, ad)
+            .expect("receiver failed to decrypt initial message");
+
+        // Receiver replies so the sender performs a DH ratchet.
+        let (hdr1, payload1) = receiver
+            .ratchet_encrypt_he(b"reply", ad)
+            .expect("receiver encrypt failed");
+        sender
+            .ratchet_decrypt_he(&hdr1, &payload1, ad)
+            .expect("sender failed to decrypt reply");
+
+        // Sender now transmits the first message on the new chain (n = 0) - drop it.
+        let _ = sender
+            .ratchet_encrypt_he(b"dropped message", ad)
+            .expect("sender encrypt failed");
+
+        // Sender sends the second message on that chain (n = 1).
+        let (hdr2, payload2) = sender
+            .ratchet_encrypt_he(b"delivered message", ad)
+            .expect("sender encrypt failed");
+
+        // Receiver should be able to decrypt even though n = 0 was skipped.
+        let decrypted = receiver
+            .ratchet_decrypt_he(&hdr2, &payload2, ad)
+            .expect("receiver failed to decrypt message after skipping n=0");
+        assert_eq!(decrypted, b"delivered message");
     }
 
     #[test]

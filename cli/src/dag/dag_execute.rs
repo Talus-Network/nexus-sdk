@@ -10,7 +10,7 @@ use {
         workflow,
     },
     anyhow::anyhow,
-    nexus_sdk::{idents::workflow as workflow_idents, transactions::dag},
+    nexus_sdk::nexus::error::NexusError,
     std::sync::Arc,
 };
 
@@ -27,18 +27,10 @@ pub(crate) async fn execute_dag(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
-    // Load CLI configuration.
-    let mut conf = CliConf::load().await.unwrap_or_default();
-
-    // Create wallet context, Sui client and find the active address.
-    let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
-    let sui = build_sui_client(&conf.sui).await?;
-    let address = wallet.active_address().map_err(NexusCliError::Any)?;
-
-    // Nexus objects must be present in the configuration.
-    let objects = &get_nexus_objects(&mut conf).await?;
+    let (nexus_client, sui) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     // Build the remote storage conf.
+    let conf = CliConf::load().await.unwrap_or_default();
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
     let storage_conf = conf.data_storage.clone().into();
 
@@ -59,84 +51,55 @@ pub(crate) async fn execute_dag(
 
     // Encrypt ports that need to be encrypted and store ports remote if they
     // need to be stored remotely.
-    let input_data = workflow::process_entry_ports(
-        &input_json,
-        &storage_conf,
-        preferred_remote_storage,
-        Arc::clone(&session),
-        &encrypt,
-        &remote,
-    )
-    .await?;
+    let input_data =
+        workflow::process_entry_ports(&input_json, preferred_remote_storage, &encrypt, &remote)
+            .await?;
 
-    // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
+    let tx_handle = loading!("Crafting and executing transaction...");
 
-    // Fetch reference gas price.
-    let reference_gas_price = fetch_reference_gas_price(&sui).await?;
+    let result = match nexus_client
+        .workflow()
+        .execute(
+            dag_id,
+            input_data,
+            price_priority_fee,
+            Some(&entry_group),
+            &storage_conf,
+            Arc::clone(&session),
+        )
+        .await
+    {
+        Ok(r) => r,
+        Err(NexusError::Storage(e)) => {
+            tx_handle.error();
 
-    // Fetch DAG object for its ObjectRef.
-    let dag = fetch_object_by_id(&sui, dag_id).await?;
+            return Err(NexusCliError::Any(anyhow!(
+                "{e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                e = e,
+                command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+            )));
+        }
+        Err(e) => {
+            tx_handle.error();
 
-    // Craft a TX to publish the DAG.
-    let tx_handle = loading!("Crafting transaction...");
+            return Err(NexusCliError::Nexus(e));
+        }
+    };
 
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    if let Err(e) = dag::execute(
-        &mut tx,
-        objects,
-        &dag,
-        price_priority_fee,
-        &entry_group,
-        &input_data,
-    ) {
-        tx_handle.error();
-
-        return Err(NexusCliError::Any(e));
+    // Advance the session ratchet if encryption was used.
+    if !encrypt.is_empty() {
+        session.lock().await.commit_sender(None);
     }
 
     tx_handle.success();
 
-    let tx_data = sui::TransactionData::new_programmable(
-        address,
-        vec![gas_coin.object_ref()],
-        tx.finish(),
-        sui_gas_budget,
-        reference_gas_price,
-    );
-
-    // Sign and send the TX.
-    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
-
-    // We need to parse the DAGExecution object ID from the response.
-    let dag = response
-        .object_changes
-        .unwrap_or_default()
-        .into_iter()
-        .find_map(|change| match change {
-            sui::ObjectChange::Created {
-                object_type,
-                object_id,
-                ..
-            } if object_type.address == *objects.workflow_pkg_id
-                && object_type.module == workflow_idents::Dag::DAG_EXECUTION.module.into()
-                && object_type.name == workflow_idents::Dag::DAG_EXECUTION.name.into() =>
-            {
-                Some(object_id)
-            }
-            _ => None,
-        });
-
-    let Some(object_id) = dag else {
-        return Err(NexusCliError::Any(anyhow!(
-            "Could not find the DAGExecution object ID in the transaction response."
-        )));
-    };
-
     notify_success!(
         "DAGExecution object ID: {id}",
-        id = object_id.to_string().truecolor(100, 100, 100)
+        id = result
+            .execution_object_id
+            .to_string()
+            .truecolor(100, 100, 100)
     );
 
     // Update the session in the configuration.
@@ -145,9 +108,11 @@ pub(crate) async fn execute_dag(
         .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
     if inspect {
-        inspect_dag_execution(object_id, response.digest).await?;
+        inspect_dag_execution(result.execution_object_id, result.tx_digest).await?;
     } else {
-        json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
+        json_output(
+            &json!({ "digest": result.tx_digest, "execution_id": result.execution_object_id }),
+        )?;
     }
 
     Ok(())

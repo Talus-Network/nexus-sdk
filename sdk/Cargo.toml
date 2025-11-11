@@ -63,6 +63,9 @@ transactions = ["sui_idents", "bincode", "types"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Provides various Nexus utilities like deployment and execution of workflows.
+nexus = ["transactions", "dag", "object_crawler"]
+
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
@@ -74,6 +77,7 @@ test_utils = [
     "sui_package_management",
     "portpicker",
     "testcontainers-modules",
+    "mockito",
 ]
 
 # Enable all features apart from `test_utils`.
@@ -89,6 +93,7 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "nexus",
 ]
 
 
@@ -204,6 +209,10 @@ version = "0.3"
 optional = true
 
 [dependencies.lazy-regex]
+workspace = true
+optional = true
+
+[dependencies.mockito]
 workspace = true
 optional = true
 

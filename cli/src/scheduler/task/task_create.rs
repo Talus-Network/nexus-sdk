@@ -24,7 +24,7 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{StorageConf, Task},
     },
-    std::sync::Arc,
+    std::{collections::HashMap, sync::Arc},
 };
 
 /// Create a scheduler task and optionally enqueue the initial occurrence.
@@ -92,21 +92,37 @@ pub(crate) async fn create_task(
         ))
     })?;
 
-    let input_data_result = workflow::process_entry_ports(
+    let ports_data = workflow::process_entry_ports(
         &input_json,
-        &storage_conf,
         preferred_remote_storage,
-        Arc::clone(&session),
         &encrypt_handles,
         &remote,
     )
-    .await;
+    .await?;
+
+    let mut input_data = HashMap::new();
+    for (vertex, data) in ports_data {
+        let committed = data
+            .commit_all(&storage_conf, Arc::clone(&session))
+            .await
+            .map_err(|e| {
+                NexusCliError::Any(anyhow!(
+                    "Failed to store data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                    e = e,
+                    command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                    testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+                ))
+            })?;
+        input_data.insert(vertex, committed);
+    }
+
+    if encrypt_handles.values().any(|ports| !ports.is_empty()) {
+        session.lock().await.commit_sender(None);
+    }
 
     CryptoConf::release_session(session, None)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
-
-    let input_data = input_data_result?;
 
     // Craft the task creation transaction.
     let tx_handle = loading!("Crafting transaction...");

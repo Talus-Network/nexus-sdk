@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.3.0`] - Unreleased
+## Unreleased
 
 ### `nexus-cli`
 
@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler periodic set` / `disable`
 - `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
 
+### `nexus-sdk`
+
+#### Added
+
+- support for `scheduler` transactions and events
+
+## [`0.3.0`] - 2025-11-10
+
+### `nexus-cli`
+
+#### Added
+
 #### Fixed
 
 - `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
@@ -27,9 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus dag inspect-execution` now also shows the data storage kind for each port
-- .nightly-version
-- scheduler transaction templates (task lifecycle, sporadic occurrences, periodic scheduling, constraint state, TAP execution) for CLI and integrators
+- `.nightly-version` file that specifies the Rust nightly version to use
+- `nexus_sdk::nexus` module that holds `NexusClient` functionality to interact with the Nexus network
+- `NexusEventKind::name` method that returns a string representation of the event kind
 
 #### Changed
 
@@ -39,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - made faucet requests compatible with old and latest versions of the `sui-faucet`
+- allow skipping the first encrypted message in a new `dh` chain
 
 ## [`0.2.0`] - 2025-08-12
 
