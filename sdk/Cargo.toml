@@ -72,6 +72,7 @@ test_utils = [
     "tokio-retry",
     "sui_move_build",
     "sui_package_management",
+    "portpicker",
     "testcontainers-modules",
 ]
 
@@ -154,6 +155,10 @@ version = "0.4"
 optional = true
 
 [dependencies.petgraph]
+workspace = true
+optional = true
+
+[dependencies.portpicker]
 workspace = true
 optional = true
 
