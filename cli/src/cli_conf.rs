@@ -230,7 +230,7 @@ fn default_sui_wallet_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs, tempfile};
+    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs};
 
     fn setup_env() -> tempfile::TempDir {
         std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");

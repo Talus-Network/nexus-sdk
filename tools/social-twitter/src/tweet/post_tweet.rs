@@ -365,9 +365,8 @@ mod tests {
             Output::Ok { .. } => panic!("Expected error, got success"),
             Output::Err { reason } => {
                 println!("Actual error message: {}", reason);
-                // We just check that we got an error, since the exact error message
-                // depends on how the code handles 401 responses
-                assert!(true, "Got error response as expected");
+                // Ensure we actually received an error payload.
+                assert!(!reason.is_empty(), "Got error response as expected");
             }
         }
 

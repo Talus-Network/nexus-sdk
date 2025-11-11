@@ -467,7 +467,7 @@ mod tests {
             ])),
         )]);
 
-        let price_priority_fee = 0 as u64;
+        let price_priority_fee = 0_u64;
 
         let result = nexus_client
             .workflow()
