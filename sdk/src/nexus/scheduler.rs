@@ -637,7 +637,7 @@ mod tests {
         let move_struct: sui::MoveStruct =
             serde_json::from_value(task_value).expect("task into move struct");
 
-        let parsed = sui::ParsedMoveObject {
+        sui::ParsedMoveObject {
             type_: sui::MoveStructTag {
                 address: workflow_pkg_id.into(),
                 module: sui::move_ident_str!("scheduler").into(),
@@ -646,9 +646,7 @@ mod tests {
             },
             has_public_transfer: false,
             fields: move_struct,
-        };
-
-        parsed
+        }
     }
 
     fn scheduler_move_tag(
