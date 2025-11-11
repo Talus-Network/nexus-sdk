@@ -318,9 +318,7 @@ fn unwrap_move_object(mut map: JsonMap<String, Value>) -> Value {
 }
 
 fn extract_wrapped_value(map: &JsonMap<String, Value>) -> Option<Value> {
-    let Some(value) = map.get("value") else {
-        return None;
-    };
+    let value = map.get("value")?;
 
     if map
         .keys()

@@ -15,6 +15,7 @@ use {
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
@@ -31,7 +32,7 @@ pub(crate) async fn execute_dag(
 
     // Build the remote storage conf.
     let conf = CliConf::load().await.unwrap_or_default();
-    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption

@@ -171,7 +171,7 @@ pub fn new_constraints_policy(
     );
 
     let config = new_time_constraint_config(tx, objects)?;
-    register_time_constraint(tx, objects, constraints.clone(), config)?;
+    register_time_constraint(tx, objects, constraints, config)?;
 
     Ok(constraints)
 }
@@ -240,7 +240,7 @@ pub fn new_execution_policy(
         ],
     );
 
-    register_begin_execution(tx, objects, execution.clone(), config)?;
+    register_begin_execution(tx, objects, execution, config)?;
 
     Ok(execution)
 }
@@ -286,15 +286,19 @@ fn build_inputs_vec_map(
             vec![],
         );
 
-        for (port, value) in data {
+        for (port_name, value) in data {
             // `port: InputPort`
             let port = match value.is_encrypted() {
                 true => workflow::Dag::encrypted_input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
-                    &port,
+                    port_name.as_str(),
                 )?,
-                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
+                false => workflow::Dag::input_port_from_str(
+                    tx,
+                    objects.workflow_pkg_id,
+                    port_name.as_str(),
+                )?,
             };
 
             // `value: NexusData`
@@ -649,6 +653,7 @@ pub fn register_begin_execution(
 }
 
 /// PTB template to invoke DAG execution from the scheduler via the Default TAP.
+#[allow(clippy::too_many_arguments)]
 pub fn dag_begin_execution_from_scheduler(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
@@ -722,6 +727,7 @@ pub fn dag_begin_execution_from_scheduler(
 }
 
 /// PTB helper that consumes the next scheduled occurrence and invokes the TAP.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_scheduled_occurrence(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,

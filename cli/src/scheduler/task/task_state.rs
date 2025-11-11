@@ -80,7 +80,7 @@ pub(crate) async fn set_task_state(
     }
     .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
-    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(

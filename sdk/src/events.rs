@@ -516,7 +516,7 @@ impl TryInto<NexusEvent> for sui::Event {
                 }
             }
             let inner_name = type_params
-                .get(0)
+                .first()
                 .and_then(extract_struct_name)
                 .ok_or_else(|| anyhow::anyhow!("Scheduled event missing inner type parameter"))?;
 

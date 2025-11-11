@@ -79,12 +79,12 @@ pub(crate) struct DataStorageConf {
     pub(crate) preferred_remote_storage: Option<StorageKind>,
 }
 
-impl Into<StorageConf> for DataStorageConf {
-    fn into(self) -> StorageConf {
+impl From<DataStorageConf> for StorageConf {
+    fn from(value: DataStorageConf) -> StorageConf {
         StorageConf {
-            walrus_aggregator_url: self.walrus_aggregator_url.map(|url| url.to_string()),
-            walrus_publisher_url: self.walrus_publisher_url.map(|url| url.to_string()),
-            walrus_save_for_epochs: self.walrus_save_for_epochs,
+            walrus_aggregator_url: value.walrus_aggregator_url.map(|url| url.to_string()),
+            walrus_publisher_url: value.walrus_publisher_url.map(|url| url.to_string()),
+            walrus_save_for_epochs: value.walrus_save_for_epochs,
         }
     }
 }
@@ -124,9 +124,10 @@ impl CryptoConf {
         let conf_path = path.unwrap_or(&default_path);
 
         let crypto_conf = CryptoConf::load_from_path(conf_path).await?;
-        Ok(crypto_conf
+        let identity_key = crypto_conf
             .identity_key
-            .ok_or_else(|| anyhow!("No identity key found"))?)
+            .ok_or_else(|| anyhow!("No identity key found"))?;
+        Ok(identity_key)
     }
 
     /// Update the identity key in the configuration.

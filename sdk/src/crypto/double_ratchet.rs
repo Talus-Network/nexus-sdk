@@ -62,6 +62,8 @@ use {
     zeroize::{Zeroize, Zeroizing},
 };
 
+type SkippedDecrypt = Option<(Vec<u8>, [u8; 32], u32, [u8; 32])>;
+
 /// Maximum number of skipped message keys to derive per chain before rejecting incoming traffic,
 ///  as mentioned in section 4 of the spec.
 const MAX_SKIP_PER_CHAIN: usize = 1_000;
@@ -836,7 +838,7 @@ impl RatchetStateHE {
         enc_header: &[u8],
         ciphertext: &[u8],
         ad: &[u8],
-    ) -> Result<Option<(Vec<u8>, [u8; 32], u32, [u8; 32])>, RatchetError> {
+    ) -> Result<SkippedDecrypt, RatchetError> {
         let keys: Vec<_> = self.mkskipped.keys().cloned().collect();
         for (hk, n) in keys {
             if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {

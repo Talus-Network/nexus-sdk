@@ -62,11 +62,11 @@ pub(crate) async fn inspect_task(task_id: sui::ObjectID) -> AnyResult<(), NexusC
 
     item!(
         "Constraints payload bytes: {bytes}",
-        bytes = task_data.constraints.to_string().as_bytes().len()
+        bytes = task_data.constraints.to_string().len()
     );
     item!(
         "Execution payload bytes: {bytes}",
-        bytes = task_data.execution.policy.data.to_string().as_bytes().len()
+        bytes = task_data.execution.policy.data.to_string().len()
     );
 
     json_output(&json!({

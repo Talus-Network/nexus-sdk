@@ -96,9 +96,47 @@ pub enum HttpToolError {
 }
 
 impl HttpToolError {
-    /// Convert HttpToolError to Output enum for API compatibility
-    pub fn to_output(self) -> crate::http::Output {
-        match self {
+    /// Create HttpToolError from external error types
+    pub fn from_json_error(e: JsonError) -> Self {
+        Self::ErrJsonParse(e.to_string())
+    }
+
+    pub fn from_network_error(e: ReqwestError) -> Self {
+        let error_msg = e.to_string();
+        if e.is_timeout() {
+            Self::ErrTimeout(error_msg)
+        } else {
+            // Check if it's a timeout by looking at the error message
+            if error_msg.contains("timeout") || error_msg.contains("timed out") {
+                Self::ErrTimeout(error_msg)
+            } else {
+                Self::ErrNetwork(error_msg)
+            }
+        }
+    }
+
+    pub fn from_url_parse_error(e: UrlParseError) -> Self {
+        Self::ErrUrlParse(e.to_string())
+    }
+
+    pub fn from_validation_error(e: ValidationError) -> Self {
+        Self::ErrInput(e.to_string())
+    }
+
+    pub fn from_schema_validation_error(e: crate::models::SchemaValidationDetails) -> Self {
+        Self::ErrSchemaValidation { errors: e.errors }
+    }
+}
+
+impl From<crate::models::SchemaValidationDetails> for HttpToolError {
+    fn from(e: crate::models::SchemaValidationDetails) -> Self {
+        Self::from_schema_validation_error(e)
+    }
+}
+
+impl From<HttpToolError> for crate::http::Output {
+    fn from(error: HttpToolError) -> Self {
+        match error {
             HttpToolError::ErrHttp {
                 status,
                 reason,
@@ -144,42 +182,5 @@ impl HttpToolError {
                 status_code: None,
             },
         }
-    }
-
-    /// Create HttpToolError from external error types
-    pub fn from_json_error(e: JsonError) -> Self {
-        Self::ErrJsonParse(e.to_string())
-    }
-
-    pub fn from_network_error(e: ReqwestError) -> Self {
-        let error_msg = e.to_string();
-        if e.is_timeout() {
-            Self::ErrTimeout(error_msg)
-        } else {
-            // Check if it's a timeout by looking at the error message
-            if error_msg.contains("timeout") || error_msg.contains("timed out") {
-                Self::ErrTimeout(error_msg)
-            } else {
-                Self::ErrNetwork(error_msg)
-            }
-        }
-    }
-
-    pub fn from_url_parse_error(e: UrlParseError) -> Self {
-        Self::ErrUrlParse(e.to_string())
-    }
-
-    pub fn from_validation_error(e: ValidationError) -> Self {
-        Self::ErrInput(e.to_string())
-    }
-
-    pub fn from_schema_validation_error(e: crate::models::SchemaValidationDetails) -> Self {
-        Self::ErrSchemaValidation { errors: e.errors }
-    }
-}
-
-impl From<crate::models::SchemaValidationDetails> for HttpToolError {
-    fn from(e: crate::models::SchemaValidationDetails) -> Self {
-        Self::from_schema_validation_error(e)
     }
 }

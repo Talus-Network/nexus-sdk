@@ -28,6 +28,7 @@ use {
 };
 
 /// Create a scheduler task and optionally enqueue the initial occurrence.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_task(
     dag_id: sui::ObjectID,
     entry_group: String,
@@ -79,7 +80,7 @@ pub(crate) async fn create_task(
     let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
 
     // Build the remote storage configuration.
-    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf: StorageConf = conf.data_storage.clone().into();
 
     // Acquire a session for potential encryption/remote storage commits.
@@ -162,7 +163,7 @@ pub(crate) async fn create_task(
     );
 
     // Fetch gas coin and reference gas price.
-    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
+    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     let tx_data = sui::TransactionData::new_programmable(
@@ -238,7 +239,7 @@ pub(crate) async fn create_task(
         }
 
         // Submit the scheduling transaction.
-        let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin.clone()).await?;
+        let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
         let schedule_tx_data = sui::TransactionData::new_programmable(
             address,
             vec![gas_coin.object_ref()],

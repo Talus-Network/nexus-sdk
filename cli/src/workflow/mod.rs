@@ -22,10 +22,12 @@ pub(crate) async fn fetch_encrypted_entry_ports(
         encrypted: bool,
     }
 
+    type EntryGroups =
+        VecMap<Structure<TypeName>, VecMap<Structure<TypeName>, VecSet<Structure<EntryPort>>>>;
+
     #[derive(Clone, Debug, Deserialize)]
     struct Dag {
-        entry_groups:
-            VecMap<Structure<TypeName>, VecMap<Structure<TypeName>, VecSet<Structure<EntryPort>>>>,
+        entry_groups: EntryGroups,
     }
 
     let result = fetch_one::<Structure<Dag>>(sui, *dag_id)
@@ -70,7 +72,7 @@ pub(crate) async fn process_entry_ports(
     input: &Value,
     preferred_remote_storage: Option<StorageKind>,
     encrypt: &HashMap<String, Vec<String>>,
-    remote: &Vec<String>,
+    remote: &[String],
 ) -> Result<HashMap<String, PortsData>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
@@ -104,7 +106,7 @@ pub(crate) async fn process_entry_ports(
             data,
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,
-            preferred_remote_storage.clone(),
+            preferred_remote_storage,
         )
         .map_err(NexusCliError::Any)?;
 
