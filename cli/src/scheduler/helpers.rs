@@ -22,66 +22,6 @@ pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)
     Ok(result)
 }
 
-/// Ensure the absolute deadline does not precede the start when both are set.
-pub(crate) fn ensure_start_before_deadline(
-    start_ms: Option<u64>,
-    deadline_ms: Option<u64>,
-) -> AnyResult<(), NexusCliError> {
-    if let (Some(start), Some(deadline)) = (start_ms, deadline_ms) {
-        if deadline < start {
-            return Err(NexusCliError::Any(anyhow!(
-                "Deadline ({deadline}) cannot be earlier than start ({start})"
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Validate combinations of absolute and relative scheduling flags provided to the CLI.
-pub(crate) fn validate_schedule_options(
-    start_ms: Option<u64>,
-    deadline_ms: Option<u64>,
-    start_offset_ms: Option<u64>,
-    deadline_offset_ms: Option<u64>,
-    require_start: bool,
-) -> AnyResult<(), NexusCliError> {
-    if require_start && start_ms.is_none() && start_offset_ms.is_none() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Provide either --schedule-start-ms or --schedule-start-offset-ms"
-        )));
-    }
-
-    if start_ms.is_none()
-        && start_offset_ms.is_none()
-        && (deadline_ms.is_some() || deadline_offset_ms.is_some())
-    {
-        return Err(NexusCliError::Any(anyhow!(
-            "Deadline flags require a corresponding start flag"
-        )));
-    }
-
-    if let Some(start) = start_ms {
-        ensure_start_before_deadline(Some(start), deadline_ms)?;
-    }
-
-    ensure_offset_deadline_valid(start_offset_ms, deadline_offset_ms)?;
-
-    Ok(())
-}
-
-/// Ensure that a deadline offset is only accepted when a matching start offset is present.
-pub(crate) fn ensure_offset_deadline_valid(
-    start_offset: Option<u64>,
-    deadline_offset: Option<u64>,
-) -> AnyResult<(), NexusCliError> {
-    if deadline_offset.is_some() && start_offset.is_none() {
-        return Err(NexusCliError::Any(anyhow!(
-            "Deadline offset requires --schedule-start-offset-ms"
-        )));
-    }
-    Ok(())
-}
-
 /// Fetch the encrypted entry port mapping for the provided DAG entry group.
 pub(crate) async fn fetch_encryption_targets(
     sui: &sui::Client,
@@ -108,42 +48,5 @@ mod tests {
     fn parse_metadata_rejects_missing_equals() {
         let err = parse_metadata(&["invalid".to_string()]).unwrap_err();
         assert!(err.to_string().contains("Invalid metadata entry"));
-    }
-
-    #[test]
-    fn validate_schedule_with_absolute_start_passes() {
-        validate_schedule_options(Some(10), None, None, None, false).unwrap();
-    }
-
-    #[test]
-    fn validate_schedule_requires_start_when_flagged() {
-        let err = validate_schedule_options(None, None, None, None, true).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Provide either --schedule-start-ms"));
-    }
-
-    #[test]
-    fn validate_schedule_rejects_deadline_without_start() {
-        let err = validate_schedule_options(None, Some(20), None, None, false).unwrap_err();
-        assert!(err.to_string().contains("Deadline flags require"));
-    }
-
-    #[test]
-    fn validate_schedule_allows_deadline_equal_start() {
-        validate_schedule_options(Some(25), Some(25), None, None, false).unwrap();
-    }
-
-    #[test]
-    fn validate_schedule_allows_deadline_offset_shorter_than_start_offset() {
-        validate_schedule_options(None, None, Some(60_000), Some(30_000), false).unwrap();
-    }
-
-    #[test]
-    fn ensure_offset_deadline_requires_start_offset() {
-        let err = ensure_offset_deadline_valid(None, Some(5)).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Deadline offset requires --schedule-start-offset-ms"));
     }
 }
