@@ -134,7 +134,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_tool() {
-        let tempdir = tempfile::tempdir().unwrap().keep();
+        let tempdir = tempfile::tempdir().unwrap().into_path();
 
         let result = create_new_tool("test".to_string(), ToolTemplate::Rust, tempdir.clone()).await;
 
