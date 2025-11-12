@@ -4,7 +4,14 @@ use {
     nexus_sdk::{
         object_crawler::{fetch_one, Structure, VecMap, VecSet},
         sui,
-        types::{hint_remote_fields, json_to_nexus_data_map, PortsData, StorageKind, TypeName},
+        types::{
+            hint_remote_fields,
+            json_to_nexus_data_map,
+            EncryptionMode,
+            PortsData,
+            StorageKind,
+            TypeName,
+        },
     },
     serde::Deserialize,
     serde_json::Value,
@@ -73,6 +80,7 @@ pub(crate) async fn process_entry_ports(
     preferred_remote_storage: Option<StorageKind>,
     encrypt: &HashMap<String, Vec<String>>,
     remote: &[String],
+    encryption_mode: EncryptionMode,
 ) -> Result<HashMap<String, PortsData>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
@@ -107,6 +115,7 @@ pub(crate) async fn process_entry_ports(
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,
             preferred_remote_storage,
+            encryption_mode,
         )
         .map_err(NexusCliError::Any)?;
 
@@ -184,7 +193,7 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote)
+        let result = process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard)
             .await
             .expect("Should succeed");
 
@@ -223,7 +232,7 @@ mod tests {
         encrypt.insert("vertex1".to_string(), vec!["port1".to_string()]);
         let remote = vec![];
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote)
+        let result = process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard)
             .await
             .expect("Should succeed");
 
@@ -275,7 +284,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote)
+        let result = process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard)
             .await
             .expect("Should succeed");
 
@@ -330,7 +339,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote)
+        let result = process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard)
             .await
             .expect("Should succeed");
 
@@ -362,7 +371,8 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote).await;
+        let result =
+            process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard).await;
 
         assert_matches!(result, Err(NexusCliError::Any(_)));
     }
@@ -373,7 +383,8 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote).await;
+        let result =
+            process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard).await;
 
         assert_matches!(result, Err(NexusCliError::Any(_)));
     }
@@ -386,7 +397,8 @@ mod tests {
         let encrypt = HashMap::new();
         let remote = vec![];
 
-        let result = process_entry_ports(&input, None, &encrypt, &remote).await;
+        let result =
+            process_entry_ports(&input, None, &encrypt, &remote, EncryptionMode::Standard).await;
 
         assert_matches!(result, Err(NexusCliError::Any(_)));
     }

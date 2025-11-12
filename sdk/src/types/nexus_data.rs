@@ -18,6 +18,7 @@ use {
     },
     enum_dispatch::enum_dispatch,
     serde::{Deserialize, Serialize},
+    serde_repr::{Deserialize_repr, Serialize_repr},
     std::{collections::HashMap, sync::Arc},
     tokio::sync::Mutex,
 };
@@ -35,6 +36,29 @@ pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 pub const ENCRYPTION_BASE_SIZE: usize = 440;
 /// What is the inflation factor for encrypted data size?
 pub const ENCRYPTION_INFLATION_FACTOR: usize = 4;
+
+/// Represents how a [`NexusData`] payload should be (or was) encrypted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
+pub enum EncryptionMode {
+    /// Data is kept in plaintext.
+    #[default]
+    Plain             = 0,
+    /// Data is encrypted using the standard double-ratchet message mode.
+    Standard          = 1,
+    /// Data is encrypted using the limited persistent mode, allowing the
+    /// ciphertext to be decrypted multiple times.
+    LimitedPersistent = 2,
+}
+
+impl EncryptionMode {
+    pub fn is_encrypted(self) -> bool {
+        matches!(
+            self,
+            EncryptionMode::Standard | EncryptionMode::LimitedPersistent
+        )
+    }
+}
 
 // == NexusData ==
 
@@ -102,40 +126,48 @@ impl NexusData {
 
     /// Create inline data that is not encrypted.
     pub fn new_inline(data: serde_json::Value) -> Self {
-        Self {
-            data: DataStorage::Inline(InlineStorage {
-                data,
-                encrypted: false,
-            }),
-        }
+        Self::new_inline_with_mode(data, EncryptionMode::Plain)
     }
 
-    /// Create inline data that is encrypted.
+    /// Create inline data that is encrypted with the standard mode.
     pub fn new_inline_encrypted(data: serde_json::Value) -> Self {
+        Self::new_inline_with_mode(data, EncryptionMode::Standard)
+    }
+
+    /// Create inline data encrypted using the limited persistent mode.
+    pub fn new_inline_limited_persistent(data: serde_json::Value) -> Self {
+        Self::new_inline_with_mode(data, EncryptionMode::LimitedPersistent)
+    }
+
+    fn new_inline_with_mode(data: serde_json::Value, encryption_mode: EncryptionMode) -> Self {
         Self {
             data: DataStorage::Inline(InlineStorage {
                 data,
-                encrypted: true,
+                encryption_mode,
             }),
         }
     }
 
     /// Create walrus data that is not encrypted.
     pub fn new_walrus(data: serde_json::Value) -> Self {
-        Self {
-            data: DataStorage::Walrus(WalrusStorage {
-                data,
-                encrypted: false,
-            }),
-        }
+        Self::new_walrus_with_mode(data, EncryptionMode::Plain)
     }
 
-    /// Create walrus data that is encrypted.
+    /// Create walrus data that is encrypted with the standard mode.
     pub fn new_walrus_encrypted(data: serde_json::Value) -> Self {
+        Self::new_walrus_with_mode(data, EncryptionMode::Standard)
+    }
+
+    /// Create walrus data encrypted using the limited persistent mode.
+    pub fn new_walrus_limited_persistent(data: serde_json::Value) -> Self {
+        Self::new_walrus_with_mode(data, EncryptionMode::LimitedPersistent)
+    }
+
+    fn new_walrus_with_mode(data: serde_json::Value, encryption_mode: EncryptionMode) -> Self {
         Self {
             data: DataStorage::Walrus(WalrusStorage {
                 data,
-                encrypted: true,
+                encryption_mode,
             }),
         }
     }
@@ -157,6 +189,15 @@ pub enum DataStorage {
     Walrus(WalrusStorage),
 }
 
+impl DataStorage {
+    pub fn encryption_mode(&self) -> EncryptionMode {
+        match self {
+            DataStorage::Inline(storage) => storage.encryption_mode,
+            DataStorage::Walrus(storage) => storage.encryption_mode,
+        }
+    }
+}
+
 #[cfg(test)]
 impl TryFrom<serde_json::Value> for DataStorage {
     type Error = anyhow::Error;
@@ -171,36 +212,47 @@ impl TryFrom<serde_json::Value> for DataStorage {
             .get("data")
             .ok_or_else(|| anyhow::anyhow!("Missing 'data' field"))?;
 
-        let encrypted = value
-            .get("encrypted")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'encrypted' field"))?;
+        let encryption_mode = parse_encryption_mode(&value)?;
 
         match kind {
             "inline" => Ok(Self::Inline(InlineStorage {
                 data: data.clone(),
-                encrypted,
+                encryption_mode,
             })),
             "walrus" => Ok(Self::Walrus(WalrusStorage {
                 data: data.clone(),
-                encrypted,
+                encryption_mode,
             })),
             _ => Err(anyhow::anyhow!("Invalid 'kind' value")),
         }
     }
 }
 
+#[cfg(test)]
+fn parse_encryption_mode(value: &serde_json::Value) -> anyhow::Result<EncryptionMode> {
+    let raw = value
+        .get("encryption_mode")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'encryption_mode' field"))?;
+
+    match raw {
+        0 => Ok(EncryptionMode::Plain),
+        1 => Ok(EncryptionMode::Standard),
+        2 => Ok(EncryptionMode::LimitedPersistent),
+        other => anyhow::bail!("Invalid 'encryption_mode' value: {other}"),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InlineStorage {
     pub(super) data: serde_json::Value,
-    /// Whether the data is encrypted and should be decrypted before use or
-    /// encrypted before committing.
-    pub(super) encrypted: bool,
+    /// Controls how the data is encrypted when committing to storage.
+    pub(super) encryption_mode: EncryptionMode,
 }
 
 impl Storable for InlineStorage {
     async fn fetch(&mut self, _: &StorageConf, session: Arc<Mutex<Session>>) -> anyhow::Result<()> {
-        if self.encrypted {
+        if self.encryption_mode.is_encrypted() {
             self.data = session.lock().await.decrypt_nexus_data_json(&self.data)?;
         }
 
@@ -212,12 +264,21 @@ impl Storable for InlineStorage {
         _: &StorageConf,
         session: Arc<Mutex<Session>>,
     ) -> anyhow::Result<()> {
-        if self.encrypted {
-            session
-                .lock()
-                .await
-                .encrypt_nexus_data_json(&mut self.data)?;
-        }
+        match self.encryption_mode {
+            EncryptionMode::Plain => {}
+            EncryptionMode::Standard => {
+                session
+                    .lock()
+                    .await
+                    .encrypt_nexus_data_json(&mut self.data)?;
+            }
+            EncryptionMode::LimitedPersistent => {
+                session
+                    .lock()
+                    .await
+                    .encrypt_limited_persistent_nexus_data_json(&mut self.data)?;
+            }
+        };
 
         Ok(())
     }
@@ -235,16 +296,15 @@ impl Storable for InlineStorage {
     }
 
     fn is_encrypted(&self) -> bool {
-        self.encrypted
+        self.encryption_mode.is_encrypted()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct WalrusStorage {
     pub(super) data: serde_json::Value,
-    /// Whether the data is encrypted and should be decrypted before use or
-    /// encrypted before committing.
-    pub(super) encrypted: bool,
+    /// Controls how the data is encrypted when committing to storage.
+    pub(super) encryption_mode: EncryptionMode,
 }
 
 impl Storable for WalrusStorage {
@@ -291,7 +351,7 @@ impl Storable for WalrusStorage {
         let mut data = client.read_json::<serde_json::Value>(&blob_id).await?;
 
         // Decrypt the data if needed.
-        if self.encrypted {
+        if self.encryption_mode.is_encrypted() {
             data = session.lock().await.decrypt_nexus_data_json(&data)?;
         }
 
@@ -326,12 +386,21 @@ impl Storable for WalrusStorage {
             .build();
 
         // Encrypt the data if needed.
-        if self.encrypted {
-            session
-                .lock()
-                .await
-                .encrypt_nexus_data_json(&mut self.data)?;
-        }
+        match self.encryption_mode {
+            EncryptionMode::Plain => {}
+            EncryptionMode::Standard => {
+                session
+                    .lock()
+                    .await
+                    .encrypt_nexus_data_json(&mut self.data)?;
+            }
+            EncryptionMode::LimitedPersistent => {
+                session
+                    .lock()
+                    .await
+                    .encrypt_limited_persistent_nexus_data_json(&mut self.data)?;
+            }
+        };
 
         // Store data on Walrus using the client. If it's an array, we store
         // the entire array as a single blob and repeat the key N times where
@@ -400,7 +469,7 @@ impl Storable for WalrusStorage {
     }
 
     fn is_encrypted(&self) -> bool {
-        self.encrypted
+        self.encryption_mode.is_encrypted()
     }
 }
 
@@ -445,11 +514,13 @@ pub trait Storable {
 /// - [`Vec<String>`] that indicates which fields should be encrypted
 /// - [`Vec<String>`] that indicates which fields should be stored remotely
 /// - [`Option<StorageKind>`] that indicates the preferred remote storage kind
+/// - [`EncryptionMode`] that indicates how encrypted fields should be processed
 pub fn json_to_nexus_data_map(
     json: &serde_json::Value,
     encrypt_fields: &[String],
     remote_fields: &[String],
     preferred_remote_storage: Option<StorageKind>,
+    encryption_mode: EncryptionMode,
 ) -> anyhow::Result<HashMap<String, NexusData>> {
     let preferred_remote_storage = preferred_remote_storage.unwrap_or(StorageKind::Walrus);
 
@@ -468,7 +539,15 @@ pub fn json_to_nexus_data_map(
 
         match (encrypt, remote) {
             (false, false) => map.insert(key, NexusData::new_inline(value)),
-            (true, false) => map.insert(key, NexusData::new_inline_encrypted(value)),
+            (true, false) => match encryption_mode {
+                EncryptionMode::Plain => {
+                    anyhow::bail!("Field '{key}' cannot request encryption with a plain mode")
+                }
+                EncryptionMode::Standard => map.insert(key, NexusData::new_inline_encrypted(value)),
+                EncryptionMode::LimitedPersistent => {
+                    map.insert(key, NexusData::new_inline_limited_persistent(value))
+                }
+            },
             (false, true) => match preferred_remote_storage {
                 StorageKind::Walrus => map.insert(key, NexusData::new_walrus(value)),
                 StorageKind::Inline => {
@@ -476,7 +555,17 @@ pub fn json_to_nexus_data_map(
                 }
             },
             (true, true) => match preferred_remote_storage {
-                StorageKind::Walrus => map.insert(key, NexusData::new_walrus_encrypted(value)),
+                StorageKind::Walrus => match encryption_mode {
+                    EncryptionMode::Plain => {
+                        anyhow::bail!("Field '{key}' cannot request encryption with a plain mode")
+                    }
+                    EncryptionMode::Standard => {
+                        map.insert(key, NexusData::new_walrus_encrypted(value))
+                    }
+                    EncryptionMode::LimitedPersistent => {
+                        map.insert(key, NexusData::new_walrus_limited_persistent(value))
+                    }
+                },
                 StorageKind::Inline => {
                     anyhow::bail!("Cannot store data remotely using inline storage")
                 }
@@ -1087,7 +1176,14 @@ mod tests {
         ];
         let remote_fields = vec!["plain_walrus".to_string(), "encrypted_walrus".to_string()];
 
-        let map = json_to_nexus_data_map(&json, &encrypt_fields, &remote_fields, None).unwrap();
+        let map = json_to_nexus_data_map(
+            &json,
+            &encrypt_fields,
+            &remote_fields,
+            None,
+            EncryptionMode::Standard,
+        )
+        .unwrap();
 
         assert_eq!(
             map.get("plain_inline").unwrap(),
@@ -1113,7 +1209,14 @@ mod tests {
         let encrypt_fields = vec![];
         let remote_fields = vec![];
 
-        let map = json_to_nexus_data_map(&json, &encrypt_fields, &remote_fields, None).unwrap();
+        let map = json_to_nexus_data_map(
+            &json,
+            &encrypt_fields,
+            &remote_fields,
+            None,
+            EncryptionMode::Standard,
+        )
+        .unwrap();
         assert!(map.is_empty());
     }
 
@@ -1123,7 +1226,13 @@ mod tests {
         let encrypt_fields = vec![];
         let remote_fields = vec![];
 
-        let result = json_to_nexus_data_map(&json, &encrypt_fields, &remote_fields, None);
+        let result = json_to_nexus_data_map(
+            &json,
+            &encrypt_fields,
+            &remote_fields,
+            None,
+            EncryptionMode::Standard,
+        );
         assert!(result.is_err());
         assert_matches!(
             result,
@@ -1145,6 +1254,7 @@ mod tests {
             &encrypt_fields,
             &remote_fields,
             Some(StorageKind::Inline),
+            EncryptionMode::Standard,
         );
         assert!(result.is_err());
         assert_matches!(
@@ -1166,12 +1276,86 @@ mod tests {
             &encrypt_fields,
             &remote_fields,
             Some(StorageKind::Inline),
+            EncryptionMode::Standard,
         );
         assert!(result.is_err());
         assert_matches!(
             result,
             Err(e) if e.to_string().contains("Cannot store data remotely using inline storage")
         );
+    }
+
+    #[test]
+    fn test_json_to_nexus_data_map_limited_persistent_encryption() {
+        let json = json!({ "enc_field": 42 });
+        let encrypt_fields = vec!["enc_field".to_string()];
+        let remote_fields = vec![];
+
+        let map = json_to_nexus_data_map(
+            &json,
+            &encrypt_fields,
+            &remote_fields,
+            None,
+            EncryptionMode::LimitedPersistent,
+        )
+        .expect("map");
+
+        assert_eq!(
+            map.get("enc_field").unwrap(),
+            &NexusData::new_inline_limited_persistent(json.get("enc_field").unwrap().clone())
+        );
+    }
+
+    #[test]
+    fn test_json_to_nexus_data_map_plain_mode_rejects_encrypted_fields() {
+        let json = json!({ "secret": 1 });
+        let encrypt_fields = vec!["secret".to_string()];
+        let remote_fields = vec![];
+
+        let result = json_to_nexus_data_map(
+            &json,
+            &encrypt_fields,
+            &remote_fields,
+            None,
+            EncryptionMode::Plain,
+        );
+
+        assert!(result.is_err());
+        assert_matches!(
+            result,
+            Err(e) if e.to_string().contains("cannot request encryption with a plain mode")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inline_limited_persistent_commit_encrypts() {
+        use {crate::test_utils::nexus_mocks, std::sync::Arc};
+
+        let storage_conf = StorageConf::default();
+        let (session, _) = nexus_mocks::mock_session();
+
+        let committed = NexusData::new_inline_limited_persistent(json!({"msg": "hi"}))
+            .commit(&storage_conf, Arc::clone(&session))
+            .await
+            .expect("commit");
+
+        let inline = match committed {
+            DataStorage::Inline(storage) => storage,
+            other => panic!("Expected inline storage, got {other:?}"),
+        };
+
+        assert!(
+            inline.is_encrypted(),
+            "limited persistent data must be encrypted"
+        );
+
+        let kind = inline
+            .as_json()
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .expect("encrypted payload must contain kind");
+
+        assert_eq!(kind, "limited_persistent");
     }
 
     #[test]

@@ -10,7 +10,7 @@ use {
         workflow,
     },
     anyhow::anyhow,
-    nexus_sdk::nexus::error::NexusError,
+    nexus_sdk::{nexus::error::NexusError, types::EncryptionMode},
     std::sync::Arc,
 };
 
@@ -52,9 +52,14 @@ pub(crate) async fn execute_dag(
 
     // Encrypt ports that need to be encrypted and store ports remote if they
     // need to be stored remotely.
-    let input_data =
-        workflow::process_entry_ports(&input_json, preferred_remote_storage, &encrypt, &remote)
-            .await?;
+    let input_data = workflow::process_entry_ports(
+        &input_json,
+        preferred_remote_storage,
+        &encrypt,
+        &remote,
+        EncryptionMode::Standard,
+    )
+    .await?;
 
     let tx_handle = loading!("Crafting and executing transaction...");
 

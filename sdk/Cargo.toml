@@ -102,6 +102,7 @@ anyhow.workspace = true
 chrono.workspace = true
 dirs = "6.0.0"
 serde.workspace = true
+serde_repr = "0.1"
 
 # === Optional deps for features ===
 [dependencies.base64]

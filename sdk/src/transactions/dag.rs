@@ -750,7 +750,7 @@ mod tests {
             "vertex1".to_string(),
             HashMap::from([(
                 "port1".to_string(),
-                serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
+                serde_json::json!({"kind": "inline", "encryption_mode": 0, "data": { "key": "value" } })
                     .try_into()
                     .expect("Failed to convert JSON to DataStorage"),
             )]),

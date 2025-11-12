@@ -12,7 +12,7 @@ use {
     nexus_sdk::{
         events::NexusEventKind,
         nexus::scheduler::{CreateTaskParams, OccurrenceRequest},
-        types::StorageConf,
+        types::{EncryptionMode, StorageConf},
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -69,6 +69,7 @@ pub(crate) async fn create_task(
         preferred_remote_storage,
         &encrypt_handles,
         &remote,
+        EncryptionMode::LimitedPersistent,
     )
     .await?;
 
