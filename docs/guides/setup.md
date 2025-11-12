@@ -38,7 +38,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v0.2.0 \
+  --tag v0.3.0 \
   --locked
 ```
 
@@ -51,7 +51,7 @@ nexus --version
 ## Download the Nexus objects
 
 ```bash
-wget https://storage.googleapis.com/production-talus-sui-objects/v0.2.0/objects.devnet.toml
+wget https://storage.googleapis.com/production-talus-sui-objects/v0.3.0/objects.devnet.toml
 ```
 
 ## Configure the Talus devnet
@@ -138,7 +138,7 @@ Nexus encrypts every sensitive value in your CLI config and every DAG payload us
 
 ### 1. Initialize the CLI master key
 
-The CLI stores encrypted blobs (identity key, sessions, Walrus credentials, etc.) in `~/.nexus/*.toml`. Those blobs are decrypted using a 32-byte master key that lives either in your OS keyring or is derived from a passphrase via Argon2id.
+The CLI stores encrypted blobs (identity key, sessions, Walrus credentials, etc.) in `~/.nexus/*.toml`. Those blobs are decrypted using a 32-byte master key that lives either in your OS keyring or is derived from a passphrase via [Argon2id](https://en.wikipedia.org/wiki/Argon2).
 
 ```bash
 # Option A: generate a raw master key inside the OS keyring
@@ -156,7 +156,7 @@ nexus crypto key-status
 
 ### 2. Generate an identity key
 
-Your long-term identity key is the “public face” of the CLI in the Signal/X3DH handshake. It only needs to be generated once per installation—or whenever you intentionally rotate it (which also invalidates stored sessions).
+Your long-term identity key represents the "public face" of the CLI in the Signal/X3DH handshake. It only needs to be generated once per installation or when you intentionally rotate it, which also invalidates stored sessions.
 
 ```bash
 nexus crypto generate-identity-key

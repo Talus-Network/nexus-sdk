@@ -10,7 +10,11 @@ runs:
         toolchain: nightly-2025-01-06, stable
         override: true
         components: rustfmt, clippy
-        cache: 'false'
+        cache: "false"
+
+    - name: Install DBUS
+      shell: bash
+      run: sudo apt-get install -y libdbus-1-dev
 
     # For more tools, see: https://github.com/taiki-e/install-action/blob/main/TOOLS.md
     - name: Install Rust tools

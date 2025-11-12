@@ -202,7 +202,7 @@ Set of commands for managing the CLI’s encrypted secrets (master key, passphra
 
 **`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
 
-Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests (and prints the initial message in JSON mode) so you can audit the handshake.
+Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
 
 Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
 
@@ -220,7 +220,7 @@ Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.
 
 **`nexus crypto init-key [--force]`**
 
-Generates a random 32‑byte master key with `OsRng` and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key gates access to every encrypted field (`Secret<T>`) in the CLI config; rotating it without also wiping encrypted blobs would strand ciphertext, so this command automatically truncates the crypto config after a successful write.
+Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
 
 Use `--force` to overwrite an existing raw key or stored passphrase—doing so deletes all saved sessions and identity material because it can no longer be decrypted.
 
