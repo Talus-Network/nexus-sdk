@@ -57,8 +57,8 @@ keyring = { workspace = true, features = ["apple-native"] }
 keyring = { workspace = true, features = ["windows-native"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
-# Use the native keyutils backend on Unix-like systems.
-keyring = { workspace = true, features = ["linux-native"] }
+# `-sync-persistent` requires `apt-get install -y libdbus-1-dev` in CI
+keyring = { workspace = true, features = ["linux-native-sync-persistent"] }
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]
