@@ -134,7 +134,7 @@ Note that this coin can only be used to pay for Nexus and tool invocation fees o
 
 ## Configure Encryption for Nexus workflows
 
-Nexus encrypts every sensitive value in your CLI config and every DAG payload using a Signal-inspired stack: a persistent master key protects secrets at rest, an X3DH identity key authenticates you to the network, and a Double-Ratchet session derived from an on-chain pre-key encrypts runtime traffic. Follow the steps below in order; each one builds on the previous.
+Nexus encrypts every sensitive value in your CLI config and every DAG payload using a [Signal-inspired](https://signal.org/docs/) stack: a persistent master key protects secrets at rest, an [X3DH](https://signal.org/docs/specifications/x3dh/) identity key authenticates you to the network, and a [Double-Ratchet](https://signal.org/docs/specifications/doubleratchet/) session derived from an on-chain pre-key encrypts runtime traffic. Follow the steps below in order; each one builds on the previous.
 
 ### 1. Initialize the CLI master key
 
@@ -180,6 +180,30 @@ Behind the scenes the command:
 1. Sends a second programmable transaction that associates the claimed pre-key object with your address and delivers the initial encrypted message to the network.
 
 Every `nexus dag execute` / `inspect-execution` call now loads this session to encrypt entry ports and decrypt remote-hosted outputs. If you delete the session or rotate keys, simply rerun `nexus crypto auth` to mint a replacement.
+
+#### What `nexus crypto auth` does under the hood
+
+At a high level the CLI glues an on-chain pre-key vault (for rendezvous) with an offline Signal stack (X3DH + Double Ratchet):
+
+```mermaid
+sequenceDiagram
+    participant CLI as Nexus CLI
+    participant Conf as CryptoConf
+    participant Sui as Sui chain
+    participant Vault as PreKeyVault contract
+    participant Network as Nexus network
+
+    CLI->>Conf: Load config + decrypt identity key
+    CLI->>Sui: Submit claim_pre_key_for_self PTB
+    Sui->>Vault: execute pre_key_vault::claim_pre_key
+    Vault-->>Sui: Mint PreKey object owned by CLI
+    CLI->>Sui: fetch pre-key object bytes
+    CLI->>CLI: Deserialize bytes -> PreKeyBundle
+    CLI->>CLI: Initialize double-ratche Session
+    CLI->>Conf: Save Double-Ratchet Session
+    CLI->>Sui: Submit associate_pre_key_with_sender PTB + initial_message
+    Sui->>Network: Route initial message so nexus completes X3DH receiver flow
+```
 
 {% hint style="info" %}
 `claim_pre_key` is rate limited and each transaction requires gas. Make sure you have uploaded budget via `nexus gas add-budget` and keep an eye on `--sui-gas-coin` / `--sui-gas-budget` if you need precise control.
