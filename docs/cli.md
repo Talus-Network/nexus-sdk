@@ -194,6 +194,52 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+### `nexus crypto`
+
+Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
+
+---
+
+**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
+
+Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests (and prints the initial message in JSON mode) so you can audit the handshake.
+
+Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
+{% endhint %}
+
+---
+
+**`nexus crypto generate-identity-key`**
+
+Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid—run `nexus crypto auth` immediately after to populate a replacement session.
+
+---
+
+**`nexus crypto init-key [--force]`**
+
+Generates a random 32‑byte master key with `OsRng` and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key gates access to every encrypted field (`Secret<T>`) in the CLI config; rotating it without also wiping encrypted blobs would strand ciphertext, so this command automatically truncates the crypto config after a successful write.
+
+Use `--force` to overwrite an existing raw key or stored passphrase—doing so deletes all saved sessions and identity material because it can no longer be decrypted.
+
+---
+
+**`nexus crypto set-passphrase [--stdin] [--force]`**
+
+Stores a user-provided passphrase in the OS keyring (`nexus-cli-store/passphrase`) and derives the same 32‑byte master key via Argon2id whenever secrets need to be decrypted. By default the command prompts interactively; `--stdin` allows piping from scripts or CI.
+
+Like `init-key`, it refuses to overwrite an existing persistent key unless `--force`. Empty or whitespace-only passphrases are rejected to avoid unusable configs.
+
+---
+
+**`nexus crypto key-status`**
+
+Reports where the current master key will be loaded from, following the same priority order as the runtime resolver: `NEXUS_CLI_STORE_PASSPHRASE` environment variable, keyring passphrase entry, or raw key entry. If a raw key is in use the CLI prints the first 8 hex characters so you can distinguish multiple installations; otherwise it notes the source or that no persistent key exists yet.
+
+---
+
 ### `nexus gas`
 
 Set of commands to manage Nexus gas budgets and tickets.
