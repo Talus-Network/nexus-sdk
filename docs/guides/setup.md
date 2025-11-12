@@ -156,7 +156,7 @@ nexus crypto key-status
 
 ### 2. Generate an identity key
 
-Your long-term identity key is the “public face” of the CLI in the Signal/X3DH handshake. It only needs to be generated once per installation—or whenever you intentionally rotate it (which also invalidates stored sessions).
+Your long-term identity key represents the "public face" of the CLI in the Signal/X3DH handshake. It only needs to be generated once per installation or when you intentionally rotate it, which also invalidates stored sessions.
 
 ```bash
 nexus crypto generate-identity-key
