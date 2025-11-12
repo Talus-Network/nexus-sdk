@@ -48,13 +48,13 @@ pub(crate) struct Input {
     publisher_url: Option<String>,
     /// The number of epochs to store the file
     #[serde(default = "default_epochs")]
-    epochs: u64,
+    epochs: u8,
     /// Optional address to which the created Blob object should be sent
     #[serde(default)]
     send_to: Option<String>,
 }
 
-fn default_epochs() -> u64 {
+fn default_epochs() -> u8 {
     1
 }
 

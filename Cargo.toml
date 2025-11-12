@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk-wasm", "sdk", "tools/*"]
 
 [workspace.package]
 edition = "2021"
-version = "0.3.0-rc.1"
+version = "0.3.0"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -31,7 +31,9 @@ clap_complete = "4.5.48"
 colored = "3.0.0"
 convert_case = "0.7.1"
 directories = "5"
+enum_dispatch = "0.3.13"
 env_logger = "0.11.7"
+futures = "0.3.31"
 hex = "0.4"
 home = "0.5.11"
 indicatif = "0.17.11"

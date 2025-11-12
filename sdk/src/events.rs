@@ -77,6 +77,19 @@ pub enum NexusEventKind {
     AllowedOwnerRemoved(serde_json::Value),
 }
 
+impl NexusEventKind {
+    /// Returns the name of the event kind as a string.
+    pub fn name(&self) -> String {
+        if let Ok(json) = serde_json::to_value(self) {
+            if let Some(name) = json.get(NEXUS_EVENT_TYPE_TAG).and_then(|v| v.as_str()) {
+                return name.to_string();
+            }
+        }
+
+        "UnknownEvent".to_string()
+    }
+}
+
 // == Event definitions ==
 
 /// Fired by the on-chain part of Nexus when a DAG vertex execution is
@@ -166,10 +179,10 @@ pub struct WalkAdvancedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    pub variant_ports_to_data: serde_json::Value,
+    pub variant_ports_to_data: PortsData,
 }
 
-/// Fored by the Nexus Workflow when a walk has failed.
+/// Fired by the Nexus Workflow when a walk has failed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WalkFailedEvent {
     pub dag: sui::ObjectID,
@@ -201,7 +214,7 @@ pub struct EndStateReachedEvent {
     /// Which output variant was evaluated.
     pub variant: TypeName,
     /// What data is associated with the variant.
-    pub variant_ports_to_data: serde_json::Value,
+    pub variant_ports_to_data: PortsData,
 }
 
 /// Fired by the Nexus Workflow when all walks have halted in their end states
@@ -405,5 +418,33 @@ mod tests {
                 matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
                 e.worksheet_from_type.name == *"bar"
         );
+    }
+
+    #[test]
+    fn test_nexus_event_kind_name_returns_correct_name() {
+        let dummy_event = NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
+            dag: sui::ObjectID::random(),
+            execution: sui::ObjectID::random(),
+            walk_index: 1,
+            next_vertex: RuntimeVertex::Plain {
+                vertex: TypeName::new("vertex"),
+            },
+            evaluations: sui::ObjectID::random(),
+            worksheet_from_type: TypeName {
+                name: "worksheet".into(),
+            },
+        });
+        assert_eq!(dummy_event.name(), "RequestWalkExecutionEvent");
+
+        let dummy_event = NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
+            shared_objects: vec![sui::ObjectID::random()],
+        });
+        assert_eq!(dummy_event.name(), "AnnounceInterfacePackageEvent");
+
+        let dummy_event = NexusEventKind::ToolRegistryCreated(serde_json::json!({}));
+        assert_eq!(dummy_event.name(), "ToolRegistryCreatedEvent");
+
+        let dummy_event = NexusEventKind::LeaderClaimedGas(serde_json::json!({}));
+        assert_eq!(dummy_event.name(), "LeaderClaimedGasEvent");
     }
 }

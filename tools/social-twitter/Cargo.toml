@@ -1,8 +1,8 @@
 [package]
 name = "social-twitter"
-version = "0.1.0"
-edition = "2021"
 
+edition.workspace = true
+version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
