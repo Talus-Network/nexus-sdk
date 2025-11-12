@@ -220,7 +220,7 @@ Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.
 
 **`nexus crypto init-key [--force]`**
 
-Generates a random 32‑byte master key with `OsRng` and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key gates access to every encrypted field (`Secret<T>`) in the CLI config; rotating it without also wiping encrypted blobs would strand ciphertext, so this command automatically truncates the crypto config after a successful write.
+Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
 
 Use `--force` to overwrite an existing raw key or stored passphrase—doing so deletes all saved sessions and identity material because it can no longer be decrypted.
 
