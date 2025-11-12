@@ -138,7 +138,7 @@ Nexus encrypts every sensitive value in your CLI config and every DAG payload us
 
 ### 1. Initialize the CLI master key
 
-The CLI stores encrypted blobs (identity key, sessions, Walrus credentials, etc.) in `~/.nexus/*.toml`. Those blobs are decrypted using a 32-byte master key that lives either in your OS keyring or is derived from a passphrase via Argon2id.
+The CLI stores encrypted blobs (identity key, sessions, Walrus credentials, etc.) in `~/.nexus/*.toml`. Those blobs are decrypted using a 32-byte master key that lives either in your OS keyring or is derived from a passphrase via [Argon2id](https://en.wikipedia.org/wiki/Argon2).
 
 ```bash
 # Option A: generate a raw master key inside the OS keyring
