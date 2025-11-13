@@ -12,6 +12,7 @@ use {
 #[derive(Clone, Debug, ValueEnum)]
 pub(crate) enum ToolTemplate {
     Rust,
+    Move,
 }
 
 impl ToolTemplate {
@@ -43,6 +44,49 @@ impl ToolTemplate {
                             cargo_template
                                 .render(context! { name_kebab_case, name_pascal_case })?,
                         ),
+                    ),
+                ])
+            }
+            ToolTemplate::Move => {
+                let name_snake_case = name.to_case(Case::Snake);
+                let name_pascal_case = name.to_case(Case::Pascal);
+                let name_uppercase = name.to_case(Case::UpperSnake);
+
+                let mut env = Environment::new();
+
+                env.add_template("move_toml", include_str!("templates/move/Move.toml.jinja"))?;
+                env.add_template("tool_move", include_str!("templates/move/tool.move.jinja"))?;
+                env.add_template(
+                    "tests_move",
+                    include_str!("templates/move/tests.move.jinja"),
+                )?;
+                env.add_template("gitignore", include_str!("templates/move/.gitignore.jinja"))?;
+
+                let move_toml_template = env.get_template("move_toml")?;
+                let tool_move_template = env.get_template("tool_move")?;
+                let tests_move_template = env.get_template("tests_move")?;
+                let gitignore_template = env.get_template("gitignore")?;
+
+                Ok(vec![
+                    ("sources".to_string(), None),
+                    ("tests".to_string(), None),
+                    (
+                        "Move.toml".to_string(),
+                        Some(move_toml_template.render(context! { name_snake_case })?),
+                    ),
+                    (
+                        format!("sources/{}.move", name_snake_case),
+                        Some(tool_move_template.render(
+                            context! { name_snake_case, name_pascal_case, name_uppercase },
+                        )?),
+                    ),
+                    (
+                        format!("tests/{}_tests.move", name_snake_case),
+                        Some(tests_move_template.render(context! { name_snake_case })?),
+                    ),
+                    (
+                        ".gitignore".to_string(),
+                        Some(gitignore_template.render(context! {})?),
                     ),
                 ])
             }
@@ -157,5 +201,63 @@ mod tests {
 
         assert!(contents.contains(r#"name = "test""#));
         assert!(contents.contains("[dependencies.nexus-toolkit]"));
+    }
+
+    #[tokio::test]
+    async fn test_create_new_move_tool() {
+        let tempdir = tempfile::tempdir().unwrap().into_path();
+
+        let result =
+            create_new_tool("test_tool".to_string(), ToolTemplate::Move, tempdir.clone()).await;
+
+        assert_matches!(result, Ok(()));
+
+        // Check that directories were created.
+        let sources_dir = tempdir.join("test_tool/sources");
+        assert!(sources_dir.exists());
+
+        let tests_dir = tempdir.join("test_tool/tests");
+        assert!(tests_dir.exists());
+
+        // Check that Move.toml was written with correct contents.
+        let move_toml_path = tempdir.join("test_tool/Move.toml");
+        let move_toml_contents = tokio::fs::read_to_string(move_toml_path).await.unwrap();
+
+        assert!(move_toml_contents.contains(r#"name = "test_tool""#));
+        assert!(move_toml_contents.contains("edition = \"2024.beta\""));
+        assert!(move_toml_contents.contains("nexus_primitives"));
+        assert!(move_toml_contents.contains("nexus_workflow"));
+        assert!(move_toml_contents.contains("nexus_interface"));
+
+        // Check that the main Move file was written with correct contents.
+        let move_file_path = tempdir.join("test_tool/sources/test_tool.move");
+        let move_contents = tokio::fs::read_to_string(move_file_path).await.unwrap();
+
+        assert!(move_contents.contains("module test_tool::test_tool;"));
+        assert!(move_contents.contains("public struct TEST_TOOL has drop {}"));
+        assert!(move_contents.contains("public struct TestToolWitness has key, store"));
+        assert!(move_contents.contains("public struct TestToolState has key"));
+        assert!(move_contents.contains("public enum Output"));
+        assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
+        assert!(move_contents.contains("public fun execute("));
+        assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
+        assert!(move_contents.contains("): ToolOutput"));
+        assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));
+        assert!(
+            move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")
+        );
+
+        // Check that the test file was written.
+        let test_file_path = tempdir.join("test_tool/tests/test_tool_tests.move");
+        let test_contents = tokio::fs::read_to_string(test_file_path).await.unwrap();
+
+        assert!(test_contents.contains("module test_tool::test_tool_tests;"));
+        assert!(test_contents.contains("fun test_test_tool()"));
+
+        // Check that .gitignore was written.
+        let gitignore_path = tempdir.join("test_tool/.gitignore");
+        let gitignore_contents = tokio::fs::read_to_string(gitignore_path).await.unwrap();
+
+        assert!(gitignore_contents.contains("build/*"));
     }
 }

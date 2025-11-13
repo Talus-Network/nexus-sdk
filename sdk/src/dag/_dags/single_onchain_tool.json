@@ -1,0 +1,22 @@
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "on_chain",
+        "tool_fqn": "xyz.taluslabs.example@1"
+      },
+      "name": "counter_increment",
+      "entry_ports": [
+        {
+          "name": "0",
+          "encrypted": false
+        },
+        {
+          "name": "1",
+          "encrypted": false
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,16 @@
+[package]
+name = "{{ name_snake_case }}"
+edition = "2024.beta"
+
+[dependencies]
+nexus_primitives = { local = "../../primitives"}
+nexus_workflow = { local = "../../workflow"}
+nexus_interface = { local = "../../interface"}
+
+
+[addresses]
+{{ name_snake_case }} = "0x0" 
+nexus_primitives = "0x1"
+nexus_workflow = "0x2"
+nexus_interface = "0x3"
+

@@ -28,7 +28,7 @@ pub(crate) async fn enable_expiry_extension(
     let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
-    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {
+    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).and_then(|t| t.over_gas)) else {
         return Err(NexusCliError::Any(anyhow!(
             "No OwnerCap object ID found for tool '{tool_fqn}'."
         )));
