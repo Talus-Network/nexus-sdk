@@ -1,11 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
         sui::*,
     },
     nexus_sdk::{
@@ -251,13 +246,12 @@ pub(crate) async fn register_onchain_tool(
 
         let mut conf = CliConf::load().await.unwrap_or_default();
 
-        // For onchain tools, we only have OverTool cap, use a placeholder for OverGas
-        // TODO: Update ToolOwnerCaps structure to support onchain tools?
+        // For onchain tools, we only have OverTool cap, no OverGas cap.
         conf.tools.insert(
             fqn.clone(),
             ToolOwnerCaps {
                 over_tool: *over_tool_id,
-                over_gas: sui::ObjectID::ZERO, // Placeholder
+                over_gas: None,
             },
         );
 

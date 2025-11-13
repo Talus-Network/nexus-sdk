@@ -1,13 +1,7 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
-        sui::*,
-        tool::tool_validate::validate_off_chain_tool,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
+        sui::*, tool::tool_validate::validate_off_chain_tool,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
@@ -225,7 +219,7 @@ pub(crate) async fn register_off_chain_tool(
                 meta.fqn.clone(),
                 ToolOwnerCaps {
                     over_tool: *over_tool_id,
-                    over_gas: *over_gas_id,
+                    over_gas: Some(*over_gas_id),
                 },
             );
 
