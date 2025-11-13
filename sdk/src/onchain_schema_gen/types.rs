@@ -73,7 +73,6 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
                         "type": "string",
                         "description": "0x1::ascii::String"
                     })),
-                    // All other standard library types are object references.
                     _ => Ok(json!({
                         "type": "object",
                         "description": format!("0x1::{}::{}", module, name)
