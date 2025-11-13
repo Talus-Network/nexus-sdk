@@ -86,13 +86,13 @@ public fun execute(
     } else if (input_value > 1000) {
         // Return custom variant.
         tool_output::variant(b"custom_result")
-            .with_field(b"data", b"large_value_processed")
-            .with_field(b"timestamp", sui::clock::timestamp_ms(clock).to_string().into_bytes())
+            .with_field(b"data", tool_output::string_value(b"large_value_processed"))
+            .with_field(b"timestamp", tool_output::string_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
     } else {
         // Return success variant.
         let result = input_value * 2;
         tool_output::ok()
-            .with_field(b"result", result.to_string().into_bytes())
+            .with_field(b"result", tool_output::number_value(result.to_string().into_bytes()))
     }
 }
 
