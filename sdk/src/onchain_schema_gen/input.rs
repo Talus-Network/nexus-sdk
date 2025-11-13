@@ -77,3 +77,95 @@ pub async fn generate_input_schema(
 
     Ok(schema_string)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[cfg(feature = "test_utils")]
+    async fn test_generate_input_schema_from_published_package() {
+        use crate::test_utils;
+
+        // Spin up the Sui instance.
+        let (_container, rpc_port, faucet_port) =
+            test_utils::containers::setup_sui_instance().await;
+
+        // Create a wallet and request some gas tokens.
+        let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
+            .expect("Failed to create a wallet.");
+        let sui = wallet.get_client().await.expect("Could not get Sui client");
+
+        let addr = wallet
+            .active_address()
+            .expect("Failed to get active address.");
+
+        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+            .await
+            .expect("Failed to request tokens from faucet.");
+
+        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+            .await
+            .expect("Failed to fetch gas coin.")
+            .into_iter()
+            .next()
+            .unwrap();
+
+        // Publish test onchain_tool package.
+        let response = test_utils::contracts::publish_move_package(
+            &mut wallet,
+            "tests/move/onchain_tool_test",
+            gas_coin,
+        )
+        .await;
+
+        let changes = response
+            .object_changes
+            .expect("TX response must have object changes");
+
+        let pkg_id = *changes
+            .iter()
+            .find_map(|c| match c {
+                crate::sui::ObjectChange::Published { package_id, .. } => Some(package_id),
+                _ => None,
+            })
+            .expect("Move package must be published");
+
+        // Generate input schema for the onchain_tool::execute function.
+        let schema_str = generate_input_schema(&sui, pkg_id, "onchain_tool", "execute")
+            .await
+            .expect("Failed to generate input schema");
+
+        // Parse the schema.
+        let schema: serde_json::Value =
+            serde_json::from_str(&schema_str).expect("Failed to parse schema JSON");
+
+        // Verify schema structure.
+        // The execute function has signature:
+        // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
+        // After skipping ProofOfUID (first) and TxContext (last), we should have:
+        // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
+        // - Parameter 1: increase_with (u64).
+
+        // Check parameter 0 (counter).
+        let param0 = schema
+            .get("0")
+            .expect("Schema should have parameter 0 (counter)");
+        assert_eq!(param0["type"], "object");
+        assert_eq!(param0["mutable"], true);
+        assert!(param0["description"]
+            .as_str()
+            .unwrap()
+            .contains("RandomCounter"));
+
+        // Check parameter 1 (increase_with).
+        let param1 = schema
+            .get("1")
+            .expect("Schema should have parameter 1 (increase_with)");
+        assert_eq!(param1["type"], "u64");
+        assert_eq!(param1["description"], "64-bit unsigned integer");
+
+        // Verify only 2 parameters (ProofOfUID and TxContext were skipped).
+        assert_eq!(schema.as_object().unwrap().len(), 2);
+    }
+}
