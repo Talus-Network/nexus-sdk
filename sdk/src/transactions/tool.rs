@@ -421,6 +421,57 @@ mod tests {
     }
 
     #[test]
+    fn test_register_on_chain_for_self() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let package_address = sui::ObjectID::random();
+        let module_name = "onchain_tool".to_string();
+        let input_schema = json!({}).to_string();
+        let output_schema = json!({}).to_string();
+        let fqn = fqn!("xyz.dummy.tool@1");
+        let description = "a dummy onchain tool".to_string();
+        let witness_id = sui::ObjectID::random();
+        let address = sui::ObjectID::random();
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        register_on_chain_for_self(
+            &mut tx,
+            &objects,
+            package_address,
+            module_name,
+            input_schema,
+            output_schema,
+            &fqn,
+            description,
+            witness_id,
+            address,
+        )
+        .expect("Failed to build PTB for registering an onchain tool.");
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.get(3).unwrap() else {
+            panic!("Expected a command to be a MoveCall to register an onchain tool");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+
+        assert_eq!(
+            call.module,
+            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+                .module
+                .to_string(),
+        );
+
+        assert_eq!(
+            call.function,
+            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+                .name
+                .to_string()
+        );
+
+        assert_eq!(call.arguments.len(), 9);
+    }
+
+    #[test]
     fn test_unregister_tool() {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.dummy.tool@1");
