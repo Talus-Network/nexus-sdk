@@ -26,6 +26,13 @@ Before starting, ensure you have:
 
 ## Project Setup
 
+{% hint style="info" %}
+You can choose to skip the manual project setup completely by using 
+the following CLI command: `nexus tool new --name my_onchain_tool --template move`
+
+This generates a ready-to-go onchain tool Move module for you to build from.
+{% endhint %}
+
 ### 1. Create a New Move Package
 
 ```bash
