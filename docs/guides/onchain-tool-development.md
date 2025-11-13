@@ -270,7 +270,7 @@ sui client object <DYNAMIC_FIELD_ID>
 Use the Nexus CLI to register your tool with automatic schema generation:
 
 ```bash
-nexus tool register-onchain \
+nexus tool register onchain \
   --package-address $PACKAGE_ID \
   --module-name my_onchain_tool \
   --tool-fqn "xyz.mydomain.my_onchain_tool@1" \
