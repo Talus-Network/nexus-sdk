@@ -14,6 +14,7 @@ use {
         transactions::tool,
     },
     serde_json::{json, Map, Value},
+    std::io::{self, Write},
 };
 
 /// Register a new onchain tool with automatic schema generation.
@@ -290,11 +291,6 @@ fn customize_parameter_descriptions_with_reader(
     schema_json: String,
     reader: &mut dyn std::io::BufRead,
 ) -> AnyResult<String, NexusCliError> {
-    use {
-        serde_json::{Map, Value},
-        std::io::{self, Write},
-    };
-
     // Skip interactive prompts in JSON mode.
     if JSON_MODE.load(Ordering::Relaxed) {
         return Ok(schema_json);
@@ -476,7 +472,6 @@ fn convert_schema_to_named_ports(
 
 /// Wrapper function that calls customize_parameter_descriptions_with_reader using stdin.
 fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
-    use std::io;
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     customize_parameter_descriptions_with_reader(schema_json, &mut reader)
@@ -487,8 +482,6 @@ fn customize_output_variant_and_field_descriptions_with_reader(
     base_schema: String,
     reader: &mut dyn std::io::BufRead,
 ) -> AnyResult<String, NexusCliError> {
-    use std::io::{self, Write};
-
     // Skip interactive prompts in JSON mode.
     if JSON_MODE.load(Ordering::Relaxed) {
         return Ok(base_schema);
@@ -603,7 +596,6 @@ fn customize_output_variant_and_field_descriptions_with_reader(
 fn customize_output_variant_and_field_descriptions(
     base_schema: String,
 ) -> AnyResult<String, NexusCliError> {
-    use std::io;
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     customize_output_variant_and_field_descriptions_with_reader(base_schema, &mut reader)
