@@ -1,11 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
         sui::*,
     },
     nexus_sdk::{
@@ -286,7 +281,10 @@ pub(crate) async fn register_onchain_tool(
     Ok(())
 }
 /// Allow the user to customize parameter descriptions interactively.
-fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
+fn customize_parameter_descriptions_with_reader(
+    schema_json: String,
+    reader: &mut dyn std::io::BufRead,
+) -> AnyResult<String, NexusCliError> {
     use {
         serde_json::{Map, Value},
         std::io::{self, Write},
@@ -380,7 +378,7 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
                 io::stdout().flush().unwrap();
 
                 let mut name_input = String::new();
-                io::stdin().read_line(&mut name_input).unwrap();
+                reader.read_line(&mut name_input).unwrap();
                 let custom_name = name_input.trim();
 
                 if !custom_name.is_empty() {
@@ -414,7 +412,7 @@ fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, Ne
                 io::stdout().flush().unwrap();
 
                 let mut desc_input = String::new();
-                io::stdin().read_line(&mut desc_input).unwrap();
+                reader.read_line(&mut desc_input).unwrap();
                 let custom_description = desc_input.trim();
 
                 if !custom_description.is_empty() {
@@ -470,9 +468,19 @@ fn convert_schema_to_named_ports(
 
     Ok(final_schema)
 }
+
+/// Wrapper function that calls customize_parameter_descriptions_with_reader using stdin.
+fn customize_parameter_descriptions(schema_json: String) -> AnyResult<String, NexusCliError> {
+    use std::io;
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    customize_parameter_descriptions_with_reader(schema_json, &mut reader)
+}
+
 /// Allow the user to customize output variant and field descriptions through an interactive prompt.
-fn customize_output_variant_and_field_descriptions(
+fn customize_output_variant_and_field_descriptions_with_reader(
     base_schema: String,
+    reader: &mut dyn std::io::BufRead,
 ) -> AnyResult<String, NexusCliError> {
     use std::io::{self, Write};
 
@@ -515,7 +523,7 @@ fn customize_output_variant_and_field_descriptions(
                 io::stdout().flush().unwrap();
 
                 let mut new_desc = String::new();
-                if io::stdin().read_line(&mut new_desc).is_ok() {
+                if reader.read_line(&mut new_desc).is_ok() {
                     let new_desc = new_desc.trim();
                     if !new_desc.is_empty() {
                         variant_obj["description"] = Value::String(new_desc.to_string());
@@ -556,7 +564,7 @@ fn customize_output_variant_and_field_descriptions(
                             io::stdout().flush().unwrap();
 
                             let mut field_input = String::new();
-                            if io::stdin().read_line(&mut field_input).is_ok() {
+                            if reader.read_line(&mut field_input).is_ok() {
                                 let custom_field_desc = field_input.trim();
                                 if !custom_field_desc.is_empty() {
                                     field_obj.insert(
@@ -584,4 +592,512 @@ fn customize_output_variant_and_field_descriptions(
     serde_json::to_string(&schema).map_err(|e| {
         NexusCliError::Any(anyhow::anyhow!("Failed to serialize output schema: {}", e))
     })
+}
+
+/// Wrapper function that calls customize_output_variant_and_field_descriptions_with_reader using stdin.
+fn customize_output_variant_and_field_descriptions(
+    base_schema: String,
+) -> AnyResult<String, NexusCliError> {
+    use std::io;
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    customize_output_variant_and_field_descriptions_with_reader(base_schema, &mut reader)
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, serde_json::json, std::sync::atomic::Ordering};
+
+    #[test]
+    fn test_convert_schema_to_named_ports_with_custom_names() {
+        // Create a schema with integer keys and custom names.
+        let mut schema = Map::new();
+
+        // Parameter 0: u64 with custom name "increment_amount".
+        let mut param0 = Map::new();
+        param0.insert("type".to_string(), json!("u64"));
+        param0.insert("description".to_string(), json!("64-bit unsigned integer"));
+        param0.insert("custom_name".to_string(), json!("increment_amount"));
+        param0.insert("parameter_index".to_string(), json!(0));
+        schema.insert("0".to_string(), Value::Object(param0));
+
+        // Parameter 1: object with custom name "counter".
+        let mut param1 = Map::new();
+        param1.insert("type".to_string(), json!("object"));
+        param1.insert("description".to_string(), json!("Counter object reference"));
+        param1.insert("mutable".to_string(), json!(true));
+        param1.insert("custom_name".to_string(), json!("counter"));
+        param1.insert("parameter_index".to_string(), json!(1));
+        schema.insert("1".to_string(), Value::Object(param1));
+
+        // Convert schema.
+        let result = convert_schema_to_named_ports(schema).unwrap();
+
+        // Verify custom names are used as keys.
+        assert!(result.contains_key("increment_amount"));
+        assert!(result.contains_key("counter"));
+        assert!(!result.contains_key("0"));
+        assert!(!result.contains_key("1"));
+
+        // Verify metadata fields are removed.
+        let increment_amount_param = result.get("increment_amount").unwrap().as_object().unwrap();
+        assert!(!increment_amount_param.contains_key("custom_name"));
+        assert!(!increment_amount_param.contains_key("parameter_index"));
+
+        // Verify type and description are preserved.
+        assert_eq!(increment_amount_param.get("type").unwrap(), "u64");
+        assert_eq!(
+            increment_amount_param.get("description").unwrap(),
+            "64-bit unsigned integer"
+        );
+
+        // Verify mutable flag is preserved for counter.
+        let counter_param = result.get("counter").unwrap().as_object().unwrap();
+        assert_eq!(counter_param.get("mutable").unwrap(), true);
+        assert!(!counter_param.contains_key("custom_name"));
+        assert!(!counter_param.contains_key("parameter_index"));
+    }
+
+    #[test]
+    fn test_convert_schema_to_named_ports_without_custom_names() {
+        // Create a schema with integer keys but no custom names.
+        let mut schema = Map::new();
+
+        // Parameter 0: u64 without custom name.
+        let mut param0 = Map::new();
+        param0.insert("type".to_string(), json!("u64"));
+        param0.insert("description".to_string(), json!("64-bit unsigned integer"));
+        schema.insert("0".to_string(), Value::Object(param0));
+
+        // Parameter 1: object without custom name.
+        let mut param1 = Map::new();
+        param1.insert("type".to_string(), json!("object"));
+        param1.insert("description".to_string(), json!("Object reference"));
+        param1.insert("mutable".to_string(), json!(true));
+        schema.insert("1".to_string(), Value::Object(param1));
+
+        // Convert schema.
+        let result = convert_schema_to_named_ports(schema).unwrap();
+
+        // Verify integer keys are preserved.
+        assert!(result.contains_key("0"));
+        assert!(result.contains_key("1"));
+
+        // Verify all properties are preserved.
+        let param0_result = result.get("0").unwrap().as_object().unwrap();
+        assert_eq!(param0_result.get("type").unwrap(), "u64");
+        assert_eq!(
+            param0_result.get("description").unwrap(),
+            "64-bit unsigned integer"
+        );
+
+        let param1_result = result.get("1").unwrap().as_object().unwrap();
+        assert_eq!(param1_result.get("type").unwrap(), "object");
+        assert_eq!(param1_result.get("mutable").unwrap(), true);
+    }
+
+    #[test]
+    fn test_convert_schema_to_named_ports_mixed() {
+        // Create a schema with some custom names and some without.
+        let mut schema = Map::new();
+
+        // Parameter 0: with custom name.
+        let mut param0 = Map::new();
+        param0.insert("type".to_string(), json!("u64"));
+        param0.insert("description".to_string(), json!("Amount parameter"));
+        param0.insert("custom_name".to_string(), json!("amount"));
+        param0.insert("parameter_index".to_string(), json!(0));
+        schema.insert("0".to_string(), Value::Object(param0));
+
+        // Parameter 1: without custom name.
+        let mut param1 = Map::new();
+        param1.insert("type".to_string(), json!("bool"));
+        param1.insert("description".to_string(), json!("Flag parameter"));
+        schema.insert("1".to_string(), Value::Object(param1));
+
+        // Parameter 2: with custom name.
+        let mut param2 = Map::new();
+        param2.insert("type".to_string(), json!("string"));
+        param2.insert("description".to_string(), json!("Message parameter"));
+        param2.insert("custom_name".to_string(), json!("message"));
+        param2.insert("parameter_index".to_string(), json!(2));
+        schema.insert("2".to_string(), Value::Object(param2));
+
+        // Convert schema.
+        let result = convert_schema_to_named_ports(schema).unwrap();
+
+        // Verify mixed keys.
+        assert!(result.contains_key("amount")); // Custom name.
+        assert!(result.contains_key("1")); // Integer key preserved.
+        assert!(result.contains_key("message")); // Custom name.
+        assert!(!result.contains_key("0")); // Replaced by custom name.
+        assert!(!result.contains_key("2")); // Replaced by custom name.
+
+        // Verify no metadata in results.
+        for (_, value) in result.iter() {
+            let obj = value.as_object().unwrap();
+            assert!(!obj.contains_key("custom_name"));
+            assert!(!obj.contains_key("parameter_index"));
+        }
+    }
+
+    #[test]
+    fn test_customize_parameter_descriptions_json_mode() {
+        // Set JSON mode to skip interactive prompts.
+        JSON_MODE.store(true, Ordering::Relaxed);
+
+        // Input schema based on onchain tool example.
+        let input_schema = r#"{
+            "0": {
+                "type": "object",
+                "description": "0x123::onchain_tool::RandomCounter",
+                "mutable": true
+            },
+            "1": {
+                "type": "u64",
+                "description": "64-bit unsigned integer"
+            }
+        }"#;
+
+        // Call customize function.
+        let result = customize_parameter_descriptions(input_schema.to_string()).unwrap();
+
+        // In JSON mode, schema should be returned unchanged.
+        let input_value: Value = serde_json::from_str(input_schema).unwrap();
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(input_value, result_value);
+
+        // Reset JSON mode.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_customize_parameter_descriptions_empty_schema() {
+        // Set JSON mode to skip interactive prompts.
+        JSON_MODE.store(true, Ordering::Relaxed);
+
+        // Empty schema.
+        let input_schema = "{}";
+
+        // Call customize function.
+        let result = customize_parameter_descriptions(input_schema.to_string()).unwrap();
+
+        // Should return empty schema unchanged.
+        assert_eq!(result, "{}");
+
+        // Reset JSON mode.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_customize_output_variant_and_field_descriptions_json_mode() {
+        // Set JSON mode to skip interactive prompts.
+        JSON_MODE.store(true, Ordering::Relaxed);
+
+        // Output schema based on onchain tool example.
+        let output_schema = r#"{
+            "ok": {
+                "type": "variant",
+                "description": "Ok variant",
+                "fields": {
+                    "old_count": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    },
+                    "new_count": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    },
+                    "increment": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    }
+                }
+            },
+            "err": {
+                "type": "variant",
+                "description": "Err variant",
+                "fields": {
+                    "reason": {
+                        "type": "string",
+                        "description": "0x1::ascii::String"
+                    }
+                }
+            },
+            "largeincrement": {
+                "type": "variant",
+                "description": "LargeIncrement variant",
+                "fields": {
+                    "old_count": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    },
+                    "new_count": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    },
+                    "increment": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    },
+                    "warning": {
+                        "type": "string",
+                        "description": "0x1::ascii::String"
+                    }
+                }
+            }
+        }"#;
+
+        // Call customize function.
+        let result =
+            customize_output_variant_and_field_descriptions(output_schema.to_string()).unwrap();
+
+        // In JSON mode, schema should be returned unchanged.
+        let input_value: Value = serde_json::from_str(output_schema).unwrap();
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(input_value, result_value);
+
+        // Reset JSON mode.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_convert_schema_to_named_ports_preserves_all_fields() {
+        // Test that all field types are properly preserved during conversion.
+        let mut schema = Map::new();
+
+        // Parameter with various field types.
+        let mut param = Map::new();
+        param.insert("type".to_string(), json!("object"));
+        param.insert("description".to_string(), json!("Test object"));
+        param.insert("mutable".to_string(), json!(true));
+        param.insert("custom_name".to_string(), json!("my_param"));
+        param.insert("parameter_index".to_string(), json!(0));
+        // Add some additional fields that might exist.
+        param.insert("optional".to_string(), json!(false));
+        schema.insert("0".to_string(), Value::Object(param));
+
+        // Convert.
+        let result = convert_schema_to_named_ports(schema).unwrap();
+
+        // Verify custom name is used and metadata removed.
+        assert!(result.contains_key("my_param"));
+        let my_param = result.get("my_param").unwrap().as_object().unwrap();
+
+        // Verify all non-metadata fields are preserved.
+        assert_eq!(my_param.get("type").unwrap(), "object");
+        assert_eq!(my_param.get("description").unwrap(), "Test object");
+        assert_eq!(my_param.get("mutable").unwrap(), true);
+        assert_eq!(my_param.get("optional").unwrap(), false);
+
+        // Verify metadata fields are removed.
+        assert!(!my_param.contains_key("custom_name"));
+        assert!(!my_param.contains_key("parameter_index"));
+    }
+
+    #[test]
+    fn test_convert_schema_to_named_ports_with_null_custom_name() {
+        // Test that null custom_name is treated as no custom name.
+        let mut schema = Map::new();
+
+        let mut param = Map::new();
+        param.insert("type".to_string(), json!("u64"));
+        param.insert("description".to_string(), json!("Test param"));
+        param.insert("custom_name".to_string(), Value::Null);
+        schema.insert("0".to_string(), Value::Object(param));
+
+        // Convert.
+        let result = convert_schema_to_named_ports(schema).unwrap();
+
+        // Verify integer key is preserved when custom_name is null.
+        assert!(result.contains_key("0"));
+        assert_eq!(result.get("0").unwrap()["type"], "u64");
+    }
+
+    #[test]
+    fn test_customize_parameter_descriptions_with_mock_input() {
+        // Ensure JSON_MODE is off for this test.
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        // Create input schema.
+        let input_schema = r#"{
+            "0": {
+                "type": "u64",
+                "description": "64-bit unsigned integer"
+            }
+        }"#;
+
+        // Mock user input: custom name "amount" + enter, then custom description "The amount to use" + enter.
+        let mock_input = "amount\nThe amount to use\n";
+        let mut reader = std::io::Cursor::new(mock_input.as_bytes());
+
+        // Call the function with mock input.
+        let result =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap();
+
+        // Parse the result.
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify the custom name was applied.
+        assert!(result_value.get("amount").is_some());
+        assert!(result_value.get("0").is_none());
+
+        // Verify the custom description was applied.
+        let amount_param = result_value.get("amount").unwrap();
+        assert_eq!(
+            amount_param.get("description").unwrap().as_str().unwrap(),
+            "The amount to use"
+        );
+        assert_eq!(amount_param.get("type").unwrap().as_str().unwrap(), "u64");
+
+        // Reset JSON_MODE.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_customize_parameter_descriptions_keep_defaults() {
+        // Ensure JSON_MODE is off.
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        // Create input schema.
+        let input_schema = r#"{
+            "0": {
+                "type": "bool",
+                "description": "Boolean flag"
+            }
+        }"#;
+
+        // Mock user input: empty (press enter) for both name and description to keep defaults.
+        let mock_input = "\n\n";
+        let mut reader = std::io::Cursor::new(mock_input.as_bytes());
+
+        // Call the function.
+        let result =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap();
+
+        // Parse the result.
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify integer key is preserved (no custom name).
+        assert!(result_value.get("0").is_some());
+
+        // Verify description is unchanged.
+        let param = result_value.get("0").unwrap();
+        assert_eq!(
+            param.get("description").unwrap().as_str().unwrap(),
+            "Boolean flag"
+        );
+
+        // Reset JSON_MODE.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_customize_output_with_mock_input() {
+        // Ensure JSON_MODE is off.
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        // Create output schema with one variant.
+        let output_schema = r#"{
+            "ok": {
+                "type": "variant",
+                "description": "Ok variant",
+                "fields": {
+                    "count": {
+                        "type": "u64",
+                        "description": "64-bit unsigned integer"
+                    }
+                }
+            }
+        }"#;
+
+        // Mock user input:
+        // 1. "Success case\n" for variant description
+        // 2. "The final count\n" for field description.
+        let mock_input = "Success case\nThe final count\n";
+        let mut reader = std::io::Cursor::new(mock_input.as_bytes());
+
+        // Call the function.
+        let result = customize_output_variant_and_field_descriptions_with_reader(
+            output_schema.to_string(),
+            &mut reader,
+        )
+        .unwrap();
+
+        // Parse the result.
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify variant description was updated.
+        let ok_variant = result_value.get("ok").unwrap();
+        assert_eq!(
+            ok_variant.get("description").unwrap().as_str().unwrap(),
+            "Success case"
+        );
+
+        // Verify field description was updated.
+        let fields = ok_variant.get("fields").unwrap();
+        let count_field = fields.get("count").unwrap();
+        assert_eq!(
+            count_field.get("description").unwrap().as_str().unwrap(),
+            "The final count"
+        );
+
+        // Reset JSON_MODE.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_customize_output_keep_defaults() {
+        // Ensure JSON_MODE is off.
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        // Create output schema.
+        let output_schema = r#"{
+            "err": {
+                "type": "variant",
+                "description": "Error variant",
+                "fields": {
+                    "message": {
+                        "type": "string",
+                        "description": "Error message"
+                    }
+                }
+            }
+        }"#;
+
+        // Mock user input: empty (press enter) for both variant and field to keep defaults.
+        let mock_input = "\n\n";
+        let mut reader = std::io::Cursor::new(mock_input.as_bytes());
+
+        // Call the function.
+        let result = customize_output_variant_and_field_descriptions_with_reader(
+            output_schema.to_string(),
+            &mut reader,
+        )
+        .unwrap();
+
+        // Parse the result.
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify descriptions are unchanged.
+        let err_variant = result_value.get("err").unwrap();
+        assert_eq!(
+            err_variant.get("description").unwrap().as_str().unwrap(),
+            "Error variant"
+        );
+
+        let fields = err_variant.get("fields").unwrap();
+        let message_field = fields.get("message").unwrap();
+        assert_eq!(
+            message_field.get("description").unwrap().as_str().unwrap(),
+            "Error message"
+        );
+
+        // Reset JSON_MODE.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
 }
