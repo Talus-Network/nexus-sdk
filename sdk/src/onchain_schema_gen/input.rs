@@ -10,7 +10,7 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips the first parameter (Promise/ProofOfUID) and the last parameter (TxContext).
+/// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
 pub async fn generate_input_schema(
     sui: &crate::sui::Client,
     package_address: crate::sui::ObjectID,
@@ -51,7 +51,7 @@ pub async fn generate_input_schema(
     for (i, param_type) in execute_func.parameters.iter().enumerate() {
         let is_tx_context = is_tx_context_param(param_type);
 
-        // Skip the first parameter (Promise/ProofOfUID) and the last parameter (TxContext).
+        // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
         if i == 0 || is_tx_context {
             continue;
         }
