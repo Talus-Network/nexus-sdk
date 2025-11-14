@@ -194,6 +194,85 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+### `nexus scheduler`
+
+Manage scheduler tasks, one-off occurrences, and periodic schedules.
+
+---
+
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-gas-price <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-gas-price <mist>] [--generator queue|periodic]`**
+
+Creates a new scheduler task tied to the specified DAG. Key options:
+
+- `--entry-group` points to the DAG entry function and defaults to `default`.
+- `--input-json` provides inline input data; `--remote vertex.port,...` forces specific inputs to be uploaded to the configured remote storage instead of inlining them on-chain.
+- `--metadata key=value` attaches arbitrary metadata entries and replaces any existing entries if the command is re-run.
+- `--execution-gas-price` sets the priority fee for future DAG executions launched by the task.
+- `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
+- `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-gas-price` sets the priority fee for that initial occurrence.
+- `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+
+Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
+
+Data for encrypted entry ports is automatically encrypted when a session is available.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+
+**`nexus scheduler task inspect --task-id <id>`**
+
+Fetches the on-chain task object, prints high-level metadata (owner, metadata entries, payload sizes), and emits a JSON payload containing the raw task structure for tooling.
+
+---
+
+**`nexus scheduler task metadata --task-id <id> --metadata key=value [...]`**
+
+Replaces all task metadata entries with the provided key/value pairs.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task pause|resume|cancel --task-id <id>`**
+
+Mutates the scheduling state for a task. `pause` and `resume` toggle consumption of occurrences, while `cancel` clears pending occurrences and permanently disables scheduling.
+
+{% hint style="info" %}
+These commands require that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-offset-ms <ms>] [--gas-price <mist>]`**
+
+Schedules a one-off occurrence for the task. `--start-ms` and `--start-offset-ms` are mutually exclusive and control when the occurrence enters the queue (absolute milliseconds or an offset from the current Sui clock). Deadlines are expressed only as offsets from that start time, and `--gas-price` adjusts the priority fee applied to the queued occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic set --task-id <id> --first-start-ms <ms> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--gas-price <mist>]`**
+
+Configures or updates a periodic schedule for the task. `--first-start-ms` pins the next execution to an absolute timestamp (milliseconds since epoch), `--period-ms` defines the spacing between subsequent occurrences, `--deadline-offset-ms` applies the same completion window after every generated start, `--max-iterations` limits how many future occurrences may be emitted automatically (omit for infinite), and `--gas-price` sets the priority fee charged for each periodic occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic disable --task-id <id>`**
+
+Removes the periodic schedule while leaving any existing sporadic occurrences untouched.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
 ### `nexus crypto`
 
 Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.

@@ -172,7 +172,7 @@ mod tests {
 
         assert_eq!(
             json,
-            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":[105,110,108,105,110,101],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encrypted":false}}]}"#
+            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":[105,110,108,105,110,101],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encryption_mode":0}}]}"#
         );
 
         let deserialized: PortsData = serde_json::from_str(&json).unwrap();

@@ -9,7 +9,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -72,6 +72,8 @@ tokio-retry = "0.3.0"
 toml = "0.8.20"
 warp = "0.3.7"
 zeroize = "1.7"
+sui_move_build = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-move-build" }
+sui_package_management = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-package-management" }
 
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }

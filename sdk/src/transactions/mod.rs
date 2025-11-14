@@ -9,3 +9,6 @@ pub mod gas;
 
 /// Transactions concerning operations around Nexus cryptography.
 pub mod crypto;
+
+/// Transactions concerning operations around the scheduler.
+pub mod scheduler;

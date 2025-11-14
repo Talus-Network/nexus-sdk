@@ -7,6 +7,7 @@ use {
             crypto::CryptoActions,
             error::NexusError,
             gas::GasActions,
+            scheduler::SchedulerActions,
             workflow::WorkflowActions,
         },
         sui::{self, traits::*},
@@ -332,6 +333,13 @@ impl NexusClient {
     /// Return a [`WorkflowActions`] instance for performing workflow-related operations.
     pub fn workflow(&self) -> WorkflowActions {
         WorkflowActions {
+            client: self.clone(),
+        }
+    }
+
+    /// Return a [`SchedulerActions`] instance for scheduler operations.
+    pub fn scheduler(&self) -> SchedulerActions {
+        SchedulerActions {
             client: self.clone(),
         }
     }

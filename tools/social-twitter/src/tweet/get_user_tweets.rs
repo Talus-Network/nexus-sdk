@@ -107,6 +107,7 @@ pub(crate) struct Input {
     place_fields: Option<Vec<PlaceField>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

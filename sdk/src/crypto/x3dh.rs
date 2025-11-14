@@ -534,9 +534,11 @@ pub fn sender_init(
     let cipher = XChaCha20Poly1305::new((&*sk).into());
     let mut nonce = [0u8; 24];
     OsRng.fill_bytes(&mut nonce);
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&nonce);
     let ciphertext = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &xnonce,
             Payload {
                 msg: plaintext,
                 aad: &ad,
@@ -636,9 +638,11 @@ pub fn receiver_receive(
 
     // 5. Decrypt
     let cipher = XChaCha20Poly1305::new((&*sk).into());
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&msg.nonce);
     let plaintext = cipher
         .decrypt(
-            XNonce::from_slice(&msg.nonce),
+            &xnonce,
             Payload {
                 msg: &msg.ciphertext,
                 aad: &ad,

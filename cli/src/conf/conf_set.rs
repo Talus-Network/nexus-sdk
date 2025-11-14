@@ -7,6 +7,7 @@ use {
 };
 
 /// Set the Nexus CLI configuration from the provided arguments.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
     sui_net: Option<SuiNet>,
     sui_wallet_path: Option<PathBuf>,

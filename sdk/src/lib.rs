@@ -64,3 +64,9 @@ pub mod dag;
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]
 pub mod nexus;
+
+/// Re-export Sui Move tooling utilities when test helpers are enabled.
+#[cfg(feature = "test_utils")]
+pub use sui_move_build;
+#[cfg(feature = "test_utils")]
+pub use sui_package_management;

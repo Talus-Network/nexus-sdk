@@ -20,15 +20,212 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
-    /// The DefaultTap struct type.
+    /// The witness type needed to register DAG execution.
+    ///
+    /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
+    pub const BEGIN_DAG_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("BeginDagExecutionWitness"),
+    };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
+    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("dag_begin_execution_from_scheduler"),
+    };
+    /// The DefaultTAP struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("DefaultTAP"),
     };
+    /// Register DAG execution configuration on the execution policy.
+    ///
+    /// `nexus_workflow::default_tap::register_begin_execution`
+    pub const REGISTER_BEGIN_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("register_begin_execution"),
+    };
 }
 
+// == `nexus_workflow::scheduler` ==
+
+pub struct Scheduler;
+
+const SCHEDULER_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("scheduler");
+
+impl Scheduler {
+    /// Enqueue a new occurrence for a task with explicit deadline.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_absolute_for_task`
+    pub const ADD_OCCURRENCE_ABSOLUTE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_absolute_for_task"),
+    };
+    /// Enqueue a new occurrence relative to the current time.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_relative_for_task`
+    pub const ADD_OCCURRENCE_RELATIVE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_relative_for_task"),
+    };
+    /// Cancel scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
+    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("cancel_time_constraint_for_task"),
+    };
+    /// Run scheduler checks to consume the next periodic occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_periodic_occurrence`
+    pub const CHECK_PERIODIC_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_periodic_occurrence"),
+    };
+    /// Run scheduler checks to consume the next queue occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_queue_occurrence`
+    pub const CHECK_QUEUE_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_queue_occurrence"),
+    };
+    /// Disable periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::disable_periodic_for_task`
+    pub const DISABLE_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("disable_periodic_for_task"),
+    };
+    /// Execute the DAG witness advancing logic.
+    ///
+    /// `nexus_workflow::scheduler::execute`
+    pub const EXECUTE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("execute"),
+    };
+    /// Finalize a task run ensuring policies reached accepting states.
+    ///
+    /// `nexus_workflow::scheduler::finish`
+    pub const FINISH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("finish"),
+    };
+    /// Creates a new task with metadata and policies.
+    ///
+    /// `nexus_workflow::scheduler::new`
+    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new"),
+    };
+    /// Creates the default constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::new_constraints_policy`
+    pub const NEW_CONSTRAINTS_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_constraints_policy"),
+    };
+    /// Creates the default execution policy.
+    ///
+    /// `nexus_workflow::scheduler::new_execution_policy`
+    pub const NEW_EXECUTION_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_execution_policy"),
+    };
+    /// Creates a metadata container from key/value pairs.
+    ///
+    /// `nexus_workflow::scheduler::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_metadata"),
+    };
+    /// Configure or update periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::new_or_modify_periodic_for_task`
+    pub const NEW_OR_MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_or_modify_periodic_for_task"),
+    };
+    /// Create a periodic generator state.
+    ///
+    /// `nexus_workflow::scheduler::new_periodic_generator_state`
+    pub const NEW_PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_periodic_generator_state"),
+    };
+    /// Create a queue generator state.
+    ///
+    /// `nexus_workflow::scheduler::new_queue_generator_state`
+    pub const NEW_QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_queue_generator_state"),
+    };
+    /// Pause the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::pause_time_constraint_for_task`
+    pub const PAUSE_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("pause_time_constraint_for_task"),
+    };
+    /// Witness type registered for periodic generators.
+    ///
+    /// `nexus_workflow::scheduler::PeriodicGeneratorWitness`
+    pub const PERIODIC_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("PeriodicGeneratorWitness"),
+    };
+    /// Witness type registered for queue-based generators.
+    ///
+    /// `nexus_workflow::scheduler::QueueGeneratorWitness`
+    pub const QUEUE_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("QueueGeneratorWitness"),
+    };
+    /// Register the periodic generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_periodic_generator`
+    pub const REGISTER_PERIODIC_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_periodic_generator"),
+    };
+    /// Register the queue generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_queue_generator`
+    pub const REGISTER_QUEUE_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_queue_generator"),
+    };
+    /// Resume the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::resume_time_constraint_for_task`
+    pub const RESUME_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("resume_time_constraint_for_task"),
+    };
+    /// The Task struct type. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::scheduler::Task`
+    pub const TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("Task"),
+    };
+    /// The TimeConstraint struct type.
+    ///
+    /// `nexus_workflow::scheduler::TimeConstraint`
+    pub const TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("TimeConstraint"),
+    };
+    /// Updates task metadata with the provided values.
+    ///
+    /// `nexus_workflow::scheduler::update_metadata`
+    pub const UPDATE_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("update_metadata"),
+    };
+}
 // == `nexus_workflow::dag` ==
 
 pub struct Dag;
@@ -126,6 +323,13 @@ impl Dag {
     pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("new"),
+    };
+    /// Create a new DAG execution config value.
+    ///
+    /// `nexus_workflow::dag::new_dag_execution_config`
+    pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("new_dag_execution_config"),
     };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///

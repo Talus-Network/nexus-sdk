@@ -4,10 +4,18 @@
 //! - Sui
 //! - Redis
 
-use testcontainers_modules::{
-    redis::Redis,
-    sui::Sui,
-    testcontainers::{core::ports::ContainerPort, runners::AsyncRunner, ContainerAsync, ImageExt},
+use {
+    portpicker::pick_unused_port,
+    testcontainers_modules::{
+        redis::Redis,
+        sui::Sui,
+        testcontainers::{
+            core::ports::ContainerPort,
+            runners::AsyncRunner,
+            ContainerAsync,
+            ImageExt,
+        },
+    },
 };
 
 pub type SuiContainer = ContainerAsync<Sui>;
@@ -17,30 +25,28 @@ pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
 pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
+    let rpc_host_port = pick_unused_port().expect("No free port for Sui RPC.");
+    let faucet_host_port = loop {
+        let port = pick_unused_port().expect("No free port for Sui faucet.");
+        if port != rpc_host_port {
+            break port;
+        }
+    };
+
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
         .with_tag(env!("SUI_SDK_TAG"))
-        .with_mapped_port(0, ContainerPort::Tcp(9000))
-        .with_mapped_port(0, ContainerPort::Tcp(9123));
+        .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
+        .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123));
 
     let container = sui_request
         .start()
         .await
         .expect("Failed to start Sui container.");
 
-    let rpc_port = container
-        .get_host_port_ipv4(9000)
-        .await
-        .expect("Failed to get RPC port.");
-
-    let faucet_port = container
-        .get_host_port_ipv4(9123)
-        .await
-        .expect("Failed to get faucet port.");
-
-    (container, rpc_port, faucet_port)
+    (container, rpc_host_port, faucet_host_port)
 }
 
 /// Spins up a Redis container and returns its handle and mapped Redis port.

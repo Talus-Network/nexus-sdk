@@ -2386,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "exchanges-coinbase"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "chrono",
  "mockito",
@@ -3198,7 +3198,7 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "backon",
  "base64 0.21.7",
@@ -4208,7 +4208,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "llm-openai-chat-completion"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -4304,7 +4304,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "math"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "nexus-sdk",
  "nexus-toolkit",
@@ -5013,7 +5013,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-cli"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5056,7 +5056,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -5081,6 +5081,7 @@ dependencies = [
  "mockito",
  "move-core-types",
  "petgraph 0.7.1",
+ "portpicker",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "regex",
@@ -5089,6 +5090,7 @@ dependencies = [
  "serde-big-array",
  "serde_bytes",
  "serde_json",
+ "serde_repr",
  "sha2 0.10.8",
  "shared-crypto",
  "subtle",
@@ -5110,7 +5112,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -7453,7 +7455,7 @@ checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
 name = "social-twitter"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "base64 0.13.1",
  "chrono",
@@ -8328,7 +8330,7 @@ dependencies = [
 
 [[package]]
 name = "templating-jinja"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "minijinja",
  "nexus-sdk",
@@ -9200,7 +9202,7 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 dependencies = [
  "anyhow",
  "jsonschema",

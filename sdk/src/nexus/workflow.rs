@@ -124,11 +124,15 @@ impl WorkflowActions {
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
+    /// `gas_price` is the per-transaction priority fee to pass down to the DAG
+    /// execution.
+    ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
     pub async fn execute(
         &self,
         dag_object_id: sui::ObjectID,
         entry_data: HashMap<String, PortsData>,
+        gas_price: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         session: Arc<Mutex<Session>>,
@@ -163,6 +167,7 @@ impl WorkflowActions {
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
+            gas_price,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
         ) {
@@ -462,11 +467,14 @@ mod tests {
             ])),
         )]);
 
+        let price_priority_fee = 0_u64;
+
         let result = nexus_client
             .workflow()
             .execute(
                 dag_object_id,
                 entry_data,
+                price_priority_fee,
                 None,
                 &StorageConf::default(),
                 sender,
