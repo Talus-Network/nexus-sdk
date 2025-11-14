@@ -200,31 +200,24 @@ Manage scheduler tasks, one-off occurrences, and periodic schedules.
 
 ---
 
-**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--metadata key=value ...] [--schedule-*]`**
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-gas-price <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-gas-price <mist>] [--generator queue|periodic]`**
 
-Creates a new scheduler task tied to the specified DAG. You can optionally attach metadata, supply initial DAG inputs, and immediately schedule the first occurrence. When `--schedule-start-offset-ms` is used, the optional `--schedule-deadline-offset-ms` is interpreted as milliseconds after that start time (e.g. `--schedule-start-offset-ms 60000 --schedule-deadline-offset-ms 30000` opens a 30 s window beginning in one minute).
+Creates a new scheduler task tied to the specified DAG. Key options:
+
+- `--entry-group` points to the DAG entry function and defaults to `default`.
+- `--input-json` provides inline input data; `--remote vertex.port,...` forces specific inputs to be uploaded to the configured remote storage instead of inlining them on-chain.
+- `--metadata key=value` attaches arbitrary metadata entries and replaces any existing entries if the command is re-run.
+- `--execution-gas-price` sets the priority fee for future DAG executions launched by the task.
+- `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
+- `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-gas-price` sets the priority fee for that initial occurrence.
+- `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+
+Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
 
 Data for encrypted entry ports is automatically encrypted when a session is available.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
-### `nexus crypto`
-
-Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
-
----
-
-**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
-
-Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
-
-Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
-{% endhint %}
-
----
 
 **`nexus scheduler task inspect --task-id <id>`**
 
@@ -252,9 +245,9 @@ These commands require that a wallet is connected to the CLI and holds sufficien
 
 ---
 
-**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-ms <ms> | --deadline-offset-ms <ms>] [--gas-price <mist>]`**
+**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-offset-ms <ms>] [--gas-price <mist>]`**
 
-Schedules a one-off occurrence for the task. Absolute timestamps are interpreted as milliseconds since epoch. Offsets are measured from the current Sui clock, and deadline offsets are expressed relative to the chosen start time.
+Schedules a one-off occurrence for the task. `--start-ms` and `--start-offset-ms` are mutually exclusive and control when the occurrence enters the queue (absolute milliseconds or an offset from the current Sui clock). Deadlines are expressed only as offsets from that start time, and `--gas-price` adjusts the priority fee applied to the queued occurrence.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
@@ -262,9 +255,9 @@ This command requires that a wallet is connected to the CLI and holds sufficient
 
 ---
 
-**`nexus scheduler periodic set --task-id <id> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--gas-price <mist>]`**
+**`nexus scheduler periodic set --task-id <id> --first-start-ms <ms> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--gas-price <mist>]`**
 
-Configures or updates a periodic schedule for the task. The deadline offset is applied after each generated start time, and `max-iterations` limits how many future occurrences can be produced automatically.
+Configures or updates a periodic schedule for the task. `--first-start-ms` pins the next execution to an absolute timestamp (milliseconds since epoch), `--period-ms` defines the spacing between subsequent occurrences, `--deadline-offset-ms` applies the same completion window after every generated start, `--max-iterations` limits how many future occurrences may be emitted automatically (omit for infinite), and `--gas-price` sets the priority fee charged for each periodic occurrence.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
@@ -279,6 +272,25 @@ Removes the periodic schedule while leaving any existing sporadic occurrences un
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
 {% endhint %}
+
+### `nexus crypto`
+
+Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
+
+---
+
+**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
+
+Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
+
+Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
+{% endhint %}
+
+---
+
 **`nexus crypto generate-identity-key`**
 
 Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid—run `nexus crypto auth` immediately after to populate a replacement session.
