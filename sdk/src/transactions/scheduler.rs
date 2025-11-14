@@ -4,8 +4,26 @@ use {
         sui,
         types::{DataStorage, NexusObjects, Storable, StorageKind},
     },
+    serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
+
+/// Generator variants supported by the scheduler when executing occurrences.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OccurrenceGenerator {
+    Queue,
+    Periodic,
+}
+
+/// Arguments required to configure periodic scheduling in the PTB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PeriodicScheduleInputs {
+    pub first_start_ms: u64,
+    pub period_ms: u64,
+    pub deadline_offset_ms: Option<u64>,
+    pub max_iterations: Option<u64>,
+    pub gas_price: u64,
+}
 
 // Shared helper for turning a scheduler task object ref into a mutable shared argument.
 fn shared_task_arg(
@@ -102,57 +120,42 @@ pub fn update_metadata(
     ))
 }
 
-/// PTB template to register the time constraint configuration.
-pub fn register_time_constraint(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    objects: &NexusObjects,
-    policy: sui::Argument,
-    config: sui::Argument,
-) -> anyhow::Result<sui::Argument> {
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Scheduler::REGISTER_TIME_CONSTRAINT.module.into(),
-        workflow::Scheduler::REGISTER_TIME_CONSTRAINT.name.into(),
-        vec![],
-        vec![policy, config],
-    ))
-}
-
-/// PTB template to construct a new time constraint configuration value.
-pub fn new_time_constraint_config(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    objects: &NexusObjects,
-) -> anyhow::Result<sui::Argument> {
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG
-            .module
-            .into(),
-        workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG.name.into(),
-        vec![],
-        vec![],
-    ))
-}
-
 /// PTB template to construct and register the default constraints policy.
 pub fn new_constraints_policy(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
+    generator: OccurrenceGenerator,
 ) -> anyhow::Result<sui::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
-    let time_constraint_tag = workflow::into_type_tag(
-        objects.workflow_pkg_id,
-        workflow::Scheduler::TIME_CONSTRAINT,
-    );
-
-    let constraint_symbol = tx.programmable_move_call(
-        objects.primitives_pkg_id,
-        primitives::Policy::WITNESS_SYMBOL.module.into(),
-        primitives::Policy::WITNESS_SYMBOL.name.into(),
-        vec![time_constraint_tag],
-        vec![],
-    );
+    let constraint_symbol = match generator {
+        OccurrenceGenerator::Queue => {
+            let witness_tag = workflow::into_type_tag(
+                objects.workflow_pkg_id,
+                workflow::Scheduler::QUEUE_GENERATOR_WITNESS,
+            );
+            tx.programmable_move_call(
+                objects.primitives_pkg_id,
+                primitives::Policy::WITNESS_SYMBOL.module.into(),
+                primitives::Policy::WITNESS_SYMBOL.name.into(),
+                vec![witness_tag],
+                vec![],
+            )
+        }
+        OccurrenceGenerator::Periodic => {
+            let witness_tag = workflow::into_type_tag(
+                objects.workflow_pkg_id,
+                workflow::Scheduler::PERIODIC_GENERATOR_WITNESS,
+            );
+            tx.programmable_move_call(
+                objects.primitives_pkg_id,
+                primitives::Policy::WITNESS_SYMBOL.module.into(),
+                primitives::Policy::WITNESS_SYMBOL.name.into(),
+                vec![witness_tag],
+                vec![],
+            )
+        }
+    };
 
     let constraint_sequence = tx.programmable_move_call(
         sui::MOVE_STDLIB_PACKAGE_ID,
@@ -170,10 +173,88 @@ pub fn new_constraints_policy(
         vec![constraint_sequence],
     );
 
-    let config = new_time_constraint_config(tx, objects)?;
-    register_time_constraint(tx, objects, constraints, config)?;
+    match generator {
+        OccurrenceGenerator::Queue => {
+            let queue_state = new_queue_generator_state(tx, objects)?;
+            register_queue_generator(tx, objects, constraints, queue_state)?;
+        }
+        OccurrenceGenerator::Periodic => {
+            let periodic_state = new_periodic_generator_state(tx, objects)?;
+            register_periodic_generator(tx, objects, constraints, periodic_state)?;
+        }
+    };
 
     Ok(constraints)
+}
+
+/// PTB template to construct a queue generator state.
+pub fn new_queue_generator_state(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+) -> anyhow::Result<sui::Argument> {
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.module.into(),
+        workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.name.into(),
+        vec![],
+        vec![],
+    ))
+}
+
+/// PTB template to register the queue generator state.
+pub fn register_queue_generator(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    constraints: sui::Argument,
+    queue_state: sui::Argument,
+) -> anyhow::Result<()> {
+    tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::REGISTER_QUEUE_GENERATOR.module.into(),
+        workflow::Scheduler::REGISTER_QUEUE_GENERATOR.name.into(),
+        vec![],
+        vec![constraints, queue_state],
+    );
+
+    Ok(())
+}
+
+/// PTB template to construct a periodic generator state.
+pub fn new_periodic_generator_state(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+) -> anyhow::Result<sui::Argument> {
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE
+            .module
+            .into(),
+        workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE
+            .name
+            .into(),
+        vec![],
+        vec![],
+    ))
+}
+
+/// PTB template to register the periodic generator state.
+pub fn register_periodic_generator(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    constraints: sui::Argument,
+    periodic_state: sui::Argument,
+) -> anyhow::Result<()> {
+    tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::REGISTER_PERIODIC_GENERATOR
+            .module
+            .into(),
+        workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.name.into(),
+        vec![],
+        vec![constraints, periodic_state],
+    );
+
+    Ok(())
 }
 
 /// PTB template to construct and register the default execution policy.
@@ -377,45 +458,8 @@ pub fn finish(
 
 // == Occurrence scheduling ==
 
-/// PTB template to enqueue a new occurrence with absolute deadline.
+/// PTB template to enqueue a new occurrence with absolute start time.
 pub fn add_occurrence_absolute_for_task(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    objects: &NexusObjects,
-    task: &sui::ObjectRef,
-    start_time_ms: u64,
-    deadline_ms: Option<u64>,
-    gas_price: u64,
-) -> anyhow::Result<sui::Argument> {
-    // `task: &mut Task`
-    let task = shared_task_arg(tx, task)?;
-
-    // `start_time_ms: u64`
-    let start_time_ms = tx.pure(start_time_ms)?;
-
-    // `deadline_ms: option::Option<u64>`
-    let deadline_ms = tx.pure(deadline_ms)?;
-
-    // `gas_price: u64`
-    let gas_price = tx.pure(gas_price)?;
-
-    // `clock: &Clock`
-    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
-
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK
-            .module
-            .into(),
-        workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK
-            .name
-            .into(),
-        vec![],
-        vec![task, start_time_ms, deadline_ms, gas_price, clock],
-    ))
-}
-
-/// PTB template to enqueue a new occurrence with deadline offset.
-pub fn add_occurrence_with_offset_for_task(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     task: &sui::ObjectRef,
@@ -440,10 +484,10 @@ pub fn add_occurrence_with_offset_for_task(
 
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::Scheduler::ADD_OCCURRENCE_WITH_OFFSET_FOR_TASK
+        workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK
             .module
             .into(),
-        workflow::Scheduler::ADD_OCCURRENCE_WITH_OFFSET_FOR_TASK
+        workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK
             .name
             .into(),
         vec![],
@@ -451,8 +495,8 @@ pub fn add_occurrence_with_offset_for_task(
     ))
 }
 
-/// PTB template to enqueue a new occurrence relative to the current time.
-pub fn add_occurrence_with_offsets_from_now_for_task(
+/// PTB template to enqueue a new occurrence relative to the current clock time.
+pub fn add_occurrence_relative_for_task(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     task: &sui::ObjectRef,
@@ -477,10 +521,10 @@ pub fn add_occurrence_with_offsets_from_now_for_task(
 
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::Scheduler::ADD_OCCURRENCE_WITH_OFFSETS_FROM_NOW_FOR_TASK
+        workflow::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK
             .module
             .into(),
-        workflow::Scheduler::ADD_OCCURRENCE_WITH_OFFSETS_FROM_NOW_FOR_TASK
+        workflow::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK
             .name
             .into(),
         vec![],
@@ -491,17 +535,26 @@ pub fn add_occurrence_with_offsets_from_now_for_task(
 // == Periodic scheduling ==
 
 /// PTB template to configure or update periodic scheduling.
+#[warn(clippy::too_many_arguments)]
 pub fn new_or_modify_periodic_for_task(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     task: &sui::ObjectRef,
-    period_ms: u64,
-    deadline_offset_ms: Option<u64>,
-    max_iterations: Option<u64>,
-    gas_price: u64,
+    schedule: PeriodicScheduleInputs,
 ) -> anyhow::Result<sui::Argument> {
+    let PeriodicScheduleInputs {
+        first_start_ms,
+        period_ms,
+        deadline_offset_ms,
+        max_iterations,
+        gas_price,
+    } = schedule;
+
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
+
+    // `first_start_ms: u64`
+    let first_start_ms = tx.pure(first_start_ms)?;
 
     // `period_ms: u64`
     let period_ms = tx.pure(period_ms)?;
@@ -526,6 +579,7 @@ pub fn new_or_modify_periodic_for_task(
         vec![],
         vec![
             task,
+            first_start_ms,
             period_ms,
             deadline_offset_ms,
             max_iterations,
@@ -618,8 +672,8 @@ pub fn cancel_time_constraint_for_task(
 
 // == Execution flow ==
 
-/// PTB template to evaluate the scheduler and consume the next occurrence.
-pub fn check_time_constraint(
+/// PTB template to consume the next queued occurrence.
+pub fn check_queue_occurrence(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     task: &sui::ObjectRef,
@@ -629,8 +683,26 @@ pub fn check_time_constraint(
 
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
-        workflow::Scheduler::CHECK_TIME_CONSTRAINT.module.into(),
-        workflow::Scheduler::CHECK_TIME_CONSTRAINT.name.into(),
+        workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module.into(),
+        workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name.into(),
+        vec![],
+        vec![task, clock],
+    ))
+}
+
+/// PTB template to consume the next periodic occurrence.
+pub fn check_periodic_occurrence(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::ObjectRef,
+) -> anyhow::Result<sui::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
+
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.module.into(),
+        workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name.into(),
         vec![],
         vec![task, clock],
     ))
@@ -737,8 +809,12 @@ pub fn execute_scheduled_occurrence(
     claim_coin: &sui::ObjectRef,
     amount_execution: u64,
     amount_priority: u64,
+    generator: OccurrenceGenerator,
 ) -> anyhow::Result<()> {
-    check_time_constraint(tx, objects, task)?;
+    match generator {
+        OccurrenceGenerator::Queue => check_queue_occurrence(tx, objects, task)?,
+        OccurrenceGenerator::Periodic => check_periodic_occurrence(tx, objects, task)?,
+    };
     dag_begin_execution_from_scheduler(
         tx,
         objects,
@@ -1002,13 +1078,39 @@ mod tests {
     }
 
     #[test]
-    fn register_time_constraint_invokes_scheduler() {
+    fn new_queue_generator_state_has_no_arguments() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        let policy = tx.pure(11u8).expect("policy input");
-        let config = tx.pure(12u8).expect("config input");
 
-        register_time_constraint(&mut tx, &objects, policy, config)
+        let arg = new_queue_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
+        assert_matches!(arg, sui::Argument::Result(0));
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert!(call.arguments.is_empty());
+        assert_eq!(
+            call.module,
+            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE
+                .name
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn register_queue_generator_invokes_scheduler() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let constraints = tx.pure(11u8).expect("constraints input");
+        let queue_state = tx.pure(12u8).expect("queue input");
+
+        register_queue_generator(&mut tx, &objects, constraints, queue_state)
             .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(tx.finish());
@@ -1016,13 +1118,13 @@ mod tests {
         let call = inspector.move_call(0);
         assert_eq!(
             call.module,
-            workflow::Scheduler::REGISTER_TIME_CONSTRAINT
+            workflow::Scheduler::REGISTER_QUEUE_GENERATOR
                 .module
                 .to_string()
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::REGISTER_TIME_CONSTRAINT
+            workflow::Scheduler::REGISTER_QUEUE_GENERATOR
                 .name
                 .to_string()
         );
@@ -1032,11 +1134,12 @@ mod tests {
     }
 
     #[test]
-    fn new_time_constraint_config_has_no_arguments() {
+    fn new_periodic_generator_state_has_no_arguments() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-        let arg = new_time_constraint_config(&mut tx, &objects).expect("ptb construction succeeds");
+        let arg =
+            new_periodic_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
         assert_matches!(arg, sui::Argument::Result(0));
 
         let inspector = TxInspector::new(tx.finish());
@@ -1045,16 +1148,46 @@ mod tests {
         assert!(call.arguments.is_empty());
         assert_eq!(
             call.module,
-            workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG
+            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE
                 .module
                 .to_string()
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::NEW_TIME_CONSTRAINT_CONFIG
+            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE
                 .name
                 .to_string()
         );
+    }
+
+    #[test]
+    fn register_periodic_generator_invokes_scheduler() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let constraints = tx.pure(21u8).expect("constraints input");
+        let periodic_state = tx.pure(22u8).expect("periodic input");
+
+        register_periodic_generator(&mut tx, &objects, constraints, periodic_state)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        assert_eq!(inspector.commands_len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(
+            call.module,
+            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR
+                .module
+                .to_string()
+        );
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR
+                .name
+                .to_string()
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_pure_bytes(&call.arguments[0], &[21]);
+        inspector.expect_pure_bytes(&call.arguments[1], &[22]);
     }
 
     #[test]
@@ -1119,28 +1252,7 @@ mod tests {
     }
 
     #[test]
-    fn add_occurrence_with_offset_for_task_encodes_optional_deadline() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let task = sui_mocks::mock_sui_object_ref();
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
-        let start_time = 100;
-        let gas_price = 55;
-
-        add_occurrence_with_offset_for_task(&mut tx, &objects, &task, start_time, None, gas_price)
-            .expect("ptb construction succeeds");
-
-        let inspector = TxInspector::new(tx.finish());
-        let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 5);
-        inspector.expect_shared_object(&call.arguments[0], &task, true);
-        inspector.expect_u64(&call.arguments[1], start_time);
-        inspector.expect_option_u64(&call.arguments[2], None);
-        inspector.expect_u64(&call.arguments[3], gas_price);
-        inspector.expect_clock(&call.arguments[4]);
-    }
-
-    #[test]
-    fn add_occurrence_with_offsets_from_now_for_task_encodes_offsets() {
+    fn add_occurrence_relative_for_task_encodes_offsets() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
@@ -1149,7 +1261,7 @@ mod tests {
         let deadline_offset = Some(15);
         let gas_price = 25;
 
-        add_occurrence_with_offsets_from_now_for_task(
+        add_occurrence_relative_for_task(
             &mut tx,
             &objects,
             &task,
@@ -1175,6 +1287,7 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
+        let first_start = 10_000;
         let period = 1_000;
         let deadline_offset = Some(500);
         let max_iterations = Some(3);
@@ -1184,21 +1297,25 @@ mod tests {
             &mut tx,
             &objects,
             &task,
-            period,
-            deadline_offset,
-            max_iterations,
-            gas_price,
+            PeriodicScheduleInputs {
+                first_start_ms: first_start,
+                period_ms: period,
+                deadline_offset_ms: deadline_offset,
+                max_iterations,
+                gas_price,
+            },
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(tx.finish());
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
-        inspector.expect_u64(&call.arguments[1], period);
-        inspector.expect_option_u64(&call.arguments[2], deadline_offset);
-        inspector.expect_option_u64(&call.arguments[3], max_iterations);
-        inspector.expect_u64(&call.arguments[4], gas_price);
+        inspector.expect_u64(&call.arguments[1], first_start);
+        inspector.expect_u64(&call.arguments[2], period);
+        inspector.expect_option_u64(&call.arguments[3], deadline_offset);
+        inspector.expect_option_u64(&call.arguments[4], max_iterations);
+        inspector.expect_u64(&call.arguments[5], gas_price);
     }
 
     #[test]
@@ -1261,15 +1378,40 @@ mod tests {
     }
 
     #[test]
-    fn check_time_constraint_uses_clock_and_shared_task() {
+    fn check_queue_occurrence_uses_clock_and_shared_task() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-        check_time_constraint(&mut tx, &objects, &task).expect("ptb construction succeeds");
+        check_queue_occurrence(&mut tx, &objects, &task).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(tx.finish());
         let call = inspector.move_call(0);
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name.to_string()
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_clock(&call.arguments[1]);
+    }
+
+    #[test]
+    fn check_periodic_occurrence_uses_clock_and_shared_task() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        check_periodic_occurrence(&mut tx, &objects, &task).expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let call = inspector.move_call(0);
+        assert_eq!(
+            call.function,
+            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE
+                .name
+                .to_string()
+        );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_clock(&call.arguments[1]);
@@ -1381,6 +1523,7 @@ mod tests {
             &claim_coin,
             100,
             200,
+            OccurrenceGenerator::Queue,
         )
         .expect("ptb construction succeeds");
 
@@ -1390,13 +1533,13 @@ mod tests {
         let scheduler_call = inspector.move_call(0);
         assert_eq!(
             scheduler_call.module,
-            workflow::Scheduler::CHECK_TIME_CONSTRAINT
+            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE
                 .module
                 .to_string()
         );
         assert_eq!(
             scheduler_call.function,
-            workflow::Scheduler::CHECK_TIME_CONSTRAINT.name.to_string()
+            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name.to_string()
         );
         assert_eq!(scheduler_call.arguments.len(), 2);
         inspector.expect_shared_object(&scheduler_call.arguments[0], &task, true);
@@ -1438,5 +1581,37 @@ mod tests {
         inspector.expect_u64(&tap_call.arguments[6], 100);
         inspector.expect_u64(&tap_call.arguments[7], 200);
         inspector.expect_clock(&tap_call.arguments[8]);
+    }
+
+    #[test]
+    fn execute_scheduled_occurrence_supports_periodic_generators() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+        let claim_coin = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+
+        execute_scheduled_occurrence(
+            &mut tx,
+            &objects,
+            &task,
+            &dag,
+            &leader_cap,
+            &claim_coin,
+            10,
+            20,
+            OccurrenceGenerator::Periodic,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(tx.finish());
+        let scheduler_call = inspector.move_call(0);
+        assert_eq!(
+            scheduler_call.function,
+            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE
+                .name
+                .to_string()
+        );
     }
 }

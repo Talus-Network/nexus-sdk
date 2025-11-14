@@ -66,18 +66,10 @@ impl Scheduler {
     };
     /// Enqueue a new occurrence relative to the current time.
     ///
-    /// `nexus_workflow::scheduler::add_occurrence_with_offsets_from_now_for_task`
-    pub const ADD_OCCURRENCE_WITH_OFFSETS_FROM_NOW_FOR_TASK: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: SCHEDULER_MODULE,
-            name: sui::move_ident_str!("add_occurrence_with_offsets_from_now_for_task"),
-        };
-    /// Enqueue a new occurrence with deadline offset.
-    ///
-    /// `nexus_workflow::scheduler::add_occurrence_with_offset_for_task`
-    pub const ADD_OCCURRENCE_WITH_OFFSET_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::add_occurrence_relative_for_task`
+    pub const ADD_OCCURRENCE_RELATIVE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("add_occurrence_with_offset_for_task"),
+        name: sui::move_ident_str!("add_occurrence_relative_for_task"),
     };
     /// Cancel scheduling for a task.
     ///
@@ -86,12 +78,19 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("cancel_time_constraint_for_task"),
     };
-    /// Run scheduler checks to consume the next occurrence.
+    /// Run scheduler checks to consume the next periodic occurrence.
     ///
-    /// `nexus_workflow::scheduler::check_time_constraint`
-    pub const CHECK_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::check_periodic_occurrence`
+    pub const CHECK_PERIODIC_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("check_time_constraint"),
+        name: sui::move_ident_str!("check_periodic_occurrence"),
+    };
+    /// Run scheduler checks to consume the next queue occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_queue_occurrence`
+    pub const CHECK_QUEUE_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_queue_occurrence"),
     };
     /// Disable periodic scheduling for a task.
     ///
@@ -149,12 +148,19 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("new_or_modify_periodic_for_task"),
     };
-    /// Build a new time-constraint configuration instance.
+    /// Create a periodic generator state.
     ///
-    /// `nexus_workflow::scheduler::new_time_constraint_config`
-    pub const NEW_TIME_CONSTRAINT_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::new_periodic_generator_state`
+    pub const NEW_PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("new_time_constraint_config"),
+        name: sui::move_ident_str!("new_periodic_generator_state"),
+    };
+    /// Create a queue generator state.
+    ///
+    /// `nexus_workflow::scheduler::new_queue_generator_state`
+    pub const NEW_QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_queue_generator_state"),
     };
     /// Pause the scheduler for a task.
     ///
@@ -163,12 +169,33 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::move_ident_str!("pause_time_constraint_for_task"),
     };
-    /// Register the initial time-constraint configuration.
+    /// Witness type registered for periodic generators.
     ///
-    /// `nexus_workflow::scheduler::register_time_constraint`
-    pub const REGISTER_TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::scheduler::PeriodicGeneratorWitness`
+    pub const PERIODIC_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
-        name: sui::move_ident_str!("register_time_constraint"),
+        name: sui::move_ident_str!("PeriodicGeneratorWitness"),
+    };
+    /// Witness type registered for queue-based generators.
+    ///
+    /// `nexus_workflow::scheduler::QueueGeneratorWitness`
+    pub const QUEUE_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("QueueGeneratorWitness"),
+    };
+    /// Register the periodic generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_periodic_generator`
+    pub const REGISTER_PERIODIC_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_periodic_generator"),
+    };
+    /// Register the queue generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_queue_generator`
+    pub const REGISTER_QUEUE_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_queue_generator"),
     };
     /// Resume the scheduler for a task.
     ///

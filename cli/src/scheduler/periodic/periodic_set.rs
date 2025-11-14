@@ -13,6 +13,7 @@ use {
 /// Configure or update the periodic schedule for a scheduler task.
 pub(crate) async fn set_periodic_task(
     task_id: sui::ObjectID,
+    first_start_ms: u64,
     period_ms: u64,
     deadline_offset_ms: Option<u64>,
     max_iterations: Option<u64>,
@@ -31,6 +32,7 @@ pub(crate) async fn set_periodic_task(
         .configure_periodic(
             task_id,
             PeriodicScheduleConfig {
+                first_start_ms,
                 period_ms,
                 deadline_offset_ms,
                 max_iterations,

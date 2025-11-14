@@ -279,15 +279,11 @@ package = "shared-crypto"
 optional = true
 
 [dependencies.sui_move_build]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-move-build"
+workspace = true
 optional = true
 
 [dependencies.sui_package_management]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-package-management"
+workspace = true
 optional = true
 
 [dependencies.testcontainers-modules]

@@ -11,8 +11,8 @@ use {
     },
     nexus_sdk::{
         events::NexusEventKind,
-        nexus::scheduler::{CreateTaskParams, OccurrenceRequest},
-        types::{EncryptionMode, StorageConf},
+        nexus::scheduler::{CreateTaskParams, GeneratorKind, OccurrenceRequest},
+        types::{EncryptionMode, PolicySymbol, StorageConf},
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -27,10 +27,10 @@ pub(crate) async fn create_task(
     metadata: Vec<String>,
     execution_gas_price: u64,
     schedule_start_ms: Option<u64>,
-    schedule_deadline_ms: Option<u64>,
     schedule_start_offset_ms: Option<u64>,
     schedule_deadline_offset_ms: Option<u64>,
     schedule_gas_price: u64,
+    generator: GeneratorKind,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
@@ -99,14 +99,13 @@ pub(crate) async fn create_task(
 
     let schedule_requested = schedule_start_ms.is_some()
         || schedule_start_offset_ms.is_some()
-        || schedule_deadline_ms.is_some()
         || schedule_deadline_offset_ms.is_some();
 
     let initial_schedule = if schedule_requested {
         Some(
             OccurrenceRequest::new(
                 schedule_start_ms,
-                schedule_deadline_ms,
+                None,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
                 schedule_gas_price,
@@ -117,6 +116,12 @@ pub(crate) async fn create_task(
     } else {
         None
     };
+
+    if matches!(generator, GeneratorKind::Periodic) && initial_schedule.is_some() {
+        return Err(NexusCliError::Any(anyhow!(
+            "Periodic tasks cannot enqueue an initial occurrence. Configure scheduling with `nexus scheduler periodic set`."
+        )));
+    }
 
     let tx_handle = loading!("Submitting scheduler task transaction...");
 
@@ -129,6 +134,7 @@ pub(crate) async fn create_task(
             metadata: metadata_pairs,
             execution_gas_price,
             initial_schedule,
+            generator,
         })
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -174,9 +180,17 @@ fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
         NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
-            "task={} (from_periodic={})",
-            e.task, e.from_periodic
+            "task={} (generator={})",
+            e.task,
+            describe_generator(&e.generator)
         )),
         _ => None,
+    }
+}
+
+fn describe_generator(symbol: &PolicySymbol) -> String {
+    match symbol {
+        PolicySymbol::Witness(name) => name.name.clone(),
+        PolicySymbol::Uid(uid) => uid.to_string(),
     }
 }

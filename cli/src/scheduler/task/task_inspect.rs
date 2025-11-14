@@ -66,7 +66,7 @@ pub(crate) async fn inspect_task(task_id: sui::ObjectID) -> AnyResult<(), NexusC
     );
     item!(
         "Execution payload bytes: {bytes}",
-        bytes = task_data.execution.policy.data.to_string().len()
+        bytes = task_data.execution.data.to_string().len()
     );
 
     json_output(&json!({

@@ -6,8 +6,23 @@ mod task_state;
 use {
     self::task_state::TaskStateRequest,
     crate::prelude::*,
-    nexus_sdk::types::DEFAULT_ENTRY_GROUP,
+    nexus_sdk::{nexus::scheduler::GeneratorKind, types::DEFAULT_ENTRY_GROUP},
 };
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub(crate) enum TaskGeneratorArg {
+    Queue,
+    Periodic,
+}
+
+impl From<TaskGeneratorArg> for GeneratorKind {
+    fn from(value: TaskGeneratorArg) -> Self {
+        match value {
+            TaskGeneratorArg::Queue => GeneratorKind::Queue,
+            TaskGeneratorArg::Periodic => GeneratorKind::Periodic,
+        }
+    }
+}
 
 #[derive(Args, Debug, Clone)]
 #[group(id = "schedule-start", multiple = false)]
@@ -23,9 +38,6 @@ pub(crate) struct ScheduleStartOptions {
 #[derive(Args, Debug, Clone)]
 #[group(id = "schedule-deadline", multiple = false)]
 pub(crate) struct ScheduleDeadlineOptions {
-    /// Absolute deadline time in milliseconds since epoch for the first occurrence.
-    #[arg(long = "schedule-deadline-ms", value_name = "MILLIS")]
-    schedule_deadline_ms: Option<u64>,
     /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
     #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
     schedule_deadline_offset_ms: Option<u64>,
@@ -84,6 +96,14 @@ pub(crate) enum TaskCommand {
             default_value_t = 0u64
         )]
         schedule_gas_price: u64,
+        /// Generator responsible for producing future occurrences for this task.
+        #[arg(
+            long = "generator",
+            value_enum,
+            default_value_t = TaskGeneratorArg::Queue,
+            value_name = "KIND"
+        )]
+        generator: TaskGeneratorArg,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -147,6 +167,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             schedule_start,
             schedule_deadline,
             schedule_gas_price,
+            generator,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -154,7 +175,6 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 schedule_start_offset_ms,
             } = schedule_start;
             let ScheduleDeadlineOptions {
-                schedule_deadline_ms,
                 schedule_deadline_offset_ms,
             } = schedule_deadline;
 
@@ -166,10 +186,10 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 metadata,
                 execution_gas_price,
                 schedule_start_ms,
-                schedule_deadline_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
                 schedule_gas_price,
+                generator.into(),
                 gas,
             )
             .await

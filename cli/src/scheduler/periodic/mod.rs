@@ -10,6 +10,9 @@ pub(crate) enum PeriodicCommand {
         /// Task object ID.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
         task_id: sui::ObjectID,
+        /// Absolute start time in milliseconds since epoch for the next periodic occurrence.
+        #[arg(long = "first-start-ms", value_name = "MILLIS")]
+        first_start_ms: u64,
         /// Period between occurrences in milliseconds.
         #[arg(long = "period-ms", value_name = "MILLIS")]
         period_ms: u64,
@@ -39,6 +42,7 @@ pub(crate) async fn handle(command: PeriodicCommand) -> AnyResult<(), NexusCliEr
     match command {
         PeriodicCommand::Set {
             task_id,
+            first_start_ms,
             period_ms,
             deadline_offset_ms,
             max_iterations,
@@ -47,6 +51,7 @@ pub(crate) async fn handle(command: PeriodicCommand) -> AnyResult<(), NexusCliEr
         } => {
             periodic_set::set_periodic_task(
                 task_id,
+                first_start_ms,
                 period_ms,
                 deadline_offset_ms,
                 max_iterations,

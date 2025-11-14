@@ -13,6 +13,7 @@ use {
     crate::sui,
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     serde_json::{Map as JsonMap, Value},
+    std::borrow::Cow,
 };
 
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
@@ -49,19 +50,11 @@ pub struct Task {
     pub metadata: Value,
     #[serde(default)]
     pub constraints: Value,
-    pub execution: LinearPolicy,
+    pub execution: Policy,
     #[serde(default)]
     pub data: Value,
     #[serde(default)]
     pub objects: Value,
-}
-
-/// Minimal representation of `nexus_primitives::linear_policy::LinearPolicy`.
-#[derive(Clone, Debug, Serialize)]
-pub struct LinearPolicy {
-    pub policy: Policy,
-    #[serde(default)]
-    pub sequence: Vec<PolicySymbol>,
 }
 
 /// Minimal representation of `nexus_primitives::policy::Policy`.
@@ -89,19 +82,149 @@ pub struct ConfiguredAutomaton {
 }
 
 /// Representation of `nexus_primitives::policy::Symbol`.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct PolicySymbol {
-    pub kind: u8,
-    #[serde(default)]
-    pub witness: Option<MoveTypeName>,
-    #[serde(default)]
-    pub uid: Option<sui::ObjectID>,
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PolicySymbol {
+    Witness(MoveTypeName),
+    Uid(sui::ObjectID),
+}
+
+impl Serialize for PolicySymbol {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PolicySymbol::Witness(name) => EnumSymbolSer {
+                variant: "Witness",
+                fields: EnumSymbolFieldsSer { pos0: name },
+            }
+            .serialize(serializer),
+            PolicySymbol::Uid(uid) => EnumSymbolSer {
+                variant: "Uid",
+                fields: EnumSymbolFieldsSer { pos0: uid },
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PolicySymbol {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum SymbolRepr {
+            Legacy(LegacySymbol),
+            Enum(EnumSymbol),
+        }
+
+        #[derive(Deserialize)]
+        struct LegacySymbol {
+            kind: u8,
+            #[serde(default)]
+            witness: Option<MoveTypeName>,
+            #[serde(default)]
+            uid: Option<sui::ObjectID>,
+        }
+
+        #[derive(Deserialize)]
+        struct EnumSymbol {
+            variant: String,
+            fields: EnumSymbolFields,
+        }
+
+        #[derive(Deserialize)]
+        struct EnumSymbolFields {
+            #[serde(rename = "pos0")]
+            pos0: Value,
+        }
+
+        match SymbolRepr::deserialize(deserializer)? {
+            SymbolRepr::Legacy(symbol) => match (symbol.kind, symbol.witness, symbol.uid) {
+                (0, Some(name), _) => Ok(PolicySymbol::Witness(name)),
+                (1, _, Some(uid)) => Ok(PolicySymbol::Uid(uid)),
+                _ => Err(serde::de::Error::custom(
+                    "Invalid legacy policy symbol representation",
+                )),
+            },
+            SymbolRepr::Enum(symbol) => match symbol.variant.as_str() {
+                "Witness" => serde_json::from_value(symbol.fields.pos0)
+                    .map(PolicySymbol::Witness)
+                    .map_err(serde::de::Error::custom),
+                "Uid" => serde_json::from_value(symbol.fields.pos0)
+                    .map(PolicySymbol::Uid)
+                    .map_err(serde::de::Error::custom),
+                other => Err(serde::de::Error::custom(format!(
+                    "Unknown policy symbol variant: {other}"
+                ))),
+            },
+        }
+    }
+}
+
+impl PolicySymbol {
+    pub fn as_witness(&self) -> Option<&MoveTypeName> {
+        match self {
+            PolicySymbol::Witness(name) => Some(name),
+            PolicySymbol::Uid(_) => None,
+        }
+    }
+
+    pub fn as_uid(&self) -> Option<&sui::ObjectID> {
+        match self {
+            PolicySymbol::Uid(uid) => Some(uid),
+            PolicySymbol::Witness(_) => None,
+        }
+    }
+
+    /// Returns true when the witness matches the fully-qualified name.
+    pub fn matches_qualified_name(&self, expected: &str) -> bool {
+        self.as_witness()
+            .map(|name| name.matches_qualified_name(expected))
+            .unwrap_or(false)
+    }
+}
+
+#[derive(Serialize)]
+struct EnumSymbolSer<'a, T>
+where
+    T: Serialize,
+{
+    variant: &'static str,
+    fields: EnumSymbolFieldsSer<'a, T>,
+}
+
+#[derive(Serialize)]
+struct EnumSymbolFieldsSer<'a, T>
+where
+    T: Serialize,
+{
+    #[serde(rename = "pos0")]
+    pos0: &'a T,
 }
 
 /// TypeName that can deserialize from Move struct wrappers
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct MoveTypeName {
     pub name: String,
+}
+
+impl MoveTypeName {
+    fn normalize(name: &str) -> Cow<'_, str> {
+        let trimmed = name.trim_start_matches("0x");
+        if trimmed.len() == name.len() {
+            Cow::Borrowed(name)
+        } else {
+            Cow::Owned(trimmed.to_string())
+        }
+    }
+
+    /// Returns true when two fully-qualified Move type names represent the same symbol.
+    pub fn matches_qualified_name(&self, expected: &str) -> bool {
+        Self::normalize(&self.name).eq_ignore_ascii_case(&Self::normalize(expected))
+    }
 }
 
 impl<'de> Deserialize<'de> for MoveTypeName {
@@ -142,27 +265,6 @@ pub struct TransitionKey<State, Symbol> {
 pub struct TransitionConfigKey<State, Symbol> {
     pub transition: TransitionKey<State, Symbol>,
     pub config: TypeName,
-}
-
-impl<'de> Deserialize<'de> for LinearPolicy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            policy: Policy,
-            #[serde(default)]
-            sequence: Vec<PolicySymbol>,
-        }
-
-        let inner: Inner = deserialize_move_struct(deserializer)?;
-
-        Ok(Self {
-            policy: inner.policy,
-            sequence: inner.sequence,
-        })
-    }
 }
 
 impl<'de> Deserialize<'de> for Policy {
@@ -369,12 +471,11 @@ mod tests {
     };
 
     #[test]
-    fn linear_policy_deserializes_from_wrapped_move_struct() {
+    fn policy_deserializes_from_wrapped_move_struct() {
         let policy_id = ObjectID::from_hex_literal("0x2").expect("valid object id");
         let dfa_id = ObjectID::from_hex_literal("0x3").expect("valid object id");
-        let sequence_symbol_uid = ObjectID::from_hex_literal("0x4").expect("valid object id");
 
-        let expected_policy = Policy {
+        let expected = Policy {
             id: sui::UID::new(policy_id),
             dfa: ConfiguredAutomaton {
                 id: sui::UID::new(dfa_id),
@@ -392,29 +493,16 @@ mod tests {
             data: json!({ "extra": "payload" }),
         };
 
-        let expected_sequence = vec![PolicySymbol {
-            kind: 1,
-            witness: None,
-            uid: Some(sequence_symbol_uid),
-        }];
-
-        let expected = LinearPolicy {
-            policy: expected_policy.clone(),
-            sequence: expected_sequence.clone(),
-        };
-
         let wrapped = wrap_move_value(serde_json::to_value(&expected).expect("serialize policy"));
 
-        let parsed: LinearPolicy =
-            serde_json::from_value(wrapped).expect("deserialize wrapped policy");
+        let parsed: Policy = serde_json::from_value(wrapped).expect("deserialize wrapped policy");
 
-        assert_eq!(parsed.policy.id, expected.policy.id);
-        assert_eq!(parsed.policy.dfa.id, expected.policy.dfa.id);
-        assert_eq!(parsed.policy.dfa.dfa, expected.policy.dfa.dfa);
-        assert_eq!(parsed.policy.alphabet_index, expected.policy.alphabet_index);
-        assert_eq!(parsed.policy.state_index, expected.policy.state_index);
-        assert_eq!(parsed.policy.data, expected.policy.data);
-        assert_eq!(parsed.sequence, expected.sequence);
+        assert_eq!(parsed.id, expected.id);
+        assert_eq!(parsed.dfa.id, expected.dfa.id);
+        assert_eq!(parsed.dfa.dfa, expected.dfa.dfa);
+        assert_eq!(parsed.alphabet_index, expected.alphabet_index);
+        assert_eq!(parsed.state_index, expected.state_index);
+        assert_eq!(parsed.data, expected.data);
     }
 
     #[test]

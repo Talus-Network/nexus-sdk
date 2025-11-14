@@ -16,9 +16,6 @@ pub(crate) struct OccurrenceStartOptions {
 #[derive(Args, Debug, Clone)]
 #[group(id = "occurrence-deadline", multiple = false)]
 pub(crate) struct OccurrenceDeadlineOptions {
-    /// Absolute deadline time in milliseconds since epoch.
-    #[arg(long = "deadline-ms", value_name = "MILLIS")]
-    deadline_ms: Option<u64>,
     /// Deadline offset in milliseconds after the scheduled start.
     #[arg(long = "deadline-offset-ms", value_name = "MILLIS")]
     deadline_offset_ms: Option<u64>,
@@ -56,15 +53,11 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
                 start_ms,
                 start_offset_ms,
             } = start;
-            let OccurrenceDeadlineOptions {
-                deadline_ms,
-                deadline_offset_ms,
-            } = deadline;
+            let OccurrenceDeadlineOptions { deadline_offset_ms } = deadline;
 
             occurrence_add::add_occurrence_to_task(
                 task_id,
                 start_ms,
-                deadline_ms,
                 start_offset_ms,
                 deadline_offset_ms,
                 gas_price,

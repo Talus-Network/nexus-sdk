@@ -279,7 +279,7 @@ pub struct ExecutionFinishedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceScheduledEvent {
     pub task: sui::ObjectID,
-    pub from_periodic: bool,
+    pub generator: PolicySymbol,
 }
 
 /// Emitted when a scheduled occurrence misses its deadline and is pruned.
@@ -306,6 +306,7 @@ pub struct MissedOccurrenceEvent {
         serialize_with = "serialize_sui_u64"
     )]
     pub gas_price: u64,
+    pub generator: PolicySymbol,
 }
 
 /// Emitted after a scheduler task object is created.
@@ -362,7 +363,7 @@ pub struct OccurrenceConsumedEvent {
         serialize_with = "serialize_sui_u64"
     )]
     pub gas_price: u64,
-    pub from_periodic: bool,
+    pub generator: PolicySymbol,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -711,9 +712,16 @@ mod tests {
         assert_eq!(inner.worksheet_from_type.name, *"bar");
     }
 
+    fn queue_generator_symbol() -> PolicySymbol {
+        PolicySymbol::Witness(MoveTypeName {
+            name: "0x1::scheduler::QueueGeneratorWitness".into(),
+        })
+    }
+
     #[test]
     fn test_sui_event_desers_into_occurrence_scheduled_event() {
         let task = sui::ObjectID::random();
+        let generator = queue_generator_symbol();
 
         let inner = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
             address: *sui::ObjectID::random(),
@@ -727,7 +735,7 @@ mod tests {
             serde_json::json!({
                 "event":{
                     "task": task.to_string(),
-                    "from_periodic": true
+                    "generator": serde_json::to_value(&generator).unwrap()
                 }
             }),
             vec![inner.clone()],
@@ -741,7 +749,7 @@ mod tests {
         };
 
         assert_eq!(scheduled.task, task);
-        assert!(scheduled.from_periodic);
+        assert_eq!(scheduled.generator, generator);
     }
 
     #[test]

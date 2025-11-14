@@ -14,7 +14,6 @@ use {
 pub(crate) async fn add_occurrence_to_task(
     task_id: sui::ObjectID,
     start_ms: Option<u64>,
-    deadline_ms: Option<u64>,
     start_offset_ms: Option<u64>,
     deadline_offset_ms: Option<u64>,
     gas_price: u64,
@@ -27,7 +26,7 @@ pub(crate) async fn add_occurrence_to_task(
 
     let schedule = OccurrenceRequest::new(
         start_ms,
-        deadline_ms,
+        None,
         start_offset_ms,
         deadline_offset_ms,
         gas_price,
@@ -49,7 +48,6 @@ pub(crate) async fn add_occurrence_to_task(
         "digest": result.tx_digest,
         "task_id": task_id,
         "start_ms": start_ms,
-        "deadline_ms": deadline_ms,
         "start_offset_ms": start_offset_ms,
         "deadline_offset_ms": deadline_offset_ms,
         "gas_price": gas_price,

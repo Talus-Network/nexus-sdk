@@ -19,6 +19,22 @@ pub struct SchedulerActions {
     pub(super) client: NexusClient,
 }
 
+/// Supported generator types for a scheduler task.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GeneratorKind {
+    Queue,
+    Periodic,
+}
+
+impl From<GeneratorKind> for scheduler_tx::OccurrenceGenerator {
+    fn from(value: GeneratorKind) -> Self {
+        match value {
+            GeneratorKind::Queue => scheduler_tx::OccurrenceGenerator::Queue,
+            GeneratorKind::Periodic => scheduler_tx::OccurrenceGenerator::Periodic,
+        }
+    }
+}
+
 /// Parameters required to create a scheduler task.
 pub struct CreateTaskParams {
     pub dag_id: sui::ObjectID,
@@ -27,6 +43,7 @@ pub struct CreateTaskParams {
     pub metadata: Vec<(String, String)>,
     pub execution_gas_price: u64,
     pub initial_schedule: Option<OccurrenceRequest>,
+    pub generator: GeneratorKind,
 }
 
 /// Result returned after creating a scheduler task.
@@ -77,10 +94,6 @@ impl OccurrenceRequest {
             gas_price,
         })
     }
-
-    fn has_absolute_start(&self) -> bool {
-        self.start_ms.is_some()
-    }
 }
 
 /// Actions supported when mutating task state.
@@ -93,6 +106,7 @@ pub enum TaskStateAction {
 
 /// Configuration for periodic scheduling.
 pub struct PeriodicScheduleConfig {
+    pub first_start_ms: u64,
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
@@ -123,25 +137,34 @@ impl SchedulerActions {
         &self,
         params: CreateTaskParams,
     ) -> Result<CreateTaskResult, NexusError> {
+        let CreateTaskParams {
+            dag_id,
+            entry_group,
+            input_data,
+            metadata,
+            execution_gas_price,
+            initial_schedule: initial_schedule_request,
+            generator,
+        } = params;
         let address = self.client.signer.get_active_address().await?;
         let objects = &self.client.nexus_objects;
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-        let metadata_arg =
-            scheduler_tx::new_metadata(&mut tx, objects, params.metadata.iter().cloned())
-                .map_err(NexusError::TransactionBuilding)?;
-
-        let constraints_arg = scheduler_tx::new_constraints_policy(&mut tx, objects)
+        let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
             .map_err(NexusError::TransactionBuilding)?;
+
+        let constraints_arg =
+            scheduler_tx::new_constraints_policy(&mut tx, objects, generator.into())
+                .map_err(NexusError::TransactionBuilding)?;
 
         let execution_arg = scheduler_tx::new_execution_policy(
             &mut tx,
             objects,
-            params.dag_id,
-            params.execution_gas_price,
-            params.entry_group.as_str(),
-            &params.input_data,
+            dag_id,
+            execution_gas_price,
+            entry_group.as_str(),
+            &input_data,
         )
         .map_err(NexusError::TransactionBuilding)?;
 
@@ -187,10 +210,16 @@ impl SchedulerActions {
 
         let task_id = extract_task_id(&response)?;
 
-        let mut initial_schedule = None;
-        if let Some(schedule) = params.initial_schedule {
+        let mut initial_schedule_result = None;
+        if initial_schedule_request.is_some() && generator != GeneratorKind::Queue {
+            return Err(NexusError::Configuration(
+                "Initial queue schedule can only be used with the queue generator".into(),
+            ));
+        }
+
+        if let Some(schedule) = initial_schedule_request {
             let task_object = self.fetch_task(task_id).await?;
-            initial_schedule = Some(
+            initial_schedule_result = Some(
                 self.enqueue_occurrence(&task_object, schedule, address)
                     .await?,
             );
@@ -199,7 +228,7 @@ impl SchedulerActions {
         Ok(CreateTaskResult {
             tx_digest: response.digest,
             task_id,
-            initial_schedule,
+            initial_schedule: initial_schedule_result,
         })
     }
 
@@ -323,10 +352,13 @@ impl SchedulerActions {
             &mut tx,
             objects,
             &task.object_ref(),
-            config.period_ms,
-            config.deadline_offset_ms,
-            config.max_iterations,
-            config.gas_price,
+            scheduler_tx::PeriodicScheduleInputs {
+                first_start_ms: config.first_start_ms,
+                period_ms: config.period_ms,
+                deadline_offset_ms: config.deadline_offset_ms,
+                max_iterations: config.max_iterations,
+                gas_price: config.gas_price,
+            },
         )
         .map_err(NexusError::TransactionBuilding)?;
 
@@ -398,28 +430,21 @@ impl SchedulerActions {
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
-        if request.has_absolute_start() {
-            if request.deadline_offset_ms.is_some() {
-                scheduler_tx::add_occurrence_with_offset_for_task(
-                    &mut tx,
-                    objects,
-                    &task.object_ref(),
-                    request.start_ms.expect("validated start"),
-                    request.deadline_offset_ms,
-                    request.gas_price,
-                )
-            } else {
-                scheduler_tx::add_occurrence_absolute_for_task(
-                    &mut tx,
-                    objects,
-                    &task.object_ref(),
-                    request.start_ms.expect("validated start"),
-                    request.deadline_ms,
-                    request.gas_price,
-                )
-            }
+        if let Some(start_ms) = request.start_ms {
+            let deadline_offset = request
+                .deadline_offset_ms
+                .or_else(|| request.deadline_ms.map(|deadline| deadline - start_ms));
+
+            scheduler_tx::add_occurrence_absolute_for_task(
+                &mut tx,
+                objects,
+                &task.object_ref(),
+                start_ms,
+                deadline_offset,
+                request.gas_price,
+            )
         } else {
-            scheduler_tx::add_occurrence_with_offsets_from_now_for_task(
+            scheduler_tx::add_occurrence_relative_for_task(
                 &mut tx,
                 objects,
                 &task.object_ref(),
@@ -525,6 +550,12 @@ fn validate_schedule_options(
         ));
     }
 
+    if deadline_ms.is_some() && start_ms.is_none() {
+        return Err(NexusError::Configuration(
+            "Absolute deadlines require an absolute start time".into(),
+        ));
+    }
+
     if start_ms.is_none()
         && start_offset_ms.is_none()
         && (deadline_ms.is_some() || deadline_offset_ms.is_some())
@@ -582,11 +613,19 @@ mod tests {
                 RequestScheduledExecution,
                 TaskCreatedEvent,
             },
-            idents::primitives,
+            idents::{primitives, workflow, ModuleAndNameIdent},
             nexus::error::NexusError,
             sui,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{ConfiguredAutomaton, DataStorage, LinearPolicy, NexusData, Policy, Task},
+            types::{
+                ConfiguredAutomaton,
+                DataStorage,
+                MoveTypeName,
+                NexusData,
+                Policy,
+                PolicySymbol,
+                Task,
+            },
         },
         serde_json::json,
         std::collections::HashMap,
@@ -618,17 +657,12 @@ mod tests {
             data: json!({}),
         };
 
-        let execution = LinearPolicy {
-            policy: execution_policy,
-            sequence: vec![],
-        };
-
         let task = Task {
             id: sui::UID::new(task_id),
             owner,
             metadata: json!({"initial": "value"}),
             constraints: json!({}),
-            execution,
+            execution: execution_policy,
             data: json!({}),
             objects: json!({}),
         };
@@ -647,6 +681,29 @@ mod tests {
             has_public_transfer: false,
             fields: move_struct,
         }
+    }
+
+    fn generator_symbol(
+        workflow_pkg_id: sui::ObjectID,
+        ident: &ModuleAndNameIdent,
+    ) -> PolicySymbol {
+        PolicySymbol::Witness(MoveTypeName {
+            name: format!("{}::{}::{}", workflow_pkg_id, ident.module, ident.name),
+        })
+    }
+
+    fn queue_generator_symbol(workflow_pkg_id: sui::ObjectID) -> PolicySymbol {
+        generator_symbol(
+            workflow_pkg_id,
+            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS,
+        )
+    }
+
+    fn periodic_generator_symbol(workflow_pkg_id: sui::ObjectID) -> PolicySymbol {
+        generator_symbol(
+            workflow_pkg_id,
+            &workflow::Scheduler::PERIODIC_GENERATOR_WITNESS,
+        )
     }
 
     fn scheduler_move_tag(
@@ -693,7 +750,8 @@ mod tests {
                 }),
                 NexusEventKind::OccurrenceScheduled(ev) => json!({
                     "task": to_string_id(ev.task),
-                    "from_periodic": ev.from_periodic,
+                    "generator": serde_json::to_value(&ev.generator)
+                        .unwrap_or_else(|_| serde_json::Value::Null),
                 }),
                 NexusEventKind::Scheduled(env) => json!({
                     "request": request_fields(&env.request),
@@ -785,6 +843,7 @@ mod tests {
             metadata: vec![("team".into(), "sdk".into())],
             execution_gas_price: 1,
             initial_schedule: None,
+            generator: GeneratorKind::Queue,
         };
 
         let result = nexus_client
@@ -830,11 +889,12 @@ mod tests {
                 None,
             );
 
+        let queue_generator = queue_generator_symbol(workflow_pkg);
         let scheduled_event = NexusEventKind::Scheduled(RequestScheduledExecution {
             request: Box::new(NexusEventKind::OccurrenceScheduled(
                 OccurrenceScheduledEvent {
                     task: task_id,
-                    from_periodic: false,
+                    generator: queue_generator.clone(),
                 },
             )),
             priority: 10,
@@ -869,6 +929,7 @@ mod tests {
             metadata: vec![],
             execution_gas_price: 5,
             initial_schedule: Some(initial_schedule),
+            generator: GeneratorKind::Queue,
         };
 
         let result = nexus_client
@@ -892,7 +953,7 @@ mod tests {
                 assert!(matches!(
                     *envelope.request,
                     NexusEventKind::OccurrenceScheduled(ev)
-                        if ev.task == task_id && !ev.from_periodic
+                        if ev.task == task_id && ev.generator == queue_generator
                 ));
             }
             other => panic!("unexpected event {other:?}"),
@@ -983,11 +1044,12 @@ mod tests {
         let get_task_call =
             sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
 
+        let generator = queue_generator_symbol(workflow_pkg);
         let scheduled_event = NexusEventKind::Scheduled(RequestScheduledExecution {
             request: Box::new(NexusEventKind::OccurrenceScheduled(
                 OccurrenceScheduledEvent {
                     task: task_id,
-                    from_periodic: false,
+                    generator,
                 },
             )),
             priority: 1,
@@ -1035,6 +1097,7 @@ mod tests {
             sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
 
         let digest = sui::TransactionDigest::random();
+        let generator = queue_generator_symbol(workflow_pkg);
         let (execute_call, confirm_call) =
             sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
                 &mut server,
@@ -1045,7 +1108,7 @@ mod tests {
                     vec![NexusEventKind::OccurrenceScheduled(
                         OccurrenceScheduledEvent {
                             task: task_id,
-                            from_periodic: false,
+                            generator,
                         },
                     )],
                 )),
@@ -1094,6 +1157,7 @@ mod tests {
             );
 
         let config = PeriodicScheduleConfig {
+            first_start_ms: 10_000,
             period_ms: 5_000,
             deadline_offset_ms: Some(1_000),
             max_iterations: Some(5),
@@ -1166,12 +1230,13 @@ mod tests {
     fn test_extract_task_id_errors_without_event() {
         let workflow_pkg = sui::ObjectID::random();
         let mut response = sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
+        let generator = queue_generator_symbol(workflow_pkg);
         response.events = Some(block_events(
             workflow_pkg,
             vec![NexusEventKind::OccurrenceScheduled(
                 OccurrenceScheduledEvent {
                     task: sui::ObjectID::random(),
-                    from_periodic: false,
+                    generator,
                 },
             )],
         ));
@@ -1184,11 +1249,12 @@ mod tests {
     fn test_extract_occurrence_event_variants() {
         let workflow_pkg = sui::ObjectID::random();
         let task_id = sui::ObjectID::random();
+        let periodic_generator = periodic_generator_symbol(workflow_pkg);
         let scheduled = NexusEventKind::Scheduled(RequestScheduledExecution {
             request: Box::new(NexusEventKind::OccurrenceScheduled(
                 OccurrenceScheduledEvent {
                     task: task_id,
-                    from_periodic: true,
+                    generator: periodic_generator.clone(),
                 },
             )),
             priority: 1,
@@ -1206,12 +1272,13 @@ mod tests {
 
         let mut response_direct =
             sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
+        let queue_generator = queue_generator_symbol(workflow_pkg);
         response_direct.events = Some(block_events(
             workflow_pkg,
             vec![NexusEventKind::OccurrenceScheduled(
                 OccurrenceScheduledEvent {
                     task: task_id,
-                    from_periodic: false,
+                    generator: queue_generator,
                 },
             )],
         ));
