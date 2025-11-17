@@ -1,7 +1,13 @@
 use {
     crate::{
-        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
-        sui::*, tool::tool_validate::validate_off_chain_tool,
+        command_title,
+        display::json_output,
+        loading,
+        notify_error,
+        notify_success,
+        prelude::*,
+        sui::*,
+        tool::tool_validate::validate_off_chain_tool,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
