@@ -356,7 +356,7 @@ fn customize_parameter_descriptions_with_reader(
                     param_type.to_string()
                 };
 
-                println!(" ");
+                println!();
                 println!(
                     "{} Parameter {}: {} {}",
                     "▶".purple().bold(),
@@ -428,7 +428,7 @@ fn customize_parameter_descriptions_with_reader(
         }
     }
 
-    println!(" ");
+    println!();
 
     // Convert the schema to use custom names as keys if provided.
     let final_schema = convert_schema_to_named_ports(schema)?;
@@ -508,7 +508,7 @@ fn customize_output_variant_and_field_descriptions_with_reader(
         if let Some(variant_obj) = variant_value.as_object_mut() {
             // Customize variant description.
             if let Some(current_desc) = variant_obj.get("description").and_then(|d| d.as_str()) {
-                println!(" ");
+                println!();
                 println!(
                     "{} Variant {}: {}",
                     "▶".purple().bold(),
@@ -549,7 +549,7 @@ fn customize_output_variant_and_field_descriptions_with_reader(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("No description");
 
-                            println!(" ");
+                            println!();
                             println!(
                                 "{} Field {}: {}",
                                 "▶".purple().bold(),
