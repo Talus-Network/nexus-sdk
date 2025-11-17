@@ -19,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - onchain schema generation to sdk
 - `nexus tool new` onchain tool move template
 
-
 #### Changed
 
 - `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
