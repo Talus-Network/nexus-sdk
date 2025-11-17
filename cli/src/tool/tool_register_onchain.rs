@@ -14,8 +14,12 @@ use {
         sui,
         transactions::tool,
     },
+    serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
-    std::io::{self, Write},
+    std::{
+        collections::HashMap,
+        io::{self, Write},
+    },
 };
 
 /// Register a new onchain tool with automatic schema generation.
@@ -285,6 +289,31 @@ pub(crate) async fn register_onchain_tool(
 
     Ok(())
 }
+
+/// Represents a single parameter in the input schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParameterSchema {
+    #[serde(rename = "type")]
+    param_type: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mutable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parameter_index: Option<String>,
+}
+
+/// Represents an output variant with optional fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OutputVariantSchema {
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    variant_type: Option<String>,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fields: Option<Map<String, Value>>,
+}
+
 /// Allow the user to customize parameter descriptions interactively.
 fn customize_parameter_descriptions_with_reader(
     schema_json: String,
@@ -295,8 +324,8 @@ fn customize_parameter_descriptions_with_reader(
         return Ok(schema_json);
     }
 
-    // Parse the schema.
-    let mut schema: Map<String, Value> = serde_json::from_str(&schema_json)
+    // Deserialize into a typed map.
+    let mut schema: HashMap<String, ParameterSchema> = serde_json::from_str(&schema_json)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse schema JSON: {}", e)))?;
 
     if schema.is_empty() {
@@ -315,155 +344,47 @@ fn customize_parameter_descriptions_with_reader(
         "Customize names and descriptions for each input parameter (press Enter to keep current)"
     );
 
-    // Sort parameter keys to ensure consistent order.
+    // Sort parameter keys numerically.
     let mut param_keys: Vec<String> = schema.keys().cloned().collect();
-    param_keys.sort_by(|a, b| {
-        let a_num: i32 = a.parse().unwrap_or(i32::MAX);
-        let b_num: i32 = b.parse().unwrap_or(i32::MAX);
-        a_num.cmp(&b_num)
-    });
+    param_keys.sort_by_key(|k| k.parse::<i32>().unwrap_or(i32::MAX));
 
-    for param_key in param_keys {
-        if let Some(param_obj) = schema.get_mut(&param_key) {
-            if let Some(param_map) = param_obj.as_object_mut() {
-                let param_type = param_map
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-
-                let current_description = param_map
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No description")
-                    .to_string();
-
-                // The default name is the parameter index (0, 1, 2, etc.)
-                let default_name = param_key.clone();
-
-                let current_custom_name = param_map
-                    .get("custom_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                let is_mutable = param_map
-                    .get("mutable")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let type_display = if is_mutable {
-                    format!("mut {}", param_type)
-                } else {
-                    param_type.to_string()
-                };
-
-                println!();
-                println!(
-                    "{} Parameter {}: {} {}",
-                    "▶".purple().bold(),
-                    param_key.bold(),
-                    type_display.blue().bold(),
-                    if is_mutable {
-                        "(mutable)".yellow()
-                    } else {
-                        "".normal()
-                    }
-                );
-
-                // Customize parameter name.
-                println!("Current name: {}", default_name.truecolor(150, 150, 150));
-                if let Some(ref custom_name) = current_custom_name {
-                    println!("Current custom name: {}", custom_name.green());
-                }
-                print!("Custom name (Enter to keep '{}'): ", default_name);
-                io::stdout().flush().unwrap();
-
-                let mut name_input = String::new();
-                reader.read_line(&mut name_input).unwrap();
-                let custom_name = name_input.trim();
-
-                if !custom_name.is_empty() {
-                    param_map.insert(
-                        "custom_name".to_string(),
-                        Value::String(custom_name.to_string()),
-                    );
-                    println!(
-                        "{} Updated parameter name to: {}",
-                        "✓".green().bold(),
-                        custom_name.green().bold()
-                    );
-                } else {
-                    // Clear any existing custom name to use the default (integer index).
-                    if current_custom_name.is_some() {
-                        param_map.insert("custom_name".to_string(), Value::Null);
-                    }
-                    println!(
-                        "{} Using default name: {}",
-                        "→".truecolor(150, 150, 150),
-                        default_name.truecolor(150, 150, 150)
-                    );
-                }
-
-                // Customize parameter description.
-                println!(
-                    "Current description: {}",
-                    current_description.truecolor(150, 150, 150)
-                );
-                print!("Custom description (Enter to keep): ");
-                io::stdout().flush().unwrap();
-
-                let mut desc_input = String::new();
-                reader.read_line(&mut desc_input).unwrap();
-                let custom_description = desc_input.trim();
-
-                if !custom_description.is_empty() {
-                    param_map.insert(
-                        "description".to_string(),
-                        Value::String(custom_description.to_string()),
-                    );
-                    println!("{} Updated description", "✓".green().bold());
-                } else {
-                    println!("{} Kept current description", "→".truecolor(150, 150, 150));
-                }
-            }
+    // Customize each parameter.
+    for param_key in &param_keys {
+        if let Some(param) = schema.get_mut(param_key) {
+            customize_parameter(param_key, param, reader)
+                .map_err(|e| NexusCliError::Any(anyhow::anyhow!("I/O error: {}", e)))?;
         }
     }
 
     println!();
 
-    // Convert the schema to use custom names as keys if provided.
-    let final_schema = convert_schema_to_named_ports(schema)?;
+    // Convert schema to use custom names as keys.
+    let final_schema = build_final_schema(schema)?;
 
-    // Convert back to JSON string.
+    // Serialize back to JSON.
     serde_json::to_string(&final_schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize schema: {}", e)))
 }
 
-/// Convert schema from integer keys to custom parameter names.
-fn convert_schema_to_named_ports(
-    schema: Map<String, Value>,
+/// Build the final schema with custom names as keys.
+fn build_final_schema(
+    schema: HashMap<String, ParameterSchema>,
 ) -> AnyResult<Map<String, Value>, NexusCliError> {
     let mut final_schema = Map::new();
 
-    for (param_index, param_value) in schema {
-        if let Some(param_obj) = param_value.as_object() {
-            // Create a clean parameter schema without the metadata.
-            let mut clean_param = param_obj.clone();
-            clean_param.remove("parameter_index");
-            clean_param.remove("custom_name");
+    for (param_index, mut param) in schema {
+        // Use custom name if provided, otherwise use the integer index.
+        let key = param.custom_name.take().unwrap_or(param_index);
 
-            // Use custom name if provided, otherwise use the integer index.
-            if let Some(custom_name) = param_obj.get("custom_name").and_then(|v| v.as_str()) {
-                final_schema.insert(custom_name.to_string(), Value::Object(clean_param));
-            } else {
-                // If no custom name, use the integer index.
-                final_schema.insert(param_index, Value::Object(clean_param));
-            }
-        } else {
-            // Means something went wrong.
-            return Err(NexusCliError::Any(anyhow!(
-                "Parameter value is not an object."
-            )));
-        }
+        // Clear metadata fields before serialization.
+        param.parameter_index = None;
+
+        // Convert to JSON value (this automatically excludes None fields).
+        let param_value = serde_json::to_value(param).map_err(|e| {
+            NexusCliError::Any(anyhow::anyhow!("Failed to serialize parameter: {}", e))
+        })?;
+
+        final_schema.insert(key, param_value);
     }
 
     Ok(final_schema)
@@ -486,13 +407,9 @@ fn customize_output_variant_and_field_descriptions_with_reader(
         return Ok(base_schema);
     }
 
-    // Parse the schema to modify descriptions.
-    let mut schema: Value = serde_json::from_str(&base_schema)
+    // Deserialize into a typed map.
+    let mut schema: HashMap<String, OutputVariantSchema> = serde_json::from_str(&base_schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to parse output schema: {}", e)))?;
-
-    let schema_obj = schema
-        .as_object_mut()
-        .ok_or_else(|| NexusCliError::Any(anyhow::anyhow!("Output schema is not an object")))?;
 
     // Display header.
     println!(
@@ -503,89 +420,15 @@ fn customize_output_variant_and_field_descriptions_with_reader(
         "Customize descriptions for output variants and their fields (press Enter to keep current)"
     );
 
-    // Iterate over each variant.
-    for (variant_name, variant_value) in schema_obj.iter_mut() {
-        if let Some(variant_obj) = variant_value.as_object_mut() {
-            // Customize variant description.
-            if let Some(current_desc) = variant_obj.get("description").and_then(|d| d.as_str()) {
-                println!();
-                println!(
-                    "{} Variant {}: {}",
-                    "▶".purple().bold(),
-                    variant_name.bold(),
-                    "variant".blue().bold()
-                );
-                println!("Current: {}", current_desc.truecolor(150, 150, 150));
-                print!("Custom description (Enter to keep): ");
-                io::stdout().flush().unwrap();
-
-                let mut new_desc = String::new();
-                if reader.read_line(&mut new_desc).is_ok() {
-                    let new_desc = new_desc.trim();
-                    if !new_desc.is_empty() {
-                        variant_obj["description"] = Value::String(new_desc.to_string());
-                        println!("{} Updated description", "✓".green().bold());
-                    } else {
-                        println!("{} Kept current description", "→".truecolor(150, 150, 150));
-                    }
-                }
-            }
-
-            // Customize field descriptions within this variant.
-            if let Some(fields_obj) = variant_obj
-                .get_mut("fields")
-                .and_then(|f| f.as_object_mut())
-            {
-                if !fields_obj.is_empty() {
-                    for (field_name, field_value) in fields_obj.iter_mut() {
-                        if let Some(field_obj) = field_value.as_object_mut() {
-                            let field_type = field_obj
-                                .get("type")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown");
-
-                            let current_field_desc = field_obj
-                                .get("description")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("No description");
-
-                            println!();
-                            println!(
-                                "{} Field {}: {}",
-                                "▶".purple().bold(),
-                                field_name.bold(),
-                                field_type.blue().bold()
-                            );
-                            println!("Current: {}", current_field_desc.truecolor(150, 150, 150));
-                            print!("Custom description (Enter to keep): ");
-                            io::stdout().flush().unwrap();
-
-                            let mut field_input = String::new();
-                            if reader.read_line(&mut field_input).is_ok() {
-                                let custom_field_desc = field_input.trim();
-                                if !custom_field_desc.is_empty() {
-                                    field_obj.insert(
-                                        "description".to_string(),
-                                        Value::String(custom_field_desc.to_string()),
-                                    );
-                                    println!("{} Updated description", "✓".green().bold());
-                                } else {
-                                    println!(
-                                        "{} Kept current description",
-                                        "→".truecolor(150, 150, 150)
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    // Customize each variant.
+    for (variant_name, variant) in schema.iter_mut() {
+        customize_output_variant(variant_name, variant, reader)
+            .map_err(|e| NexusCliError::Any(anyhow::anyhow!("I/O error: {}", e)))?;
     }
 
-    println!(" ");
+    println!();
 
-    // Convert back to JSON string.
+    // Serialize back to JSON.
     serde_json::to_string(&schema).map_err(|e| {
         NexusCliError::Any(anyhow::anyhow!("Failed to serialize output schema: {}", e))
     })
@@ -600,34 +443,200 @@ fn customize_output_variant_and_field_descriptions(
     customize_output_variant_and_field_descriptions_with_reader(base_schema, &mut reader)
 }
 
+/// Get a field's type and description from JSON value.
+fn get_field_info(field_value: &Value) -> (String, String) {
+    let field_type = field_value
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let description = field_value
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("No description")
+        .to_string();
+    (field_type, description)
+}
+
+/// Update a field's description in the JSON value.
+fn update_field_description(field_value: &mut Value, new_description: String) {
+    if let Some(obj) = field_value.as_object_mut() {
+        obj.insert("description".to_string(), Value::String(new_description));
+    }
+}
+
+/// Prompt the user for optional input with a default fallback.
+fn prompt_optional_input(
+    reader: &mut dyn std::io::BufRead,
+    prompt: &str,
+    current_value: &str,
+) -> io::Result<Option<String>> {
+    println!("Current: {}", current_value.truecolor(150, 150, 150));
+    print!("{}: ", prompt);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    reader.read_line(&mut input)?;
+    let trimmed = input.trim();
+
+    if trimmed.is_empty() {
+        println!("{} Kept current value", "→".truecolor(150, 150, 150));
+        Ok(None)
+    } else {
+        println!("{} Updated", "✓".green().bold());
+        Ok(Some(trimmed.to_string()))
+    }
+}
+
+/// Customize a single parameter interactively.
+fn customize_parameter(
+    param_key: &str,
+    param: &mut ParameterSchema,
+    reader: &mut dyn std::io::BufRead,
+) -> io::Result<()> {
+    let is_mutable = param.mutable.unwrap_or(false);
+    let type_display = if is_mutable {
+        format!("mut {}", param.param_type)
+    } else {
+        param.param_type.clone()
+    };
+
+    println!();
+    println!(
+        "{} Parameter {}: {} {}",
+        "▶".purple().bold(),
+        param_key.bold(),
+        type_display.blue().bold(),
+        if is_mutable {
+            "(mutable)".yellow()
+        } else {
+            "".normal()
+        }
+    );
+
+    // Customize parameter name.
+    let default_name = param.custom_name.as_deref().unwrap_or(param_key);
+    println!("Current name: {}", default_name.truecolor(150, 150, 150));
+    if param.custom_name.is_some() {
+        println!("Current custom name: {}", default_name.green());
+    }
+
+    if let Some(new_name) = prompt_optional_input(
+        reader,
+        &format!("Custom name (Enter to keep '{}')", default_name),
+        default_name,
+    )? {
+        param.custom_name = Some(new_name);
+    } else if param.custom_name.is_some() {
+        // User pressed Enter but had a custom name.
+        param.custom_name = None;
+    }
+
+    // Customize parameter description.
+    if let Some(new_desc) = prompt_optional_input(
+        reader,
+        "Custom description (Enter to keep)",
+        &param.description,
+    )? {
+        param.description = new_desc;
+    }
+
+    Ok(())
+}
+
+/// Customize a single output field interactively.
+fn customize_output_field(
+    field_name: &str,
+    field_value: &mut Value,
+    reader: &mut dyn std::io::BufRead,
+) -> io::Result<()> {
+    let (field_type, description) = get_field_info(field_value);
+
+    println!();
+    println!(
+        "{} Field {}: {}",
+        "▶".purple().bold(),
+        field_name.bold(),
+        field_type.blue().bold()
+    );
+
+    if let Some(new_desc) =
+        prompt_optional_input(reader, "Custom description (Enter to keep)", &description)?
+    {
+        update_field_description(field_value, new_desc);
+    }
+
+    Ok(())
+}
+
+/// Customize a single output variant interactively.
+fn customize_output_variant(
+    variant_name: &str,
+    variant: &mut OutputVariantSchema,
+    reader: &mut dyn std::io::BufRead,
+) -> io::Result<()> {
+    println!();
+    println!(
+        "{} Variant {}: {}",
+        "▶".purple().bold(),
+        variant_name.bold(),
+        "variant".blue().bold()
+    );
+
+    // Customize variant description.
+    if let Some(new_desc) = prompt_optional_input(
+        reader,
+        "Custom description (Enter to keep)",
+        &variant.description,
+    )? {
+        variant.description = new_desc;
+    }
+
+    // Customize field descriptions if present.
+    if let Some(fields) = &mut variant.fields {
+        for (field_name, field_value) in fields.iter_mut() {
+            customize_output_field(field_name, field_value, reader)?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use {super::*, serde_json::json, std::sync::atomic::Ordering};
+    use {super::*, std::sync::atomic::Ordering};
 
     #[test]
-    fn test_convert_schema_to_named_ports_with_custom_names() {
-        // Create a schema with integer keys and custom names.
-        let mut schema = Map::new();
+    fn test_build_final_schema_with_custom_names() {
+        // Create a schema with integer keys and custom names using typed structs.
+        let mut schema = HashMap::new();
 
         // Parameter 0: u64 with custom name "increment_amount".
-        let mut param0 = Map::new();
-        param0.insert("type".to_string(), json!("u64"));
-        param0.insert("description".to_string(), json!("64-bit unsigned integer"));
-        param0.insert("custom_name".to_string(), json!("increment_amount"));
-        param0.insert("parameter_index".to_string(), json!(0));
-        schema.insert("0".to_string(), Value::Object(param0));
+        schema.insert(
+            "0".to_string(),
+            ParameterSchema {
+                param_type: "u64".to_string(),
+                description: "64-bit unsigned integer".to_string(),
+                custom_name: Some("increment_amount".to_string()),
+                mutable: None,
+                parameter_index: Some("0".to_string()),
+            },
+        );
 
         // Parameter 1: object with custom name "counter".
-        let mut param1 = Map::new();
-        param1.insert("type".to_string(), json!("object"));
-        param1.insert("description".to_string(), json!("Counter object reference"));
-        param1.insert("mutable".to_string(), json!(true));
-        param1.insert("custom_name".to_string(), json!("counter"));
-        param1.insert("parameter_index".to_string(), json!(1));
-        schema.insert("1".to_string(), Value::Object(param1));
+        schema.insert(
+            "1".to_string(),
+            ParameterSchema {
+                param_type: "object".to_string(),
+                description: "Counter object reference".to_string(),
+                custom_name: Some("counter".to_string()),
+                mutable: Some(true),
+                parameter_index: Some("1".to_string()),
+            },
+        );
 
         // Convert schema.
-        let result = convert_schema_to_named_ports(schema).unwrap();
+        let result = build_final_schema(schema).unwrap();
 
         // Verify custom names are used as keys.
         assert!(result.contains_key("increment_amount"));
@@ -655,25 +664,36 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_schema_to_named_ports_without_custom_names() {
-        // Create a schema with integer keys but no custom names.
-        let mut schema = Map::new();
+    fn test_build_final_schema_without_custom_names() {
+        // Create a schema with integer keys but no custom names using typed structs.
+        let mut schema = HashMap::new();
 
         // Parameter 0: u64 without custom name.
-        let mut param0 = Map::new();
-        param0.insert("type".to_string(), json!("u64"));
-        param0.insert("description".to_string(), json!("64-bit unsigned integer"));
-        schema.insert("0".to_string(), Value::Object(param0));
+        schema.insert(
+            "0".to_string(),
+            ParameterSchema {
+                param_type: "u64".to_string(),
+                description: "64-bit unsigned integer".to_string(),
+                custom_name: None,
+                mutable: None,
+                parameter_index: None,
+            },
+        );
 
         // Parameter 1: object without custom name.
-        let mut param1 = Map::new();
-        param1.insert("type".to_string(), json!("object"));
-        param1.insert("description".to_string(), json!("Object reference"));
-        param1.insert("mutable".to_string(), json!(true));
-        schema.insert("1".to_string(), Value::Object(param1));
+        schema.insert(
+            "1".to_string(),
+            ParameterSchema {
+                param_type: "object".to_string(),
+                description: "Object reference".to_string(),
+                custom_name: None,
+                mutable: Some(true),
+                parameter_index: None,
+            },
+        );
 
         // Convert schema.
-        let result = convert_schema_to_named_ports(schema).unwrap();
+        let result = build_final_schema(schema).unwrap();
 
         // Verify integer keys are preserved.
         assert!(result.contains_key("0"));
@@ -693,34 +713,48 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_schema_to_named_ports_mixed() {
-        // Create a schema with some custom names and some without.
-        let mut schema = Map::new();
+    fn test_build_final_schema_mixed() {
+        // Create a schema with some custom names and some without using typed structs.
+        let mut schema = HashMap::new();
 
         // Parameter 0: with custom name.
-        let mut param0 = Map::new();
-        param0.insert("type".to_string(), json!("u64"));
-        param0.insert("description".to_string(), json!("Amount parameter"));
-        param0.insert("custom_name".to_string(), json!("amount"));
-        param0.insert("parameter_index".to_string(), json!(0));
-        schema.insert("0".to_string(), Value::Object(param0));
+        schema.insert(
+            "0".to_string(),
+            ParameterSchema {
+                param_type: "u64".to_string(),
+                description: "Amount parameter".to_string(),
+                custom_name: Some("amount".to_string()),
+                mutable: None,
+                parameter_index: Some("0".to_string()),
+            },
+        );
 
         // Parameter 1: without custom name.
-        let mut param1 = Map::new();
-        param1.insert("type".to_string(), json!("bool"));
-        param1.insert("description".to_string(), json!("Flag parameter"));
-        schema.insert("1".to_string(), Value::Object(param1));
+        schema.insert(
+            "1".to_string(),
+            ParameterSchema {
+                param_type: "bool".to_string(),
+                description: "Flag parameter".to_string(),
+                custom_name: None,
+                mutable: None,
+                parameter_index: None,
+            },
+        );
 
         // Parameter 2: with custom name.
-        let mut param2 = Map::new();
-        param2.insert("type".to_string(), json!("string"));
-        param2.insert("description".to_string(), json!("Message parameter"));
-        param2.insert("custom_name".to_string(), json!("message"));
-        param2.insert("parameter_index".to_string(), json!(2));
-        schema.insert("2".to_string(), Value::Object(param2));
+        schema.insert(
+            "2".to_string(),
+            ParameterSchema {
+                param_type: "string".to_string(),
+                description: "Message parameter".to_string(),
+                custom_name: Some("message".to_string()),
+                mutable: None,
+                parameter_index: Some("2".to_string()),
+            },
+        );
 
         // Convert schema.
-        let result = convert_schema_to_named_ports(schema).unwrap();
+        let result = build_final_schema(schema).unwrap();
 
         // Verify mixed keys.
         assert!(result.contains_key("amount")); // Custom name.
@@ -860,23 +894,24 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_schema_to_named_ports_preserves_all_fields() {
-        // Test that all field types are properly preserved during conversion.
-        let mut schema = Map::new();
+    fn test_build_final_schema_preserves_all_fields() {
+        // Test that all field types are properly preserved during conversion using typed structs.
+        let mut schema = HashMap::new();
 
         // Parameter with various field types.
-        let mut param = Map::new();
-        param.insert("type".to_string(), json!("object"));
-        param.insert("description".to_string(), json!("Test object"));
-        param.insert("mutable".to_string(), json!(true));
-        param.insert("custom_name".to_string(), json!("my_param"));
-        param.insert("parameter_index".to_string(), json!(0));
-        // Add some additional fields that might exist.
-        param.insert("optional".to_string(), json!(false));
-        schema.insert("0".to_string(), Value::Object(param));
+        schema.insert(
+            "0".to_string(),
+            ParameterSchema {
+                param_type: "object".to_string(),
+                description: "Test object".to_string(),
+                custom_name: Some("my_param".to_string()),
+                mutable: Some(true),
+                parameter_index: Some("0".to_string()),
+            },
+        );
 
         // Convert.
-        let result = convert_schema_to_named_ports(schema).unwrap();
+        let result = build_final_schema(schema).unwrap();
 
         // Verify custom name is used and metadata removed.
         assert!(result.contains_key("my_param"));
@@ -886,7 +921,6 @@ mod tests {
         assert_eq!(my_param.get("type").unwrap(), "object");
         assert_eq!(my_param.get("description").unwrap(), "Test object");
         assert_eq!(my_param.get("mutable").unwrap(), true);
-        assert_eq!(my_param.get("optional").unwrap(), false);
 
         // Verify metadata fields are removed.
         assert!(!my_param.contains_key("custom_name"));
@@ -894,20 +928,25 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_schema_to_named_ports_with_null_custom_name() {
-        // Test that null custom_name is treated as no custom name.
-        let mut schema = Map::new();
+    fn test_build_final_schema_with_none_custom_name() {
+        // Test that None custom_name is treated as no custom name using typed structs.
+        let mut schema = HashMap::new();
 
-        let mut param = Map::new();
-        param.insert("type".to_string(), json!("u64"));
-        param.insert("description".to_string(), json!("Test param"));
-        param.insert("custom_name".to_string(), Value::Null);
-        schema.insert("0".to_string(), Value::Object(param));
+        schema.insert(
+            "0".to_string(),
+            ParameterSchema {
+                param_type: "u64".to_string(),
+                description: "Test param".to_string(),
+                custom_name: None,
+                mutable: None,
+                parameter_index: None,
+            },
+        );
 
         // Convert.
-        let result = convert_schema_to_named_ports(schema).unwrap();
+        let result = build_final_schema(schema).unwrap();
 
-        // Verify integer key is preserved when custom_name is null.
+        // Verify integer key is preserved when custom_name is None.
         assert!(result.contains_key("0"));
         assert_eq!(result.get("0").unwrap()["type"], "u64");
     }
