@@ -69,7 +69,7 @@ pub(crate) async fn register_onchain_tool(
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     // Generate input schema by introspecting the Move module's "execute" function.
-    notify_success!("Auto-generating input schema from Move module...");
+    let input_handle = loading!("Auto-generating input schema from Move module...");
     let base_input_schema = match nexus_sdk::onchain_schema_gen::generate_input_schema(
         &sui,
         package_address,
@@ -79,24 +79,17 @@ pub(crate) async fn register_onchain_tool(
     .await
     {
         Ok(schema) => {
-            notify_success!(
-                "Generated base input schema: {}",
-                schema.truecolor(100, 255, 100)
-            );
+            input_handle.success();
             schema
         }
         Err(e) => {
-            notify_error!(
-                "Failed to generate input schema for tool '{fqn}': {error}",
-                fqn = fqn.to_string().truecolor(100, 100, 100),
-                error = e
-            );
+            input_handle.error();
             return Err(NexusCliError::Any(e));
         }
     };
 
     // Generate output schema by introspecting the Move module's "Output" enum.
-    notify_success!("Auto-generating output schema from Move module...");
+    let output_handle = loading!("Auto-generating output schema from Move module...");
     let base_output_schema = match nexus_sdk::onchain_schema_gen::generate_output_schema(
         &sui,
         package_address,
@@ -106,45 +99,37 @@ pub(crate) async fn register_onchain_tool(
     .await
     {
         Ok(schema) => {
-            notify_success!(
-                "Generated base output schema: {}",
-                schema.truecolor(100, 255, 100)
-            );
+            output_handle.success();
             schema
         }
         Err(e) => {
-            notify_error!(
-                "Failed to generate output schema for tool '{fqn}': {error}",
-                fqn = fqn.to_string().truecolor(100, 100, 100),
-                error = e
-            );
+            output_handle.error();
             return Err(NexusCliError::Any(e));
         }
     };
 
     // Allow user to customize parameter descriptions.
+    let input_handle = loading!("Customizing input parameter descriptions...");
     let input_schema = match customize_parameter_descriptions(base_input_schema) {
         Ok(schema) => {
-            notify_success!("Input parameter descriptions customized successfully!");
+            input_handle.success();
             schema
         }
         Err(e) => {
-            notify_error!("Failed to customize input parameter descriptions: {}", e);
+            input_handle.error();
             return Err(e);
         }
     };
 
     // Allow user to customize output variant and field descriptions.
+    let output_handle = loading!("Customizing output variant and field descriptions...");
     let output_schema = match customize_output_variant_and_field_descriptions(base_output_schema) {
         Ok(schema) => {
-            notify_success!("Output variant and field descriptions customized successfully!");
+            output_handle.success();
             schema
         }
         Err(e) => {
-            notify_error!(
-                "Failed to customize output variant and field descriptions: {}",
-                e
-            );
+            output_handle.error();
             return Err(e);
         }
     };
