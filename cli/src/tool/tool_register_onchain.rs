@@ -1,13 +1,7 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
-        sui::*,
-        tool::tool_register_offchain,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
+        sui::*, tool::tool_register_offchain,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
@@ -27,8 +21,7 @@ use {
 /// todo: merge this function with the existing `tool_register.rs` function.
 /// https://github.com/Talus-Network/nexus/issues/501
 pub(crate) async fn register_onchain_tool(
-    package_address: sui::ObjectID,
-    module_name: String,
+    module_id: sui::MoveModuleId,
     fqn: ToolFqn,
     description: String,
     witness_id: sui::ObjectID,
@@ -37,6 +30,10 @@ pub(crate) async fn register_onchain_tool(
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
+    // Extract package address and module name from ModuleId.
+    let package_address = sui::ObjectID::from(*module_id.address());
+    let module_name = module_id.name().to_string();
+
     command_title!(
         "Registering Onchain Tool '{fqn}' from package '{package_address}'",
         fqn = fqn,

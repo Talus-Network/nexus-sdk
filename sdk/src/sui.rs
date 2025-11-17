@@ -12,8 +12,8 @@ pub use {
     move_core_types::{
         account_address::AccountAddress as MoveAccountAddress,
         ident_str as move_ident_str,
-        identifier::IdentStr as MoveIdentStr,
-        language_storage::{StructTag as MoveStructTag, TypeTag as MoveTypeTag},
+        identifier::{IdentStr as MoveIdentStr, Identifier as MoveIdentifier},
+        language_storage::{ModuleId as MoveModuleId, StructTag as MoveStructTag, TypeTag as MoveTypeTag},
         u256::U256 as MoveU256,
     },
     shared_crypto::intent::Intent,
