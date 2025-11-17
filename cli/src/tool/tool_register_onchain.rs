@@ -1,7 +1,7 @@
 use {
     crate::{
         command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
-        sui::*,
+        sui::*, tool::tool_register_offchain,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
@@ -22,6 +22,7 @@ pub(crate) async fn register_onchain_tool(
     fqn: ToolFqn,
     description: String,
     witness_id: sui::ObjectID,
+    collateral_coin: Option<sui::ObjectID>,
     no_save: bool,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
@@ -43,8 +44,20 @@ pub(crate) async fn register_onchain_tool(
     let sui = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
-    // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
+    // Fetch gas and collateral coin objects.
+    let (gas_coin, collateral_coin) = tool_register_offchain::fetch_gas_and_collateral_coins(
+        &sui,
+        address,
+        sui_gas_coin,
+        collateral_coin,
+    )
+    .await?;
+
+    if gas_coin.coin_object_id == collateral_coin.coin_object_id {
+        return Err(NexusCliError::Any(anyhow!(
+            "Gas and collateral coins must be different."
+        )));
+    }
 
     // Fetch reference gas price.
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
@@ -145,6 +158,7 @@ pub(crate) async fn register_onchain_tool(
         &fqn,
         description.clone(),
         witness_id,
+        &collateral_coin,
         address.into(),
     ) {
         tx_handle.error();

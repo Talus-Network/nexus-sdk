@@ -102,6 +102,14 @@ pub(crate) enum RegisterCommand {
         witness_id: sui::ObjectID,
 
         #[arg(
+            long = "collateral-coin",
+            short = 'c',
+            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        collateral_coin: Option<sui::ObjectID>,
+
+        #[arg(
             long = "no-save",
             help = "If this flag is set, the tool owner caps will not be saved to the local config file."
         )]
@@ -296,6 +304,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 tool_fqn,
                 description,
                 witness_id,
+                collateral_coin,
                 no_save,
                 gas,
             } => {
@@ -305,6 +314,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     tool_fqn,
                     description,
                     witness_id,
+                    collateral_coin,
                     no_save,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,

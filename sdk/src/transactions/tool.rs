@@ -160,6 +160,7 @@ pub fn register_on_chain_for_self(
     fqn: &ToolFqn,
     description: String,
     witness_id: sui::ObjectID,
+    collateral_coin: &sui::Coin,
     address: sui::ObjectID,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut ToolRegistry`
@@ -194,6 +195,11 @@ pub fn register_on_chain_for_self(
     // `witness_id: ID`
     let witness_id = tx.pure(witness_id)?;
 
+    // `pay_with: Coin<SUI>`
+    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
+        collateral_coin.object_ref(),
+    ))?;
+
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
@@ -212,6 +218,7 @@ pub fn register_on_chain_for_self(
             fqn,
             description,
             witness_id,
+            pay_with,
             clock,
         ],
     );
@@ -348,7 +355,7 @@ pub fn claim_collateral_for_self(
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
-    // `nexus::tool_registry::claim_collateral_for_tool()`
+    // `nexus::tool_registry::claim_collateral_for_self()`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
@@ -430,6 +437,7 @@ mod tests {
         let fqn = fqn!("xyz.dummy.tool@1");
         let description = "a dummy onchain tool".to_string();
         let witness_id = sui::ObjectID::random();
+        let collateral_coin = sui_mocks::mock_sui_coin(100);
         let address = sui::ObjectID::random();
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
@@ -443,6 +451,7 @@ mod tests {
             &fqn,
             description,
             witness_id,
+            &collateral_coin,
             address,
         )
         .expect("Failed to build PTB for registering an onchain tool.");
@@ -468,7 +477,7 @@ mod tests {
                 .to_string()
         );
 
-        assert_eq!(call.arguments.len(), 9);
+        assert_eq!(call.arguments.len(), 10);
     }
 
     #[test]

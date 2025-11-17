@@ -249,7 +249,7 @@ pub(crate) async fn register_off_chain_tool(
 /// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet
 /// and Testnet, we can use the faucet to get the coins. On Mainnet, this fails
 /// if the coins are not present.
-async fn fetch_gas_and_collateral_coins(
+pub(super) async fn fetch_gas_and_collateral_coins(
     sui: &sui::Client,
     addr: sui::Address,
     sui_gas_coin: Option<sui::ObjectID>,
