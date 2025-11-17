@@ -251,8 +251,7 @@ export PACKAGE_ID="0x..."
 
 After publishing, you'll need:
 
-1. **Package Address**: From publish output
-1. **Module Name**: Your module name (e.g., "my_tool")
+1. **Module Path**: Combination of package address and module name (e.g., "0xPACKAGE_ID::my_tool")
 1. **Witness ID**: Object ID of your witness object
 1. **\*ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
 
@@ -271,8 +270,7 @@ Use the Nexus CLI to register your tool with automatic schema generation:
 
 ```bash
 nexus tool register onchain \
-  --package-address $PACKAGE_ID \
-  --module-name my_onchain_tool \
+  --module-path "$PACKAGE_ID::my_onchain_tool" \
   --tool-fqn "xyz.mydomain.my_onchain_tool@1" \
   --description "My custom onchain tool that processes values" \
   --witness-id "0x..."
