@@ -452,12 +452,10 @@ pub fn execute(
         for (port, value) in data {
             // `port: InputPort`
             let port = match value.is_encrypted() {
-                true => workflow::Dag::encrypted_input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    &port,
-                )?,
-                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
+                true => {
+                    workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, port)?
+                }
+                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?,
             };
 
             // `value: NexusData`

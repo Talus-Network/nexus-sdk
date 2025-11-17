@@ -597,6 +597,20 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::move_ident_str!("claim_leader_gas"),
     };
+    /// Claim leader gas against an invoker scope (no DAG execution object).
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_invoker`
+    pub const CLAIM_LEADER_GAS_FOR_INVOKER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas_for_invoker"),
+    };
+    /// Claim leader gas specifically for pre-key handshakes.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_pre_key`
+    pub const CLAIM_LEADER_GAS_FOR_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas_for_pre_key"),
+    };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
     /// `nexus_workflow::gas::deescalate`
@@ -745,19 +759,12 @@ impl PreKeyVault {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::move_ident_str!("claim_pre_key_for_self"),
     };
-    /// PreKey struct type. Mostly used for creating generic types.
+    /// Fulfill a requested pre key for a user.
     ///
-    /// `nexus_workflow::pre_key_vault::PreKey`
-    pub const PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
+    pub const FULFILL_PRE_KEY_FOR_USER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("PreKey"),
-    };
-    /// Create a new pre key from bytes.
-    ///
-    /// `nexus_workflow::pre_key_vault::pre_key_from_bytes`
-    pub const PRE_KEY_FROM_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("pre_key_from_bytes"),
+        name: sui::move_ident_str!("fulfill_pre_key_for_user"),
     };
     /// PreKeyVault type for lookups.
     ///
@@ -765,13 +772,6 @@ impl PreKeyVault {
     pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::move_ident_str!("PreKeyVault"),
-    };
-    /// Replenish the pre key vault with public pre_keys.
-    ///
-    /// `nexus_workflow::pre_key_vault::replenish_pre_keys`
-    pub const REPLENISH_PRE_KEYS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("replenish_pre_keys"),
     };
 }
 

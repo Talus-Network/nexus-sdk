@@ -79,12 +79,12 @@ pub(crate) struct DataStorageConf {
     pub(crate) preferred_remote_storage: Option<StorageKind>,
 }
 
-impl Into<StorageConf> for DataStorageConf {
-    fn into(self) -> StorageConf {
+impl From<DataStorageConf> for StorageConf {
+    fn from(val: DataStorageConf) -> StorageConf {
         StorageConf {
-            walrus_aggregator_url: self.walrus_aggregator_url.map(|url| url.to_string()),
-            walrus_publisher_url: self.walrus_publisher_url.map(|url| url.to_string()),
-            walrus_save_for_epochs: self.walrus_save_for_epochs,
+            walrus_aggregator_url: val.walrus_aggregator_url.map(|url| url.to_string()),
+            walrus_publisher_url: val.walrus_publisher_url.map(|url| url.to_string()),
+            walrus_save_for_epochs: val.walrus_save_for_epochs,
         }
     }
 }
@@ -124,9 +124,9 @@ impl CryptoConf {
         let conf_path = path.unwrap_or(&default_path);
 
         let crypto_conf = CryptoConf::load_from_path(conf_path).await?;
-        Ok(crypto_conf
+        crypto_conf
             .identity_key
-            .ok_or_else(|| anyhow!("No identity key found"))?)
+            .ok_or_else(|| anyhow!("No identity key found"))
     }
 
     /// Update the identity key in the configuration.
@@ -228,6 +228,7 @@ fn default_sui_wallet_path() -> PathBuf {
 }
 
 #[cfg(test)]
+#[allow(clippy::single_component_path_imports)]
 mod tests {
     use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, tempfile};
 

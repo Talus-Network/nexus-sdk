@@ -33,7 +33,7 @@ pub(crate) async fn execute_dag(
 
     // Build the remote storage conf.
     let conf = CliConf::load().await.unwrap_or_default();
-    let preferred_remote_storage = conf.data_storage.preferred_remote_storage.clone();
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
@@ -124,7 +124,7 @@ async fn process_entry_ports(
     input: &serde_json::Value,
     preferred_remote_storage: Option<StorageKind>,
     encrypt: &HashMap<String, Vec<String>>,
-    remote: &Vec<String>,
+    remote: &[String],
 ) -> Result<HashMap<String, PortsData>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
@@ -161,7 +161,7 @@ async fn process_entry_ports(
             data,
             encrypt_fields.unwrap_or(&vec![]),
             &remote_fields,
-            preferred_remote_storage.clone(),
+            preferred_remote_storage,
         )
         .map_err(NexusCliError::Any)?;
 
@@ -205,6 +205,7 @@ async fn fetch_encrypted_entry_ports(
         encrypted: bool,
     }
 
+    #[allow(clippy::type_complexity)]
     #[derive(Clone, Debug, Deserialize)]
     struct Dag {
         entry_groups:

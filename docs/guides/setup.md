@@ -174,7 +174,7 @@ nexus crypto auth
 
 Behind the scenes the command:
 
-1. Submits a programmable transaction that calls `pre_key_vault::claim_pre_key`, producing a pre-key bundle owned by your Sui address.
+1. Submits a programmable transaction that calls `pre_key_vault::claim_pre_key_for_self`, emitting the pre-key bundle bytes for your Sui address.
 1. Runs the X3DH sender flow locally using your identity key and that bundle, deriving shared secrets and the first Double-Ratchet message.
 1. Persists the resulting session (encrypted) to `~/.nexus/crypto.toml`.
 1. Sends a second programmable transaction that associates the claimed pre-key object with your address and delivers the initial encrypted message to the network.
@@ -194,19 +194,22 @@ sequenceDiagram
     participant Network as Nexus network
 
     CLI->>Conf: Load config + decrypt identity key
-    CLI->>Sui: Submit claim_pre_key_for_self PTB
-    Sui->>Vault: execute pre_key_vault::claim_pre_key
-    Vault-->>Sui: Mint PreKey object owned by CLI
-    CLI->>Sui: fetch pre-key object bytes
+    CLI->>Sui: Submit claim_pre_key_for_self PTB (request)
+    Sui->>Vault: execute pre_key_vault::claim_pre_key_for_self
+    Vault-->>Sui: Emit PreKeyRequestedEvent (no bundle yet)
+    Leader->>Sui: Submit fulfill_pre_key_for_user PTB
+    Sui->>Vault: execute pre_key_vault::fulfill_pre_key_for_user
+    Vault-->>Sui: Emit PreKeyFulfilledEvent (carries pre_key bytes)
+    CLI->>Sui: poll events, read pre_key bytes from PreKeyFulfilledEvent
     CLI->>CLI: Deserialize bytes -> PreKeyBundle
     CLI->>CLI: Initialize double-ratche Session
     CLI->>Conf: Save Double-Ratchet Session
-    CLI->>Sui: Submit associate_pre_key_with_sender PTB + initial_message
+    CLI->>Sui: Submit associate_pre_key PTB + initial_message
     Sui->>Network: Route initial message so nexus completes X3DH receiver flow
 ```
 
 {% hint style="info" %}
-`claim_pre_key` is rate limited and each transaction requires gas. Make sure you have uploaded budget via `nexus gas add-budget` and keep an eye on `--sui-gas-coin` / `--sui-gas-budget` if you need precise control.
+`claim_pre_key_for_self` is rate limited and each transaction requires gas. Make sure you have uploaded budget via `nexus gas add-budget` and keep an eye on `--sui-gas-coin` / `--sui-gas-budget` if you need precise control.
 {% endhint %}
 
 ## (Optional) Access Devnet Sui Explorer

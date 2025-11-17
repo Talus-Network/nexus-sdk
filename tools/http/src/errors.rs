@@ -97,7 +97,7 @@ pub enum HttpToolError {
 
 impl HttpToolError {
     /// Convert HttpToolError to Output enum for API compatibility
-    pub fn to_output(self) -> crate::http::Output {
+    pub fn into_output(self) -> crate::http::Output {
         match self {
             HttpToolError::ErrHttp {
                 status,

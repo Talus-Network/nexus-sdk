@@ -50,8 +50,10 @@ pub enum NexusEventKind {
     GasSettlementUpdate(GasSettlementUpdateEvent),
     #[serde(rename = "PreKeyVaultCreatedEvent")]
     PreKeyVaultCreated(PreKeyVaultCreatedEvent),
-    #[serde(rename = "PreKeyClaimedEvent")]
-    PreKeyClaimed(PreKeyClaimedEvent),
+    #[serde(rename = "PreKeyRequestedEvent")]
+    PreKeyRequested(PreKeyRequestedEvent),
+    #[serde(rename = "PreKeyFulfilledEvent")]
+    PreKeyFulfilled(PreKeyFulfilledEvent),
     #[serde(rename = "PreKeyAssociatedEvent")]
     PreKeyAssociated(PreKeyAssociatedEvent),
     // These events are unused for now.
@@ -247,6 +249,16 @@ pub struct GasSettlementUpdateEvent {
     pub was_settled: bool,
 }
 
+/// Fired when the leader claims gas from a user's budget.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaderClaimedGasEvent {
+    pub network: sui::ObjectID,
+    pub amount: u64,
+    /// Optional reason for auditing purposes.
+    #[serde(default)]
+    pub purpose: String,
+}
+
 /// Fired by the Nexus Workflow when a new pre key vault is created. This happens
 /// on initial network setup.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -255,23 +267,29 @@ pub struct PreKeyVaultCreatedEvent {
     pub crypto_cap: sui::ObjectID,
 }
 
-/// Fired by the Nexus Workflow when a pre key is claimed. Notifies about the
-/// remaining pre keys in the vault after the claim.
+/// Fired by the Nexus Workflow when a pre key is requested. The pre key bytes
+/// are still empty at this point and will be fulfilled by the leader.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyClaimedEvent {
-    /// How many pre keys are left in the vault after this claim.
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub remaining: u64,
+pub struct PreKeyRequestedEvent {
+    /// The address of the user that requested the pre key.
+    pub requested_by: sui::Address,
+}
+
+/// Fired by the Nexus Workflow when a pre key request is fulfilled by the
+/// leader. Carries the pending pre key bytes that the user can then associate.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PreKeyFulfilledEvent {
+    /// The address of the user that requested the pre key.
+    pub requested_by: sui::Address,
+    /// Bytes of the fulfilled pre key.
+    pub pre_key_bytes: Vec<u8>,
 }
 
 /// Fired by the Nexus Workflow when a pre key is associated with a user.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PreKeyAssociatedEvent {
     /// The address of the user the pre key is associated with.
-    pub claimed_by: sui::ObjectID,
+    pub claimed_by: sui::Address,
     /// Bytes of the pre key.
     pub pre_key: Vec<u8>,
     /// Bytes of the initial message.

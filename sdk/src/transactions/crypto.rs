@@ -1,72 +1,9 @@
 use crate::{
     crypto::x3dh::{InitialMessage, PreKeyBundle},
-    idents::{move_std, workflow},
+    idents::workflow,
     sui,
     types::NexusObjects,
 };
-
-/// PTB template to replenish public pre_keys in the pre_key vault.
-pub fn replenish_pre_keys(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    objects: &NexusObjects,
-    owner_cap: &sui::ObjectRef,
-    pre_keys: &Vec<PreKeyBundle>,
-) -> anyhow::Result<sui::Argument> {
-    // `self: &mut PreKeyVault`
-    let pre_key_vault = tx.obj(sui::ObjectArg::SharedObject {
-        id: objects.pre_key_vault.object_id,
-        initial_shared_version: objects.pre_key_vault.version,
-        mutable: true,
-    })?;
-
-    // `owner_cap: &CloneableOwnerCap<OverCrypto>`
-    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
-
-    // `PreKey`
-    let pre_key_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::PreKeyVault::PRE_KEY);
-
-    // `vector::<PreKey>::empty`
-    let pre_key_vector = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        move_std::Vector::EMPTY.module.into(),
-        move_std::Vector::EMPTY.name.into(),
-        vec![pre_key_type.clone()],
-        vec![],
-    );
-
-    for pre_key in pre_keys {
-        // `bytes: vector<u8>`
-        let pre_key_bytes = tx.pure(bincode::serialize(pre_key)?)?;
-
-        // `pre_key: PreKey`
-        let new_pre_key = tx.programmable_move_call(
-            objects.workflow_pkg_id,
-            workflow::PreKeyVault::PRE_KEY_FROM_BYTES.module.into(),
-            workflow::PreKeyVault::PRE_KEY_FROM_BYTES.name.into(),
-            vec![],
-            vec![pre_key_bytes],
-        );
-
-        // `vector::<PreKey>::push_back`
-        tx.programmable_move_call(
-            sui::MOVE_STDLIB_PACKAGE_ID,
-            move_std::Vector::PUSH_BACK.module.into(),
-            move_std::Vector::PUSH_BACK.name.into(),
-            vec![pre_key_type.clone()],
-            vec![pre_key_vector, new_pre_key],
-        );
-    }
-
-    // `nexus_workflow::pre_key_vault::replenish_pre_keys`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::PreKeyVault::REPLENISH_PRE_KEYS.module.into(),
-        workflow::PreKeyVault::REPLENISH_PRE_KEYS.name.into(),
-        vec![],
-        vec![pre_key_vault, owner_cap, pre_key_vector],
-    ))
-}
 
 /// PTB to claim a pre_key for the tx sender. Note that one must have uploaded
 /// gas budget before calling this function for rate limiting purposes. Also
@@ -102,16 +39,55 @@ pub fn claim_pre_key_for_self(
     ))
 }
 
+/// PTB to fulfill a user's pending pre_key request with the provided bundle.
+pub fn fulfill_pre_key_for_user(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    owner_cap: &sui::ObjectRef,
+    requested_by: sui::Address,
+    pre_key: &PreKeyBundle,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut PreKeyVault`
+    let pre_key_vault = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.pre_key_vault.object_id,
+        initial_shared_version: objects.pre_key_vault.version,
+        mutable: true,
+    })?;
+
+    // `owner_cap: &CloneableOwnerCap<OverCrypto>`
+    let owner_cap = tx.obj(sui::ObjectArg::ImmOrOwnedObject(owner_cap.to_object_ref()))?;
+
+    // `requested_by: address`
+    let requested_by = tx.pure(requested_by)?;
+
+    // `pre_key_bytes: vector<u8>`
+    let pre_key_bytes = tx.pure(bincode::serialize(pre_key)?)?;
+
+    // `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
+    Ok(tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER
+            .module
+            .into(),
+        workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER.name.into(),
+        vec![],
+        vec![pre_key_vault, owner_cap, requested_by, pre_key_bytes],
+    ))
+}
+
 /// PTB template to associate a claimed pre key with the sender address while
 /// sending an initial message.
 pub fn associate_pre_key_with_sender(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
-    pre_key: &sui::ObjectRef,
     initial_message: InitialMessage,
 ) -> anyhow::Result<sui::Argument> {
-    // `pre_key: PreKey`
-    let pre_key = tx.obj(sui::ObjectArg::ImmOrOwnedObject(pre_key.to_object_ref()))?;
+    // `self: &mut PreKeyVault`
+    let pre_key_vault = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.pre_key_vault.object_id,
+        initial_shared_version: objects.pre_key_vault.version,
+        mutable: true,
+    })?;
 
     // `initial_message: vector<u8>`
     let initial_message = tx.pure(bincode::serialize(&initial_message)?)?;
@@ -122,37 +98,13 @@ pub fn associate_pre_key_with_sender(
         workflow::PreKeyVault::ASSOCIATE_PRE_KEY.module.into(),
         workflow::PreKeyVault::ASSOCIATE_PRE_KEY.name.into(),
         vec![],
-        vec![pre_key, initial_message],
+        vec![pre_key_vault, initial_message],
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use {super::*, crate::test_utils::sui_mocks, x25519_dalek::PublicKey};
-
-    #[test]
-    fn test_replenish_pre_keys() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let owner_cap = sui_mocks::mock_sui_object_ref();
-
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
-        replenish_pre_keys(&mut tx, &objects, &owner_cap, &vec![]).unwrap();
-        let tx = tx.finish();
-
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
-            panic!("Expected last command to be a MoveCall to replenish pre_keys");
-        };
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::PreKeyVault::REPLENISH_PRE_KEYS.module.to_string(),
-        );
-        assert_eq!(
-            call.function,
-            workflow::PreKeyVault::REPLENISH_PRE_KEYS.name.to_string()
-        );
-    }
 
     #[test]
     fn test_claim_pre_key_for_self() {
@@ -182,9 +134,46 @@ mod tests {
     }
 
     #[test]
+    fn test_fulfill_pre_key_for_user() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let identity = crate::crypto::x3dh::IdentityKey::generate();
+        let spk_secret = x25519_dalek::StaticSecret::from([1; 32]);
+        let pre_key = PreKeyBundle::new(&identity, 1, &spk_secret, None, None);
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        fulfill_pre_key_for_user(
+            &mut tx,
+            &objects,
+            &owner_cap,
+            sui::Address::random_for_testing_only(),
+            &pre_key,
+        )
+        .unwrap();
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to fulfill pre_key for user");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER
+                .module
+                .to_string(),
+        );
+        assert_eq!(
+            call.function,
+            workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER
+                .name
+                .to_string()
+        );
+    }
+
+    #[test]
     fn test_associate_pre_key_with_sender() {
         let objects = sui_mocks::mock_nexus_objects();
-        let pre_key = sui_mocks::mock_sui_object_ref();
         let initial_message = InitialMessage {
             ika_pub: PublicKey::from([0; 32]),
             ek_pub: PublicKey::from([0; 32]),
@@ -195,7 +184,7 @@ mod tests {
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        associate_pre_key_with_sender(&mut tx, &objects, &pre_key, initial_message).unwrap();
+        associate_pre_key_with_sender(&mut tx, &objects, initial_message).unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
