@@ -1854,6 +1854,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
 dependencies = [
  "dbus",
+ "openssl",
  "zeroize",
 ]
 
@@ -4100,6 +4101,7 @@ dependencies = [
  "dbus-secret-service",
  "linux-keyutils",
  "log",
+ "openssl",
  "security-framework 2.11.1",
  "security-framework 3.2.0",
  "windows-sys 0.59.0",
@@ -4155,6 +4157,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5cbe856efeb50e4681f010e9aaa2bf0a644e10139e54cde10fc83a307c23bd9f"
 dependencies = [
+ "cc",
  "pkg-config",
 ]
 
