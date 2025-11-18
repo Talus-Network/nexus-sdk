@@ -230,18 +230,30 @@ fn default_sui_wallet_path() -> PathBuf {
 #[cfg(test)]
 #[allow(clippy::single_component_path_imports)]
 mod tests {
-    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, tempfile};
+    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs};
 
     fn setup_env() -> tempfile::TempDir {
         std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
         let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+
+        // Use dedicated sub-directories to avoid interfering with the caller's real home.
+        let home_dir = secret_home.path().join("home");
+        let xdg_config_dir = secret_home.path().join("xdg_config");
+        let xdg_data_dir = secret_home.path().join("xdg_data");
+
+        fs::create_dir_all(&home_dir).unwrap();
+        fs::create_dir_all(&xdg_config_dir).unwrap();
+        fs::create_dir_all(&xdg_data_dir).unwrap();
+
+        std::env::set_var("HOME", &home_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_config_dir);
+        std::env::set_var("XDG_DATA_HOME", &xdg_data_dir);
         secret_home
     }
 
     fn cleanup_env() {
         std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("HOME");
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("XDG_DATA_HOME");
     }

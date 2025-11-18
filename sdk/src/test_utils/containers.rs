@@ -5,8 +5,7 @@
 //! - Redis
 
 use {
-    crate::sui,
-    std::time::Duration,
+    portpicker::pick_unused_port,
     testcontainers_modules::{
         redis::Redis,
         sui::Sui,
@@ -17,7 +16,6 @@ use {
             ImageExt,
         },
     },
-    tokio::time::sleep,
 };
 
 pub type SuiContainer = ContainerAsync<Sui>;
@@ -27,34 +25,28 @@ pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
 pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
+    let rpc_host_port = pick_unused_port().expect("No free port for Sui RPC.");
+    let faucet_host_port = loop {
+        let port = pick_unused_port().expect("No free port for Sui faucet.");
+        if port != rpc_host_port {
+            break port;
+        }
+    };
+
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_name("taluslabs/sui-tools")
         .with_tag(env!("SUI_SDK_TAG"))
-        .with_mapped_port(0, ContainerPort::Tcp(9000))
-        .with_mapped_port(0, ContainerPort::Tcp(9123));
+        .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
+        .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123));
 
     let container = sui_request
         .start()
         .await
         .expect("Failed to start Sui container.");
 
-    let rpc_port = container
-        .get_host_port_ipv4(9000)
-        .await
-        .expect("Failed to get RPC port.");
-
-    let faucet_port = container
-        .get_host_port_ipv4(9123)
-        .await
-        .expect("Failed to get faucet port.");
-
-    wait_for_sui_ready(rpc_port)
-        .await
-        .expect("Sui JSON-RPC did not become ready in time");
-
-    (container, rpc_port, faucet_port)
+    (container, rpc_host_port, faucet_host_port)
 }
 
 /// Spins up a Redis container and returns its handle and mapped Redis port.
@@ -74,24 +66,4 @@ pub async fn setup_redis_instance() -> (RedisContainer, u16) {
         .expect("Failed to get Redis port.");
 
     (container, host_port)
-}
-
-/// Waits for the local Sui JSON-RPC endpoint to be ready before running tests.
-async fn wait_for_sui_ready(rpc_port: u16) -> anyhow::Result<()> {
-    let url = format!("http://127.0.0.1:{rpc_port}");
-    let mut last_err = None;
-
-    for _ in 0..60 {
-        match sui::ClientBuilder::default().build(url.clone()).await {
-            Ok(_) => return Ok(()),
-            Err(err) => {
-                last_err = Some(err);
-                sleep(Duration::from_secs(1)).await;
-            }
-        }
-    }
-
-    Err(anyhow::anyhow!(
-        "Sui client did not become ready at {url}. Last error: {last_err:?}"
-    ))
 }

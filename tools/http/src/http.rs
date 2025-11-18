@@ -417,7 +417,11 @@ impl Http {
     ) -> Result<Option<SchemaValidationDetails>, HttpToolError> {
         let schema_validation = if let Some(schema_def) = &input.json_schema {
             if let Some(ref json_data) = json {
-                Some(validate_schema_detailed(schema_def, json_data)?)
+                // Capture validation details whether validation succeeds or fails
+                Some(
+                    validate_schema_detailed(schema_def, json_data)
+                        .unwrap_or_else(|details| details),
+                )
             } else {
                 // JSON could not be parsed, schema validation failed
                 Some(SchemaValidationDetails {

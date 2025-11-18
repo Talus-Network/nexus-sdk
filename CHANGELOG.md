@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.4.0`] - Unreleased
 
+### `nexus-cli`
+
+#### Added
+
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+
 ### `nexus-sdk`
+
+#### Added
+
+- support for `scheduler` transactions and events
 
 #### Changed
 
@@ -19,15 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus dag inspect-execution` now also shows the data storage kind for each port
-
-#### Changed
+#### Fixed
 
 - `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
 - `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
-
-#### Fixed
-
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
 ### `nexus-sdk`

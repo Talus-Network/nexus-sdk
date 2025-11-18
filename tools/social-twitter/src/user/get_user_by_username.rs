@@ -48,6 +48,7 @@ pub(crate) struct Input {
     tweet_fields: Option<Vec<TweetField>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

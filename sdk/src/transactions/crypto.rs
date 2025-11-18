@@ -76,6 +76,9 @@ pub fn fulfill_pre_key_for_user(
 }
 
 /// PTB template to claim gas from the requester and fulfill a requested pre key.
+// This PTB template maps directly to the underlying Move call parameters, so keep
+// the argument list and silence the clippy lint.
+#[allow(clippy::too_many_arguments)]
 pub fn claim_and_fulfill_pre_key_for_user(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
