@@ -36,6 +36,9 @@ x25519-dalek = "2.0"
 rand.workspace = true
 base64.workspace = true
 bincode.workspace = true
+argon2.workspace = true
+aes-gcm.workspace = true
+zeroize.workspace = true
 
 # Web API bindings
 [dependencies.web-sys]

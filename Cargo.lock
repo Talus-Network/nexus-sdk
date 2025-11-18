@@ -5119,7 +5119,9 @@ dependencies = [
 name = "nexus-sdk-wasm"
 version = "0.3.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
+ "argon2",
  "base64 0.21.7",
  "bincode",
  "console_error_panic_hook",
@@ -5136,6 +5138,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]

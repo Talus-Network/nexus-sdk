@@ -69,7 +69,6 @@ impl ExecutionResult {
 /// ✅ Build DAG execution transaction using SDK (CLI-compatible with auto-encryption)
 #[wasm_bindgen]
 pub fn build_dag_execution_transaction(
-    master_key_hex: &str,
     dag_id: &str,
     entry_group: &str,
     input_json: &str,
@@ -113,12 +112,8 @@ pub fn build_dag_execution_transaction(
                     &"🔐 Encrypted ports detected, encrypting input data (CLI-parity)...".into(),
                 );
 
-                // Call the encryption function from crypto.rs
-                let encrypt_result = crate::encrypt_entry_ports_with_session(
-                    master_key_hex,
-                    input_json,
-                    encrypted_ports_json,
-                );
+                // Call the encryption function from crypto.rs (master key loaded internally)
+                let encrypt_result = crate::encrypt_entry_ports(input_json, encrypted_ports_json);
 
                 // Parse the encryption result
                 let encrypt_response: serde_json::Value = serde_json::from_str(&encrypt_result)?;
