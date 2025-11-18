@@ -512,61 +512,12 @@ pub struct ToolOutput;
 const TOOL_OUTPUT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_output");
 
 impl ToolOutput {
-    /// Create an error output variant with a reason.
-    ///
-    /// `nexus_workflow::tool_output::err`
-    pub const ERR: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("err"),
-    };
-    /// Create a new empty tool output with the specified variant.
-    ///
-    /// `nexus_workflow::tool_output::new`
-    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("new"),
-    };
-    /// Create an ok output variant.
-    ///
-    /// `nexus_workflow::tool_output::ok`
-    pub const OK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("ok"),
-    };
-    /// The ToolOutput struct type.
-    ///
-    /// `nexus_workflow::tool_output::ToolOutput`
-    pub const TOOL_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("ToolOutput"),
-    };
     /// Convert ToolOutput to DAG types.
     ///
     /// `nexus_workflow::tool_output::to_dag_types`
     pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_OUTPUT_MODULE,
         name: sui::move_ident_str!("to_dag_types"),
-    };
-    /// Create a custom variant output.
-    ///
-    /// `nexus_workflow::tool_output::variant`
-    pub const VARIANT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("variant"),
-    };
-    /// Add a field to the output.
-    ///
-    /// `nexus_workflow::tool_output::with_field`
-    pub const WITH_FIELD: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("with_field"),
-    };
-    /// Add multiple fields at once from vectors.
-    ///
-    /// `nexus_workflow::tool_output::with_fields`
-    pub const WITH_FIELDS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_OUTPUT_MODULE,
-        name: sui::move_ident_str!("with_fields"),
     };
 }
 
