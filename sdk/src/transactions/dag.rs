@@ -381,6 +381,7 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::ObjectRef,
+    gas_price: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
@@ -407,6 +408,9 @@ pub fn execute(
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `gas_price: u64`
+    let gas_price_arg = tx.pure(gas_price)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -449,15 +453,19 @@ pub fn execute(
             vec![],
         );
 
-        for (port, value) in data {
+        for (port_name, value) in data {
             // `port: InputPort`
             let port = match value.is_encrypted() {
                 true => workflow::Dag::encrypted_input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
-                    &port,
+                    port_name.as_str(),
                 )?,
-                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
+                false => workflow::Dag::input_port_from_str(
+                    tx,
+                    objects.workflow_pkg_id,
+                    port_name.as_str(),
+                )?,
             };
 
             // `value: NexusData`
@@ -510,6 +518,7 @@ pub fn execute(
             dag,
             gas_service,
             network,
+            gas_price_arg,
             entry_group,
             with_vertex_inputs,
             clock,
@@ -526,6 +535,7 @@ mod tests {
             test_utils::sui_mocks,
             types::{Data, EdgeKind, FromPort, ToPort},
         },
+        std::collections::HashMap,
     };
 
     #[test]
@@ -740,14 +750,23 @@ mod tests {
             "vertex1".to_string(),
             HashMap::from([(
                 "port1".to_string(),
-                serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
+                serde_json::json!({"kind": "inline", "encryption_mode": 0, "data": { "key": "value" } })
                     .try_into()
                     .expect("Failed to convert JSON to DataStorage"),
             )]),
         );
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(&mut tx, &nexus_objects, &dag, entry_group, &input_data).unwrap();
+        let gas_price = 0;
+        execute(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            gas_price,
+            entry_group,
+            &input_data,
+        )
+        .unwrap();
         let tx = tx.finish();
 
         let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {

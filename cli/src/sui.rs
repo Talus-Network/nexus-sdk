@@ -356,6 +356,7 @@ pub(crate) async fn get_nexus_client(
 fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf, anyhow::Error> {
     // Determine configuration paths.
     let config_dir = sui::config_dir()?;
+    std::fs::create_dir_all(&config_dir)?;
     let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
     let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
 

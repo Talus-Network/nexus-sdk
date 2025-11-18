@@ -79,12 +79,12 @@ pub(crate) struct DataStorageConf {
     pub(crate) preferred_remote_storage: Option<StorageKind>,
 }
 
-impl Into<StorageConf> for DataStorageConf {
-    fn into(self) -> StorageConf {
+impl From<DataStorageConf> for StorageConf {
+    fn from(value: DataStorageConf) -> StorageConf {
         StorageConf {
-            walrus_aggregator_url: self.walrus_aggregator_url.map(|url| url.to_string()),
-            walrus_publisher_url: self.walrus_publisher_url.map(|url| url.to_string()),
-            walrus_save_for_epochs: self.walrus_save_for_epochs,
+            walrus_aggregator_url: value.walrus_aggregator_url.map(|url| url.to_string()),
+            walrus_publisher_url: value.walrus_publisher_url.map(|url| url.to_string()),
+            walrus_save_for_epochs: value.walrus_save_for_epochs,
         }
     }
 }
@@ -124,9 +124,10 @@ impl CryptoConf {
         let conf_path = path.unwrap_or(&default_path);
 
         let crypto_conf = CryptoConf::load_from_path(conf_path).await?;
-        Ok(crypto_conf
+        let identity_key = crypto_conf
             .identity_key
-            .ok_or_else(|| anyhow!("No identity key found"))?)
+            .ok_or_else(|| anyhow!("No identity key found"))?;
+        Ok(identity_key)
     }
 
     /// Update the identity key in the configuration.
@@ -229,18 +230,30 @@ fn default_sui_wallet_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, tempfile};
+    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs};
 
     fn setup_env() -> tempfile::TempDir {
         std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
         let secret_home = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", secret_home.path());
-        std::env::set_var("XDG_DATA_HOME", secret_home.path());
+
+        // Use dedicated sub-directories to avoid interfering with the caller's real home.
+        let home_dir = secret_home.path().join("home");
+        let xdg_config_dir = secret_home.path().join("xdg_config");
+        let xdg_data_dir = secret_home.path().join("xdg_data");
+
+        fs::create_dir_all(&home_dir).unwrap();
+        fs::create_dir_all(&xdg_config_dir).unwrap();
+        fs::create_dir_all(&xdg_data_dir).unwrap();
+
+        std::env::set_var("HOME", &home_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &xdg_config_dir);
+        std::env::set_var("XDG_DATA_HOME", &xdg_data_dir);
         secret_home
     }
 
     fn cleanup_env() {
         std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+        std::env::remove_var("HOME");
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("XDG_DATA_HOME");
     }

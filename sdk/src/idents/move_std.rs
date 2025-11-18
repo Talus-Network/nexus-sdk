@@ -47,4 +47,33 @@ impl Vector {
         module: VECTOR_MODULE,
         name: sui::move_ident_str!("push_back"),
     };
+    /// `std::vector::singleton`
+    pub const SINGLETON: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VECTOR_MODULE,
+        name: sui::move_ident_str!("singleton"),
+    };
+}
+
+// == `std::string` ==
+
+pub struct StdString;
+
+const STRING_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("string");
+
+impl StdString {
+    /// `std::string::String`
+    pub const STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STRING_MODULE,
+        name: sui::move_ident_str!("String"),
+    };
+
+    /// Convenience helper to build the `std::string::String` type tag.
+    pub fn type_tag() -> sui::MoveTypeTag {
+        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: *sui::MOVE_STDLIB_PACKAGE_ID,
+            module: Self::STRING.module.into(),
+            name: Self::STRING.name.into(),
+            type_params: vec![],
+        }))
+    }
 }

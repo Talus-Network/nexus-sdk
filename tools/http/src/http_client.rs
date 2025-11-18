@@ -138,10 +138,10 @@ impl HttpClient {
 
     /// Check if HTTP method supports request body
     fn method_supports_body(method: &reqwest::Method) -> bool {
-        match *method {
-            reqwest::Method::GET | reqwest::Method::HEAD | reqwest::Method::OPTIONS => false,
-            _ => true,
-        }
+        !matches!(
+            *method,
+            reqwest::Method::GET | reqwest::Method::HEAD | reqwest::Method::OPTIONS
+        )
     }
 
     /// Builds request body
