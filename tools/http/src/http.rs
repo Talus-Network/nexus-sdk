@@ -220,13 +220,13 @@ impl NexusTool for Http {
     async fn invoke(&self, input: Self::Input) -> Self::Output {
         // Validate input parameters
         if let Err(validation_error) = input.validate() {
-            return HttpToolError::from_validation_error(validation_error).into();
+            return HttpToolError::from_validation_error(validation_error).into_output();
         }
 
         // Prepare request (client, URL, method, headers, body)
         let (http_client, request) = match self.prepare_request(&input) {
             Ok((client, req)) => (client, req),
-            Err(e) => return e.into(),
+            Err(e) => return e.into_output(),
         };
 
         // Execute request with or without retry logic
@@ -239,7 +239,7 @@ impl NexusTool for Http {
 
         match response {
             Ok(response) => self.process_response(response, &input).await,
-            Err(e) => e.into(),
+            Err(e) => e.into_output(),
         }
     }
 }
@@ -309,7 +309,7 @@ impl Http {
                 },
                 snippet,
             }
-            .into();
+            .into_output();
         }
 
         // Get response headers
@@ -323,7 +323,7 @@ impl Http {
         let body_bytes = match response.bytes().await {
             Ok(bytes) => bytes,
             Err(e) => {
-                return HttpToolError::from_network_error(e).into();
+                return HttpToolError::from_network_error(e).into_output();
             }
         };
 
@@ -336,13 +336,13 @@ impl Http {
         // Parse JSON response
         let json = match self.parse_json_response(&text, &headers, input, &status_code) {
             Ok(json) => json,
-            Err(e) => return e.into(),
+            Err(e) => return e.into_output(),
         };
 
         // Validate schema if provided
         let schema_validation = match self.validate_schema_response(&json, input) {
             Ok(validation) => validation,
-            Err(e) => return e.into(),
+            Err(e) => return e.into_output(),
         };
 
         Output::Ok {
@@ -381,13 +381,13 @@ impl Http {
 
         if let Some(ref text_content) = text {
             if text_content.trim().is_empty() {
-                // If expect_json=true but status indicates no content (204, 202, 205)
                 if input.expect_json.unwrap_or(false) && !Self::is_no_content_status(status) {
-                    return Err(HttpToolError::ErrInput(
+                    Err(HttpToolError::ErrInput(
                         "Empty response body but JSON expected".to_string(),
-                    ));
+                    ))
+                } else {
+                    Ok(None)
                 }
-                Ok(None)
             } else {
                 match serde_json::from_str(text_content) {
                     Ok(json_data) => Ok(Some(json_data)),
@@ -417,7 +417,11 @@ impl Http {
     ) -> Result<Option<SchemaValidationDetails>, HttpToolError> {
         let schema_validation = if let Some(schema_def) = &input.json_schema {
             if let Some(ref json_data) = json {
-                Some(validate_schema_detailed(schema_def, json_data)?)
+                // Capture validation details whether validation succeeds or fails
+                Some(
+                    validate_schema_detailed(schema_def, json_data)
+                        .unwrap_or_else(|details| details),
+                )
             } else {
                 // JSON could not be parsed, schema validation failed
                 Some(SchemaValidationDetails {

@@ -96,47 +96,33 @@ pub enum HttpToolError {
 }
 
 impl HttpToolError {
-    /// Create HttpToolError from external error types
-    pub fn from_json_error(e: JsonError) -> Self {
-        Self::ErrJsonParse(e.to_string())
+    /// Convert a validation error into an HttpToolError
+    pub fn from_validation_error(error: ValidationError) -> Self {
+        HttpToolError::ErrInput(error.to_string())
     }
 
-    pub fn from_network_error(e: ReqwestError) -> Self {
-        let error_msg = e.to_string();
-        if e.is_timeout() {
-            Self::ErrTimeout(error_msg)
+    /// Convert a network error into an HttpToolError with timeout detection
+    pub fn from_network_error(error: ReqwestError) -> Self {
+        if error.is_timeout() {
+            HttpToolError::ErrTimeout(error.to_string())
         } else {
-            // Check if it's a timeout by looking at the error message
-            if error_msg.contains("timeout") || error_msg.contains("timed out") {
-                Self::ErrTimeout(error_msg)
-            } else {
-                Self::ErrNetwork(error_msg)
-            }
+            HttpToolError::ErrNetwork(error.to_string())
         }
     }
 
-    pub fn from_url_parse_error(e: UrlParseError) -> Self {
-        Self::ErrUrlParse(e.to_string())
+    /// Convert a JSON parsing error into an HttpToolError
+    pub fn from_json_error(error: JsonError) -> Self {
+        HttpToolError::ErrJsonParse(error.to_string())
     }
 
-    pub fn from_validation_error(e: ValidationError) -> Self {
-        Self::ErrInput(e.to_string())
+    /// Convert a URL parsing error into an HttpToolError
+    pub fn from_url_parse_error(error: UrlParseError) -> Self {
+        HttpToolError::ErrUrlParse(error.to_string())
     }
 
-    pub fn from_schema_validation_error(e: crate::models::SchemaValidationDetails) -> Self {
-        Self::ErrSchemaValidation { errors: e.errors }
-    }
-}
-
-impl From<crate::models::SchemaValidationDetails> for HttpToolError {
-    fn from(e: crate::models::SchemaValidationDetails) -> Self {
-        Self::from_schema_validation_error(e)
-    }
-}
-
-impl From<HttpToolError> for crate::http::Output {
-    fn from(error: HttpToolError) -> Self {
-        match error {
+    /// Convert HttpToolError to Output enum for API compatibility
+    pub fn into_output(self) -> crate::http::Output {
+        match self {
             HttpToolError::ErrHttp {
                 status,
                 reason,
