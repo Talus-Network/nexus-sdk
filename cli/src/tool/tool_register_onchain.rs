@@ -60,21 +60,89 @@ pub(crate) async fn register_onchain_tool(
     )
     .await?;
 
+    // Validate that gas and collateral coins are different.
+    validate_gas_and_collateral_coins(&gas_coin, &collateral_coin)?;
+
+    // Fetch reference gas price.
+    let reference_gas_price = fetch_reference_gas_price(&sui).await?;
+
+    // Generate and customize schemas.
+    let (input_schema, output_schema) =
+        generate_and_customize_schemas(&sui, package_address, &module_name).await?;
+
+    // Build the registration transaction.
+    let tx_data = build_registration_transaction(
+        objects,
+        package_address,
+        module_name.clone(),
+        input_schema.clone(),
+        output_schema.clone(),
+        &fqn,
+        description.clone(),
+        witness_id,
+        &collateral_coin,
+        &gas_coin,
+        address,
+        sui_gas_budget,
+        reference_gas_price,
+    )?;
+
+    // Execute the registration transaction.
+    let response = match execute_registration_transaction(&sui, &wallet, tx_data, &fqn).await? {
+        Some(response) => response,
+        None => return Ok(()), // Tool already registered.
+    };
+
+    // Extract the OwnerCap<OverTool> object ID.
+    let over_tool_id = extract_over_tool_owner_cap(&response, objects)?;
+
+    // Save the owner caps to the CLI conf.
+    if !no_save {
+        save_tool_owner_caps(fqn.clone(), over_tool_id).await?;
+    }
+
+    json_output(&json!({
+        "digest": response.digest,
+        "tool_fqn": fqn,
+        "package_address": package_address.to_string(),
+        "module_name": module_name,
+        "witness_id": witness_id.to_string(),
+        "description": description,
+        "input_schema": input_schema,
+        "output_schema": output_schema,
+        "owner_cap_over_tool_id": over_tool_id,
+        "owner_cap_over_gas_id": null,
+        "already_registered": false,
+    }))?;
+
+    Ok(())
+}
+
+/// Validate that gas and collateral coins are different.
+fn validate_gas_and_collateral_coins(
+    gas_coin: &sui::Coin,
+    collateral_coin: &sui::Coin,
+) -> AnyResult<(), NexusCliError> {
     if gas_coin.coin_object_id == collateral_coin.coin_object_id {
         return Err(NexusCliError::Any(anyhow!(
             "Gas and collateral coins must be different."
         )));
     }
+    Ok(())
+}
 
-    // Fetch reference gas price.
-    let reference_gas_price = fetch_reference_gas_price(&sui).await?;
-
+/// Generate input and output schemas and allow user customization.
+async fn generate_and_customize_schemas(
+    sui: &sui::Client,
+    package_address: sui::ObjectID,
+    module_name: &str,
+) -> AnyResult<(String, String), NexusCliError> {
     // Generate input schema by introspecting the Move module's "execute" function.
     let input_handle = loading!("Auto-generating input schema from Move module...");
     let base_input_schema = match nexus_sdk::onchain_schema_gen::generate_input_schema(
-        &sui,
+        sui,
         package_address,
-        &module_name,
+        module_name,
         "execute",
     )
     .await
@@ -92,9 +160,9 @@ pub(crate) async fn register_onchain_tool(
     // Generate output schema by introspecting the Move module's "Output" enum.
     let output_handle = loading!("Auto-generating output schema from Move module...");
     let base_output_schema = match nexus_sdk::onchain_schema_gen::generate_output_schema(
-        &sui,
+        sui,
         package_address,
-        &module_name,
+        module_name,
         "Output",
     )
     .await
@@ -135,7 +203,25 @@ pub(crate) async fn register_onchain_tool(
         }
     };
 
-    // Craft a TX to register the tool.
+    Ok((input_schema, output_schema))
+}
+
+/// Build the registration transaction and return TransactionData.
+fn build_registration_transaction(
+    objects: &NexusObjects,
+    package_address: sui::ObjectID,
+    module_name: String,
+    input_schema: String,
+    output_schema: String,
+    fqn: &ToolFqn,
+    description: String,
+    witness_id: sui::ObjectID,
+    collateral_coin: &sui::Coin,
+    gas_coin: &sui::Coin,
+    address: sui::Address,
+    sui_gas_budget: u64,
+    reference_gas_price: u64,
+) -> AnyResult<sui::TransactionData, NexusCliError> {
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::ProgrammableTransactionBuilder::new();
@@ -144,17 +230,16 @@ pub(crate) async fn register_onchain_tool(
         &mut tx,
         objects,
         package_address,
-        module_name.clone(),
-        input_schema.clone(),
-        output_schema.clone(),
-        &fqn,
-        description.clone(),
+        module_name,
+        input_schema,
+        output_schema,
+        fqn,
+        description,
         witness_id,
-        &collateral_coin,
+        collateral_coin,
         address.into(),
     ) {
         tx_handle.error();
-
         return Err(NexusCliError::Any(e));
     }
 
@@ -168,11 +253,20 @@ pub(crate) async fn register_onchain_tool(
         reference_gas_price,
     );
 
-    // Sign and submit the TX.
-    let response = match sign_and_execute_transaction(&sui, &wallet, tx_data).await {
-        Ok(response) => response,
-        // If the tool is already registered, we don't want to fail the
-        // command.
+    Ok(tx_data)
+}
+
+/// Sign and execute the registration transaction with specific error handling.
+/// Returns None if the tool is already registered (handled gracefully).
+async fn execute_registration_transaction(
+    sui: &sui::Client,
+    wallet: &sui::WalletContext,
+    tx_data: sui::TransactionData,
+    fqn: &ToolFqn,
+) -> AnyResult<Option<sui::TransactionBlockResponse>, NexusCliError> {
+    match sign_and_execute_transaction(sui, wallet, tx_data).await {
+        Ok(response) => Ok(Some(response)),
+        // If the tool is already registered, we don't want to fail the command.
         Err(NexusCliError::Any(e)) if e.to_string().contains("register_on_chain_tool_") => {
             notify_error!(
                 "Tool '{fqn}' is already registered.",
@@ -184,7 +278,7 @@ pub(crate) async fn register_onchain_tool(
                 "already_registered": true,
             }))?;
 
-            return Ok(());
+            Ok(None)
         }
         // Any other error fails the tool registration.
         Err(e) => {
@@ -194,15 +288,22 @@ pub(crate) async fn register_onchain_tool(
                 error = e
             );
 
-            return Err(e);
+            Err(e)
         }
-    };
+    }
+}
 
+/// Extract the OwnerCap<OverTool> object ID from the transaction response.
+fn extract_over_tool_owner_cap(
+    response: &sui::TransactionBlockResponse,
+    objects: &NexusObjects,
+) -> AnyResult<sui::ObjectID, NexusCliError> {
     // Parse the owner cap object IDs from the response.
     let owner_caps = response
         .object_changes
-        .unwrap_or_default()
-        .into_iter()
+        .as_ref()
+        .unwrap_or(&vec![])
+        .iter()
         .filter_map(|change| match change {
             sui::ObjectChange::Created {
                 object_type,
@@ -213,7 +314,7 @@ pub(crate) async fn register_onchain_tool(
                     == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
                 && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
             {
-                Some((object_id, object_type))
+                Some((*object_id, object_type.clone()))
             }
             _ => None,
         })
@@ -243,46 +344,35 @@ pub(crate) async fn register_onchain_tool(
         id = over_tool_id.to_string().truecolor(100, 100, 100)
     );
 
-    // Note: Onchain tools don't create OverGas caps, so we only save the OverTool cap
     notify_success!("Onchain tools use a different gas model. No OverGas cap was created.");
 
-    // Save the owner caps to the CLI conf.
-    if !no_save {
-        let save_handle = loading!("Saving the owner cap to the CLI configuration...");
+    Ok(*over_tool_id)
+}
 
-        let mut conf = CliConf::load().await.unwrap_or_default();
+/// Save the tool owner caps to the CLI configuration.
+async fn save_tool_owner_caps(
+    fqn: ToolFqn,
+    over_tool_id: sui::ObjectID,
+) -> AnyResult<(), NexusCliError> {
+    let save_handle = loading!("Saving the owner cap to the CLI configuration...");
 
-        // For onchain tools, we only have OverTool cap, no OverGas cap.
-        conf.tools.insert(
-            fqn.clone(),
-            ToolOwnerCaps {
-                over_tool: *over_tool_id,
-                over_gas: None,
-            },
-        );
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
-        if let Err(e) = conf.save().await {
-            save_handle.error();
+    // For onchain tools, we only have OverTool cap, no OverGas cap.
+    conf.tools.insert(
+        fqn,
+        ToolOwnerCaps {
+            over_tool: over_tool_id,
+            over_gas: None,
+        },
+    );
 
-            return Err(NexusCliError::Any(e));
-        }
-
-        save_handle.success();
+    if let Err(e) = conf.save().await {
+        save_handle.error();
+        return Err(NexusCliError::Any(e));
     }
 
-    json_output(&json!({
-        "digest": response.digest,
-        "tool_fqn": fqn,
-        "package_address": package_address.to_string(),
-        "module_name": module_name,
-        "witness_id": witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
-        "owner_cap_over_tool_id": over_tool_id,
-        "owner_cap_over_gas_id": null,
-        "already_registered": false,
-    }))?;
+    save_handle.success();
 
     Ok(())
 }
@@ -601,7 +691,7 @@ fn customize_output_variant(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, std::sync::atomic::Ordering};
+    use {super::*, nexus_sdk::test_utils::sui_mocks, std::sync::atomic::Ordering};
 
     #[test]
     fn test_build_final_schema_with_custom_names() {
@@ -1131,5 +1221,265 @@ mod tests {
 
         // Reset JSON_MODE.
         JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_validate_gas_and_collateral_coins_different() {
+        // Create two different coins.
+        let gas_coin = sui_mocks::mock_sui_coin(1000);
+        let collateral_coin = sui_mocks::mock_sui_coin(2000);
+
+        // Should succeed because coins are different.
+        let result = validate_gas_and_collateral_coins(&gas_coin, &collateral_coin);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_gas_and_collateral_coins_same() {
+        // Create a single coin.
+        let coin = sui_mocks::mock_sui_coin(1000);
+
+        // Should fail because both references point to the same coin.
+        let result = validate_gas_and_collateral_coins(&coin, &coin);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Gas and collateral coins must be different"));
+    }
+
+    #[test]
+    fn test_extract_over_tool_owner_cap_success() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let primitives_pkg_id = nexus_objects.primitives_pkg_id;
+
+        // Create a mock transaction response with owner cap object.
+        let owner_cap_id = sui::ObjectID::random();
+
+        let object_type = sui::MoveStructTag {
+            address: primitives_pkg_id.into(),
+            module: primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into(),
+            name: primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into(),
+            type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+                address: nexus_objects.workflow_pkg_id.into(),
+                module: workflow::ToolRegistry::OVER_TOOL.module.into(),
+                name: workflow::ToolRegistry::OVER_TOOL.name.into(),
+                type_params: vec![],
+            }))],
+        };
+
+        let response = sui::TransactionBlockResponse {
+            digest: sui::TransactionDigest::random(),
+            transaction: None,
+            raw_transaction: vec![],
+            effects: None,
+            events: None,
+            object_changes: Some(vec![sui::ObjectChange::Created {
+                sender: sui::Address::random_for_testing_only(),
+                owner: sui::Owner::AddressOwner(sui::Address::random_for_testing_only()),
+                object_type,
+                object_id: owner_cap_id,
+                version: 1.into(),
+                digest: sui::ObjectDigest::random(),
+            }]),
+            balance_changes: None,
+            timestamp_ms: None,
+            confirmed_local_execution: None,
+            checkpoint: None,
+            errors: vec![],
+            raw_effects: vec![],
+        };
+
+        // Extract the owner cap.
+        let result = extract_over_tool_owner_cap(&response, &nexus_objects);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), owner_cap_id);
+    }
+
+    #[test]
+    fn test_extract_over_tool_owner_cap_not_found() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Create a mock transaction response with no owner cap.
+        let response = sui::TransactionBlockResponse {
+            digest: sui::TransactionDigest::random(),
+            transaction: None,
+            raw_transaction: vec![],
+            effects: None,
+            events: None,
+            object_changes: Some(vec![]),
+            balance_changes: None,
+            timestamp_ms: None,
+            confirmed_local_execution: None,
+            checkpoint: None,
+            errors: vec![],
+            raw_effects: vec![],
+        };
+
+        // Should fail because no owner cap is found.
+        let result = extract_over_tool_owner_cap(&response, &nexus_objects);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Could not find the OwnerCap<OverTool> object ID"));
+    }
+
+    #[test]
+    fn test_extract_over_tool_owner_cap_empty_object_changes() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Create a response with None object_changes.
+        let response = sui::TransactionBlockResponse {
+            digest: sui::TransactionDigest::random(),
+            transaction: None,
+            raw_transaction: vec![],
+            effects: None,
+            events: None,
+            object_changes: None,
+            balance_changes: None,
+            timestamp_ms: None,
+            confirmed_local_execution: None,
+            checkpoint: None,
+            errors: vec![],
+            raw_effects: vec![],
+        };
+
+        // Should fail because no owner cap is found.
+        let result = extract_over_tool_owner_cap(&response, &nexus_objects);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_registration_transaction_success() {
+        // Create mock objects.
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let package_address = sui::ObjectID::random();
+        let module_name = "test_module".to_string();
+        let input_schema = r#"{"0":{"type":"u64","description":"Amount"}}"#.to_string();
+        let output_schema =
+            r#"{"ok":{"type":"variant","description":"Success","fields":{}}}"#.to_string();
+        let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
+        let description = "Test tool description".to_string();
+        let witness_id = sui::ObjectID::random();
+        let collateral_coin = sui_mocks::mock_sui_coin(5000);
+        let gas_coin = sui_mocks::mock_sui_coin(10000);
+        let address = sui::Address::random_for_testing_only();
+        let sui_gas_budget = 100000000;
+        let reference_gas_price = 1000;
+
+        // Build the transaction.
+        let result = build_registration_transaction(
+            &nexus_objects,
+            package_address,
+            module_name.clone(),
+            input_schema.clone(),
+            output_schema.clone(),
+            &fqn,
+            description.clone(),
+            witness_id,
+            &collateral_coin,
+            &gas_coin,
+            address,
+            sui_gas_budget,
+            reference_gas_price,
+        );
+
+        // Should succeed and return TransactionData.
+        // We verify the function succeeds with valid inputs.
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_generate_and_customize_schemas_integration() {
+        use crate::test_utils;
+
+        // Spin up the Sui instance.
+        let (_container, rpc_port, faucet_port) =
+            test_utils::containers::setup_sui_instance().await;
+
+        // Create a wallet and request some gas tokens.
+        let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
+            .expect("Failed to create a wallet.");
+        let sui = wallet.get_client().await.expect("Could not get Sui client");
+
+        let addr = wallet
+            .active_address()
+            .expect("Failed to get active address.");
+
+        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+            .await
+            .expect("Failed to request tokens from faucet.");
+
+        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+            .await
+            .expect("Failed to fetch gas coin.")
+            .into_iter()
+            .next()
+            .unwrap();
+
+        // Publish test onchain_tool package.
+        let response = test_utils::contracts::publish_move_package(
+            &mut wallet,
+            "../sdk/tests/move/onchain_tool_test",
+            gas_coin,
+        )
+        .await;
+
+        let changes = response
+            .object_changes
+            .expect("TX response must have object changes");
+
+        let pkg_id = *changes
+            .iter()
+            .find_map(|c| match c {
+                sui::ObjectChange::Published { package_id, .. } => Some(package_id),
+                _ => None,
+            })
+            .expect("Move package must be published");
+
+        // Enable JSON mode to skip interactive prompts.
+        JSON_MODE.store(true, Ordering::Relaxed);
+
+        // Generate and customize schemas.
+        let result = generate_and_customize_schemas(&sui, pkg_id, "onchain_tool").await;
+
+        // Reset JSON mode.
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        // Should succeed.
+        assert!(result.is_ok());
+        let (input_schema, output_schema) = result.unwrap();
+
+        // Verify input schema is valid JSON.
+        let input_json: serde_json::Value =
+            serde_json::from_str(&input_schema).expect("Input schema should be valid JSON");
+        assert!(input_json.is_object());
+
+        // Verify output schema is valid JSON.
+        let output_json: serde_json::Value =
+            serde_json::from_str(&output_schema).expect("Output schema should be valid JSON");
+        assert!(output_json.is_object());
+
+        // Verify input schema has expected parameters (counter and increase_with).
+        // After skipping ProofOfUID and TxContext, we should have 2 parameters.
+        assert_eq!(input_json.as_object().unwrap().len(), 2);
+
+        // Verify output schema has expected variants.
+        let output_obj = output_json.as_object().unwrap();
+        assert!(output_obj.contains_key("ok") || output_obj.contains_key("err"));
+    }
+
+    #[tokio::test]
+    async fn test_save_tool_owner_caps_success() {
+        // Create a test FQN and object ID.
+        let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
+        let over_tool_id = sui::ObjectID::random();
+
+        // Call save_tool_owner_caps.
+        let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;
+
+        // Should succeed.
+        assert!(result.is_ok());
     }
 }
