@@ -51,6 +51,26 @@ impl NexusDataAsStruct {
     }
 }
 
+/// Check if a string represents a large number (u128/u256 range).
+/// Handles both positive and negative integers.
+fn is_large_number(s: &str) -> bool {
+    if s.starts_with('-') {
+        s[1..].chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    } else {
+        s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
+    }
+}
+
+/// Wrap large numbers as JSON strings to preserve precision for u128/u256.
+fn wrap_large_numbers_as_string(value: &str) -> String {
+    let trimmed = value.trim();
+    if is_large_number(trimmed) {
+        format!(r#""{}""#, trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl<'de> Deserialize<'de> for NexusData {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -67,7 +87,11 @@ impl<'de> Deserialize<'de> for NexusData {
             // the data is a JSON string that can be parsed directly.
             let str = String::from_utf8(one).map_err(serde::de::Error::custom)?;
 
-            serde_json::from_str(&str).map_err(serde::de::Error::custom)?
+            // Wrap large numbers as strings to preserve precision.
+            // We also trim the value to remove any leading or trailing whitespace.
+            let adjusted_value = wrap_large_numbers_as_string(&str);
+
+            serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?
         } else {
             // If we're dealing with multiple values, we assume that
             // the data is an array of JSON strings that can be parsed.
@@ -76,7 +100,12 @@ impl<'de> Deserialize<'de> for NexusData {
             for value in many {
                 let str = String::from_utf8(value).map_err(serde::de::Error::custom)?;
 
-                values.push(serde_json::from_str(&str).map_err(serde::de::Error::custom)?);
+                // Wrap large numbers as strings to preserve precision.
+                // We also trim the value to remove any leading or trailing whitespace.
+                let adjusted_value = wrap_large_numbers_as_string(&str);
+
+                values
+                    .push(serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?);
             }
 
             serde_json::Value::Array(values)
@@ -289,5 +318,30 @@ mod tests {
         let deserialized = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(dag_data, deserialized);
+    }
+
+    #[test]
+    fn test_large_number_precision_preserved() {
+        // Test that large numbers (like u256) are converted to strings to preserve precision.
+        let large_u256 =
+            "105792089237316195563853351929625371316844592863025172891227567439681422591090";
+
+        // Create NexusData with a large number as a string value.
+        let nexus_data = NexusData::new_inline(serde_json::Value::String(large_u256.to_string()));
+
+        // Serialize and deserialize to verify precision is preserved.
+        let serialized = serde_json::to_string(&nexus_data).unwrap();
+        let deserialized: NexusData = serde_json::from_str(&serialized).unwrap();
+
+        // The large number should be stored as a string to avoid precision loss.
+        match &deserialized.data {
+            DataStorage::Inline(storage) => {
+                assert_eq!(
+                    storage.data,
+                    serde_json::Value::String(large_u256.to_string())
+                );
+            }
+            _ => panic!("Expected inline storage"),
+        }
     }
 }

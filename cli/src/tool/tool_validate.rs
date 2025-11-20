@@ -1,20 +1,13 @@
 use {
-    crate::{command_title, loading, prelude::*, tool::ToolIdent},
+    crate::{command_title, loading, prelude::*},
     nexus_sdk::types::ToolMeta,
     reqwest::StatusCode,
 };
 
-/// Validate either an off-chain or an on-chain tool.
-pub(crate) async fn validate_tool(ident: ToolIdent) -> AnyResult<ToolMeta, NexusCliError> {
-    match (ident.off_chain, ident.on_chain) {
-        (Some(url), None) => validate_off_chain_tool(url).await,
-        (None, Some(ident)) => validate_on_chain_tool(ident).await,
-        _ => unreachable!("Checked by clap"),
-    }
-}
-
 /// Validate an off-chain tool based on the provided URL.
-async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, NexusCliError> {
+pub(crate) async fn validate_off_chain_tool(
+    url: reqwest::Url,
+) -> AnyResult<ToolMeta, NexusCliError> {
     command_title!("Validating off-chain Tool at '{url}'");
 
     // Strip the trailing slash from the URL path.
@@ -94,7 +87,7 @@ async fn validate_off_chain_tool(url: reqwest::Url) -> AnyResult<ToolMeta, Nexus
 }
 
 /// Validate an on-chain tool based on the provided ident.
-async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliError> {
+pub(crate) async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliError> {
     todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
 }
 
@@ -178,41 +171,33 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // No path with slash
-        let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/").unwrap()),
-            on_chain: None,
-        })
-        .await;
+        let meta =
+            validate_off_chain_tool(reqwest::Url::parse("http://localhost:8042/").unwrap()).await;
         println!("{:?}", meta);
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
 
         // No path no slash
-        let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042").unwrap()),
-            on_chain: None,
-        })
-        .await;
+        let meta =
+            validate_off_chain_tool(reqwest::Url::parse("http://localhost:8042").unwrap()).await;
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
 
         // Path with slash
-        let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool/").unwrap()),
-            on_chain: None,
-        })
+        let meta = validate_off_chain_tool(
+            reqwest::Url::parse("http://localhost:8042/dummy/tool/").unwrap(),
+        )
         .await;
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
 
         // Path no slash
-        let meta = validate_tool(ToolIdent {
-            off_chain: Some(reqwest::Url::parse("http://localhost:8042/dummy/tool").unwrap()),
-            on_chain: None,
-        })
+        let meta = validate_off_chain_tool(
+            reqwest::Url::parse("http://localhost:8042/dummy/tool").unwrap(),
+        )
         .await;
         assert!(meta.is_ok());
         let meta = meta.unwrap();

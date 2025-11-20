@@ -425,6 +425,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("vertex_off_chain"),
     };
+    /// Create a new onchain NodeIdent from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::vertex_on_chain`
+    pub const VERTEX_ON_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("vertex_on_chain"),
+    };
     /// Add a default value to a DAG. Default value is a Vertex + InputPort pair
     /// with NexusData as the value.
     ///
@@ -610,6 +617,36 @@ impl Dag {
         ))
     }
 
+    pub fn on_chain_vertex_kind_from_fqn(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        tool_registry_id: &sui::ObjectRef,
+        fqn: &ToolFqn,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+        let tool_registry_id = tx.obj(sui::ObjectArg::SharedObject {
+            id: tool_registry_id.object_id,
+            initial_shared_version: tool_registry_id.version,
+            mutable: false,
+        })?;
+
+        let witness_id = tx.programmable_move_call(
+            workflow_pkg_id,
+            ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.module.into(),
+            ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.name.into(),
+            vec![],
+            vec![tool_registry_id, str],
+        );
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::VERTEX_ON_CHAIN.module.into(),
+            Self::VERTEX_ON_CHAIN.name.into(),
+            vec![],
+            vec![str, witness_id],
+        ))
+    }
+
     /// Create an edge kind from an enum variant.
     pub fn edge_kind_from_enum(
         tx: &mut sui::ProgrammableTransactionBuilder,
@@ -672,6 +709,22 @@ impl Dag {
     }
 }
 
+// == `nexus_workflow::tool_output` ==
+
+pub struct ToolOutput;
+
+const TOOL_OUTPUT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_output");
+
+impl ToolOutput {
+    /// Convert ToolOutput to DAG types.
+    ///
+    /// `nexus_workflow::tool_output::to_dag_types`
+    pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("to_dag_types"),
+    };
+}
+
 // == `nexus_workflow::tool_registry` ==
 
 pub struct ToolRegistry;
@@ -702,6 +755,13 @@ impl ToolRegistry {
         // TODO: This will likely be renamed to `claim_collateral_for_tool`.
         name: sui::move_ident_str!("claim_collateral_for_off_chain_tool"),
     };
+    /// Get the witness ID for an onchain tool.
+    ///
+    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
+    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("onchain_tool_witness_id"),
+    };
     /// OverSlashing struct type. Used to fetch caps for slashing tools.
     ///
     /// `nexus_workflow::tool_registry::OverSlashing`
@@ -730,6 +790,21 @@ impl ToolRegistry {
     pub const REGISTER_OFF_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool_for_self"),
+    };
+    /// Register an on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool`
+    pub const REGISTER_ON_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool"),
+    };
+    /// Register an on-chain tool and transfer the tool's owner cap to the ctx
+    /// sender.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool_for_self`
+    pub const REGISTER_ON_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool_for_self"),
     };
     /// Remove an address from the allowlist for tool registration.
     /// Only callable by the holder of OverSlashing cap.

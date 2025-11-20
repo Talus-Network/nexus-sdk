@@ -154,6 +154,24 @@ where
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// Deserialize a `Vec<u8>` into a [String].
+pub fn deserialize_bytes_to_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    String::from_utf8(bytes).map_err(serde::de::Error::custom)
+}
+
+/// Inverse of [deserialize_bytes_to_string].
+pub fn serialize_string_to_bytes<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let bytes = value.as_bytes();
+    bytes.serialize(serializer)
+}
+
 pub fn deserialize_string_to_datetime<'de, D>(
     deserializer: D,
 ) -> Result<chrono::DateTime<chrono::Utc>, D::Error>

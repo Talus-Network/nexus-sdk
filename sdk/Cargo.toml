@@ -63,6 +63,10 @@ transactions = ["sui_idents", "bincode", "types"]
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Schema generation feature enables automatic schema generation from Move modules.
+# Used for onchain tool registration.
+schema_gen = ["sui_types", "serde_json"]
+
 # Provides various Nexus utilities like deployment and execution of workflows.
 nexus = ["transactions", "dag", "object_crawler"]
 
@@ -93,6 +97,7 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "schema_gen",
     "nexus",
 ]
 

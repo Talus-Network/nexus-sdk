@@ -148,6 +148,109 @@ pub fn register_off_chain_for_self(
     ))
 }
 
+/// PTB template for registering a new onchain Nexus Tool.
+#[allow(clippy::too_many_arguments)]
+pub fn register_on_chain_for_self(
+    tx: &mut sui::ProgrammableTransactionBuilder,
+    objects: &NexusObjects,
+    package_address: sui::ObjectID,
+    module_name: String,
+    input_schema: String,
+    output_schema: String,
+    fqn: &ToolFqn,
+    description: String,
+    witness_id: sui::ObjectID,
+    collateral_coin: &sui::Coin,
+    address: sui::ObjectID,
+) -> anyhow::Result<sui::Argument> {
+    // `self: &mut ToolRegistry`
+    let tool_registry = tx.obj(sui::ObjectArg::SharedObject {
+        id: objects.tool_registry.object_id,
+        initial_shared_version: objects.tool_registry.version,
+        mutable: true,
+    })?;
+
+    // `package_address: address`
+    let with_prefix = false;
+    let package_addr = sui_framework::Address::address_from_str(
+        tx,
+        package_address.to_canonical_string(with_prefix),
+    )?;
+
+    // `module_name: AsciiString`
+    let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
+
+    // `input_schema: vector<u8>`
+    let input_schema = tx.pure(input_schema.as_bytes())?;
+
+    // `output_schema: vector<u8>`
+    let output_schema = tx.pure(output_schema.as_bytes())?;
+
+    // `fqn: AsciiString`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+
+    // `description: vector<u8>`
+    let description = tx.pure(description.as_bytes())?;
+
+    // `witness_id: ID`
+    let witness_id = tx.pure(witness_id)?;
+
+    // `pay_with: Coin<SUI>`
+    let pay_with = tx.obj(sui::ObjectArg::ImmOrOwnedObject(
+        collateral_coin.object_ref(),
+    ))?;
+
+    // `clock: &Clock`
+    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
+
+    // `nexus_workflow::tool_registry::register_on_chain_tool()`
+    let owner_cap_over_tool = tx.programmable_move_call(
+        objects.workflow_pkg_id,
+        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module.into(),
+        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name.into(),
+        vec![],
+        vec![
+            tool_registry,
+            package_addr,
+            module_name,
+            input_schema,
+            output_schema,
+            fqn,
+            description,
+            witness_id,
+            pay_with,
+            clock,
+        ],
+    );
+
+    // `CloneableOwnerCap<OverTool>`
+    let over_tool_type = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+        address: *objects.primitives_pkg_id,
+        module: primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into(),
+        name: primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into(),
+        type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+            address: *objects.workflow_pkg_id,
+            module: workflow::ToolRegistry::OVER_TOOL.module.into(),
+            name: workflow::ToolRegistry::OVER_TOOL.name.into(),
+            type_params: vec![],
+        }))],
+    }));
+
+    // `recipient: address`
+    let with_prefix = false;
+    let recipient =
+        sui_framework::Address::address_from_str(tx, address.to_canonical_string(with_prefix))?;
+
+    // `sui::transfer::public_transfer`
+    Ok(tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::Transfer::PUBLIC_TRANSFER.module.into(),
+        sui_framework::Transfer::PUBLIC_TRANSFER.name.into(),
+        vec![over_tool_type],
+        vec![owner_cap_over_tool, recipient],
+    ))
+}
+
 /// PTB template for setting the invocation cost of a Nexus Tool.
 pub fn set_invocation_cost(
     tx: &mut sui::ProgrammableTransactionBuilder,
@@ -252,7 +355,7 @@ pub fn claim_collateral_for_self(
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
 
-    // `nexus::tool_registry::claim_collateral_for_tool()`
+    // `nexus::tool_registry::claim_collateral_for_self()`
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF
@@ -322,6 +425,59 @@ mod tests {
         );
 
         assert_eq!(call.arguments.len(), 8);
+    }
+
+    #[test]
+    fn test_register_on_chain_for_self() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let package_address = sui::ObjectID::random();
+        let module_name = "onchain_tool".to_string();
+        let input_schema = json!({}).to_string();
+        let output_schema = json!({}).to_string();
+        let fqn = fqn!("xyz.dummy.tool@1");
+        let description = "a dummy onchain tool".to_string();
+        let witness_id = sui::ObjectID::random();
+        let collateral_coin = sui_mocks::mock_sui_coin(100);
+        let address = sui::ObjectID::random();
+
+        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        register_on_chain_for_self(
+            &mut tx,
+            &objects,
+            package_address,
+            module_name,
+            input_schema,
+            output_schema,
+            &fqn,
+            description,
+            witness_id,
+            &collateral_coin,
+            address,
+        )
+        .expect("Failed to build PTB for registering an onchain tool.");
+        let tx = tx.finish();
+
+        let sui::Command::MoveCall(call) = &tx.commands.get(3).unwrap() else {
+            panic!("Expected a command to be a MoveCall to register an onchain tool");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+
+        assert_eq!(
+            call.module,
+            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+                .module
+                .to_string(),
+        );
+
+        assert_eq!(
+            call.function,
+            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+                .name
+                .to_string()
+        );
+
+        assert_eq!(call.arguments.len(), 10);
     }
 
     #[test]

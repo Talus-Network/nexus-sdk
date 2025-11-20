@@ -51,7 +51,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
     pub(crate) over_tool: sui::ObjectID,
-    pub(crate) over_gas: sui::ObjectID,
+    pub(crate) over_gas: Option<sui::ObjectID>,
 }
 
 /// Reusable Sui gas command args.

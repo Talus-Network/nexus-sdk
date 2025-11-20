@@ -1,7 +1,8 @@
 mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
-mod tool_register;
+mod tool_register_offchain;
+mod tool_register_onchain;
 mod tool_set_invocation_cost;
 mod tool_unregister;
 mod tool_validate;
@@ -11,11 +12,128 @@ use {
     tool_claim_collateral::*,
     tool_list::*,
     tool_new::*,
-    tool_register::*,
+    tool_register_offchain::register_off_chain_tool,
+    tool_register_onchain::register_onchain_tool,
     tool_set_invocation_cost::*,
     tool_unregister::*,
-    tool_validate::*,
+    tool_validate::{validate_off_chain_tool, validate_on_chain_tool},
 };
+
+#[derive(Subcommand)]
+pub(crate) enum RegisterCommand {
+    #[command(about = "Register an offchain tool")]
+    Offchain {
+        #[arg(long = "url", short = 'u', help = "The URL of the offchain tool")]
+        url: reqwest::Url,
+
+        #[arg(
+            long = "collateral-coin",
+            short = 'c',
+            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        collateral_coin: Option<sui::ObjectID>,
+
+        #[arg(
+            long = "invocation-cost",
+            short = 'i',
+            help = "What is the cost of invoking this tool in MIST.",
+            default_value = "0",
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
+
+        #[arg(
+            long = "batch",
+            help = "Should all tools on a webserver be registered at once?"
+        )]
+        batch: bool,
+
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Register an onchain tool")]
+    Onchain {
+        #[arg(
+            long = "module-path",
+            short = 'm',
+            help = "The module path in the format 'package_address::module_name'.",
+            value_name = "MODULE_PATH"
+        )]
+        module_path: sui::MoveModuleId,
+
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) for this tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+
+        #[arg(
+            long = "description",
+            short = 'd',
+            help = "Description of what the tool does.",
+            value_name = "DESCRIPTION"
+        )]
+        description: String,
+
+        #[arg(
+            long = "witness-id",
+            short = 'w',
+            help = "The witness object ID that proves the tool's identity.",
+            value_name = "OBJECT_ID"
+        )]
+        witness_id: sui::ObjectID,
+
+        #[arg(
+            long = "collateral-coin",
+            short = 'c',
+            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        collateral_coin: Option<sui::ObjectID>,
+
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ValidateCommand {
+    #[command(about = "Validate an offchain tool")]
+    Offchain {
+        #[arg(
+            long = "url",
+            short = 'u',
+            help = "The URL of the offchain tool to validate"
+        )]
+        url: reqwest::Url,
+    },
+
+    #[command(about = "Validate an onchain tool")]
+    Onchain {
+        #[arg(
+            long = "ident",
+            short = 'i',
+            help = "The identifier of the onchain tool to validate"
+        )]
+        ident: String,
+    },
+}
 
 #[derive(Subcommand)]
 pub(crate) enum ToolCommand {
@@ -45,47 +163,16 @@ pub(crate) enum ToolCommand {
         target: PathBuf,
     },
 
-    #[command(about = "Validate a tool based on its identifier.")]
+    #[command(about = "Validate a tool based on its type.")]
     Validate {
-        /// The ident of the Tool to validate.
-        #[command(flatten)]
-        ident: ToolIdent,
+        #[command(subcommand)]
+        tool_type: ValidateCommand,
     },
 
-    #[command(about = "Register a tool based on its identifier.")]
+    #[command(about = "Register a tool based on its type.")]
     Register {
-        /// The collateral coin object ID. Second coin object is chosen if not
-        /// present.
-        #[arg(
-            long = "collateral-coin",
-            short = 'c',
-            help = "The collateral coin object ID. Second coin object is chosen if not present.",
-            value_name = "OBJECT_ID"
-        )]
-        collateral_coin: Option<sui::ObjectID>,
-        #[arg(
-            long = "invocation-cost",
-            short = 'i',
-            help = "What is the cost of invoking this tool in MIST.",
-            default_value = "0",
-            value_name = "MIST"
-        )]
-        invocation_cost: u64,
-        #[arg(
-            long = "batch",
-            help = "Should all tools on a webserver be registered at once?"
-        )]
-        batch: bool,
-        #[arg(
-            long = "no-save",
-            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
-        )]
-        no_save: bool,
-        /// The ident of the Tool to register.
-        #[command(flatten)]
-        ident: ToolIdent,
-        #[command(flatten)]
-        gas: GasArgs,
+        #[command(subcommand)]
+        tool_type: RegisterCommand,
     },
 
     #[command(about = "Unregister a tool identified by its FQN.")]
@@ -165,28 +252,6 @@ pub(crate) enum ToolCommand {
     },
 }
 
-/// Struct holding an either on-chain or off-chain Tool identifier. Off-chain
-/// tools are identified by their URL, while on-chain tools are identified by
-/// a Move ident.
-#[derive(Args, Clone, Debug)]
-#[group(required = true, multiple = false)]
-pub(crate) struct ToolIdent {
-    #[arg(
-        long = "off-chain",
-        short = 'f',
-        help = "The URL of the off-chain Tool to validate",
-        value_name = "URL"
-    )]
-    pub(crate) off_chain: Option<reqwest::Url>,
-    #[arg(
-        long = "on-chain",
-        short = 'n',
-        help = "The ident of on-chain Tool to validate",
-        value_name = "IDENT"
-    )]
-    pub(crate) on_chain: Option<String>,
-}
-
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
 /// [crate::main].
 pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError> {
@@ -199,28 +264,54 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         } => create_new_tool(name, template, target).await,
 
         // == `$ nexus tool validate` ==
-        ToolCommand::Validate { ident } => validate_tool(ident).await.map(|_| ()),
+        ToolCommand::Validate { tool_type } => match tool_type {
+            ValidateCommand::Offchain { url } => validate_off_chain_tool(url).await.map(|_| ()),
+            ValidateCommand::Onchain { ident } => validate_on_chain_tool(ident).await.map(|_| ()),
+        },
 
         // == `$ nexus tool register` ==
-        ToolCommand::Register {
-            ident,
-            collateral_coin,
-            invocation_cost,
-            batch,
-            no_save,
-            gas,
-        } => {
-            register_tool(
-                ident,
+        ToolCommand::Register { tool_type } => match tool_type {
+            RegisterCommand::Offchain {
+                url,
                 collateral_coin,
                 invocation_cost,
                 batch,
                 no_save,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
+                gas,
+            } => {
+                register_off_chain_tool(
+                    url,
+                    collateral_coin,
+                    invocation_cost,
+                    batch,
+                    no_save,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+            RegisterCommand::Onchain {
+                module_path,
+                tool_fqn,
+                description,
+                witness_id,
+                collateral_coin,
+                no_save,
+                gas,
+            } => {
+                register_onchain_tool(
+                    module_path,
+                    tool_fqn,
+                    description,
+                    witness_id,
+                    collateral_coin,
+                    no_save,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+        },
 
         // == `$ nexus tool unregister` ==
         ToolCommand::Unregister {

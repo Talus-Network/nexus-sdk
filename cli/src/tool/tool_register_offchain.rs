@@ -7,7 +7,7 @@ use {
         notify_success,
         prelude::*,
         sui::*,
-        tool::{tool_validate::*, ToolIdent},
+        tool::tool_validate::validate_off_chain_tool,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
@@ -15,9 +15,9 @@ use {
     },
 };
 
-/// Validate and then register a new Tool.
-pub(crate) async fn register_tool(
-    ident: ToolIdent,
+/// Validate and then register a new offchain Tool.
+pub(crate) async fn register_off_chain_tool(
+    url: reqwest::Url,
     collateral_coin: Option<sui::ObjectID>,
     invocation_cost: u64,
     batch: bool,
@@ -25,15 +25,9 @@ pub(crate) async fn register_tool(
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let ident_check = ident.clone();
-
     // Validate either a single tool or a batch of tools if the `batch` flag is
     // provided.
-    let idents = if batch {
-        let Some(url) = &ident.off_chain else {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
-        };
-
+    let urls = if batch {
         // Fetch all tools on the webserver.
         let response = reqwest::Client::new()
             .get(url.join("/tools").expect("Joining URL must be valid"))
@@ -46,22 +40,16 @@ pub(crate) async fn register_tool(
 
         response
             .iter()
-            .filter_map(|s| match url.join(s) {
-                Ok(url) => Some(ToolIdent {
-                    off_chain: Some(url),
-                    on_chain: None,
-                }),
-                Err(_) => None,
-            })
+            .filter_map(|s| url.join(s).ok())
             .collect::<Vec<_>>()
     } else {
-        vec![ident]
+        vec![url]
     };
 
-    let mut registration_results = Vec::with_capacity(idents.len());
+    let mut registration_results = Vec::with_capacity(urls.len());
 
-    for ident in idents {
-        let meta = validate_tool(ident).await?;
+    for tool_url in urls {
+        let meta = validate_off_chain_tool(tool_url).await?;
 
         command_title!(
             "Registering Tool '{fqn}' at '{url}'",
@@ -95,13 +83,6 @@ pub(crate) async fn register_tool(
 
         // Craft a TX to register the tool.
         let tx_handle = loading!("Crafting transaction...");
-
-        // Explicitly check that we're registering an off-chain tool. This is mainly
-        // for when we implement logic for on-chain so that we don't forget to
-        // adjust the transaction.
-        if ident_check.on_chain.is_some() {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>");
-        }
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
@@ -244,7 +225,7 @@ pub(crate) async fn register_tool(
                 meta.fqn.clone(),
                 ToolOwnerCaps {
                     over_tool: *over_tool_id,
-                    over_gas: *over_gas_id,
+                    over_gas: Some(*over_gas_id),
                 },
             );
 
@@ -274,7 +255,7 @@ pub(crate) async fn register_tool(
 /// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet
 /// and Testnet, we can use the faucet to get the coins. On Mainnet, this fails
 /// if the coins are not present.
-async fn fetch_gas_and_collateral_coins(
+pub(super) async fn fetch_gas_and_collateral_coins(
     sui: &sui::Client,
     addr: sui::Address,
     sui_gas_coin: Option<sui::ObjectID>,
