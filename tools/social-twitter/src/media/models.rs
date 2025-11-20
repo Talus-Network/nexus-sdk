@@ -64,10 +64,11 @@ pub enum MediaType {
 
 /// Available options for media upload command
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MediaCommand {
-    INIT,
-    APPEND,
-    FINALIZE,
+    Init,
+    Append,
+    Finalize,
 }
 
 /// Media upload response

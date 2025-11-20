@@ -27,6 +27,7 @@ pub(crate) struct Input {
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Output {
     Ok {
         /// Opening price (in quote currency)

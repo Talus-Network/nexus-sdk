@@ -28,3 +28,10 @@ pub struct ModuleAndNameIdent {
     pub module: &'static sui::MoveIdentStr,
     pub name: &'static sui::MoveIdentStr,
 }
+
+impl ModuleAndNameIdent {
+    /// Returns the fully-qualified string for this identifier under the given package ID.
+    pub fn qualified_name(&self, package: sui::ObjectID) -> String {
+        format!("{package}::{}::{}", self.module, self.name)
+    }
+}

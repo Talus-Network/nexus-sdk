@@ -9,13 +9,14 @@ use {
             session::{Message, Session},
             x3dh::{IdentityKey, PreKeyBundle},
         },
+        events::{NexusEvent, NexusEventKind},
+        idents::primitives,
         nexus::{client::NexusClient, error::NexusError},
-        object_crawler::{fetch_one, Structure},
         sui,
         transactions::crypto,
     },
     anyhow::anyhow,
-    sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI,
+    std::time::{Duration, Instant},
 };
 
 pub struct HandshakeResult {
@@ -34,7 +35,6 @@ impl CryptoActions {
     pub async fn handshake(&self, ik: &IdentityKey) -> Result<HandshakeResult, NexusError> {
         let address = self.client.signer.get_active_address().await?;
         let nexus_objects = &self.client.nexus_objects;
-        let sui_client = &self.client.signer.get_client().await?;
 
         // == Claim PreKey transaction ==
 
@@ -64,34 +64,21 @@ impl CryptoActions {
 
         self.client.gas.release_gas_coin(gas_coin).await;
 
-        // == Find the claimed PreKey object ID ==
+        // == Wait for pre key fulfillment ==
 
-        let effects = claim_response.effects.expect("Effects must be present");
+        let cursor = claim_response
+            .events
+            .as_ref()
+            .and_then(|events| events.data.last())
+            .map(|event| event.id);
 
-        let pre_key_object_id = effects
-            .unwrapped()
-            .iter()
-            .find_map(|object| {
-                if object.owner.get_owner_address() == Ok(address) {
-                    return Some(object.object_id());
-                }
+        let fulfilled_event = self
+            .wait_for_pre_key_fulfilled_event(address, cursor)
+            .await?;
 
-                None
-            })
-            .ok_or_else(|| NexusError::Parsing(anyhow!("No PreKey object found")))?;
+        let pre_key_bytes = fulfilled_event.pre_key_bytes;
 
-        // == Parse into PreKeyBundle and initiate the session ==
-
-        #[derive(serde::Deserialize, Debug)]
-        struct RawPreKey {
-            bytes: Vec<u8>,
-        }
-
-        let raw_pre_key = fetch_one::<Structure<RawPreKey>>(sui_client, pre_key_object_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let bundle = bincode::deserialize::<PreKeyBundle>(&raw_pre_key.data.inner().bytes)
+        let bundle = bincode::deserialize::<PreKeyBundle>(&pre_key_bytes)
             .map_err(|e| NexusError::Parsing(e.into()))?;
 
         let (Message::Initial(message), session) =
@@ -104,12 +91,7 @@ impl CryptoActions {
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
 
-        if let Err(e) = crypto::associate_pre_key_with_sender(
-            &mut tx,
-            nexus_objects,
-            &raw_pre_key.object_ref(),
-            message,
-        ) {
+        if let Err(e) = crypto::associate_pre_key_with_sender(&mut tx, nexus_objects, message) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -139,18 +121,93 @@ impl CryptoActions {
             associate_tx_digest: associate_response.digest,
         })
     }
+
+    async fn wait_for_pre_key_fulfilled_event(
+        &self,
+        requested_by: sui::Address,
+        cursor: Option<sui::EventID>,
+    ) -> Result<crate::events::PreKeyFulfilledEvent, NexusError> {
+        let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
+
+        let filter = sui::EventFilter::MoveEventModule {
+            package: primitives_pkg_id,
+            module: primitives::Event::EVENT_WRAPPER.module.into(),
+        };
+
+        self.poll_event_until(filter, cursor, |event| match event.data {
+            NexusEventKind::PreKeyFulfilled(e) if e.requested_by == requested_by => Some(e),
+            _ => None,
+        })
+        .await
+    }
+
+    async fn poll_event_until<T, F>(
+        &self,
+        filter: sui::EventFilter,
+        mut cursor: Option<sui::EventID>,
+        mut predicate: F,
+    ) -> Result<T, NexusError>
+    where
+        F: FnMut(NexusEvent) -> Option<T>,
+    {
+        let timeout = Duration::from_secs(300);
+        let mut poll_interval = Duration::from_millis(100);
+        let max_poll_interval = Duration::from_secs(2);
+        let started = Instant::now();
+
+        let sui_client = self.client.signer.get_client().await?;
+
+        loop {
+            if started.elapsed() > timeout {
+                return Err(NexusError::Timeout(anyhow!(
+                    "Timeout {timeout:?} reached while waiting for event"
+                )));
+            }
+
+            let limit = None;
+            let descending_order = false;
+
+            let page = sui_client
+                .event_api()
+                .query_events(filter.clone(), cursor, limit, descending_order)
+                .await
+                .map_err(|e| NexusError::Rpc(e.into()))?;
+
+            cursor = page.next_cursor;
+
+            let mut found_event = false;
+
+            for event in page.data {
+                let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
+                    continue;
+                };
+
+                if let Some(result) = predicate(event) {
+                    return Ok(result);
+                }
+
+                found_event = true;
+            }
+
+            if found_event {
+                poll_interval = Duration::from_millis(100);
+            } else {
+                poll_interval = (poll_interval * 2).min(max_poll_interval);
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        crate::{
-            crypto::x3dh::{IdentityKey, PreKeyBundle},
-            idents::workflow,
-            sui,
-            test_utils::{nexus_mocks, sui_mocks},
-        },
-        std::collections::BTreeMap,
+    use crate::{
+        crypto::x3dh::{IdentityKey, PreKeyBundle},
+        events::{NexusEventKind, PreKeyFulfilledEvent},
+        idents::{primitives, workflow},
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
     };
 
     #[tokio::test]
@@ -167,55 +224,58 @@ mod tests {
         let spk_secret = IdentityKey::generate().secret().clone();
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
-        let pre_key_object_ref = sui::ObjectRef {
-            object_id: sui::ObjectID::random(),
-            version: sui::SequenceNumber::from_u64(1),
-            digest: sui::ObjectDigest::random(),
-        };
-
         let claim_tx_digest = sui::TransactionDigest::random();
         let (claim_execute_call, claim_confirm_call) =
             sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
                 &mut server,
                 claim_tx_digest,
                 Some(sui_mocks::mock_sui_transaction_block_effects(
-                    None,
-                    None,
-                    Some(vec![sui::OwnedObjectRef {
-                        owner: sui::Owner::AddressOwner(address),
-                        reference: pre_key_object_ref.clone(),
-                    }]),
-                    None,
+                    None, None, None, None,
                 )),
-                None,
+                Some(sui::TransactionBlockEvents {
+                    data: vec![sui::Event {
+                        id: sui::EventID {
+                            tx_digest: claim_tx_digest,
+                            event_seq: 0,
+                        },
+                        package_id: nexus_client.nexus_objects.primitives_pkg_id,
+                        transaction_module: primitives::Event::EVENT_WRAPPER.module.into(),
+                        sender: address,
+                        bcs: sui::BcsEvent::new(vec![]),
+                        timestamp_ms: None,
+                        type_: sui::MoveStructTag {
+                            address: nexus_client.nexus_objects.primitives_pkg_id.into(),
+                            module: primitives::Event::EVENT_WRAPPER.module.into(),
+                            name: primitives::Event::EVENT_WRAPPER.name.into(),
+                            type_params: vec![sui::MoveTypeTag::Struct(Box::new(
+                                sui::MoveStructTag {
+                                    address: nexus_client.nexus_objects.workflow_pkg_id.into(),
+                                    module: workflow::PreKeyVault::PRE_KEY_VAULT.module.into(),
+                                    name: sui::move_ident_str!("PreKeyRequestedEvent").into(),
+                                    type_params: vec![],
+                                },
+                            ))],
+                        },
+                        parsed_json: serde_json::json!({
+                            "event": {
+                                "requested_by": address.to_string(),
+                            }
+                        }),
+                    }],
+                }),
                 None,
                 None,
             );
 
-        let pre_key_object = sui::ParsedMoveObject {
-            type_: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: workflow::PreKeyVault::PRE_KEY.module.into(),
-                name: workflow::PreKeyVault::PRE_KEY.name.into(),
-                type_params: vec![],
-            },
-            has_public_transfer: false,
-            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
-                "bytes".into(),
-                sui::MoveValue::Vector(
-                    bincode::serialize(&bundle)
-                        .expect("Failed to serialize PreKeyBundle")
-                        .into_iter()
-                        .map(|b| sui::MoveValue::Number(b.into()))
-                        .collect(),
-                ),
-            )])),
-        };
-
-        let get_object_call = sui_mocks::rpc::mock_read_api_get_object(
+        let _event_query = sui_mocks::rpc::mock_event_api_query_events(
             &mut server,
-            pre_key_object_ref.object_id,
-            pre_key_object,
+            vec![(
+                "PreKeyFulfilledEvent".to_string(),
+                NexusEventKind::PreKeyFulfilled(PreKeyFulfilledEvent {
+                    requested_by: address,
+                    pre_key_bytes: bincode::serialize(&bundle).unwrap(),
+                }),
+            )],
         );
 
         let associate_tx_digest = sui::TransactionDigest::random();
@@ -237,8 +297,6 @@ mod tests {
 
         claim_execute_call.assert_async().await;
         claim_confirm_call.assert_async().await;
-
-        get_object_call.assert_async().await;
 
         associate_execute_call.assert_async().await;
         associate_confirm_call.assert_async().await;

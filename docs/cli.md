@@ -194,6 +194,131 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+### `nexus scheduler`
+
+Manage scheduler tasks, one-off occurrences, and periodic schedules.
+
+---
+
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-gas-price <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-gas-price <mist>] [--generator queue|periodic]`**
+
+Creates a new scheduler task tied to the specified DAG. Key options:
+
+- `--entry-group` points to the DAG entry function and defaults to `default`.
+- `--input-json` provides inline input data; `--remote vertex.port,...` forces specific inputs to be uploaded to the configured remote storage instead of inlining them on-chain.
+- `--metadata key=value` attaches arbitrary metadata entries and replaces any existing entries if the command is re-run.
+- `--execution-gas-price` sets the priority fee for future DAG executions launched by the task.
+- `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
+- `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-gas-price` sets the priority fee for that initial occurrence.
+- `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+
+Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
+
+Data for encrypted entry ports is automatically encrypted when a session is available.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+
+**`nexus scheduler task inspect --task-id <id>`**
+
+Fetches the on-chain task object, prints high-level metadata (owner, metadata entries, payload sizes), and emits a JSON payload containing the raw task structure for tooling.
+
+---
+
+**`nexus scheduler task metadata --task-id <id> --metadata key=value [...]`**
+
+Replaces all task metadata entries with the provided key/value pairs.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task pause|resume|cancel --task-id <id>`**
+
+Mutates the scheduling state for a task. `pause` and `resume` toggle consumption of occurrences, while `cancel` clears pending occurrences and permanently disables scheduling.
+
+{% hint style="info" %}
+These commands require that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-offset-ms <ms>] [--gas-price <mist>]`**
+
+Schedules a one-off occurrence for the task. `--start-ms` and `--start-offset-ms` are mutually exclusive and control when the occurrence enters the queue (absolute milliseconds or an offset from the current Sui clock). Deadlines are expressed only as offsets from that start time, and `--gas-price` adjusts the priority fee applied to the queued occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic set --task-id <id> --first-start-ms <ms> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--gas-price <mist>]`**
+
+Configures or updates a periodic schedule for the task. `--first-start-ms` pins the next execution to an absolute timestamp (milliseconds since epoch), `--period-ms` defines the spacing between subsequent occurrences, `--deadline-offset-ms` applies the same completion window after every generated start, `--max-iterations` limits how many future occurrences may be emitted automatically (omit for infinite), and `--gas-price` sets the priority fee charged for each periodic occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic disable --task-id <id>`**
+
+Removes the periodic schedule while leaving any existing sporadic occurrences untouched.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+### `nexus crypto`
+
+Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
+
+---
+
+**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
+
+Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
+
+Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
+{% endhint %}
+
+---
+
+**`nexus crypto generate-identity-key`**
+
+Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid—run `nexus crypto auth` immediately after to populate a replacement session.
+
+---
+
+**`nexus crypto init-key [--force]`**
+
+Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
+
+Use `--force` to overwrite an existing raw key or stored passphrase—doing so deletes all saved sessions and identity material because it can no longer be decrypted.
+
+---
+
+**`nexus crypto set-passphrase [--stdin] [--force]`**
+
+Stores a user-provided passphrase in the OS keyring (`nexus-cli-store/passphrase`) and derives the same 32‑byte master key via Argon2id whenever secrets need to be decrypted. By default the command prompts interactively; `--stdin` allows piping from scripts or CI.
+
+Like `init-key`, it refuses to overwrite an existing persistent key unless `--force`. Empty or whitespace-only passphrases are rejected to avoid unusable configs.
+
+---
+
+**`nexus crypto key-status`**
+
+Reports where the current master key will be loaded from, following the same priority order as the runtime resolver: `NEXUS_CLI_STORE_PASSPHRASE` environment variable, keyring passphrase entry, or raw key entry. If a raw key is in use the CLI prints the first 8 hex characters so you can distinguish multiple installations; otherwise it notes the source or that no persistent key exists yet.
+
+---
+
 ### `nexus gas`
 
 Set of commands to manage Nexus gas budgets and tickets.

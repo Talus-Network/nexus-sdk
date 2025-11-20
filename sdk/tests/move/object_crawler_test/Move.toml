@@ -1,7 +1,7 @@
 [package]
 name = "object_crawler_test"
 version = "0.0.0"
-edition = "2024.beta"
+edition = "2024"
 
 [addresses]
 object_crawler_test = "0x0"

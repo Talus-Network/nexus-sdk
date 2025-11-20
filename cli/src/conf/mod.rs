@@ -8,6 +8,7 @@ use {
     nexus_sdk::{types::StorageKind, walrus::WALRUS_MAX_EPOCHS},
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Clone, Debug)]
 pub(crate) enum ConfCommand {
     #[command(about = "Print the current Nexus CLI configuration")]

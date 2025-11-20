@@ -98,14 +98,24 @@ pub(crate) fn parse_json_string(json: &str) -> AnyResult<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, serial_test::serial};
 
     #[test]
+    #[serial]
     fn test_expand_tilde() {
-        let path = "~/test";
-        let expanded = expand_tilde(path).unwrap();
+        let original_home = std::env::var_os("HOME");
+        let temp_home = tempfile::tempdir().expect("temp home directory");
+        let temp_home_path = temp_home.path().to_path_buf();
 
-        assert_eq!(expanded, home::home_dir().unwrap().join("test"));
+        std::env::set_var("HOME", &temp_home_path);
+
+        let expanded = expand_tilde("~/test").unwrap();
+        assert_eq!(expanded, temp_home_path.join("test"));
+
+        match original_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
     }
 
     #[test]

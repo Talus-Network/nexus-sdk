@@ -79,6 +79,7 @@ test_utils = [
     "tokio-retry",
     "sui_move_build",
     "sui_package_management",
+    "portpicker",
     "testcontainers-modules",
     "mockito",
 ]
@@ -106,6 +107,7 @@ anyhow.workspace = true
 chrono.workspace = true
 dirs = "6.0.0"
 serde.workspace = true
+serde_repr = "0.1"
 
 # === Optional deps for features ===
 [dependencies.base64]
@@ -164,6 +166,10 @@ version = "0.4"
 optional = true
 
 [dependencies.petgraph]
+workspace = true
+optional = true
+
+[dependencies.portpicker]
 workspace = true
 optional = true
 
@@ -278,15 +284,11 @@ package = "shared-crypto"
 optional = true
 
 [dependencies.sui_move_build]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-move-build"
+workspace = true
 optional = true
 
 [dependencies.sui_package_management]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-package-management"
+workspace = true
 optional = true
 
 [dependencies.testcontainers-modules]

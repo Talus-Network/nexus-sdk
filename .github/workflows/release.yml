@@ -87,7 +87,7 @@ jobs:
       - name: Install build dependencies
         if: ${{ runner.os == 'Linux' }}
         run: |
-          sudo apt install -y libssl-dev musl-tools pkg-config
+          sudo apt install -y libssl-dev musl-tools pkg-config libdbus-1-dev
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2

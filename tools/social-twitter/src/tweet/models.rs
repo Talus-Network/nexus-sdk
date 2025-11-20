@@ -7,6 +7,7 @@ use {
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::Value,
+    std::fmt,
 };
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -581,12 +582,13 @@ pub enum SortOrder {
     Relevancy,
 }
 
-impl ToString for SortOrder {
-    fn to_string(&self) -> String {
-        match self {
-            SortOrder::Recency => "recency".to_string(),
-            SortOrder::Relevancy => "relevancy".to_string(),
-        }
+impl fmt::Display for SortOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            SortOrder::Recency => "recency",
+            SortOrder::Relevancy => "relevancy",
+        };
+        f.write_str(value)
     }
 }
 
@@ -697,12 +699,13 @@ pub struct TweetCountMeta {
 }
 
 /// Granularity options for tweet counts
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Granularity {
     /// Minute-by-minute counts
     Minute,
     /// Hourly counts (default)
+    #[default]
     Hour,
     /// Daily counts
     Day,
