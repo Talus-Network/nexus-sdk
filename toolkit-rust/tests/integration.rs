@@ -232,4 +232,29 @@ mod tests {
 
         assert_eq!(invoke_json["error"], "input_deserialization_error");
     }
+
+    #[tokio::test]
+    async fn test_meta_invalid_schema() {
+        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8043), DummyTool) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let meta = Client::new()
+            .get("http://localhost:8043/meta")
+            .header("X-Forwarded-Proto", "ftp")
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(meta.status(), 400);
+
+        let meta_json = meta.json::<serde_json::Value>().await.unwrap();
+
+        assert_eq!(meta_json["error"], "invalid_scheme");
+        assert_eq!(
+            meta_json["details"],
+            "Scheme must be either 'http' or 'https'."
+        );
+    }
 }
