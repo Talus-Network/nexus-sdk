@@ -265,7 +265,7 @@ async fn invoke_handler<T: NexusTool>(input: serde_json::Value) -> Result<impl R
         Err(e) => {
             let reply = json!({
                 "error": "input_deserialization_error",
-                "details": format!("Failed to parse input: {}", e.to_string().split('\n').next().unwrap_or_default())
+                "details": e.to_string(),
             });
 
             // Reply with 422 if we can't parse the input data.
