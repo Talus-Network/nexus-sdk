@@ -17,9 +17,10 @@ pub fn crypto_key_status() -> AnyResult<(), NexusCliError> {
 
     let status = if std::env::var("NEXUS_CLI_STORE_PASSPHRASE").is_ok() {
         "source: ENV var"
-    } else if let Ok(_) = Entry::new(SERVICE, "passphrase")
+    } else if Entry::new(SERVICE, "passphrase")
         .map_err(|e| NexusCliError::Any(e.into()))?
         .get_password()
+        .is_ok()
     {
         "source: key-ring pass-phrase"
     } else if let Ok(hex) = Entry::new(SERVICE, USER)

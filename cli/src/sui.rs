@@ -1,6 +1,6 @@
 use {
     crate::{loading, notify_success, prelude::*},
-    nexus_sdk::{object_crawler::fetch_one, sui},
+    nexus_sdk::{nexus::client::NexusClient, object_crawler::fetch_one, sui},
 };
 
 /// Build Sui client for the provided Sui net.
@@ -247,7 +247,7 @@ pub(crate) async fn get_nexus_objects(
         objects_handle.success();
 
         conf.nexus = Some(objects.clone());
-        conf.save().await.map_err(|e| NexusCliError::Any(e))?;
+        conf.save().await.map_err(NexusCliError::Any)?;
 
         return Ok(objects);
     }
@@ -308,7 +308,7 @@ pub(crate) async fn fetch_gas_coin(
     }
 }
 
-pub fn resolve_wallet_path(
+pub(crate) fn resolve_wallet_path(
     cli_wallet_path: Option<PathBuf>,
     conf: &SuiConf,
 ) -> Result<PathBuf, NexusCliError> {
@@ -321,9 +321,42 @@ pub fn resolve_wallet_path(
     }
 }
 
+/// Create a Nexus client from CLI parameters.
+pub(crate) async fn get_nexus_client(
+    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_budget: u64,
+) -> Result<(NexusClient, sui::Client), NexusCliError> {
+    // Load CLI configuration.
+    let mut conf = CliConf::load().await.unwrap_or_default();
+
+    // Nexus objects must be present in the configuration.
+    let objects = &get_nexus_objects(&mut conf).await?;
+
+    // Create wallet context, Sui client and find the active address.
+    let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
+    let sui_client = build_sui_client(&conf.sui).await?;
+    let address = wallet.active_address().map_err(NexusCliError::Any)?;
+
+    // Fetch gas coin object.
+    let gas_coin = fetch_gas_coin(&sui_client, address, sui_gas_coin).await?;
+
+    // Create Nexus client.
+    let nexus_client = NexusClient::builder()
+        .with_wallet_context(wallet)
+        .with_nexus_objects(objects.clone())
+        .with_gas(vec![&gas_coin], sui_gas_budget)
+        .map_err(NexusCliError::Nexus)?
+        .build()
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    Ok((nexus_client, sui_client))
+}
+
 fn retrieve_wallet_with_mnemonic(net: SuiNet, mnemonic: &str) -> Result<PathBuf, anyhow::Error> {
     // Determine configuration paths.
     let config_dir = sui::config_dir()?;
+    std::fs::create_dir_all(&config_dir)?;
     let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
     let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
 
@@ -679,8 +712,7 @@ mod tests {
     async fn test_fetch_devnet_objects() {
         let mut server = Server::new_async().await;
 
-        let response_body = format!(
-            r#"
+        let response_body = r#"
                 primitives_pkg_id = "0x1"
                 workflow_pkg_id = "0x2"
                 interface_pkg_id = "0x3"
@@ -706,7 +738,7 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
-        );
+        .to_string();
 
         // Create a mock for the devnet objects endpoint.
         let mock = server

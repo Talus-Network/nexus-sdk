@@ -351,7 +351,7 @@ pub mod x25519_serde {
     use {
         super::X25519PublicKey,
         serde::{
-            de::{Error, Visitor},
+            de::{Error, SeqAccess, Visitor},
             Deserializer,
             Serializer,
         },
@@ -364,10 +364,9 @@ pub mod x25519_serde {
     {
         serializer.serialize_bytes(key.as_bytes())
     }
-
     struct PublicKeyVisitor;
 
-    impl Visitor<'_> for PublicKeyVisitor {
+    impl<'de> Visitor<'de> for PublicKeyVisitor {
         type Value = X25519PublicKey;
 
         fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -383,6 +382,26 @@ pub mod x25519_serde {
             }
             let mut bytes = [0u8; 32];
             bytes.copy_from_slice(v);
+            Ok(X25519PublicKey::from(bytes))
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut bytes = [0u8; 32];
+
+            for (idx, slot) in bytes.iter_mut().enumerate() {
+                let Some(value) = seq.next_element::<u8>()? else {
+                    return Err(A::Error::invalid_length(idx, &self));
+                };
+                *slot = value;
+            }
+
+            if seq.next_element::<u8>()?.is_some() {
+                return Err(A::Error::invalid_length(33, &self));
+            }
+
             Ok(X25519PublicKey::from(bytes))
         }
     }
@@ -515,9 +534,11 @@ pub fn sender_init(
     let cipher = XChaCha20Poly1305::new((&*sk).into());
     let mut nonce = [0u8; 24];
     OsRng.fill_bytes(&mut nonce);
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&nonce);
     let ciphertext = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &xnonce,
             Payload {
                 msg: plaintext,
                 aad: &ad,
@@ -617,9 +638,11 @@ pub fn receiver_receive(
 
     // 5. Decrypt
     let cipher = XChaCha20Poly1305::new((&*sk).into());
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&msg.nonce);
     let plaintext = cipher
         .decrypt(
-            XNonce::from_slice(&msg.nonce),
+            &xnonce,
             Payload {
                 msg: &msg.ciphertext,
                 aad: &ad,
@@ -1095,30 +1118,49 @@ mod tests {
             Some(&otpk_secret),
         );
 
-        // Serialize PreKeyBundle to binary format using bincode
+        // Serialize/deserialize PreKeyBundle to binary format using bincode
         let bundle_bytes =
             bincode::serialize(&original_bundle).expect("Failed to serialize PreKeyBundle");
-
-        // Deserialize PreKeyBundle from binary format
         let deserialized_bundle: PreKeyBundle =
             bincode::deserialize(&bundle_bytes).expect("Failed to deserialize PreKeyBundle");
 
+        // Attempt JSON serialization/deserialization as well
+        let json_string = serde_json::to_string(&original_bundle)
+            .expect("Failed to serialize PreKeyBundle to JSON");
+        let deserialized_json_bundle: PreKeyBundle = serde_json::from_str(&json_string)
+            .expect("Failed to deserialize PreKeyBundle from JSON");
+
         // Verify that all fields match
         assert_eq!(original_bundle.spk_id, deserialized_bundle.spk_id);
+        assert_eq!(original_bundle.spk_id, deserialized_json_bundle.spk_id);
         assert_eq!(
             original_bundle.spk_pub.as_bytes(),
             deserialized_bundle.spk_pub.as_bytes()
         );
+        assert_eq!(
+            original_bundle.spk_pub.as_bytes(),
+            deserialized_json_bundle.spk_pub.as_bytes()
+        );
         assert_eq!(original_bundle.spk_sig, deserialized_bundle.spk_sig);
+        assert_eq!(original_bundle.spk_sig, deserialized_json_bundle.spk_sig);
         assert_eq!(
             original_bundle.identity_verify_bytes,
             deserialized_bundle.identity_verify_bytes
         );
         assert_eq!(
+            original_bundle.identity_verify_bytes,
+            deserialized_json_bundle.identity_verify_bytes
+        );
+        assert_eq!(
             original_bundle.identity_pk.as_bytes(),
             deserialized_bundle.identity_pk.as_bytes()
         );
+        assert_eq!(
+            original_bundle.identity_pk.as_bytes(),
+            deserialized_json_bundle.identity_pk.as_bytes()
+        );
         assert_eq!(original_bundle.otpk_id, deserialized_bundle.otpk_id);
+        assert_eq!(original_bundle.otpk_id, deserialized_json_bundle.otpk_id);
 
         // Check OTPK public key
         match (original_bundle.otpk_pub, deserialized_bundle.otpk_pub) {

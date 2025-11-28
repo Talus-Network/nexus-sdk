@@ -1,6 +1,7 @@
 use crate::{
     idents::{sui_framework::Address, ModuleAndNameIdent},
     sui,
+    types::{EdgeKind, RuntimeVertex},
     ToolFqn,
 };
 
@@ -19,15 +20,212 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("begin_dag_execution"),
     };
-    /// The DefaultTap struct type.
+    /// The witness type needed to register DAG execution.
+    ///
+    /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
+    pub const BEGIN_DAG_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("BeginDagExecutionWitness"),
+    };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
+    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("dag_begin_execution_from_scheduler"),
+    };
+    /// The DefaultTAP struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::move_ident_str!("DefaultTAP"),
     };
+    /// Register DAG execution configuration on the execution policy.
+    ///
+    /// `nexus_workflow::default_tap::register_begin_execution`
+    pub const REGISTER_BEGIN_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::move_ident_str!("register_begin_execution"),
+    };
 }
 
+// == `nexus_workflow::scheduler` ==
+
+pub struct Scheduler;
+
+const SCHEDULER_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("scheduler");
+
+impl Scheduler {
+    /// Enqueue a new occurrence for a task with explicit deadline.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_absolute_for_task`
+    pub const ADD_OCCURRENCE_ABSOLUTE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_absolute_for_task"),
+    };
+    /// Enqueue a new occurrence relative to the current time.
+    ///
+    /// `nexus_workflow::scheduler::add_occurrence_relative_for_task`
+    pub const ADD_OCCURRENCE_RELATIVE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("add_occurrence_relative_for_task"),
+    };
+    /// Cancel scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
+    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("cancel_time_constraint_for_task"),
+    };
+    /// Run scheduler checks to consume the next periodic occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_periodic_occurrence`
+    pub const CHECK_PERIODIC_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_periodic_occurrence"),
+    };
+    /// Run scheduler checks to consume the next queue occurrence.
+    ///
+    /// `nexus_workflow::scheduler::check_queue_occurrence`
+    pub const CHECK_QUEUE_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("check_queue_occurrence"),
+    };
+    /// Disable periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::disable_periodic_for_task`
+    pub const DISABLE_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("disable_periodic_for_task"),
+    };
+    /// Execute the DAG witness advancing logic.
+    ///
+    /// `nexus_workflow::scheduler::execute`
+    pub const EXECUTE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("execute"),
+    };
+    /// Finalize a task run ensuring policies reached accepting states.
+    ///
+    /// `nexus_workflow::scheduler::finish`
+    pub const FINISH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("finish"),
+    };
+    /// Creates a new task with metadata and policies.
+    ///
+    /// `nexus_workflow::scheduler::new`
+    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new"),
+    };
+    /// Creates the default constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::new_constraints_policy`
+    pub const NEW_CONSTRAINTS_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_constraints_policy"),
+    };
+    /// Creates the default execution policy.
+    ///
+    /// `nexus_workflow::scheduler::new_execution_policy`
+    pub const NEW_EXECUTION_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_execution_policy"),
+    };
+    /// Creates a metadata container from key/value pairs.
+    ///
+    /// `nexus_workflow::scheduler::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_metadata"),
+    };
+    /// Configure or update periodic scheduling for a task.
+    ///
+    /// `nexus_workflow::scheduler::new_or_modify_periodic_for_task`
+    pub const NEW_OR_MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_or_modify_periodic_for_task"),
+    };
+    /// Create a periodic generator state.
+    ///
+    /// `nexus_workflow::scheduler::new_periodic_generator_state`
+    pub const NEW_PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_periodic_generator_state"),
+    };
+    /// Create a queue generator state.
+    ///
+    /// `nexus_workflow::scheduler::new_queue_generator_state`
+    pub const NEW_QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("new_queue_generator_state"),
+    };
+    /// Pause the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::pause_time_constraint_for_task`
+    pub const PAUSE_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("pause_time_constraint_for_task"),
+    };
+    /// Witness type registered for periodic generators.
+    ///
+    /// `nexus_workflow::scheduler::PeriodicGeneratorWitness`
+    pub const PERIODIC_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("PeriodicGeneratorWitness"),
+    };
+    /// Witness type registered for queue-based generators.
+    ///
+    /// `nexus_workflow::scheduler::QueueGeneratorWitness`
+    pub const QUEUE_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("QueueGeneratorWitness"),
+    };
+    /// Register the periodic generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_periodic_generator`
+    pub const REGISTER_PERIODIC_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_periodic_generator"),
+    };
+    /// Register the queue generator state on the constraints policy.
+    ///
+    /// `nexus_workflow::scheduler::register_queue_generator`
+    pub const REGISTER_QUEUE_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("register_queue_generator"),
+    };
+    /// Resume the scheduler for a task.
+    ///
+    /// `nexus_workflow::scheduler::resume_time_constraint_for_task`
+    pub const RESUME_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("resume_time_constraint_for_task"),
+    };
+    /// The Task struct type. Mostly used for creating generic types.
+    ///
+    /// `nexus_workflow::scheduler::Task`
+    pub const TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("Task"),
+    };
+    /// The TimeConstraint struct type.
+    ///
+    /// `nexus_workflow::scheduler::TimeConstraint`
+    pub const TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("TimeConstraint"),
+    };
+    /// Updates task metadata with the provided values.
+    ///
+    /// `nexus_workflow::scheduler::update_metadata`
+    pub const UPDATE_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::move_ident_str!("update_metadata"),
+    };
+}
 // == `nexus_workflow::dag` ==
 
 pub struct Dag;
@@ -48,6 +246,41 @@ impl Dag {
     pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("DAGExecution"),
+    };
+    /// Create a break edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_break`
+    pub const EDGE_KIND_BREAK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("edge_kind_break"),
+    };
+    /// Create a collect edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_collect`
+    pub const EDGE_KIND_COLLECT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("edge_kind_collect"),
+    };
+    /// Create a do-while edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_do_while`
+    pub const EDGE_KIND_DO_WHILE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("edge_kind_do_while"),
+    };
+    /// Create a for-each edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_for_each`
+    pub const EDGE_KIND_FOR_EACH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("edge_kind_for_each"),
+    };
+    /// Create a normal edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_normal`
+    pub const EDGE_KIND_NORMAL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("edge_kind_normal"),
     };
     /// Create an encrypted InputPort from an ASCII string.
     ///
@@ -91,6 +324,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("new"),
     };
+    /// Create a new DAG execution config value.
+    ///
+    /// `nexus_workflow::dag::new_dag_execution_config`
+    pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("new_dag_execution_config"),
+    };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::OutputPort`
@@ -133,6 +373,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::move_ident_str!("request_walk_execution"),
     };
+    /// Create a `RuntimeVertex::Plain` from a string.
+    ///
+    /// `nexus_workflow::dag::runtime_vertex_plain_from_string`
+    pub const RUNTIME_VERTEX_PLAIN_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("runtime_vertex_plain_from_string"),
+    };
+    /// Create a `RuntimeVertex::WithIterator` from a string.
+    ///
+    /// `nexus_workflow::dag::runtime_vertex_with_iterator_from_string`
+    pub const RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("runtime_vertex_with_iterator_from_string"),
+    };
     /// One of the functions to call when an off-chain tool is evaluated to submit
     /// its result to the workflow.
     ///
@@ -170,6 +424,13 @@ impl Dag {
     pub const VERTEX_OFF_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::move_ident_str!("vertex_off_chain"),
+    };
+    /// Create a new onchain NodeIdent from an ASCII string.
+    ///
+    /// `nexus_workflow::dag::vertex_on_chain`
+    pub const VERTEX_ON_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::move_ident_str!("vertex_on_chain"),
     };
     /// Add a default value to a DAG. Default value is a Vertex + InputPort pair
     /// with NexusData as the value.
@@ -355,6 +616,113 @@ impl Dag {
             vec![str],
         ))
     }
+
+    pub fn on_chain_vertex_kind_from_fqn(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        tool_registry_id: &sui::ObjectRef,
+        fqn: &ToolFqn,
+    ) -> anyhow::Result<sui::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+        let tool_registry_id = tx.obj(sui::ObjectArg::SharedObject {
+            id: tool_registry_id.object_id,
+            initial_shared_version: tool_registry_id.version,
+            mutable: false,
+        })?;
+
+        let witness_id = tx.programmable_move_call(
+            workflow_pkg_id,
+            ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.module.into(),
+            ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.name.into(),
+            vec![],
+            vec![tool_registry_id, str],
+        );
+
+        Ok(tx.programmable_move_call(
+            workflow_pkg_id,
+            Self::VERTEX_ON_CHAIN.module.into(),
+            Self::VERTEX_ON_CHAIN.name.into(),
+            vec![],
+            vec![str, witness_id],
+        ))
+    }
+
+    /// Create an edge kind from an enum variant.
+    pub fn edge_kind_from_enum(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        edge_kind: &EdgeKind,
+    ) -> sui::Argument {
+        let ident = match edge_kind {
+            EdgeKind::Normal => Self::EDGE_KIND_NORMAL,
+            EdgeKind::ForEach => Self::EDGE_KIND_FOR_EACH,
+            EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
+            EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
+            EdgeKind::Break => Self::EDGE_KIND_BREAK,
+        };
+
+        tx.programmable_move_call(
+            workflow_pkg_id,
+            ident.module.into(),
+            ident.name.into(),
+            vec![],
+            vec![],
+        )
+    }
+
+    /// Create a runtime vertex from an enum variant
+    pub fn runtime_vertex_from_enum(
+        tx: &mut sui::ProgrammableTransactionBuilder,
+        workflow_pkg_id: sui::ObjectID,
+        runtime_vertex: &RuntimeVertex,
+    ) -> anyhow::Result<sui::Argument> {
+        match runtime_vertex {
+            RuntimeVertex::Plain { vertex } => {
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+
+                Ok(tx.programmable_move_call(
+                    workflow_pkg_id,
+                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module.into(),
+                    Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.name.into(),
+                    vec![],
+                    vec![name],
+                ))
+            }
+            RuntimeVertex::WithIterator {
+                vertex,
+                iteration,
+                out_of,
+            } => {
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let iteration = tx.pure(*iteration)?;
+                let out_of = tx.pure(*out_of)?;
+
+                Ok(tx.programmable_move_call(
+                    workflow_pkg_id,
+                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module.into(),
+                    Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.name.into(),
+                    vec![],
+                    vec![name, iteration, out_of],
+                ))
+            }
+        }
+    }
+}
+
+// == `nexus_workflow::tool_output` ==
+
+pub struct ToolOutput;
+
+const TOOL_OUTPUT_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_output");
+
+impl ToolOutput {
+    /// Convert ToolOutput to DAG types.
+    ///
+    /// `nexus_workflow::tool_output::to_dag_types`
+    pub const TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_OUTPUT_MODULE,
+        name: sui::move_ident_str!("to_dag_types"),
+    };
 }
 
 // == `nexus_workflow::tool_registry` ==
@@ -364,6 +732,14 @@ pub struct ToolRegistry;
 const TOOL_REGISTRY_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("tool_registry");
 
 impl ToolRegistry {
+    /// Add an address to the allowlist for tool registration.
+    /// Only callable by the holder of OverSlashing cap.
+    ///
+    /// `nexus_workflow::tool_registry::add_allowed_owner`
+    pub const ADD_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("add_allowed_owner"),
+    };
     /// Claim collateral for a tool and transfer the balance to the tx sender.
     ///
     /// `nexus_workflow::tool_registry::claim_collateral_for_self`
@@ -378,6 +754,13 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         // TODO: This will likely be renamed to `claim_collateral_for_tool`.
         name: sui::move_ident_str!("claim_collateral_for_off_chain_tool"),
+    };
+    /// Get the witness ID for an onchain tool.
+    ///
+    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
+    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("onchain_tool_witness_id"),
     };
     /// OverSlashing struct type. Used to fetch caps for slashing tools.
     ///
@@ -407,6 +790,29 @@ impl ToolRegistry {
     pub const REGISTER_OFF_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::move_ident_str!("register_off_chain_tool_for_self"),
+    };
+    /// Register an on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool`
+    pub const REGISTER_ON_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool"),
+    };
+    /// Register an on-chain tool and transfer the tool's owner cap to the ctx
+    /// sender.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool_for_self`
+    pub const REGISTER_ON_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("register_on_chain_tool_for_self"),
+    };
+    /// Remove an address from the allowlist for tool registration.
+    /// Only callable by the holder of OverSlashing cap.
+    ///
+    /// `nexus_workflow::tool_registry::remove_allowed_owner`
+    pub const REMOVE_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::move_ident_str!("remove_allowed_owner"),
     };
     /// The ToolRegistry struct type.
     ///
@@ -469,6 +875,20 @@ impl Gas {
     pub const CLAIM_LEADER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::move_ident_str!("claim_leader_gas"),
+    };
+    /// Claim leader gas against an invoker scope (no DAG execution object).
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_invoker`
+    pub const CLAIM_LEADER_GAS_FOR_INVOKER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas_for_invoker"),
+    };
+    /// Claim leader gas specifically for pre-key handshakes.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_pre_key`
+    pub const CLAIM_LEADER_GAS_FOR_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::move_ident_str!("claim_leader_gas_for_pre_key"),
     };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
@@ -618,19 +1038,12 @@ impl PreKeyVault {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::move_ident_str!("claim_pre_key_for_self"),
     };
-    /// PreKey struct type. Mostly used for creating generic types.
+    /// Fulfill a requested pre key for a user.
     ///
-    /// `nexus_workflow::pre_key_vault::PreKey`
-    pub const PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
+    pub const FULFILL_PRE_KEY_FOR_USER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("PreKey"),
-    };
-    /// Create a new pre key from bytes.
-    ///
-    /// `nexus_workflow::pre_key_vault::pre_key_from_bytes`
-    pub const PRE_KEY_FROM_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("pre_key_from_bytes"),
+        name: sui::move_ident_str!("fulfill_pre_key_for_user"),
     };
     /// PreKeyVault type for lookups.
     ///
@@ -638,13 +1051,6 @@ impl PreKeyVault {
     pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::move_ident_str!("PreKeyVault"),
-    };
-    /// Replenish the pre key vault with public pre_keys.
-    ///
-    /// `nexus_workflow::pre_key_vault::replenish_pre_keys`
-    pub const REPLENISH_PRE_KEYS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::move_ident_str!("replenish_pre_keys"),
     };
 }
 

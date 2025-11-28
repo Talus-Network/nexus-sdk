@@ -4,7 +4,7 @@
 # Commands related the Nexus SDK.
 #
 
-import '../just/_helpers.just'
+import '../helpers/helpers.just'
 
 package := 'nexus-sdk'
 
@@ -22,7 +22,11 @@ test: _check-cargo
 
 # Run rustfmt on the Nexus SDK
 fmt-check: _check-cargo
-    cargo +nightly-2025-01-06 fmt --package {{ package }} --check
+    #!/usr/bin/env bash
+
+    nightly="$(just helpers::get-nightly-version)"
+
+    cargo +"$nightly" fmt --package {{ package }} --check
 
 # Run clippy on the Nexus SDK
 clippy: _check-cargo

@@ -7,492 +7,119 @@ use {
         notify_success,
         prelude::*,
         sui::*,
+        workflow,
     },
     anyhow::anyhow,
-    bincode,
-    nexus_sdk::{
-        crypto::session::{Message, Session},
-        idents::workflow,
-        object_crawler::{fetch_one, Structure, VecMap, VecSet},
-        transactions::dag,
-        types::TypeName,
-    },
-    serde_json::Value,
+    nexus_sdk::{nexus::error::NexusError, types::EncryptionMode},
+    std::sync::Arc,
 };
 
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_dag(
     dag_id: sui::ObjectID,
     entry_group: String,
-    mut input_json: serde_json::Value,
+    input_json: serde_json::Value,
+    remote: Vec<String>,
     inspect: bool,
+    price_priority_fee: u64,
     sui_gas_coin: Option<sui::ObjectID>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
-    // Load CLI configuration.
-    let mut conf = CliConf::load().await.unwrap_or_default();
+    let (nexus_client, sui) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
-    // Create wallet context, Sui client and find the active address.
-    let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
-    let sui = build_sui_client(&conf.sui).await?;
-    let address = wallet.active_address().map_err(NexusCliError::Any)?;
-
-    // Nexus objects must be present in the configuration.
-    let objects = &get_nexus_objects(&mut conf).await?;
+    // Build the remote storage conf.
+    let conf = CliConf::load().await.unwrap_or_default();
+    let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
+    let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
-    let session = get_active_session(&mut conf)?;
+    let session = CryptoConf::get_active_session(None).await.map_err(|e|
+        NexusCliError::Any(
+            anyhow!(
+                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+                e,
+                init_key = "$ nexus crypto init-key --force",
+                crypto_auth = "$ nexus crypto auth"
+            )
+        )
+    )?;
 
     // Fetch information about entry ports that need to be encrypted.
-    let encrypt = fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
+    let encrypt = workflow::fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
 
+    // Encrypt ports that need to be encrypted and store ports remote if they
+    // need to be stored remotely.
+    let input_data = workflow::process_entry_ports(
+        &input_json,
+        preferred_remote_storage,
+        &encrypt,
+        &remote,
+        EncryptionMode::Standard,
+    )
+    .await?;
+
+    let tx_handle = loading!("Crafting and executing transaction...");
+
+    let result = match nexus_client
+        .workflow()
+        .execute(
+            dag_id,
+            input_data,
+            price_priority_fee,
+            Some(&entry_group),
+            &storage_conf,
+            Arc::clone(&session),
+        )
+        .await
+    {
+        Ok(r) => r,
+        Err(NexusError::Storage(e)) => {
+            tx_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "{e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
+                e = e,
+                command = "$ nexus conf set --data-storage.walrus-publisher-url <URL> --data-storage.walrus-save-for-epochs <EPOCHS>",
+                testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
+            )));
+        }
+        Err(e) => {
+            tx_handle.error();
+
+            return Err(NexusCliError::Nexus(e));
+        }
+    };
+
+    // Advance the session ratchet if encryption was used.
     if !encrypt.is_empty() {
-        encrypt_entry_ports_once(session, &mut input_json, &encrypt)?;
-    }
-
-    // Fetch gas coin object.
-    let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
-
-    // Fetch reference gas price.
-    let reference_gas_price = fetch_reference_gas_price(&sui).await?;
-
-    // Fetch DAG object for its ObjectRef.
-    let dag = fetch_object_by_id(&sui, dag_id).await?;
-
-    // Craft a TX to publish the DAG.
-    let tx_handle = loading!("Crafting transaction...");
-
-    let mut tx = sui::ProgrammableTransactionBuilder::new();
-
-    if let Err(e) = dag::execute(&mut tx, objects, &dag, &entry_group, input_json, &encrypt) {
-        tx_handle.error();
-
-        return Err(NexusCliError::Any(e));
+        session.lock().await.commit_sender(None);
     }
 
     tx_handle.success();
 
-    let tx_data = sui::TransactionData::new_programmable(
-        address,
-        vec![gas_coin.object_ref()],
-        tx.finish(),
-        sui_gas_budget,
-        reference_gas_price,
-    );
-
-    // Sign and send the TX.
-    let response = sign_and_execute_transaction(&sui, &wallet, tx_data).await?;
-
-    // We need to parse the DAGExecution object ID from the response.
-    let dag = response
-        .object_changes
-        .unwrap_or_default()
-        .into_iter()
-        .find_map(|change| match change {
-            sui::ObjectChange::Created {
-                object_type,
-                object_id,
-                ..
-            } if object_type.address == *objects.workflow_pkg_id
-                && object_type.module == workflow::Dag::DAG_EXECUTION.module.into()
-                && object_type.name == workflow::Dag::DAG_EXECUTION.name.into() =>
-            {
-                Some(object_id)
-            }
-            _ => None,
-        });
-
-    let Some(object_id) = dag else {
-        return Err(NexusCliError::Any(anyhow!(
-            "Could not find the DAGExecution object ID in the transaction response."
-        )));
-    };
-
     notify_success!(
         "DAGExecution object ID: {id}",
-        id = object_id.to_string().truecolor(100, 100, 100)
+        id = result
+            .execution_object_id
+            .to_string()
+            .truecolor(100, 100, 100)
     );
 
-    if inspect {
-        inspect_dag_execution(object_id, response.digest).await?;
-    } else {
-        json_output(&json!({ "digest": response.digest, "execution_id": object_id }))?;
-    }
-
-    // Always save the updated config
-    conf.save().await.map_err(NexusCliError::Any)?;
-
-    Ok(())
-}
-
-fn encrypt_entry_ports_once(
-    session: &mut Session,
-    input: &mut Value,
-    targets: &HashMap<String, Vec<String>>,
-) -> Result<(), NexusCliError> {
-    if targets.is_empty() {
-        return Ok(()); // nothing to do, avoid ratchet advance
-    }
-
-    for (vertex, ports) in targets {
-        for port in ports {
-            // Take the plaintext for ownership
-            let slot = input
-                .get_mut(&vertex)
-                .and_then(|v| v.get_mut(&port))
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Input JSON has no {vertex}.{port}")))?;
-
-            let plaintext = slot.take();
-            let bytes =
-                serde_json::to_vec(&plaintext).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-
-            // Encrypt
-            let msg = session
-                .encrypt(&bytes)
-                .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-
-            // Session must always return a Standard packet here
-            let Message::Standard(pkt) = msg else {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Session returned non-standard packet"
-                )));
-            };
-
-            // Serialize the StandardMessage with bincode
-            let serialized =
-                bincode::serialize(&pkt).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-            *slot =
-                serde_json::to_value(&serialized).map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-        }
-    }
-
-    // commit the session state
-    session.commit_sender(None);
-
-    Ok(())
-}
-
-/// Gets the active session for encryption/decryption
-fn get_active_session(
-    conf: &mut CliConf,
-) -> Result<&mut nexus_sdk::crypto::session::Session, NexusCliError> {
-    match &mut conf.crypto {
-        Some(crypto_secret) => {
-            if crypto_secret.sessions.is_empty() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "Authentication required — run `nexus crypto auth` first"
-                )));
-            }
-
-            let session_id = *crypto_secret.sessions.values().next().unwrap().id();
-            crypto_secret
-                .sessions
-                .get_mut(&session_id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Session not found in config")))
-        }
-        None => Err(NexusCliError::Any(anyhow!(
-            "Authentication required — run `nexus crypto auth` first"
-        ))),
-    }
-}
-
-/// Fetches the encrypted entry ports for a DAG.
-async fn fetch_encrypted_entry_ports(
-    sui: &sui::Client,
-    entry_group: String,
-    dag_id: &sui::ObjectID,
-) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
-    #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
-    struct EntryPort {
-        name: String,
-        encrypted: bool,
-    }
-
-    #[derive(Clone, Debug, Deserialize)]
-    struct Dag {
-        entry_groups:
-            VecMap<Structure<TypeName>, VecMap<Structure<TypeName>, VecSet<Structure<EntryPort>>>>,
-    }
-
-    let result = fetch_one::<Structure<Dag>>(sui, *dag_id)
+    // Update the session in the configuration.
+    CryptoConf::release_session(session, None)
         .await
-        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
-    // Get the relevant entry group.
-    let group: TypeName = TypeName {
-        name: entry_group.clone(),
-    };
-
-    let entry_group = result
-        .data
-        .into_inner()
-        .entry_groups
-        .into_inner()
-        .remove(&group.into())
-        .ok_or_else(|| {
-            NexusCliError::Any(anyhow!("Entry group '{entry_group}' not found in DAG"))
-        })?;
-
-    // Collapse into a more readable format.
-    Ok(entry_group
-        .into_inner()
-        .into_iter()
-        .filter_map(|(vertex, ports)| {
-            let encrypted_ports: Vec<String> = ports
-                .into_inner()
-                .into_iter()
-                .filter_map(|port| {
-                    let port = port.into_inner();
-
-                    if port.encrypted {
-                        Some(port.name)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if encrypted_ports.is_empty() {
-                return None; // Skip vertices with no encrypted ports
-            }
-
-            Some((vertex.into_inner().name, encrypted_ports))
-        })
-        .collect::<HashMap<_, _>>())
-}
-
-#[cfg(test)]
-mod tests {
-    use {
-        super::*,
-        nexus_sdk::crypto::{
-            session::{Message, Session},
-            x3dh::{IdentityKey, PreKeyBundle},
-        },
-        serde_json::json,
-    };
-
-    /// Helper to create a mock session for testing
-    fn create_mock_session() -> Session {
-        let sender_id = IdentityKey::generate();
-        let receiver_id = IdentityKey::generate();
-        let spk_secret = IdentityKey::generate().secret().clone();
-        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
-
-        let (message, mut sender_sess) =
-            Session::initiate(&sender_id, &bundle, b"test").expect("Failed to initiate session");
-
-        let initial_msg = match message {
-            Message::Initial(msg) => msg,
-            _ => panic!("Expected Initial message type"),
-        };
-
-        let (mut receiver_sess, _) =
-            Session::recv(&receiver_id, &spk_secret, &bundle, &initial_msg, None)
-                .expect("Failed to receive session");
-
-        // Exchange messages to establish the ratchet properly
-        let setup_msg = sender_sess
-            .encrypt(b"setup")
-            .expect("Failed to encrypt setup message");
-        let _ = receiver_sess
-            .decrypt(&setup_msg)
-            .expect("Failed to decrypt setup message");
-
-        sender_sess
+    if inspect {
+        inspect_dag_execution(result.execution_object_id, result.tx_digest).await?;
+    } else {
+        json_output(
+            &json!({ "digest": result.tx_digest, "execution_id": result.execution_object_id }),
+        )?;
     }
 
-    #[test]
-    fn test_encrypt_entry_ports_once_empty_targets() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets = HashMap::new();
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-        // Input should remain unchanged when no targets are specified
-        assert_eq!(input["vertex1"]["port1"], "test_value");
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_single_target() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value",
-                "port2": "other_value"
-            }
-        });
-        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // port1 should be encrypted (no longer the original string)
-        assert_ne!(input["vertex1"]["port1"], "test_value");
-        // port2 should remain unchanged
-        assert_eq!(input["vertex1"]["port2"], "other_value");
-
-        // The encrypted value should be a JSON array of bytes
-        assert!(input["vertex1"]["port1"].is_array());
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_multiple_targets() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "value1",
-                "port2": "value2"
-            },
-            "vertex2": {
-                "port3": "value3"
-            }
-        });
-
-        let targets = HashMap::from([
-            (
-                "vertex1".to_string(),
-                vec!["port1".to_string(), "port2".to_string()],
-            ),
-            ("vertex2".to_string(), vec!["port3".to_string()]),
-        ]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // All targeted ports should be encrypted
-        assert!(input["vertex1"]["port1"].is_array());
-        assert!(input["vertex1"]["port2"].is_array());
-        assert!(input["vertex2"]["port3"].is_array());
-
-        // Original values should no longer be present
-        assert_ne!(input["vertex1"]["port1"], "value1");
-        assert_ne!(input["vertex1"]["port2"], "value2");
-        assert_ne!(input["vertex2"]["port3"], "value3");
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_bad_handle_format() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets = HashMap::from([(
-            "vertex1".to_string(),
-            vec!["invalid_handle_format".to_string()],
-        )]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no vertex1.invalid_handle_format"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_nonexistent_vertex() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets =
-            HashMap::from([("nonexistent_vertex".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no nonexistent_vertex.port1"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_nonexistent_port() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "test_value"
-            }
-        });
-        let targets =
-            HashMap::from([("vertex1".to_string(), vec!["nonexistent_port".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input JSON has no vertex1.nonexistent_port"));
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_complex_data_types() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": {
-                    "nested": {
-                        "data": [1, 2, 3],
-                        "string": "test"
-                    }
-                }
-            }
-        });
-        let targets = HashMap::from([("vertex1".to_string(), vec!["port1".to_string()])]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // The complex JSON should be encrypted
-        assert!(input["vertex1"]["port1"].is_array());
-        // It should no longer contain the original nested structure
-        assert!(input["vertex1"]["port1"].get("nested").is_none());
-    }
-
-    #[test]
-    fn test_encrypt_entry_ports_once_ratchet_advancement() {
-        let mut session = create_mock_session();
-        let mut input = json!({
-            "vertex1": {
-                "port1": "value1",
-                "port2": "value2"
-            }
-        });
-        let targets = HashMap::from([(
-            "vertex1".to_string(),
-            vec!["port1".to_string(), "port2".to_string()],
-        )]);
-
-        let result = encrypt_entry_ports_once(&mut session, &mut input, &targets);
-
-        assert!(result.is_ok());
-
-        // Both values should be encrypted, but since we advance the ratchet only once,
-        // subsequent encryptions should use static encryption
-        assert!(input["vertex1"]["port1"].is_array());
-        assert!(input["vertex1"]["port2"].is_array());
-
-        // The encrypted values should be different even for the same session
-        // (due to nonces), but we can't easily test the ratchet state directly
-        // without access to session internals
-    }
+    Ok(())
 }

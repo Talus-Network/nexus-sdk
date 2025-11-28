@@ -15,12 +15,6 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-impl Default for Granularity {
-    fn default() -> Self {
-        Granularity::Hour
-    }
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Input {

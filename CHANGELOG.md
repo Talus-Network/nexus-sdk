@@ -5,7 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.2.0`] - Unreleased
+## [`0.4.0`] - Unreleased
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `nexus tool register onchain` command to register onchain tools
+- onchain tool development guide
+- `nexus tool new` onchain tool move template
+
+### `nexus-sdk`
+
+#### Added
+
+- support for `scheduler` transactions and events
+- onchain schema generation
+
+#### Changed
+
+- `crypto auth` now uses the new handshake algorithm
+- `nexus tool register` now has two subcommands for both types of tools
+- wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
+
+## [`0.3.0`] - 2025-11-10
+
+### `nexus-cli`
+
+#### Added
+
+#### Fixed
+
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+- `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
+
+### `nexus-sdk`
+
+#### Added
+
+- `.nightly-version` file that specifies the Rust nightly version to use
+- `nexus_sdk::nexus` module that holds `NexusClient` functionality to interact with the Nexus network
+- `NexusEventKind::name` method that returns a string representation of the event kind
+
+#### Changed
+
+- standardized array and single value serialization of `NexusData` in `serde_parsers`
+- `NexusData` can now represent data stored remotely in Walrus
+
+#### Fixed
+
+- made faucet requests compatible with old and latest versions of the `sui-faucet`
+- allow skipping the first encrypted message in a new `dh` chain
+
+## [`0.2.0`] - 2025-08-12
 
 ### Repository
 
@@ -13,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CONTRIBUTING.md
 - CODE_OF_CONDUCT.md
-- `pre-commit` hook
+- `pre-commit` hook (also in CI)
 
 ### `nexus-cli`
 
@@ -89,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pre key vault related Nexus events and their definitions
 - DAG validation (moved from `nexus-cli`)
 - `LinkedTable` support for object crawler
+- added identifiers to `tool_registry`'s allow list functions
 
 #### Changed
 

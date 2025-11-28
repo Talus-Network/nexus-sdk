@@ -72,6 +72,7 @@ enum HeterogeneousValue {
     AnotherValue(AnotherPlainValue),
 }
 
+// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/318>
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
@@ -89,7 +90,6 @@ async fn test_object_crawler() {
     test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
         .await
         .expect("Failed to request tokens from faucet.");
-
     let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
         .await
         .expect("Failed to fetch gas coin.")

@@ -3,7 +3,10 @@
 //! configuration and vice versa, if it succeeds, we should be certain that the
 //! configuration structure is correct.
 
-use {crate::ToolFqn, serde::Deserialize};
+use {
+    crate::{types::StorageKind, ToolFqn},
+    serde::Deserialize,
+};
 
 /// Name of the default entry group.
 pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
@@ -25,12 +28,8 @@ pub struct Dag {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
 pub enum VertexKind {
-    OffChain {
-        tool_fqn: ToolFqn,
-    },
-    OnChain {
-        //
-    },
+    OffChain { tool_fqn: ToolFqn },
+    OnChain { tool_fqn: ToolFqn },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -64,21 +63,32 @@ pub struct DefaultValue {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "storage", rename_all = "snake_case")]
-pub enum Data {
-    Inline {
-        data: serde_json::Value,
-        /// Whether the [`Data::Inline::data`] is encrypted. If `true`, the
-        /// leader will decrypt before passing the data to the tool. Defaults to
-        /// `false`.
-        #[serde(default)]
-        encrypted: bool,
-    },
+pub struct Data {
+    pub storage: StorageKind,
+    pub data: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Edge {
     pub from: FromPort,
     pub to: ToPort,
+    /// The kind of the edge. This is used to determine how the edge is
+    /// processed in the workflow. Defaults to [`EdgeKind::Normal`].
+    #[serde(default)]
+    pub kind: EdgeKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKind {
+    #[default]
+    Normal,
+    /// For-each and collect control edges.
+    ForEach,
+    Collect,
+    /// Do-while and break control edges.
+    DoWhile,
+    Break,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -88,6 +98,7 @@ pub struct FromPort {
     pub output_port: String,
     /// Whether the output port data should be encrypted before being sent to
     /// the workflow. Defaults to `false`.
+    // TODO: <https://github.com/Talus-Network/nexus/issues/524>
     #[serde(default)]
     pub encrypted: bool,
 }

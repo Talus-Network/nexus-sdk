@@ -4,12 +4,14 @@ use {
         sui,
         types::{
             Dag,
-            Data,
+            DataStorage,
             DefaultValue,
             Edge,
             EntryPort,
             FromPort,
             NexusObjects,
+            Storable,
+            StorageKind,
             Vertex,
             VertexKind,
             DEFAULT_ENTRY_GROUP,
@@ -145,9 +147,12 @@ pub fn create_vertex(
             // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
-        VertexKind::OnChain { .. } => {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
-        }
+        VertexKind::OnChain { tool_fqn } => workflow::Dag::on_chain_vertex_kind_from_fqn(
+            tx,
+            objects.workflow_pkg_id,
+            &objects.tool_registry,
+            tool_fqn,
+        )?,
     };
 
     // `dag.with_vertex(name, kind)`
@@ -176,17 +181,23 @@ pub fn create_default_value(
         workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port)?;
 
     // `value: NexusData`
-    let value = match &default_value.value {
-        Data::Inline { data, .. } => {
+    let value = match &default_value.value.storage {
+        StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
+            tx,
+            objects.primitives_pkg_id,
+            &default_value.value.data,
             // Default values cannot be secret. Sensitive data should be passed
             // via entry ports at runtime.
-            primitives::Data::nexus_data_from_json(tx, objects.primitives_pkg_id, data, false)?
-        }
-        // Allowing to remind us that any other data storages can be added here.
-        #[allow(unreachable_patterns)]
-        _ => {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/30>")
-        }
+            false,
+        )?,
+        StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
+            tx,
+            objects.primitives_pkg_id,
+            &default_value.value.data,
+            // Default values cannot be secret. Sensitive data should be passed
+            // via entry ports at runtime.
+            false,
+        )?,
     };
 
     // `dag.with_default_value(vertex, port, value)`
@@ -228,6 +239,9 @@ pub fn create_edge(
     let to_port =
         workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
 
+    // `kind: EdgeKind`
+    let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
+
     if edge.from.encrypted {
         // `dag.with_encrypted_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
         return Ok(tx.programmable_move_call(
@@ -242,6 +256,7 @@ pub fn create_edge(
                 from_port,
                 to_vertex,
                 to_port,
+                kind,
             ],
         ));
     }
@@ -259,6 +274,7 @@ pub fn create_edge(
             from_port,
             to_vertex,
             to_port,
+            kind,
         ],
     ))
 }
@@ -368,9 +384,9 @@ pub fn execute(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::ObjectRef,
+    gas_price: u64,
     entry_group: &str,
-    input_json: serde_json::Value,
-    encrypt: &HashMap<String, Vec<String>>,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
     // `self: &mut DefaultTAP`
     let default_tap = tx.obj(sui::ObjectArg::SharedObject {
@@ -395,6 +411,9 @@ pub fn execute(
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `gas_price: u64`
+    let gas_price_arg = tx.pure(gas_price)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -424,19 +443,7 @@ pub fn execute(
         vec![],
     );
 
-    let Some(data) = input_json.as_object() else {
-        anyhow::bail!(
-            "Input JSON must be an object containing the entry vertices and their respective data."
-        );
-    };
-
-    for (vertex_name, data) in data {
-        let Some(data) = data.as_object() else {
-            anyhow::bail!(
-                "Values of input JSON must be an object containing the input ports and their respective values."
-            );
-        };
-
+    for (vertex_name, data) in input_data {
         // `vertex: Vertex`
         let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
@@ -449,25 +456,36 @@ pub fn execute(
             vec![],
         );
 
-        for (port, value) in data {
-            let encrypted = encrypt
-                .get(vertex_name)
-                .map_or(false, |ports| ports.contains(port));
-
+        for (port_name, value) in data {
             // `port: InputPort`
-            let port = if encrypted {
-                workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, port)?
-            } else {
-                workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, port)?
+            let port = match value.is_encrypted() {
+                true => workflow::Dag::encrypted_input_port_from_str(
+                    tx,
+                    objects.workflow_pkg_id,
+                    port_name.as_str(),
+                )?,
+                false => workflow::Dag::input_port_from_str(
+                    tx,
+                    objects.workflow_pkg_id,
+                    port_name.as_str(),
+                )?,
             };
 
             // `value: NexusData`
-            let value = primitives::Data::nexus_data_from_json(
-                tx,
-                objects.primitives_pkg_id,
-                value,
-                encrypted,
-            )?;
+            let value = match value.storage_kind() {
+                StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                    value.is_encrypted(),
+                )?,
+                StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                    value.is_encrypted(),
+                )?,
+            };
 
             // `with_vertex_input.insert(port, value)`
             tx.programmable_move_call(
@@ -503,6 +521,7 @@ pub fn execute(
             dag,
             gas_service,
             network,
+            gas_price_arg,
             entry_group,
             with_vertex_inputs,
             clock,
@@ -517,8 +536,9 @@ mod tests {
         crate::{
             fqn,
             test_utils::sui_mocks,
-            types::{FromPort, ToPort},
+            types::{Data, EdgeKind, FromPort, ToPort},
         },
+        std::collections::HashMap,
     };
 
     #[test]
@@ -602,9 +622,9 @@ mod tests {
         let default_value = DefaultValue {
             vertex: "vertex1".to_string(),
             input_port: "port1".to_string(),
-            value: Data::Inline {
+            value: Data {
+                storage: StorageKind::Inline,
                 data: serde_json::json!({"key": "value"}),
-                encrypted: false,
             },
         };
 
@@ -642,6 +662,7 @@ mod tests {
                 vertex: "vertex2".to_string(),
                 input_port: "port2".to_string(),
             },
+            kind: EdgeKind::Normal,
         };
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
@@ -726,20 +747,27 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
-        let input_json = serde_json::json!({
-            "vertex1": {
-                "port1": {"key": "value"}
-            }
-        });
+        let mut input_data = HashMap::new();
+
+        input_data.insert(
+            "vertex1".to_string(),
+            HashMap::from([(
+                "port1".to_string(),
+                serde_json::json!({"kind": "inline", "encryption_mode": 0, "data": { "key": "value" } })
+                    .try_into()
+                    .expect("Failed to convert JSON to DataStorage"),
+            )]),
+        );
 
         let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let gas_price = 0;
         execute(
             &mut tx,
             &nexus_objects,
             &dag,
+            gas_price,
             entry_group,
-            input_json,
-            &HashMap::new(),
+            &input_data,
         )
         .unwrap();
         let tx = tx.finish();

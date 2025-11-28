@@ -57,6 +57,7 @@ use {
             X3dhError,
         },
     },
+    anyhow::bail,
     hkdf::Hkdf,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     sha2::{Digest, Sha256},
@@ -117,17 +118,19 @@ pub struct StandardMessage {
 
 /// Union covering all messages that can traverse the transport.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Message {
     /// First packet in the X3DH handshake (sent by Sender).
     Initial(InitialMessage),
     /// Ordinary Double-Ratchet message exchanged after the handshake.
     Standard(StandardMessage),
+    /// Double-Ratchet message whose key should remain cached for limited reuse.
+    LimitedPersistent(StandardMessage),
 }
 
 /// A live end-to-end encrypted session.
 ///
-/// Both parties maintain a copy containing identical symmetric state.  
+/// Both parties maintain a copy containing identical symmetric state.
 /// Cloning is disallowed to avoid accidental divergence.
 pub struct Session {
     /// Stable database key (32-byte, random-looking).
@@ -345,6 +348,25 @@ impl Session {
             .map_err(|_| SessionError::InvalidState("Encryption failed".into()))
     }
 
+    /// Encrypts a plaintext while marking the result as limited persistent.
+    ///
+    /// The receiver keeps the derived message key cached so the ciphertext can
+    /// be replayed a bounded number of times without rewinding the ratchet.
+    pub fn encrypt_limited_persistent(
+        &mut self,
+        plaintext: &[u8],
+    ) -> Result<Message, SessionError> {
+        match self.encrypt(plaintext)? {
+            Message::Standard(msg) => Ok(Message::LimitedPersistent(msg)),
+            Message::Initial(_) => Err(SessionError::InvalidState(
+                "Cannot emit an Initial message in persistent mode".into(),
+            )),
+            Message::LimitedPersistent(_) => Err(SessionError::InvalidState(
+                "Message already tagged as persistent".into(),
+            )),
+        }
+    }
+
     /// Decrypts an incoming `message`, performing DH/PN ratchets as required.
     ///
     /// *Errors*:
@@ -368,6 +390,19 @@ impl Session {
                     .ratchet_decrypt_he(header, ciphertext, &ad)
                     .map_err(|_| SessionError::DecryptionFailed)
             }
+            Message::LimitedPersistent(StandardMessage {
+                version,
+                header,
+                ciphertext,
+            }) => {
+                if *version != PROTOCOL_VERSION {
+                    return Err(SessionError::Version(*version));
+                }
+                let ad = self.make_associated_data();
+                self.ratchet
+                    .ratchet_decrypt_he_persistent(header, ciphertext, &ad)
+                    .map_err(|_| SessionError::DecryptionFailed)
+            }
         }
     }
 
@@ -379,7 +414,7 @@ impl Session {
     ///   already forgotten or the header does not belong to this session.
     pub fn read_own_msg(&mut self, msg: &Message) -> Option<Vec<u8>> {
         match msg {
-            Message::Standard(sm) => {
+            Message::Standard(sm) | Message::LimitedPersistent(sm) => {
                 let ad = self.make_associated_data();
                 self.ratchet
                     .decrypt_outgoing(&sm.header, &sm.ciphertext, &ad)
@@ -391,7 +426,7 @@ impl Session {
     /// **Sender-side "commit":** irrevocably forget cached **outgoing** message-keys.
     ///
     /// * Pass `Some(n)` to forget everything ≤ `n` in the current sending
-    ///   chain;  
+    ///   chain;
     /// * Pass `None` to wipe the entire cache.
     pub fn commit_sender(&mut self, max_n: Option<u32>) {
         self.ratchet.commit_sender(max_n);
@@ -432,6 +467,111 @@ impl Session {
     /// Get a reference to the remote identity public key
     pub fn remote_identity(&self) -> &PublicKey {
         &self.remote_identity
+    }
+
+    // === Nexus-specific ===
+
+    /// Encrypts the provided [`crate::types::NexusData`] JSON. It distinguishes
+    /// between the JSON being an array type or a single object. In the case of
+    /// an array, it encrypts each object individually.
+    pub fn encrypt_nexus_data_json(&mut self, data: &mut serde_json::Value) -> anyhow::Result<()> {
+        if let serde_json::Value::Array(values) = data {
+            let mut encrypted_values = Vec::with_capacity(values.len());
+
+            // Serialize and encrypt each element.
+            for value in values {
+                let bytes = serde_json::to_vec(value)?;
+
+                let Message::Standard(msg) = self.encrypt(&bytes)? else {
+                    bail!("Invalid message type, expected StandardMessage");
+                };
+
+                encrypted_values.push(serde_json::to_value(&msg)?);
+            }
+
+            *data = serde_json::Value::Array(encrypted_values);
+
+            return Ok(());
+        }
+
+        let bytes = serde_json::to_vec(data)?;
+
+        let Message::Standard(msg) = self.encrypt(&bytes)? else {
+            bail!("Invalid message type, expected StandardMessage");
+        };
+
+        *data = serde_json::to_value(&msg)?;
+
+        Ok(())
+    }
+
+    /// Encrypts the provided JSON using the limited persistent variant.
+    pub fn encrypt_limited_persistent_nexus_data_json(
+        &mut self,
+        data: &mut serde_json::Value,
+    ) -> anyhow::Result<()> {
+        if let serde_json::Value::Array(values) = data {
+            let mut encrypted_values = Vec::with_capacity(values.len());
+
+            for value in values {
+                let bytes = serde_json::to_vec(value)?;
+                let message = self.encrypt_limited_persistent(&bytes)?;
+                encrypted_values.push(serde_json::to_value(&message)?);
+            }
+
+            *data = serde_json::Value::Array(encrypted_values);
+            return Ok(());
+        }
+
+        let bytes = serde_json::to_vec(data)?;
+        let message = self.encrypt_limited_persistent(&bytes)?;
+        *data = serde_json::to_value(&message)?;
+        Ok(())
+    }
+
+    /// Opposite of [`Self::encrypt_nexus_data_json`], decrypts the provided
+    /// `serde_json::Value` and returns the decrypted JSON data. If the value
+    /// is an array, it decrypts each object individually.
+    pub fn decrypt_nexus_data_json(
+        &mut self,
+        data: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        if let serde_json::Value::Array(values) = data {
+            let mut decrypted_values = Vec::with_capacity(values.len());
+
+            // Decrypt each element.
+            for value in values {
+                let msg = if value.get("kind").is_some() {
+                    serde_json::from_value::<Message>(value.clone())?
+                } else {
+                    Message::Standard(serde_json::from_value::<StandardMessage>(value.clone())?)
+                };
+
+                if let Some(bytes) = self.read_own_msg(&msg) {
+                    decrypted_values.push(serde_json::from_slice(&bytes)?);
+                    continue;
+                }
+
+                let bytes = self.decrypt(&msg)?;
+                decrypted_values.push(serde_json::from_slice(&bytes)?);
+            }
+
+            return Ok(serde_json::Value::Array(decrypted_values));
+        }
+
+        let msg = if data.get("kind").is_some() {
+            serde_json::from_value::<Message>(data.clone())?
+        } else {
+            Message::Standard(serde_json::from_value::<StandardMessage>(data.clone())?)
+        };
+
+        if let Some(bytes) = self.read_own_msg(&msg) {
+            return Ok(serde_json::from_slice(&bytes)?);
+        }
+
+        let bytes = self.decrypt(&msg)?;
+
+        Ok(serde_json::from_slice(&bytes)?)
     }
 }
 
@@ -1179,5 +1319,166 @@ mod tests {
 
         // Test receiver commit for future use cases
         receiver_sess.commit_receiver(None, Some(100)); // This should be a no-op for current state
+    }
+
+    #[test]
+    fn test_limited_persistent_replay() {
+        use serde_json::json;
+
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
+        let bundle = PreKeyBundle::new(&receiver_id, 7, &spk_secret, None, None);
+
+        let (init_msg, mut sender_sess) =
+            Session::initiate(&sender_id, &bundle, b"handshake").unwrap();
+
+        let initial_message = match &init_msg {
+            Message::Initial(m) => m,
+            _ => unreachable!("initiate must return Initial message"),
+        };
+
+        let (mut receiver_sess, _) =
+            Session::recv(&receiver_id, &spk_secret, &bundle, initial_message, None).unwrap();
+
+        let original = json!({
+            "foo": "bar",
+            "count": 42
+        });
+        let mut payload = original.clone();
+
+        sender_sess
+            .encrypt_limited_persistent_nexus_data_json(&mut payload)
+            .expect("encrypt limited persistent");
+
+        assert!(
+            payload.get("kind").is_some(),
+            "kind tag should exist for persistent payloads"
+        );
+
+        let first = receiver_sess
+            .decrypt_nexus_data_json(&payload)
+            .expect("first decrypt should succeed");
+        assert_eq!(first, original, "first decrypt must round-trip");
+
+        let second = receiver_sess
+            .decrypt_nexus_data_json(&payload)
+            .expect("second decrypt should reuse message key");
+        assert_eq!(second, original, "replayed decrypt must match");
+    }
+
+    #[test]
+    fn test_nexus_data_json_encrypt_decrypt_roundtrip() {
+        use serde_json::json;
+
+        // 1. bootstrap a normal session
+        let sender_id = IdentityKey::generate();
+        let receiver_id = IdentityKey::generate();
+        let spk_secret = StaticSecret::random_from_rng(OsRng);
+        let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
+
+        let (init_msg, mut sender_sess) =
+            Session::initiate(&sender_id, &bundle, b"handshake").unwrap();
+
+        // Extract the initial message
+        let initial_message = match &init_msg {
+            Message::Initial(m) => m,
+            _ => unreachable!(),
+        };
+
+        // Initialize the receiver session
+        let (mut receiver_sess, _) =
+            Session::recv(&receiver_id, &spk_secret, &bundle, initial_message, None).unwrap();
+
+        // == Send an array ==
+
+        let mut data = json!([{"key1": "value1"}, {"key2": "value2"}]);
+        sender_sess
+            .encrypt_nexus_data_json(&mut data)
+            .expect("Sender encrypt array failed");
+
+        // It should be a JSON array of serialized `StandardMessage` objects.
+        assert!(data.is_array(), "Data should be an array after encryption");
+
+        for item in data.as_array().unwrap() {
+            let msg = serde_json::from_value::<StandardMessage>(item.clone());
+
+            assert!(msg.is_ok(), "Each item should be a valid StandardMessage");
+        }
+
+        // Receiver decrypts the array.
+        let decrypted_data = receiver_sess
+            .decrypt_nexus_data_json(&data)
+            .expect("Receiver decrypt array failed");
+
+        // Verify the decrypted data matches the original array.
+        assert_eq!(
+            decrypted_data,
+            json!([{"key1": "value1"}, {"key2": "value2"}]),
+            "Decrypted data should match original array"
+        );
+
+        // == Send an object ==
+
+        let mut data = json!({"key1": "value1", "key2": "value2"});
+        sender_sess
+            .encrypt_nexus_data_json(&mut data)
+            .expect("Sender encrypt object failed");
+
+        // This should be a serialized `StandardMessage` object.
+        let msg = serde_json::from_value::<StandardMessage>(data.clone());
+        assert!(
+            msg.is_ok(),
+            "Data should be a valid StandardMessage after encryption"
+        );
+
+        // Receiver decrypts the object.
+        let decrypted_data = receiver_sess
+            .decrypt_nexus_data_json(&data)
+            .expect("Receiver decrypt object failed");
+
+        // Verify the decrypted data matches the original object.
+        assert_eq!(
+            decrypted_data,
+            json!({"key1": "value1", "key2": "value2"}),
+            "Decrypted data should match original object"
+        );
+
+        // == Reading own messages ==
+
+        // Encrypt a message and read it back
+        let mut data = json!({"own_key": "own_value"});
+
+        receiver_sess
+            .encrypt_nexus_data_json(&mut data)
+            .expect("Sender encrypt own message failed");
+
+        // Sender should be able to read their own message
+        let own_pt = receiver_sess
+            .decrypt_nexus_data_json(&data)
+            .expect("Sender decrypt own message failed");
+
+        assert_eq!(
+            own_pt,
+            json!({"own_key": "own_value"}),
+            "Sender should read their own message correctly"
+        );
+
+        // Sender should also be able to read own messages in an array
+        let mut arr_data = json!([{"own_key": "own_value"}, {"another_key": "another_value"}]);
+
+        receiver_sess
+            .encrypt_nexus_data_json(&mut arr_data)
+            .expect("Sender encrypt own array message failed");
+
+        let own_pt_arr = receiver_sess
+            .decrypt_nexus_data_json(&arr_data)
+            .expect("Sender decrypt own array message failed");
+
+        assert_eq!(
+            own_pt_arr,
+            json!([{"own_key": "own_value"}, {"another_key": "another_value"}]),
+            "Sender should read their own array message correctly"
+        );
     }
 }

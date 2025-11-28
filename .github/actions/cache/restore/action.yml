@@ -1,0 +1,30 @@
+name: Restore cache
+description: Restore cache using actions/cache/restore
+inputs:
+  key:
+    description: 'An explicit key for restoring the cache'
+    required: true
+  restore-keys:
+    description: 'An ordered multiline string listing the prefix-matched keys, that are used for restoring stale cache if no cache hit occurred for key. Note `cache-hit` returns false in this case.'
+    required: true
+outputs:
+  cache-primary-key:
+    description: 'A resolved cache key for which cache match was attempted'
+    value: ${{ steps.cache-action-restore.outputs.cache-primary-key }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: cache-action-restore
+      uses: actions/cache/restore@v4.2.3
+      with:
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+        path: |
+          ~/.cache/sccache
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
+          ~/work/**/target

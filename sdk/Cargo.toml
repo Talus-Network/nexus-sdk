@@ -42,26 +42,33 @@ sui_types = [
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json"]
 
-# Types feature enables the use of the `types` module. Also adds reqwest as a
-# dependency.
-types = ["sui_types", "reqwest"]
-
-# Events feature enables the use of the `events` module.
-events = ["sui_idents", "types"]
-
 # Object crawler feature enables the use of the `object_crawler` module.
 object_crawler = ["sui_types", "serde_json"]
-
-# Transactions feature enables the use of the `transactions` module. These are
-# used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents", "bincode"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
+# Types feature enables the use of the `types` module. Also adds reqwest as a
+# dependency.
+types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures"]
+
+# Events feature enables the use of the `events` module.
+events = ["sui_idents", "types"]
+
+# Transactions feature enables the use of the `transactions` module. These are
+# used in the CLI and tests and hide away PTBs for various Nexus operations.
+transactions = ["sui_idents", "bincode", "types"]
+
 # Provides DAG-related utilities.
 dag = ["petgraph"]
+
+# Schema generation feature enables automatic schema generation from Move modules.
+# Used for onchain tool registration.
+schema_gen = ["sui_types", "serde_json"]
+
+# Provides various Nexus utilities like deployment and execution of workflows.
+nexus = ["transactions", "dag", "object_crawler"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -72,7 +79,9 @@ test_utils = [
     "tokio-retry",
     "sui_move_build",
     "sui_package_management",
+    "portpicker",
     "testcontainers-modules",
+    "mockito",
 ]
 
 # Enable all features apart from `test_utils`.
@@ -88,6 +97,8 @@ full = [
     "transactions",
     "walrus",
     "dag",
+    "schema_gen",
+    "nexus",
 ]
 
 
@@ -96,9 +107,18 @@ anyhow.workspace = true
 chrono.workspace = true
 dirs = "6.0.0"
 serde.workspace = true
+serde_repr = "0.1"
 
 # === Optional deps for features ===
 [dependencies.base64]
+workspace = true
+optional = true
+
+[dependencies.enum_dispatch]
+workspace = true
+optional = true
+
+[dependencies.futures]
 workspace = true
 optional = true
 
@@ -149,6 +169,10 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.portpicker]
+workspace = true
+optional = true
+
 [dependencies.rand]
 workspace = true
 optional = true
@@ -191,6 +215,10 @@ version = "0.3"
 optional = true
 
 [dependencies.lazy-regex]
+workspace = true
+optional = true
+
+[dependencies.mockito]
 workspace = true
 optional = true
 
@@ -256,15 +284,11 @@ package = "shared-crypto"
 optional = true
 
 [dependencies.sui_move_build]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-move-build"
+workspace = true
 optional = true
 
 [dependencies.sui_package_management]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-package-management"
+workspace = true
 optional = true
 
 [dependencies.testcontainers-modules]
@@ -277,10 +301,10 @@ optional = true
 # === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
-tokio = { workspace = true, features = ["full"] }
-serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full", "macros"] }
+serde_json.workspace = true
 mockito.workspace = true
-tempfile = "3"
+tempfile.workspace = true
 
 # === Build deps ===
 [build-dependencies]

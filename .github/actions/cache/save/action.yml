@@ -1,0 +1,21 @@
+name: Save cache
+description: Save cache using actions/cache/save
+inputs:
+  key:
+    description: 'An explicit key for saving the cache'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/cache/save@v4.2.3
+      with:
+        key: ${{ inputs.key }}
+        path: |
+          ~/.cache/sccache
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
+          ~/work/**/target

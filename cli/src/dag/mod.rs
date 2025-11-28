@@ -72,6 +72,15 @@ pub(crate) enum DagCommand {
             value_name = "DATA"
         )]
         input_json: serde_json::Value,
+        /// Which input json keys should be stored remotely.
+        #[arg(
+            long = "remote",
+            short = 'r',
+            help = "Which input json keys should be stored remotely. Provide a comma-separated list of {vertex}.{port} values. By default, all fields are stored inline.",
+            value_delimiter = ',',
+            value_name = "VERTEX.PORT"
+        )]
+        remote: Vec<String>,
         /// Whether to inspect the DAG execution process.
         #[arg(
             long = "inspect",
@@ -79,6 +88,14 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
+        /// Optional gas price paid as priority fee for the DAG execution.
+        #[arg(
+            long = "gas-price",
+            help = "The gas price priority fee to pass to the DAG execution. Defaults to 0 when omitted.",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        price_priority_fee: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -123,7 +140,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             entry_group,
             input_json,
+            remote,
             inspect,
+            price_priority_fee,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -133,7 +152,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 dag_id,
                 entry_group,
                 input_json,
+                remote,
                 inspect,
+                price_priority_fee,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
