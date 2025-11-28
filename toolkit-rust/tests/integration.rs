@@ -235,13 +235,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_meta_invalid_schema() {
-        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8043), DummyTool) });
+        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8047), DummyTool) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let meta = Client::new()
-            .get("http://localhost:8043/meta")
+            .get("http://localhost:8047/meta")
             .header("X-Forwarded-Proto", "ftp")
             .send()
             .await
