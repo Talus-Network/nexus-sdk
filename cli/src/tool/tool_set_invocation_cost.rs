@@ -31,7 +31,7 @@ pub(crate) async fn set_tool_invocation_cost(
     let reference_gas_price = fetch_reference_gas_price(&sui).await?;
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
-    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_gas)) else {
+    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).and_then(|t| t.over_gas)) else {
         return Err(NexusCliError::Any(anyhow!(
             "No OwnerCap object ID found for tool '{tool_fqn}'."
         )));

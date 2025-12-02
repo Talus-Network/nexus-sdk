@@ -51,21 +51,49 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.into_inner();
 
-        tools_json.push(json!(
-        {
-            "fqn": fqn,
-            "url": tool.url,
-            "registered_at_ms": tool.registered_at_ms,
-            "description": tool.description
-        }));
+        match tool {
+            ToolVariant::OffChain(offchain_tool) => {
+                tools_json.push(json!(
+                {
+                    "fqn": fqn,
+                    "url": offchain_tool.url,
+                    "registered_at_ms": offchain_tool.registered_at_ms,
+                    "description": offchain_tool.description,
+                }));
 
-        item!(
-            "Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
-            fqn = fqn.to_string().truecolor(100, 100, 100),
-            url = tool.url.as_str().truecolor(100, 100, 100),
-            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
-            description = tool.description.truecolor(100, 100, 100),
-        );
+                item!(
+                    "OffChain Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
+                    fqn = fqn.to_string().truecolor(100, 100, 100),
+                    url = offchain_tool.url.as_str().truecolor(100, 100, 100),
+                    registered_at = offchain_tool
+                        .registered_at_ms
+                        .to_string()
+                        .truecolor(100, 100, 100),
+                    description = offchain_tool.description.truecolor(100, 100, 100),
+                );
+            }
+            ToolVariant::OnChain(onchain_tool) => {
+                tools_json.push(json!(
+                {
+                    "fqn": fqn,
+                    "package_address": onchain_tool.package_address,
+                    "module_name": onchain_tool.module_name,
+                    "witness_id": onchain_tool.witness_id,
+                    "registered_at_ms": onchain_tool.registered_at_ms,
+                    "description": onchain_tool.description,
+                    "input_schema": onchain_tool.input_schema
+                }));
+
+                item!(
+                    "OnChain Tool '{fqn}' at '{package}::{module}' registered '{registered_at}' - {description}",
+                    fqn = fqn.to_string().truecolor(100, 100, 100),
+                    package = onchain_tool.package_address.truecolor(100, 100, 100),
+                    module = onchain_tool.module_name.truecolor(100, 100, 100),
+                    registered_at = onchain_tool.registered_at_ms.to_string().truecolor(100, 100, 100),
+                    description = onchain_tool.description.truecolor(100, 100, 100),
+                );
+            }
+        }
     }
 
     json_output(&tools_json)?;
@@ -75,15 +103,35 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
 #[derive(Debug, Clone, Deserialize)]
 struct ToolRegistry {
-    tools: ObjectBag<ToolFqn, Structure<Tool>>,
+    tools: ObjectBag<ToolFqn, Structure<ToolVariant>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct Tool {
+#[serde(untagged)]
+enum ToolVariant {
+    OffChain(OffChainTool),
+    OnChain(OnChainTool),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OffChainTool {
     #[serde(deserialize_with = "deserialize_bytes_to_url")]
     url: reqwest::Url,
     #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
     description: String,
+    #[serde(deserialize_with = "deserialize_string_to_datetime")]
+    registered_at_ms: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OnChainTool {
+    package_address: String,
+    module_name: String,
+    witness_id: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    description: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    input_schema: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,
 }

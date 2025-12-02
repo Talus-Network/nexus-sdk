@@ -197,11 +197,44 @@ pub struct OffChainToolRegisteredEvent {
 /// Fired by the Nexus Workflow when a new on-chain tool is registered so that
 /// the Leader can also register it in Redis. This way the Leader knows how and
 /// where to evaluate the tool.
-// TODO: <https://github.com/Talus-Network/nexus-next/issues/96>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OnChainToolRegisteredEvent {
+    /// [ID] of [ToolRegistry].
+    pub registry: sui::ObjectID,
+    /// New [ID] of the [OnChainTool].
+    pub tool: sui::ObjectID,
+    /// When the tool was registered.
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub registered_at_ms: u64,
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
+    /// The address of the published package.
+    pub package_address: sui::Address,
+    /// Module name.
+    pub module_name: String,
+    /// The witness object ID that proves the tool's identity.
+    pub witness_id: sui::ObjectID,
+    /// Arguments to the execute function.
+    #[serde(
+        deserialize_with = "deserialize_bytes_to_json_value",
+        serialize_with = "serialize_json_value_to_bytes"
+    )]
+    pub input_schema: serde_json::Value,
+    /// Output schema of the execute function.
+    #[serde(
+        deserialize_with = "deserialize_bytes_to_json_value",
+        serialize_with = "serialize_json_value_to_bytes"
+    )]
+    pub output_schema: serde_json::Value,
+    /// Description of the tool.
+    #[serde(
+        deserialize_with = "deserialize_bytes_to_string",
+        serialize_with = "serialize_string_to_bytes"
+    )]
+    pub description: String,
 }
 
 /// Fired by the Nexus Workflow when a tool is unregistered. The Leader should
