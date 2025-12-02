@@ -147,6 +147,7 @@ impl NexusEventKind {
 pub struct RequestWalkExecutionEvent {
     pub dag: sui::ObjectID,
     pub execution: sui::ObjectID,
+    pub invoker: sui::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -609,6 +610,7 @@ mod tests {
     fn test_sui_event_desers_into_nexus_event() {
         let dag = sui::ObjectID::random();
         let execution = sui::ObjectID::random();
+        let invoker = sui::Address::random_for_testing_only();
         let evaluations = sui::ObjectID::random();
 
         let generic = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
@@ -624,6 +626,7 @@ mod tests {
                 "event":{
                     "dag": dag.to_string(),
                     "execution": execution.to_string(),
+                    "invoker": invoker.to_string(),
                     "walk_index": "42",
                     "next_vertex": {
                         "variant": "Plain",
@@ -646,6 +649,7 @@ mod tests {
         assert_matches!(event.data, NexusEventKind::RequestWalkExecution(e)
             if e.dag == dag &&
                 e.execution == execution &&
+                e.invoker == invoker &&
                 e.evaluations == evaluations &&
                 e.walk_index == 42 &&
                 matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
@@ -657,6 +661,7 @@ mod tests {
     fn test_sui_event_desers_into_nexus_event_with_schedule_wrapper() {
         let dag = sui::ObjectID::random();
         let execution = sui::ObjectID::random();
+        let invoker = sui::Address::random_for_testing_only();
         let evaluations = sui::ObjectID::random();
 
         let inner = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
@@ -680,6 +685,7 @@ mod tests {
                     "request": {
                         "dag": dag.to_string(),
                         "execution": execution.to_string(),
+                        "invoker": invoker.to_string(),
                         "walk_index": "42",
                         "next_vertex": {
                             "variant": "Plain",
@@ -721,6 +727,7 @@ mod tests {
 
         assert_eq!(inner.dag, dag);
         assert_eq!(inner.execution, execution);
+        assert_eq!(inner.invoker, invoker);
         assert_eq!(inner.evaluations, evaluations);
         assert_eq!(inner.walk_index, 42);
         match inner.next_vertex {
@@ -775,6 +782,7 @@ mod tests {
         let dummy_event = NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
             dag: sui::ObjectID::random(),
             execution: sui::ObjectID::random(),
+            invoker: sui::Address::random_for_testing_only(),
             walk_index: 1,
             next_vertex: RuntimeVertex::Plain {
                 vertex: TypeName::new("vertex"),
