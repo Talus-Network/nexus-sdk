@@ -1,0 +1,10 @@
+[package]
+name = "onchain_tool_test"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+onchain_tool = "0x0"
+
+

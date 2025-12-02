@@ -16,17 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
 - `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `nexus tool register onchain` command to register onchain tools
+- onchain tool development guide
+- `nexus tool new` onchain tool move template
 
 ### `nexus-sdk`
 
 #### Added
 
 - support for `scheduler` transactions and events
+- onchain schema generation
 
 #### Changed
 
 - `crypto auth` now uses the new handshake algorithm
 - added to `RequestWalkExecutionEvent` invoker address
+- `nexus tool register` now has two subcommands for both types of tools
+- wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
 
 ## [`0.3.0`] - 2025-11-10
 
