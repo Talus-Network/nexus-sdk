@@ -21,6 +21,7 @@ pub struct NexusObjects {
     pub default_tap: sui::ObjectRef,
     pub gas_service: sui::ObjectRef,
     pub pre_key_vault: sui::ObjectRef,
+    pub execution_wallet: sui::ObjectRef,
 }
 
 #[cfg(feature = "sui_idents")]
@@ -112,6 +113,12 @@ mod tests {
             )
                 .into(),
             pre_key_vault: (
+                sui::ObjectID::random(),
+                sui::SequenceNumber::from_u64(1),
+                sui::ObjectDigest::random(),
+            )
+                .into(),
+            execution_wallet: (
                 sui::ObjectID::random(),
                 sui::SequenceNumber::from_u64(1),
                 sui::ObjectDigest::random(),

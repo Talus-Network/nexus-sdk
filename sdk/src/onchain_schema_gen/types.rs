@@ -123,8 +123,27 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
     }
 }
 
-/// Check if a parameter is TxContext (should be excluded from the inputschema).
+/// Check if a parameter is TxContext (should be excluded from the input schema).
 pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
+    is_struct_param(move_type, "0x2", "tx_context", "TxContext")
+}
+
+/// Check if a parameter is DAGExecution (should be excluded from the input schema).
+/// DAGExecution is framework-provided, similar to ProofOfUID and TxContext.
+pub fn is_dag_execution_param(
+    move_type: &crate::sui::MoveNormalizedType,
+    workflow_pkg_id: &str,
+) -> bool {
+    is_struct_param(move_type, workflow_pkg_id, "dag", "DAGExecution")
+}
+
+/// Helper to check if a parameter is a specific struct type.
+fn is_struct_param(
+    move_type: &crate::sui::MoveNormalizedType,
+    expected_address: &str,
+    expected_module: &str,
+    expected_name: &str,
+) -> bool {
     use crate::sui::MoveNormalizedType;
 
     let struct_type = match move_type {
@@ -146,9 +165,10 @@ pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
         ..
     }) = struct_type
     {
-        (address == "0x2" || address == &crate::sui::FRAMEWORK_PACKAGE_ID.to_string())
-            && module == "tx_context"
-            && name == "TxContext"
+        let addr_matches = address == expected_address
+            || (expected_address == "0x2"
+                && address == &crate::sui::FRAMEWORK_PACKAGE_ID.to_string());
+        addr_matches && module == expected_module && name == expected_name
     } else {
         false
     }

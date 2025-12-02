@@ -1054,6 +1054,22 @@ impl PreKeyVault {
     };
 }
 
+// == `nexus_workflow::execution_wallet` ==
+
+pub struct ExecutionWallet;
+
+const EXECUTION_WALLET_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("execution_wallet");
+
+impl ExecutionWallet {
+    /// ExecutionWallet type for lookups.
+    ///
+    /// `nexus_workflow::execution_wallet::ExecutionWallet`
+    pub const EXECUTION_WALLET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_WALLET_MODULE,
+        name: sui::move_ident_str!("ExecutionWallet"),
+    };
+}
+
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::MoveTypeTag`. Useful for
 /// creating generic types.
 pub fn into_type_tag(

@@ -10,7 +10,13 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
+/// skips framework-provided parameters:
+/// - First parameter: ProofOfUID
+/// - Second parameter: DAGExecution
+/// - Last parameter: TxContext
+///
+/// The `workflow_pkg_id` is needed to identify the DAGExecution type since it's
+/// defined in the workflow package, not the Sui framework.
 pub async fn generate_input_schema(
     sui: &crate::sui::Client,
     package_address: crate::sui::ObjectID,
@@ -51,8 +57,11 @@ pub async fn generate_input_schema(
     for (i, param_type) in execute_func.parameters.iter().enumerate() {
         let is_tx_context = is_tx_context_param(param_type);
 
-        // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
-        if i == 0 || is_tx_context {
+        // Skip framework-provided parameters:
+        // - Index 0: ProofOfUID 
+        // - Index 1: DAGExecution
+        // - TxContext
+        if i == 0 || i == 1 || is_tx_context {
             continue;
         }
 
@@ -142,8 +151,8 @@ mod tests {
 
         // Verify schema structure.
         // The execute function has signature:
-        // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
-        // After skipping ProofOfUID (first) and TxContext (last), we should have:
+        // execute(worksheet: &mut ProofOfUID, execution: &DAGExecution, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
+        // After skipping ProofOfUID (first), DAGExecution (second), and TxContext (last), we should have:
         // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
         // - Parameter 1: increase_with (u64).
 
