@@ -8,11 +8,11 @@
 //! use nexus_sdk::sui;
 //! use nexus_sdk::idents::workflow;
 //!
-//! let mut tx = sui::ProgrammableTransactionBuilder::new();
-//! let workflow_pkg_id = sui::ObjectID::random();
+//! let mut tx = sui::tx::TransactionBuilder::new();
+//! let workflow_pkg_id = sui::types::Address::random();
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
 //!
-//! assert!(matches!(vertex, Ok(sui::Argument::Result(_))));
+//! assert!(matches!(vertex, Ok(sui::types::Argument::Result(_))));
 //! ```
 
 pub mod move_std;
@@ -25,13 +25,13 @@ use crate::sui;
 
 /// This struct is used to define Nexus Move resources as `const`s.
 pub struct ModuleAndNameIdent {
-    pub module: &'static sui::MoveIdentStr,
-    pub name: &'static sui::MoveIdentStr,
+    pub module: sui::types::Identifier,
+    pub name: sui::types::Identifier,
 }
 
 impl ModuleAndNameIdent {
     /// Returns the fully-qualified string for this identifier under the given package ID.
-    pub fn qualified_name(&self, package: sui::ObjectID) -> String {
+    pub fn qualified_name(&self, package: sui::types::Address) -> String {
         format!("{package}::{}::{}", self.module, self.name)
     }
 }

@@ -72,12 +72,14 @@ tokio-retry = "0.3.0"
 toml = "0.8.20"
 warp = "0.3.7"
 zeroize = "1.7"
-sui_move_build = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-move-build" }
-sui_package_management = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-package-management" }
 
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
+
+# === Sui dev deps ===
+sui_move_build = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-move-build" }
+sui_package_management = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-package-management" }
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
