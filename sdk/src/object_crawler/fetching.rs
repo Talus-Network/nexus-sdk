@@ -8,11 +8,14 @@ use {
 /// Fetch a single object from Sui based on the provided object ID.
 pub async fn fetch_one<T>(
     sui: &sui::Client,
-    object_id: sui::ObjectID,
+    object_id: sui::types::Address,
 ) -> anyhow::Result<Response<T>>
 where
     T: DeserializeOwned,
 {
+    let object_id =
+        sui::ObjectID::from_hex_literal(&object_id.to_string()).expect("TODO: remove ObjectID");
+
     let options = sui::ObjectDataOptions::new().with_content().with_owner();
 
     let response = match sui
@@ -51,11 +54,16 @@ where
 /// Batch fetch multiple objects from Sui based on the provided object IDs.
 pub async fn fetch_many<T>(
     sui: &sui::Client,
-    object_ids: Vec<sui::ObjectID>,
+    object_ids: Vec<sui::types::Address>,
 ) -> anyhow::Result<Vec<Response<T>>>
 where
     T: DeserializeOwned,
 {
+    let object_ids = object_ids
+        .into_iter()
+        .map(|id| sui::ObjectID::from_hex_literal(&id.to_string()).expect("TODO: remove ObjectID"))
+        .collect::<Vec<_>>();
+
     let options = sui::ObjectDataOptions::new().with_content().with_owner();
 
     let response = match sui
@@ -108,11 +116,20 @@ where
         .filter_map(|f| serde_json::from_value::<K>(f.name.value.clone()).ok())
         .collect::<Vec<_>>();
 
-    let values = fetch_many::<V>(sui, objects.iter().map(|f| f.object_id).collect())
-        .await?
-        .into_iter()
-        .map(|r| r.data)
-        .collect::<Vec<_>>();
+    let values = fetch_many::<V>(
+        sui,
+        objects
+            .iter()
+            .map(|f| {
+                sui::types::Address::from_hex(f.object_id.into_bytes())
+                    .expect("TODO: Remove ObjectId")
+            })
+            .collect(),
+    )
+    .await?
+    .into_iter()
+    .map(|r| r.data)
+    .collect::<Vec<_>>();
 
     if keys.len() != values.len() {
         bail!("Could not fetch all dynamic object {object_id} fields");
@@ -153,11 +170,13 @@ where
     // Using [serde_json::Value] as an intermediary format.
     match serde_json::to_value(&object).and_then(serde_json::from_value::<T>) {
         Ok(parsed) => Ok(Response {
-            id: object_id,
+            id: sui::types::Address::from_hex(object_id.into_bytes())
+                .expect("TODO: Remove ObjectId"),
             owner,
             data: parsed,
-            version: data.version,
-            digest: data.digest,
+            version: data.version.value(),
+            digest: sui::types::Digest::from_bytes(data.digest.into_inner())
+                .expect("TODO: remove old SDK"),
         }),
         Err(e) => bail!("Could not parse object {object_id}: {e}"),
     }
@@ -170,11 +189,11 @@ where
 /// metadata can be added here.
 #[derive(Clone, Debug)]
 pub struct Response<T> {
-    pub id: sui::ObjectID,
+    pub id: sui::types::Address,
     pub owner: sui::Owner,
-    pub version: sui::SequenceNumber,
+    pub version: sui::types::Version,
     pub data: T,
-    pub digest: sui::ObjectDigest,
+    pub digest: sui::types::Digest,
 }
 
 impl<T> Response<T> {
@@ -184,22 +203,18 @@ impl<T> Response<T> {
     }
 
     /// Get initial shard version of the object.
-    pub fn get_initial_version(&self) -> sui::SequenceNumber {
+    pub fn get_initial_version(&self) -> sui::types::Version {
         match self.owner {
             sui::Owner::Shared {
                 initial_shared_version,
-            } => initial_shared_version,
+            } => initial_shared_version.value(),
             _ => self.version,
         }
     }
 
     // Get a Sui object ref.
-    pub fn object_ref(&self) -> sui::ObjectRef {
-        sui::ObjectRef {
-            object_id: self.id,
-            version: self.get_initial_version(),
-            digest: self.digest,
-        }
+    pub fn object_ref(&self) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(self.id, self.version, self.digest)
     }
 }
 

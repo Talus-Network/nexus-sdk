@@ -72,7 +72,7 @@ dag = ["petgraph"]
 schema_gen = ["sui_types", "serde_json"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
-nexus = ["transactions", "dag", "object_crawler"]
+nexus = ["transactions", "dag", "object_crawler", "bcs"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -149,6 +149,10 @@ features = ["std"]
 optional = true
 
 [dependencies.bincode]
+workspace = true
+optional = true
+
+[dependencies.bcs]
 workspace = true
 optional = true
 

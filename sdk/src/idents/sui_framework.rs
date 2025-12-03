@@ -1,4 +1,7 @@
-use crate::{idents::ModuleAndNameIdent, sui};
+use crate::{
+    idents::{pure_arg, ModuleAndNameIdent},
+    sui,
+};
 
 pub const PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x2");
 pub const CLOCK_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x6");
@@ -20,18 +23,8 @@ impl Address {
     pub fn address_from_type(
         tx: &mut sui::tx::TransactionBuilder,
         address: sui::types::Address,
-    ) -> sui::types::Argument {
-        tx.input(sui::tx::Input {
-            kind: Some(sui::tx::InputKind::Pure),
-            value: Some(sui::tx::Value::Array(
-                address
-                    .as_bytes()
-                    .iter()
-                    .map(|b| sui::tx::Value::Number(*b as u64))
-                    .collect(),
-            )),
-            ..Default::default()
-        })
+    ) -> anyhow::Result<sui::types::Argument> {
+        Ok(tx.input(pure_arg(&address)?))
     }
 }
 
@@ -52,10 +45,10 @@ impl Object {
     pub fn id_from_object_id(
         tx: &mut sui::tx::TransactionBuilder,
         object_id: sui::types::Address,
-    ) -> sui::types::Argument {
-        let address = Address::address_from_type(tx, object_id);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let address = Address::address_from_type(tx, object_id)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 PACKAGE_ID,
                 Self::ID_FROM_ADDRESS.module,
@@ -63,7 +56,7 @@ impl Object {
                 vec![],
             ),
             vec![address],
-        )
+        ))
     }
 }
 

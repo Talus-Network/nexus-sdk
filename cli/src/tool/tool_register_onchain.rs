@@ -30,14 +30,14 @@ pub(crate) async fn register_onchain_tool(
     module_id: sui::MoveModuleId,
     fqn: ToolFqn,
     description: String,
-    witness_id: sui::ObjectID,
-    collateral_coin: Option<sui::ObjectID>,
+    witness_id: sui::types::Address,
+    collateral_coin: Option<sui::types::Address>,
     no_save: bool,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     // Extract package address and module name from ModuleId.
-    let package_address = sui::ObjectID::from(*module_id.address());
+    let package_address = sui::types::Address::from(*module_id.address());
     let module_name = module_id.name().to_string();
 
     command_title!(
@@ -140,7 +140,7 @@ fn validate_gas_and_collateral_coins(
 /// Generate input and output schemas and allow user customization.
 async fn generate_and_customize_schemas(
     sui: &sui::Client,
-    package_address: sui::ObjectID,
+    package_address: sui::types::Address,
     module_name: &str,
 ) -> AnyResult<(String, String), NexusCliError> {
     // Generate input schema by introspecting the Move module's "execute" function.
@@ -215,16 +215,16 @@ async fn generate_and_customize_schemas(
 /// Build the registration transaction and return TransactionData.
 fn build_registration_transaction(
     objects: &NexusObjects,
-    package_address: sui::ObjectID,
+    package_address: sui::types::Address,
     module_name: String,
     input_schema: String,
     output_schema: String,
     fqn: &ToolFqn,
     description: String,
-    witness_id: sui::ObjectID,
+    witness_id: sui::types::Address,
     collateral_coin: &sui::Coin,
     gas_coin: &sui::Coin,
-    address: sui::Address,
+    address: sui::types::Address,
     sui_gas_budget: u64,
     reference_gas_price: u64,
 ) -> AnyResult<sui::TransactionData, NexusCliError> {
@@ -303,7 +303,7 @@ async fn execute_registration_transaction(
 fn extract_over_tool_owner_cap(
     response: &sui::TransactionBlockResponse,
     objects: &NexusObjects,
-) -> AnyResult<sui::ObjectID, NexusCliError> {
+) -> AnyResult<sui::types::Address, NexusCliError> {
     // Parse the owner cap object IDs from the response.
     let owner_caps = response
         .object_changes
@@ -316,9 +316,8 @@ fn extract_over_tool_owner_cap(
                 object_id,
                 ..
             } if object_type.address == *objects.primitives_pkg_id
-                && object_type.module
-                    == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
-                && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
+                && object_type.module == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
+                && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name =>
             {
                 Some((*object_id, object_type.clone()))
             }
@@ -330,8 +329,8 @@ fn extract_over_tool_owner_cap(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params.first() {
             Some(sui::MoveTypeTag::Struct(what_for))
-                if what_for.module == workflow::ToolRegistry::OVER_TOOL.module.into()
-                    && what_for.name == workflow::ToolRegistry::OVER_TOOL.name.into() =>
+                if what_for.module == workflow::ToolRegistry::OVER_TOOL.module
+                    && what_for.name == workflow::ToolRegistry::OVER_TOOL.name =>
             {
                 Some(object_id)
             }
@@ -358,7 +357,7 @@ fn extract_over_tool_owner_cap(
 /// Save the tool owner caps to the CLI configuration.
 async fn save_tool_owner_caps(
     fqn: ToolFqn,
-    over_tool_id: sui::ObjectID,
+    over_tool_id: sui::types::Address,
 ) -> AnyResult<(), NexusCliError> {
     let save_handle = loading!("Saving the owner cap to the CLI configuration...");
 
@@ -1260,16 +1259,16 @@ mod tests {
         let primitives_pkg_id = nexus_objects.primitives_pkg_id;
 
         // Create a mock transaction response with owner cap object.
-        let owner_cap_id = sui::ObjectID::random();
+        let owner_cap_id = sui::types::Address::random();
 
         let object_type = sui::MoveStructTag {
             address: primitives_pkg_id.into(),
-            module: primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into(),
-            name: primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into(),
+            module: primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
+            name: primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
             type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
                 address: nexus_objects.workflow_pkg_id.into(),
-                module: workflow::ToolRegistry::OVER_TOOL.module.into(),
-                name: workflow::ToolRegistry::OVER_TOOL.name.into(),
+                module: workflow::ToolRegistry::OVER_TOOL.module,
+                name: workflow::ToolRegistry::OVER_TOOL.name,
                 type_params: vec![],
             }))],
         };
@@ -1281,12 +1280,12 @@ mod tests {
             effects: None,
             events: None,
             object_changes: Some(vec![sui::ObjectChange::Created {
-                sender: sui::Address::random_for_testing_only(),
-                owner: sui::Owner::AddressOwner(sui::Address::random_for_testing_only()),
+                sender: sui::types::Address::random_for_testing_only(),
+                owner: sui::Owner::AddressOwner(sui::types::Address::random_for_testing_only()),
                 object_type,
                 object_id: owner_cap_id,
                 version: 1.into(),
-                digest: sui::ObjectDigest::random(),
+                digest: sui::types::Digest::random(),
             }]),
             balance_changes: None,
             timestamp_ms: None,
@@ -1360,17 +1359,17 @@ mod tests {
     fn test_build_registration_transaction_success() {
         // Create mock objects.
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let package_address = sui::ObjectID::random();
+        let package_address = sui::types::Address::random();
         let module_name = "test_module".to_string();
         let input_schema = r#"{"0":{"type":"u64","description":"Amount"}}"#.to_string();
         let output_schema =
             r#"{"ok":{"type":"variant","description":"Success","fields":{}}}"#.to_string();
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let description = "Test tool description".to_string();
-        let witness_id = sui::ObjectID::random();
+        let witness_id = sui::types::Address::random();
         let collateral_coin = sui_mocks::mock_sui_coin(5000);
         let gas_coin = sui_mocks::mock_sui_coin(10000);
-        let address = sui::Address::random_for_testing_only();
+        let address = sui::types::Address::random_for_testing_only();
         let sui_gas_budget = 100000000;
         let reference_gas_price = 1000;
 
@@ -1480,7 +1479,7 @@ mod tests {
     async fn test_save_tool_owner_caps_success() {
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
-        let over_tool_id = sui::ObjectID::random();
+        let over_tool_id = sui::types::Address::random();
 
         // Call save_tool_owner_caps.
         let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;

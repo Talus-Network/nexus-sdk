@@ -4,7 +4,7 @@
 //! Some are prefixed with `Sui`, some are not. This re-export will nest all
 //! Sui types under `predule::sui` and remove all `Sui` prefixes.
 //!
-//! This way we can use, for example `sui::ObjectID` in our code.
+//! This way we can use, for example `sui::types::Address` in our code.
 //!
 //! All move types are now also prefixed with `Move` to avoid confusion.
 
@@ -67,7 +67,7 @@ pub use {
         sui_client_config::{SuiClientConfig as ClientConfig, SuiEnv as Env},
         types::{
             base_types::{ObjectID, SequenceNumber, SuiAddress as Address},
-            crypto::SignatureScheme,
+            crypto::{SignatureScheme, SuiKeyPair as KeyPair},
             digests::{ObjectDigest, TransactionDigest},
             dynamic_field::{DynamicFieldInfo, DynamicFieldName},
             event::EventID,
@@ -103,18 +103,29 @@ pub use {
     },
 };
 
+pub mod tx {
+    pub use sui_transaction_builder::{unresolved::*, *};
+}
+
+pub mod types {
+    pub use sui_sdk_types::*;
+}
+
+pub mod crypto {
+    pub use sui_crypto::{ed25519::Ed25519PrivateKey, *};
+}
+
+pub mod grpc {
+    pub use sui_rpc::{field::FieldMask, proto::sui::rpc::v2::*, Client};
+}
+
 /// Sui traits re-exported so that we can `use sui::traits::*` in our code.
 pub mod traits {
     pub use {
         sui_config::Config,
+        sui_crypto::SuiSigner,
         sui_keys::keystore::AccountKeystore,
+        sui_rpc::field::FieldMaskUtil,
         sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
     };
 }
-
-/// Use this whenever you need da Clock (=`0x06`) as Tx argument.
-pub const CLOCK_OBJ_ARG: ObjectArg = ObjectArg::SharedObject {
-    id: CLOCK_OBJECT_ID,
-    initial_shared_version: CLOCK_OBJECT_SHARED_VERSION,
-    mutable: false,
-};

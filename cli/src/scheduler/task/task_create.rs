@@ -20,7 +20,7 @@ use {
 /// Create a scheduler task and optionally enqueue the initial occurrence.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_task(
-    dag_id: sui::ObjectID,
+    dag_id: sui::types::Address,
     entry_group: String,
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,

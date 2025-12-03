@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, ModuleAndNameIdent},
+    idents::{move_std, pure_arg, ModuleAndNameIdent},
     sui,
 };
 
@@ -22,14 +22,10 @@ impl Ascii {
     pub fn ascii_string_from_str<T: AsRef<str>>(
         tx: &mut sui::tx::TransactionBuilder,
         str: T,
-    ) -> sui::types::Argument {
-        let str = tx.input(sui::tx::Input {
-            kind: Some(sui::tx::InputKind::Pure),
-            value: Some(sui::tx::Value::String(str.as_ref().to_owned())),
-            ..Default::default()
-        });
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = tx.input(pure_arg(&str.as_ref().to_string())?);
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 move_std::PACKAGE_ID,
                 Self::STRING.module,
@@ -37,7 +33,7 @@ impl Ascii {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 }
 

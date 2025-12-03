@@ -6,8 +6,8 @@ use {
 /// Claim collateral for a Tool based on the provided FQN.
 pub(crate) async fn claim_collateral(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
-    sui_gas_coin: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Claiming collateral for Tool '{tool_fqn}'");

@@ -1,6 +1,7 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*, sui::*},
     nexus_sdk::transactions::gas,
+    std::str::FromStr,
 };
 
 /// Buy an expiry gas ticket to pay for the specified tool.
@@ -8,8 +9,8 @@ use {
 pub(crate) async fn buy_expiry_gas_ticket(
     tool_fqn: ToolFqn,
     minutes: u64,
-    coin: sui::ObjectID,
-    sui_gas_coin: Option<sui::ObjectID>,
+    coin: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Buying an expiry gas ticket for '{minutes}' minutes for tool '{tool_fqn}'");
@@ -27,11 +28,13 @@ pub(crate) async fn buy_expiry_gas_ticket(
 
     // Fetch gas coin object.
     let gas_coin = fetch_gas_coin(&sui, address, sui_gas_coin).await?;
+    let gas_coin_address = sui::types::Address::from_str(&gas_coin.coin_object_id.to_string())
+        .expect("TODO: remove old sdk");
 
     // Fetch the coin to pay for the ticket with.
     let pay_with_coin = fetch_object_by_id(&sui, coin).await?;
 
-    if pay_with_coin.object_id == gas_coin.coin_object_id {
+    if *pay_with_coin.object_id() == gas_coin_address {
         return Err(NexusCliError::Any(anyhow!(
             "Gas and payment coins must be different."
         )));

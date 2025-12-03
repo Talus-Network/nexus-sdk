@@ -1,5 +1,5 @@
 use crate::{
-    idents::{sui_framework::Address, ModuleAndNameIdent},
+    idents::{pure_arg, sui_framework::Address, ModuleAndNameIdent},
     sui,
     types::{EdgeKind, RuntimeVertex},
     ToolFqn,
@@ -504,10 +504,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::ENTRY_GROUP_FROM_STRING.module,
@@ -515,7 +515,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create an InputPort from a string.
@@ -523,10 +523,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::INPUT_PORT_FROM_STRING.module,
@@ -534,7 +534,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create an encrypted InputPort from a string.
@@ -542,10 +542,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module,
@@ -553,7 +553,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create an OutputPort from a string.
@@ -561,10 +561,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::OUTPUT_PORT_FROM_STRING.module,
@@ -572,7 +572,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create an OutputVariant from a string.
@@ -580,10 +580,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::OUTPUT_VARIANT_FROM_STRING.module,
@@ -591,7 +591,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create a Vertex from a string.
@@ -599,10 +599,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::VERTEX_FROM_STRING.module,
@@ -610,7 +610,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     /// Create a new off-chain NodeIdent from a string.
@@ -618,10 +618,10 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         fqn: &ToolFqn,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string());
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::VERTEX_OFF_CHAIN.module,
@@ -629,7 +629,7 @@ impl Dag {
                 vec![],
             ),
             vec![str],
-        )
+        ))
     }
 
     pub fn on_chain_vertex_kind_from_fqn(
@@ -637,8 +637,8 @@ impl Dag {
         workflow_pkg_id: sui::types::Address,
         tool_registry_id: &sui::types::ObjectReference,
         fqn: &ToolFqn,
-    ) -> sui::types::Argument {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string());
+    ) -> anyhow::Result<sui::types::Argument> {
+        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
         let tool_registry_id = tx.input(sui::tx::Input::shared(
             *tool_registry_id.object_id(),
             tool_registry_id.version(),
@@ -655,7 +655,7 @@ impl Dag {
             vec![tool_registry_id, str],
         );
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::VERTEX_ON_CHAIN.module,
@@ -663,7 +663,7 @@ impl Dag {
                 vec![],
             ),
             vec![str, witness_id],
-        )
+        ))
     }
 
     /// Create an edge kind from an enum variant.
@@ -691,12 +691,12 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         runtime_vertex: &RuntimeVertex,
-    ) -> sui::types::Argument {
+    ) -> anyhow::Result<sui::types::Argument> {
         match runtime_vertex {
             RuntimeVertex::Plain { vertex } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name);
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
 
-                tx.move_call(
+                Ok(tx.move_call(
                     sui::tx::Function::new(
                         workflow_pkg_id,
                         Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module,
@@ -704,28 +704,19 @@ impl Dag {
                         vec![],
                     ),
                     vec![name],
-                )
+                ))
             }
             RuntimeVertex::WithIterator {
                 vertex,
                 iteration,
                 out_of,
             } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name);
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
 
-                let iteration = tx.input(sui::tx::Input {
-                    value: Some(sui::tx::Value::Number(*iteration)),
-                    kind: Some(sui::tx::InputKind::Pure),
-                    ..Default::default()
-                });
+                let iteration = tx.input(pure_arg(iteration)?);
+                let out_of = tx.input(pure_arg(out_of)?);
 
-                let out_of = tx.input(sui::tx::Input {
-                    value: Some(sui::tx::Value::Number(*out_of)),
-                    kind: Some(sui::tx::InputKind::Pure),
-                    ..Default::default()
-                });
-
-                tx.move_call(
+                Ok(tx.move_call(
                     sui::tx::Function::new(
                         workflow_pkg_id,
                         Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module,
@@ -733,7 +724,7 @@ impl Dag {
                         vec![],
                     ),
                     vec![name, iteration, out_of],
-                )
+                ))
             }
         }
     }
@@ -984,10 +975,10 @@ impl Gas {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         object_id: sui::types::Address,
-    ) -> sui::types::Argument {
-        let address = Address::address_from_type(tx, object_id);
+    ) -> anyhow::Result<sui::types::Argument> {
+        let address = Address::address_from_type(tx, object_id)?;
 
-        tx.move_call(
+        Ok(tx.move_call(
             sui::tx::Function::new(
                 workflow_pkg_id,
                 Self::SCOPE_INVOKER_ADDRESS.module,
@@ -995,7 +986,7 @@ impl Gas {
                 vec![],
             ),
             vec![address],
-        )
+        ))
     }
 }
 

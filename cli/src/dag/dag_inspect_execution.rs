@@ -15,8 +15,8 @@ use {
 /// Inspect a Nexus DAG execution process based on the provided object ID and
 /// execution digest.
 pub(crate) async fn inspect_dag_execution(
-    dag_execution_id: sui::ObjectID,
-    execution_digest: sui::TransactionDigest,
+    dag_execution_id: sui::types::Address,
+    execution_digest: sui::types::Digest,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 

@@ -145,15 +145,15 @@ impl NexusEventKind {
 /// requested.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RequestWalkExecutionEvent {
-    pub dag: sui::ObjectID,
-    pub execution: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
-    pub evaluations: sui::ObjectID,
+    pub evaluations: sui::types::Address,
     /// This field defines the package ID, module and name of the Agent that
     /// holds the DAG. Used to confirm the tool evaluation with the Agent.
     pub worksheet_from_type: TypeName,
@@ -164,7 +164,7 @@ pub struct RequestWalkExecutionEvent {
 /// `confirm_tool_eval_for_walk` on it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AnnounceInterfacePackageEvent {
-    pub shared_objects: Vec<sui::ObjectID>,
+    pub shared_objects: Vec<sui::types::Address>,
 }
 
 /// Fired by the Nexus Workflow when a new off-chain tool is registered so that
@@ -172,8 +172,8 @@ pub struct AnnounceInterfacePackageEvent {
 /// where to evaluate the tool.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OffChainToolRegisteredEvent {
-    pub registry: sui::ObjectID,
-    pub tool: sui::ObjectID,
+    pub registry: sui::types::Address,
+    pub tool: sui::types::Address,
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
     #[serde(
@@ -199,9 +199,9 @@ pub struct OffChainToolRegisteredEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OnChainToolRegisteredEvent {
     /// [ID] of [ToolRegistry].
-    pub registry: sui::ObjectID,
+    pub registry: sui::types::Address,
     /// New [ID] of the [OnChainTool].
-    pub tool: sui::ObjectID,
+    pub tool: sui::types::Address,
     /// When the tool was registered.
     #[serde(
         deserialize_with = "deserialize_sui_u64",
@@ -211,11 +211,11 @@ pub struct OnChainToolRegisteredEvent {
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
     /// The address of the published package.
-    pub package_address: sui::Address,
+    pub package_address: sui::types::Address,
     /// Module name.
     pub module_name: String,
     /// The witness object ID that proves the tool's identity.
-    pub witness_id: sui::ObjectID,
+    pub witness_id: sui::types::Address,
     /// Arguments to the execute function.
     #[serde(
         deserialize_with = "deserialize_bytes_to_json_value",
@@ -240,7 +240,7 @@ pub struct OnChainToolRegisteredEvent {
 /// remove the tool definition from its Redis registry.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolUnregisteredEvent {
-    pub tool: sui::ObjectID,
+    pub tool: sui::types::Address,
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
 }
@@ -249,8 +249,8 @@ pub struct ToolUnregisteredEvent {
 /// inspect DAG execution process.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WalkAdvancedEvent {
-    pub dag: sui::ObjectID,
-    pub execution: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -267,8 +267,8 @@ pub struct WalkAdvancedEvent {
 /// Fired by the Nexus Workflow when a walk has failed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WalkFailedEvent {
-    pub dag: sui::ObjectID,
-    pub execution: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -284,8 +284,8 @@ pub struct WalkFailedEvent {
 /// event is used to inspect DAG execution process.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EndStateReachedEvent {
-    pub dag: sui::ObjectID,
-    pub execution: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -304,8 +304,8 @@ pub struct EndStateReachedEvent {
 /// execution process.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecutionFinishedEvent {
-    pub dag: sui::ObjectID,
-    pub execution: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
     pub has_any_walk_failed: bool,
     pub has_any_walk_succeeded: bool,
 }
@@ -313,14 +313,14 @@ pub struct ExecutionFinishedEvent {
 /// Fired when a scheduler occurrence is enqueued (wrapped in `RequestScheduledExecution`).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceScheduledEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
     pub generator: PolicySymbol,
 }
 
 /// Emitted when a scheduled occurrence misses its deadline and is pruned.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MissedOccurrenceEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -347,30 +347,26 @@ pub struct MissedOccurrenceEvent {
 /// Emitted after a scheduler task object is created.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskCreatedEvent {
-    pub task: sui::ObjectID,
-    #[serde(
-        deserialize_with = "deserialize_sui_address",
-        serialize_with = "serialize_sui_address"
-    )]
-    pub owner: sui::Address,
+    pub task: sui::types::Address,
+    pub owner: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is paused.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskPausedEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is resumed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskResumedEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is canceled.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskCanceledEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -382,7 +378,7 @@ pub struct TaskCanceledEvent {
 /// Emitted whenever a pending occurrence is consumed for execution.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceConsumedEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -409,7 +405,7 @@ pub struct OccurrenceConsumedEvent {
 /// Emitted whenever the periodic schedule is configured or cleared.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PeriodicScheduleConfiguredEvent {
-    pub task: sui::ObjectID,
+    pub task: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
@@ -445,8 +441,8 @@ pub struct PeriodicScheduleConfiguredEvent {
 /// Fired by the Nexus Workflow when a new founding LeaderCap is created.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FoundingLeaderCapCreatedEvent {
-    pub leader_cap: sui::ObjectID,
-    pub network: sui::ObjectID,
+    pub leader_cap: sui::types::Address,
+    pub network: sui::types::Address,
 }
 
 /// Fired by the Gas service when the gas settlement is updated. This event is
@@ -455,7 +451,7 @@ pub struct FoundingLeaderCapCreatedEvent {
 /// invocation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GasSettlementUpdateEvent {
-    pub execution: sui::ObjectID,
+    pub execution: sui::types::Address,
     pub tool_fqn: ToolFqn,
     pub vertex: RuntimeVertex,
     pub was_settled: bool,
@@ -464,7 +460,7 @@ pub struct GasSettlementUpdateEvent {
 /// Fired when the leader claims gas from a user's budget.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LeaderClaimedGasEvent {
-    pub network: sui::ObjectID,
+    pub network: sui::types::Address,
     pub amount: u64,
     /// Optional reason for auditing purposes.
     #[serde(default)]
@@ -475,8 +471,8 @@ pub struct LeaderClaimedGasEvent {
 /// on initial network setup.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PreKeyVaultCreatedEvent {
-    pub vault: sui::ObjectID,
-    pub crypto_cap: sui::ObjectID,
+    pub vault: sui::types::Address,
+    pub crypto_cap: sui::types::Address,
 }
 
 /// Fired by the Nexus Workflow when a pre key is requested. The pre key bytes
@@ -484,7 +480,7 @@ pub struct PreKeyVaultCreatedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PreKeyRequestedEvent {
     /// The address of the user that requested the pre key.
-    pub requested_by: sui::Address,
+    pub requested_by: sui::types::Address,
 }
 
 /// Fired by the Nexus Workflow when a pre key request is fulfilled by the
@@ -492,7 +488,7 @@ pub struct PreKeyRequestedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PreKeyFulfilledEvent {
     /// The address of the user that requested the pre key.
-    pub requested_by: sui::Address,
+    pub requested_by: sui::types::Address,
     /// Bytes of the fulfilled pre key.
     pub pre_key_bytes: Vec<u8>,
 }
@@ -501,7 +497,7 @@ pub struct PreKeyFulfilledEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PreKeyAssociatedEvent {
     /// The address of the user the pre key is associated with.
-    pub claimed_by: sui::Address,
+    pub claimed_by: sui::types::Address,
     /// Bytes of the pre key.
     pub pre_key: Vec<u8>,
     /// Bytes of the initial message.
@@ -527,8 +523,10 @@ impl TryInto<NexusEvent> for sui::Event {
             ..
         } = self.type_;
 
-        if name != primitives::Event::EVENT_WRAPPER.name.into()
-            || module != primitives::Event::EVENT_WRAPPER.module.into()
+        // TODO: fix this once we swap to gql for event fetching.
+        if name != sui::Identifier::new(primitives::Event::EVENT_WRAPPER.name.as_str()).unwrap()
+            || module
+                != sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str()).unwrap()
         {
             anyhow::bail!("Event is not a Nexus event");
         };
@@ -625,8 +623,9 @@ mod tests {
             timestamp_ms: None,
             type_: sui::MoveStructTag {
                 address: *sui::ObjectID::random(),
-                name: primitives::Event::EVENT_WRAPPER.name.into(),
-                module: primitives::Event::EVENT_WRAPPER.module.into(),
+                name: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.name.as_str()).unwrap(),
+                module: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str())
+                    .unwrap(),
                 type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
                     address: *sui::ObjectID::random(),
                     name,
@@ -677,9 +676,10 @@ mod tests {
 
         assert_eq!(event.generics, vec![generic]);
         assert_matches!(event.data, NexusEventKind::RequestWalkExecution(e)
-            if e.dag == dag &&
-                e.execution == execution &&
-                e.evaluations == evaluations &&
+            // TODO: remove .to_string() once types match.
+            if e.dag.to_string() == dag.to_string() &&
+                e.execution.to_string() == execution.to_string() &&
+                e.evaluations.to_string() == evaluations.to_string() &&
                 e.walk_index == 42 &&
                 matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
                 e.worksheet_from_type.name == *"bar"
@@ -752,9 +752,10 @@ mod tests {
             panic!("Expected RequestWalkExecution inner event");
         };
 
-        assert_eq!(inner.dag, dag);
-        assert_eq!(inner.execution, execution);
-        assert_eq!(inner.evaluations, evaluations);
+        // TODO: remove .to_string() once types match.
+        assert_eq!(inner.dag.to_string(), dag.to_string());
+        assert_eq!(inner.execution.to_string(), execution.to_string());
+        assert_eq!(inner.evaluations.to_string(), evaluations.to_string());
         assert_eq!(inner.walk_index, 42);
         match inner.next_vertex {
             RuntimeVertex::Plain { vertex } => assert_eq!(vertex.name, *"foo"),
@@ -799,20 +800,22 @@ mod tests {
             panic!("Expected OccurrenceScheduled event");
         };
 
-        assert_eq!(scheduled.task, task);
+        // TODO: remove .to_string() once types match.
+        assert_eq!(scheduled.task.to_string(), task.to_string());
         assert_eq!(scheduled.generator, generator);
     }
 
     #[test]
     fn test_nexus_event_kind_name_returns_correct_name() {
+        let mut rng = rand::thread_rng();
         let dummy_event = NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
-            dag: sui::ObjectID::random(),
-            execution: sui::ObjectID::random(),
+            dag: sui::types::Address::generate(&mut rng),
+            execution: sui::types::Address::generate(&mut rng),
             walk_index: 1,
             next_vertex: RuntimeVertex::Plain {
                 vertex: TypeName::new("vertex"),
             },
-            evaluations: sui::ObjectID::random(),
+            evaluations: sui::types::Address::generate(&mut rng),
             worksheet_from_type: TypeName {
                 name: "worksheet".into(),
             },
@@ -820,7 +823,7 @@ mod tests {
         assert_eq!(dummy_event.name(), "RequestWalkExecutionEvent");
 
         let dummy_event = NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
-            shared_objects: vec![sui::ObjectID::random()],
+            shared_objects: vec![sui::types::Address::generate(&mut rng)],
         });
         assert_eq!(dummy_event.name(), "AnnounceInterfacePackageEvent");
 

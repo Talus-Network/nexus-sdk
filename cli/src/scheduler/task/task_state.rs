@@ -30,7 +30,7 @@ impl std::fmt::Display for TaskStateRequest {
 
 /// Toggle scheduler task state between paused, resumed, or canceled.
 pub(crate) async fn set_task_state(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     gas: GasArgs,
     request: TaskStateRequest,
 ) -> AnyResult<(), NexusCliError> {

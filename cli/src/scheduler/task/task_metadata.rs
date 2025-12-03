@@ -12,7 +12,7 @@ use {
 
 /// Update all metadata entries for a scheduler task.
 pub(crate) async fn update_task_metadata(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     metadata: Vec<String>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {

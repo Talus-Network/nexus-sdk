@@ -2,6 +2,7 @@
 
 use {
     super::types::convert_move_type_to_schema,
+    crate::sui,
     anyhow::{anyhow, Result as AnyResult},
     serde_json::{json, Map, Value},
 };
@@ -12,8 +13,8 @@ use {
 /// Output enum to generate a JSON schema. Each variant becomes a key in the
 /// schema with its fields represented as nested schema objects.
 pub async fn generate_output_schema(
-    sui: &crate::sui::Client,
-    package_address: crate::sui::ObjectID,
+    sui: &sui::Client,
+    package_address: sui::ObjectID,
     module_name: &str,
     output_enum_name: &str,
 ) -> AnyResult<String> {

@@ -6,8 +6,8 @@ use {
 /// Unregister a Tool based on the provided FQN.
 pub(crate) async fn unregister_tool(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
-    sui_gas_coin: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
     skip_confirmation: bool,
 ) -> AnyResult<(), NexusCliError> {

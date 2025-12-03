@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, ModuleAndNameIdent},
+    idents::{move_std, pure_arg, ModuleAndNameIdent},
     sui,
 };
 
@@ -133,17 +133,7 @@ impl Data {
 
             for data in arr {
                 // `bytes: vector<u8>`
-                let data_bytes = tx.input(sui::tx::Input {
-                    value: Some(sui::tx::Value::Array(
-                        serde_json::to_string(&data)?
-                            .into_bytes()
-                            .into_iter()
-                            .map(|b| sui::tx::Value::Number(b as u64))
-                            .collect(),
-                    )),
-                    kind: Some(sui::tx::InputKind::Pure),
-                    ..Default::default()
-                });
+                let data_bytes = tx.input(pure_arg(&serde_json::to_vec(&data)?)?);
 
                 // `vector<vector<u8>>::push_back`
                 tx.move_call(
@@ -168,17 +158,7 @@ impl Data {
             ));
         }
 
-        let json = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Array(
-                serde_json::to_string(json)?
-                    .into_bytes()
-                    .into_iter()
-                    .map(|b| sui::tx::Value::Number(b as u64))
-                    .collect(),
-            )),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let json = tx.input(pure_arg(&serde_json::to_vec(json)?)?);
 
         Ok(tx.move_call(
             sui::tx::Function::new(

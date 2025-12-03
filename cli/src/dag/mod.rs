@@ -53,7 +53,7 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAG",
             value_name = "OBJECT_ID"
         )]
-        dag_id: sui::ObjectID,
+        dag_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
             long = "entry-group",
@@ -111,7 +111,7 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAGExecution object.",
             value_name = "OBJECT_ID"
         )]
-        dag_execution_id: sui::ObjectID,
+        dag_execution_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
             long = "execution-digest",
@@ -119,7 +119,7 @@ pub(crate) enum DagCommand {
             help = "The transaction digest of the execution.",
             value_name = "DIGEST"
         )]
-        execution_digest: sui::TransactionDigest,
+        execution_digest: sui::types::Digest,
     },
 }
 

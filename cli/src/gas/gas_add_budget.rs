@@ -2,8 +2,8 @@ use crate::{command_title, display::json_output, loading, notify_success, prelud
 
 /// Upload `coin` as a gas budget for the Nexus workflow.
 pub(crate) async fn add_gas_budget(
-    coin: sui::ObjectID,
-    sui_gas_coin: Option<sui::ObjectID>,
+    coin: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Adding '{coin}' as gas budget for Nexus");

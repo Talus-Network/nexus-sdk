@@ -9,9 +9,9 @@ use {
 /// Create a new Nexus network and assign `count_leader_caps` leader caps to
 /// the provided addresses.
 pub(crate) async fn create_network(
-    addresses: Vec<sui::ObjectID>,
+    addresses: Vec<sui::types::Address>,
     count_leader_caps: u32,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(

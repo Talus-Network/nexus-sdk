@@ -50,8 +50,8 @@ impl std::fmt::Display for SuiNet {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
-    pub(crate) over_tool: sui::ObjectID,
-    pub(crate) over_gas: Option<sui::ObjectID>,
+    pub(crate) over_tool: sui::types::Address,
+    pub(crate) over_gas: Option<sui::types::Address>,
 }
 
 /// Reusable Sui gas command args.
@@ -63,7 +63,7 @@ pub(crate) struct GasArgs {
         help = "The gas coin object ID. First coin object is chosen if not present.",
         value_name = "OBJECT_ID"
     )]
-    pub(crate) sui_gas_coin: Option<sui::ObjectID>,
+    pub(crate) sui_gas_coin: Option<sui::types::Address>,
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
@@ -107,14 +107,20 @@ mod tests {
         let temp_home = tempfile::tempdir().expect("temp home directory");
         let temp_home_path = temp_home.path().to_path_buf();
 
-        std::env::set_var("HOME", &temp_home_path);
+        // SAFETY: tests.
+        unsafe {
+            std::env::set_var("HOME", &temp_home_path);
+        }
 
         let expanded = expand_tilde("~/test").unwrap();
         assert_eq!(expanded, temp_home_path.join("test"));
 
-        match original_home {
-            Some(value) => std::env::set_var("HOME", value),
-            None => std::env::remove_var("HOME"),
+        // SAFETY: tests.
+        unsafe {
+            match original_home {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
         }
     }
 

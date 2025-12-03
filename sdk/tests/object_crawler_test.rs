@@ -124,16 +124,18 @@ async fn test_object_crawler() {
                 object_id,
                 object_type,
                 ..
-            } if object_type.name == sui::move_ident_str!("Guy").into() => Some(object_id),
+            } if object_type.name == sui::types::Identifier::from_static("Guy").into() => {
+                Some(object_id)
+            }
             _ => None,
         })
         .expect("Guy object must be created");
 
     // Name type tag.
-    let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
+    let name_tag = sui::types::TypeTag::Struct(Box::new(sui::MoveStructTag {
         address: *pkg_id,
-        module: sui::move_ident_str!("main").into(),
-        name: sui::move_ident_str!("Name").into(),
+        module: sui::types::Identifier::from_static("main").into(),
+        name: sui::types::Identifier::from_static("Name").into(),
         type_params: vec![],
     }));
 

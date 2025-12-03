@@ -16,7 +16,7 @@ use {
 };
 
 /// Inspect a scheduler task and display metadata plus raw JSON output.
-pub(crate) async fn inspect_task(task_id: sui::ObjectID) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
 
     // Load CLI configuration.
@@ -71,9 +71,9 @@ pub(crate) async fn inspect_task(task_id: sui::ObjectID) -> AnyResult<(), NexusC
 
     json_output(&json!({
         "task_ref": {
-            "object_id": task_ref.object_id,
-            "version": task_ref.version,
-            "digest": task_ref.digest,
+            "object_id": task_ref.object_id(),
+            "version": task_ref.version(),
+            "digest": task_ref.digest(),
         },
         "task": task_data,
     }))?;

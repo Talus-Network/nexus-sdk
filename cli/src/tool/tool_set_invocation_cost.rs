@@ -6,9 +6,9 @@ use {
 /// Set the invocation cost in MIST for a tool based on its FQN.
 pub(crate) async fn set_tool_invocation_cost(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
     invocation_cost: u64,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Setting '{invocation_cost}' invocation cost for tool '{tool_fqn}'");

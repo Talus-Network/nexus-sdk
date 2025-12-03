@@ -5114,6 +5114,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "base64 0.21.7",
+ "bcs",
  "bincode",
  "blake3",
  "chacha20poly1305",
