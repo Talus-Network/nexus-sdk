@@ -127,18 +127,21 @@ where
 }
 
 /// Deserialize a Sui address represented as a string.
-pub fn deserialize_sui_address<'de, D>(deserializer: D) -> Result<sui::Address, D::Error>
+pub fn deserialize_sui_address<'de, D>(deserializer: D) -> Result<sui::types::Address, D::Error>
 where
     D: Deserializer<'de>,
 {
     let value: String = Deserialize::deserialize(deserializer)?;
     value
-        .parse::<sui::Address>()
+        .parse::<sui::types::Address>()
         .map_err(serde::de::Error::custom)
 }
 
 /// Serialize a Sui address as a hex string.
-pub fn serialize_sui_address<S>(value: &sui::Address, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_sui_address<S>(
+    value: &sui::types::Address,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

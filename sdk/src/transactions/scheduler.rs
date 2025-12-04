@@ -337,15 +337,16 @@ pub fn new_execution_policy(
         vec![execution_sequence],
     );
 
-    let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id);
-    let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id);
+    let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
+    let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
     let gas_price_arg = tx.input(sui::tx::Input {
         value: Some(sui::tx::Value::Number(gas_price)),
         kind: Some(sui::tx::InputKind::Pure),
         ..Default::default()
     });
 
-    let entry_group = workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group);
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     let with_vertex_inputs = build_inputs_vec_map(tx, objects, input_data)?;
 
@@ -402,7 +403,7 @@ fn build_inputs_vec_map(
 
     for (vertex_name, data) in input_data {
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name);
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.move_call(
@@ -422,12 +423,12 @@ fn build_inputs_vec_map(
                     tx,
                     objects.workflow_pkg_id,
                     port_name.as_str(),
-                ),
+                )?,
                 false => workflow::Dag::input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
                     port_name.as_str(),
-                ),
+                )?,
             };
 
             // `value: NexusData`

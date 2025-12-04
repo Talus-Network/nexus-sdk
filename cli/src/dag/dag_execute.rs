@@ -17,13 +17,13 @@ use {
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_dag(
-    dag_id: sui::ObjectID,
+    dag_id: sui::types::Address,
     entry_group: String,
     input_json: serde_json::Value,
     remote: Vec<String>,
     inspect: bool,
     price_priority_fee: u64,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");

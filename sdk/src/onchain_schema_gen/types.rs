@@ -1,6 +1,7 @@
 //! Type conversion utilities for Move types to JSON schema.
 
 use {
+    crate::sui,
     anyhow::Result as AnyResult,
     serde_json::{json, Value},
 };
@@ -78,7 +79,7 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
                         "description": format!("0x1::{}::{}", module, name)
                     })),
                 }
-            } else if address == "0x2" || address == &crate::sui::FRAMEWORK_PACKAGE_ID.to_string() {
+            } else if address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string() {
                 match (module.as_str(), name.as_str()) {
                     ("object", "ID") => Ok(json!({
                         "type": "object_id",
@@ -146,7 +147,7 @@ pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
         ..
     }) = struct_type
     {
-        (address == "0x2" || address == &crate::sui::FRAMEWORK_PACKAGE_ID.to_string())
+        (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
             && module == "tx_context"
             && name == "TxContext"
     } else {

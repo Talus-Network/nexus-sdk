@@ -22,7 +22,7 @@ pub fn register_off_chain_for_self(
     ));
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
     let url = tx.input(sui::tx::Input {
@@ -186,7 +186,7 @@ pub fn register_off_chain_for_self(
     )));
 
     // `recipient: address`
-    let recipient = sui_framework::Address::address_from_type(tx, address);
+    let recipient = sui_framework::Address::address_from_type(tx, address)?;
 
     // `sui::transfer::public_transfer`
     tx.move_call(
@@ -234,10 +234,10 @@ pub fn register_on_chain_for_self(
     ));
 
     // `package_address: address`
-    let package_addr = sui_framework::Address::address_from_type(tx, package_address);
+    let package_addr = sui_framework::Address::address_from_type(tx, package_address)?;
 
     // `module_name: AsciiString`
-    let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name);
+    let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
 
     // `input_schema: vector<u8>`
     let input_schema = tx.input(sui::tx::Input {
@@ -266,7 +266,7 @@ pub fn register_on_chain_for_self(
     });
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
     // `description: vector<u8>`
     let description = tx.input(sui::tx::Input {
@@ -282,7 +282,7 @@ pub fn register_on_chain_for_self(
     });
 
     // `witness_id: ID`
-    let witness_id = sui_framework::Address::address_from_type(tx, witness_id);
+    let witness_id = sui_framework::Address::address_from_type(tx, witness_id)?;
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -336,7 +336,7 @@ pub fn register_on_chain_for_self(
     )));
 
     // `recipient: address`
-    let recipient = sui_framework::Address::address_from_type(tx, address);
+    let recipient = sui_framework::Address::address_from_type(tx, address)?;
 
     // `sui::transfer::public_transfer`
     Ok(tx.move_call(
@@ -380,7 +380,7 @@ pub fn set_invocation_cost(
     ));
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.input(sui::tx::Input {
@@ -422,7 +422,7 @@ pub fn unregister(
     ));
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
     let owner_cap = tx.input(sui::tx::Input::owned(
@@ -473,7 +473,7 @@ pub fn claim_collateral_for_self(
     ));
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(

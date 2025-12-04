@@ -140,20 +140,20 @@ pub fn create_vertex(
     vertex: &Vertex,
 ) -> anyhow::Result<sui::types::Argument> {
     // `name: Vertex`
-    let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name);
+    let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
             // `tool_fqn: AsciiString`
-            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)
+            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
         VertexKind::OnChain { tool_fqn } => workflow::Dag::on_chain_vertex_kind_from_fqn(
             tx,
             objects.workflow_pkg_id,
             &objects.tool_registry,
             tool_fqn,
-        ),
+        )?,
     };
 
     // `dag.with_vertex(name, kind)`
@@ -176,11 +176,12 @@ pub fn create_default_value(
     default_value: &DefaultValue,
 ) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex);
+    let vertex =
+        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex)?;
 
     // `port: InputPort`
     let port =
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port);
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port)?;
 
     // `value: NexusData`
     let value = match &default_value.value.storage {
@@ -223,25 +224,25 @@ pub fn create_edge(
 ) -> anyhow::Result<sui::types::Argument> {
     // `from_vertex: Vertex`
     let from_vertex =
-        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex);
+        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex)?;
 
     // `from_variant: OutputVariant`
     let from_variant = workflow::Dag::output_variant_from_str(
         tx,
         objects.workflow_pkg_id,
         &edge.from.output_variant,
-    );
+    )?;
 
     // `from_port: OutputPort`
     let from_port =
-        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &edge.from.output_port);
+        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &edge.from.output_port)?;
 
     // `to_vertex: Vertex`
-    let to_vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.to.vertex);
+    let to_vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.to.vertex)?;
 
     // `to_port: InputPort`
     let to_port =
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port);
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
 
     // `kind: EdgeKind`
     let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
@@ -295,15 +296,18 @@ pub fn create_output(
     output: &FromPort,
 ) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex);
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex)?;
 
     // `variant: OutputVariant`
-    let variant =
-        workflow::Dag::output_variant_from_str(tx, objects.workflow_pkg_id, &output.output_variant);
+    let variant = workflow::Dag::output_variant_from_str(
+        tx,
+        objects.workflow_pkg_id,
+        &output.output_variant,
+    )?;
 
     // `port: OutputPort`
     let port =
-        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port);
+        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port)?;
 
     if output.encrypted {
         // `dag.with_encrypted_output(vertex, variant, port)`
@@ -339,10 +343,11 @@ pub fn mark_entry_vertex(
     entry_group: &str,
 ) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex);
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group);
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_in_group(vertex, entry_group)`
     Ok(tx.move_call(
@@ -366,17 +371,18 @@ pub fn mark_entry_input_port(
     entry_group: &str,
 ) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex);
+    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
     let entry_port = if entry_port.encrypted {
-        workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)
+        workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
     } else {
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
     };
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group);
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_port_in_group(vertex, entry_port, entry_group)`
     Ok(tx.move_call(
@@ -421,7 +427,7 @@ pub fn execute(
     ));
 
     // `network: ID`
-    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id);
+    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
     // `gas_price: u64`
     let gas_price_arg = tx.input(sui::tx::Input {
@@ -431,7 +437,8 @@ pub fn execute(
     });
 
     // `entry_group: EntryGroup`
-    let entry_group = workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group);
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
     let inner_vec_map_type = vec![
@@ -461,7 +468,7 @@ pub fn execute(
 
     for (vertex_name, data) in input_data {
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name);
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.move_call(
@@ -481,12 +488,12 @@ pub fn execute(
                     tx,
                     objects.workflow_pkg_id,
                     port_name.as_str(),
-                ),
+                )?,
                 false => workflow::Dag::input_port_from_str(
                     tx,
                     objects.workflow_pkg_id,
                     port_name.as_str(),
-                ),
+                )?,
             };
 
             // `value: NexusData`
@@ -575,6 +582,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         empty(&mut tx, &objects);
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -601,6 +617,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         publish(&mut tx, &objects, dag);
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -640,6 +665,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_vertex(&mut tx, &objects, dag, &vertex).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -672,6 +706,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_default_value(&mut tx, &objects, dag, &default_value).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -709,6 +752,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_edge(&mut tx, &objects, dag, &edge).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -735,6 +787,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         mark_entry_vertex(&mut tx, &objects, dag, vertex, entry_group).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -773,6 +834,15 @@ mod tests {
             entry_group,
         )
         .unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -818,6 +888,15 @@ mod tests {
             &input_data,
         )
         .unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -854,6 +933,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_output(&mut tx, &objects, dag, &output).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -884,6 +972,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_output(&mut tx, &objects, dag, &output).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },

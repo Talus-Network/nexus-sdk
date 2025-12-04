@@ -12,7 +12,7 @@ use crate::{
 /// performs validation on the DAG before publishing.
 pub(crate) async fn publish_dag(
     path: PathBuf,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let dag = validate_dag(path).await?;

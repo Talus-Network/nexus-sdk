@@ -6,9 +6,9 @@ use {
 /// Enable the expiry gas extension for the specified tool.
 pub(crate) async fn enable_expiry_extension(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
     cost_per_minute: u64,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Enabling the expiry gas extension for tool '{tool_fqn}' with cost '{cost_per_minute}' MIST per minute");

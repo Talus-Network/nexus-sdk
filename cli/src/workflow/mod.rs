@@ -21,7 +21,7 @@ use {
 pub(crate) async fn fetch_encrypted_entry_ports(
     sui: &sui::Client,
     entry_group: String,
-    dag_id: &sui::ObjectID,
+    dag_id: &sui::types::Address,
 ) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
     struct EntryPort {

@@ -7,8 +7,8 @@ use {
 /// TODO: https://github.com/Talus-Network/nexus/issues/418
 pub(crate) async fn disable_limited_invocations_extension(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
-    sui_gas_coin: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Disabling the limited invocations gas extension for tool '{tool_fqn}'");

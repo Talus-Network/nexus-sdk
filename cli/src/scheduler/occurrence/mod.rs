@@ -27,7 +27,7 @@ pub(crate) enum OccurrenceCommand {
     Add {
         /// Task object ID receiving the occurrence.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         start: OccurrenceStartOptions,
         #[command(flatten)]

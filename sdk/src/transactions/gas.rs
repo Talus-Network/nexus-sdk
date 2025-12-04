@@ -24,7 +24,7 @@ pub fn add_budget(
         tx,
         objects.workflow_pkg_id,
         invoker_address,
-    );
+    )?;
 
     // `balance: Balance<SUI>`
     let coin = tx.input(sui::tx::Input::owned(
@@ -94,7 +94,7 @@ pub fn enable_expiry(
     });
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `nexus_workflow::gas_extension::enable_expiry`
     Ok(tx.move_call(
@@ -137,7 +137,7 @@ pub fn disable_expiry(
     ));
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `nexus_workflow::gas_extension::disable_expiry`
     Ok(tx.move_call(
@@ -174,7 +174,7 @@ pub fn buy_expiry_gas_ticket(
     ));
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `minutes: u64`
     let minutes = tx.input(sui::tx::Input {
@@ -262,7 +262,7 @@ pub fn enable_limited_invocations(
     });
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `nexus_workflow::gas_extension::enable_limited_invocations`
     Ok(tx.move_call(
@@ -313,7 +313,7 @@ pub fn disable_limited_invocations(
     ));
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `nexus_workflow::gas_extension::disable_limited_invocations`
     Ok(tx.move_call(
@@ -350,7 +350,7 @@ pub fn buy_limited_invocations_gas_ticket(
     ));
 
     // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string());
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `invocations: u64`
     let invocations = tx.input(sui::tx::Input {

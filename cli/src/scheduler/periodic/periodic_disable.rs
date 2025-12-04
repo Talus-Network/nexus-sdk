@@ -11,7 +11,7 @@ use {
 
 /// Disable the periodic schedule for a scheduler task.
 pub(crate) async fn disable_periodic_task(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(

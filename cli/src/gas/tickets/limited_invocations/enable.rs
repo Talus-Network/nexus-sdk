@@ -7,11 +7,11 @@ use {
 /// TODO: https://github.com/Talus-Network/nexus/issues/418
 pub(crate) async fn enable_limited_invocations_extension(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::ObjectID>,
+    owner_cap: Option<sui::types::Address>,
     cost_per_invocation: u64,
     min_invocations: u64,
     max_invocations: u64,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Enabling the limited invocations gas extension for tool '{tool_fqn}' with cost '{cost_per_invocation}' MIST per invocation (min: {min_invocations}, max: {max_invocations})");

@@ -105,14 +105,15 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
+        let mut rng = rand::thread_rng();
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
 
         let nexus_objects_instance = NexusObjects {
-            workflow_pkg_id: sui::ObjectID::random(),
-            primitives_pkg_id: sui::ObjectID::random(),
-            interface_pkg_id: sui::ObjectID::random(),
-            network_id: sui::ObjectID::random(),
+            workflow_pkg_id: sui::types::Address::generate(&mut rng),
+            primitives_pkg_id: sui::types::Address::generate(&mut rng),
+            interface_pkg_id: sui::types::Address::generate(&mut rng),
+            network_id: sui::types::Address::generate(&mut rng),
             tool_registry: sui_mocks::mock_sui_object_ref(),
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),

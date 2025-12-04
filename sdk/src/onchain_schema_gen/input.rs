@@ -2,6 +2,7 @@
 
 use {
     super::types::{convert_move_type_to_schema, is_tx_context_param},
+    crate::sui,
     anyhow::{anyhow, Result as AnyResult},
     serde_json::{Map, Value},
 };
@@ -12,8 +13,8 @@ use {
 /// execute function's parameters to generate a JSON schema. It automatically
 /// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
 pub async fn generate_input_schema(
-    sui: &crate::sui::Client,
-    package_address: crate::sui::ObjectID,
+    sui: &sui::Client,
+    package_address: sui::ObjectID,
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<String> {

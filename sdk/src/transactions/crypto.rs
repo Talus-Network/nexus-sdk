@@ -1,6 +1,6 @@
 use crate::{
     crypto::x3dh::{InitialMessage, PreKeyBundle},
-    idents::{sui_framework, workflow},
+    idents::{pure_arg, sui_framework, workflow},
     sui,
     types::NexusObjects,
 };
@@ -68,20 +68,10 @@ pub fn fulfill_pre_key_for_user(
     ));
 
     // `requested_by: address`
-    let requested_by = sui_framework::Address::address_from_type(tx, requested_by);
+    let requested_by = sui_framework::Address::address_from_type(tx, requested_by)?;
 
     // `pre_key_bytes: vector<u8>`
-    // `pre_key_bytes: vector<u8>`
-    let pre_key_bytes = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            bincode::serialize(pre_key)?
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let pre_key_bytes = tx.input(pure_arg(&bincode::serialize(pre_key)?)?);
 
     // `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
     Ok(tx.move_call(
@@ -117,14 +107,10 @@ pub fn claim_and_fulfill_pre_key_for_user(
     ));
 
     // `amount: u64`
-    let amount = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(mist_gas_budget_to_claim)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let amount = tx.input(pure_arg(&mist_gas_budget_to_claim)?);
 
     // `requested_by: address`
-    let requested_by_arg = sui_framework::Address::address_from_type(tx, requested_by);
+    let requested_by_arg = sui_framework::Address::address_from_type(tx, requested_by)?;
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
     let leader_cap_obj = tx.input(sui::tx::Input::owned(
@@ -191,16 +177,7 @@ pub fn associate_pre_key_with_sender(
     ));
 
     // `initial_message: vector<u8>`
-    let initial_message = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            bincode::serialize(&initial_message)?
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let initial_message = tx.input(pure_arg(&bincode::serialize(&initial_message)?)?);
 
     // `nexus_workflow::pre_key_vault::associate_pre_key`
     Ok(tx.move_call(
@@ -223,6 +200,15 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         claim_pre_key_for_self(&mut tx, &objects).unwrap();
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -265,6 +251,15 @@ mod tests {
             &pre_key,
         )
         .unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -312,6 +307,15 @@ mod tests {
             1,
         )
         .unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -362,6 +366,15 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         associate_pre_key_with_sender(&mut tx, &objects, initial_message).unwrap();
+        tx.set_sender(sui::types::Address::from_static("0x1"));
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        let gas = sui_mocks::mock_sui_object_ref();
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas.object_id(),
+            gas.version(),
+            *gas.digest(),
+        )]);
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },

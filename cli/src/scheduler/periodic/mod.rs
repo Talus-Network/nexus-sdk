@@ -9,7 +9,7 @@ pub(crate) enum PeriodicCommand {
     Set {
         /// Task object ID.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         /// Absolute start time in milliseconds since epoch for the next periodic occurrence.
         #[arg(long = "first-start-ms", value_name = "MILLIS")]
         first_start_ms: u64,
@@ -32,7 +32,7 @@ pub(crate) enum PeriodicCommand {
     Disable {
         /// Task object ID to update.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },

@@ -12,7 +12,7 @@ use {
 
 /// Configure or update the periodic schedule for a scheduler task.
 pub(crate) async fn set_periodic_task(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     first_start_ms: u64,
     period_ms: u64,
     deadline_offset_ms: Option<u64>,

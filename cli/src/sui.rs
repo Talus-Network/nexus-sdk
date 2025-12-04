@@ -1,6 +1,7 @@
 use {
     crate::{loading, notify_success, prelude::*},
     nexus_sdk::{nexus::client::NexusClient, object_crawler::fetch_one, sui},
+    std::str::FromStr,
 };
 
 /// Build Sui client for the provided Sui net.
@@ -204,8 +205,8 @@ pub(crate) async fn sign_and_execute_transaction(
 /// Fetch a single object from Sui by its ID.
 pub(crate) async fn fetch_object_by_id(
     sui: &sui::Client,
-    object_id: sui::ObjectID,
-) -> AnyResult<sui::ObjectRef, NexusCliError> {
+    object_id: sui::types::Address,
+) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
     let object_handle = loading!("Fetching object {object_id}...");
 
     match fetch_one::<serde_json::Value>(sui, object_id).await {
@@ -323,7 +324,7 @@ pub(crate) fn resolve_wallet_path(
 
 /// Create a Nexus client from CLI parameters.
 pub(crate) async fn get_nexus_client(
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> Result<(NexusClient, sui::Client), NexusCliError> {
     // Load CLI configuration.
@@ -337,15 +338,36 @@ pub(crate) async fn get_nexus_client(
     let sui_client = build_sui_client(&conf.sui).await?;
     let address = wallet.active_address().map_err(NexusCliError::Any)?;
 
+    let sui::KeyPair::Ed25519(a) = wallet
+        .config
+        .keystore
+        .get_key(&address)
+        .expect("TODO: remove old sdk")
+    else {
+        todo!("TODO: remove old sdk")
+    };
+
+    // TODO: remove wallet.
+    let mut raw_pk = [0u8; 32];
+    raw_pk.copy_from_slice(a.as_ref());
+    let pk = sui::crypto::Ed25519PrivateKey::new(raw_pk);
+
     // Fetch gas coin object.
+    let sui_gas_coin = sui_gas_coin
+        .map(|id| sui::ObjectID::from_hex_literal(&id.to_string()).expect("TODO: remove old sdk"));
     let gas_coin = fetch_gas_coin(&sui_client, address, sui_gas_coin).await?;
+    let gas_coin_ref = sui::types::ObjectReference::new(
+        sui::types::Address::from_str(&gas_coin.coin_object_id.to_string())
+            .expect("TODO: remove old sdk"),
+        gas_coin.version.value(),
+        sui::types::Digest::from_str(&gas_coin.digest.to_string()).expect("TODO: remove old sdk"),
+    );
 
     // Create Nexus client.
     let nexus_client = NexusClient::builder()
-        .with_wallet_context(wallet)
+        .with_private_key(pk)
         .with_nexus_objects(objects.clone())
-        .with_gas(vec![&gas_coin], sui_gas_budget)
-        .map_err(NexusCliError::Nexus)?
+        .with_gas(vec![gas_coin_ref], sui_gas_budget)
         .build()
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -433,7 +455,6 @@ mod tests {
         super::*,
         assert_matches::assert_matches,
         mockito::Server,
-        nexus_sdk::sui::Address,
         rstest::rstest,
         serial_test::serial,
         tempfile::tempdir,
@@ -461,31 +482,34 @@ mod tests {
         mnemonic_env: Option<&str>,
         expected: PathBuf,
     ) {
-        let sui_default_config = "/tmp/sui/config";
-        // Set the default sui config folder to /tmp
-        std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
+        // SAFETY: tests.
+        unsafe {
+            let sui_default_config = "/tmp/sui/config";
+            // Set the default sui config folder to /tmp
+            std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
 
-        // Set or remove the mnemonic environment variable as needed.
-        if let Some(mnemonic) = mnemonic_env {
-            std::env::set_var("SUI_SECRET_MNEMONIC", mnemonic);
-        } else {
+            // Set or remove the mnemonic environment variable as needed.
+            if let Some(mnemonic) = mnemonic_env {
+                std::env::set_var("SUI_SECRET_MNEMONIC", mnemonic);
+            } else {
+                std::env::remove_var("SUI_SECRET_MNEMONIC");
+            }
+
+            // Prepare the SuiConf instance.
+            let conf = SuiConf {
+                net: SuiNet::Localnet,
+                wallet_path: PathBuf::from(format!("{}/client.toml", &sui_default_config)),
+                rpc_url: None,
+            };
+
+            // Call the function under test.
+            let resolved = resolve_wallet_path(cli_wallet_path, &conf).unwrap();
+            assert_eq!(resolved, expected);
+
+            // Clean up the env variable.
             std::env::remove_var("SUI_SECRET_MNEMONIC");
+            let _ = std::fs::remove_dir_all(sui_default_config);
         }
-
-        // Prepare the SuiConf instance.
-        let conf = SuiConf {
-            net: SuiNet::Localnet,
-            wallet_path: PathBuf::from(format!("{}/client.toml", &sui_default_config)),
-            rpc_url: None,
-        };
-
-        // Call the function under test.
-        let resolved = resolve_wallet_path(cli_wallet_path, &conf).unwrap();
-        assert_eq!(resolved, expected);
-
-        // Clean up the env variable.
-        std::env::remove_var("SUI_SECRET_MNEMONIC");
-        let _ = std::fs::remove_dir_all(sui_default_config);
     }
 
     #[rstest(
@@ -506,7 +530,10 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let sui_default_config = temp_dir.path().to_str().unwrap();
         // Set the default sui config folder to /tmp
-        std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
+        // SAFETY: tests.
+        unsafe {
+            std::env::set_var("SUI_CONFIG_DIR", sui_default_config);
+        }
         let config_dir = sui::config_dir().expect("Failed to get config dir");
         let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
         let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
@@ -521,7 +548,7 @@ mod tests {
 
         let client_config: sui::ClientConfig =
             sui::PersistedConfig::read(&wallet_conf_path).expect("Failed to read client config");
-        let expected_address: Address = expected_address_str.parse().expect("Invalid address");
+        let expected_address = expected_address_str.parse().expect("Invalid address");
         assert_eq!(client_config.active_address.unwrap(), expected_address);
 
         let _ = std::fs::remove_dir_all(&config_dir);
@@ -546,7 +573,10 @@ mod tests {
         // Create a temporary config directory.
         let temp_dir = tempdir().unwrap();
         let config_dir: PathBuf = temp_dir.path().to_path_buf();
-        std::env::set_var("SUI_CONFIG_DIR", config_dir.to_str().unwrap());
+        // SAFETY: tests.
+        unsafe {
+            std::env::set_var("SUI_CONFIG_DIR", config_dir.to_str().unwrap());
+        }
 
         let wallet_conf_path = config_dir.join(sui::CLIENT_CONFIG);
         let keystore_path = config_dir.join(sui::KEYSTORE_FILENAME);
@@ -590,7 +620,7 @@ mod tests {
             sui::PersistedConfig::read(&wallet_conf_path).expect("Failed to read client config");
 
         // Convert the expected address string into a SuiAddress.
-        let expected_active_address: Address = expected_active_address_str
+        let expected_active_address = expected_active_address_str
             .parse()
             .expect("Invalid SuiAddress string");
 
@@ -608,103 +638,112 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context() {
-        // Set up a clean temporary config directory
-        let temp_dir = tempdir().unwrap();
-        let sui_config_dir = temp_dir.path().to_str().unwrap();
-        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+        // SAFETY: tests.
+        unsafe {
+            // Set up a clean temporary config directory
+            let temp_dir = tempdir().unwrap();
+            let sui_config_dir = temp_dir.path().to_str().unwrap();
+            std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
 
-        std::env::set_var(
-            "SUI_SECRET_MNEMONIC",
-            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
-        );
+            std::env::set_var(
+                "SUI_SECRET_MNEMONIC",
+                "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+            );
 
-        let conf = SuiConf {
-            net: SuiNet::Localnet,
-            wallet_path: PathBuf::from("/invalid"),
-            rpc_url: None,
-        };
+            let conf = SuiConf {
+                net: SuiNet::Localnet,
+                wallet_path: PathBuf::from("/invalid"),
+                rpc_url: None,
+            };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+            let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
 
-        let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
+            let wallet = create_wallet_context(&path, SuiNet::Localnet).await;
 
-        match wallet {
-            Ok(_) => {} // Test passes
-            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+            match wallet {
+                Ok(_) => {} // Test passes
+                Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+            }
+
+            std::env::remove_var("SUI_SECRET_MNEMONIC");
+            std::env::remove_var("SUI_CONFIG_DIR");
         }
-
-        std::env::remove_var("SUI_SECRET_MNEMONIC");
-        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_net_mismatch() {
-        // Set up a clean temporary config directory
-        let temp_dir = tempdir().unwrap();
-        let sui_config_dir = temp_dir.path().to_str().unwrap();
-        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+        // SAFETY: tests.
+        unsafe {
+            // Set up a clean temporary config directory
+            let temp_dir = tempdir().unwrap();
+            let sui_config_dir = temp_dir.path().to_str().unwrap();
+            std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
 
-        std::env::set_var(
-            "SUI_SECRET_MNEMONIC",
-            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
-        );
+            std::env::set_var(
+                "SUI_SECRET_MNEMONIC",
+                "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+            );
 
-        // Create wallet config for devnet
-        let conf = SuiConf {
-            net: SuiNet::Devnet,
-            wallet_path: PathBuf::from("/invalid"),
-            rpc_url: None,
-        };
+            // Create wallet config for devnet
+            let conf = SuiConf {
+                net: SuiNet::Devnet,
+                wallet_path: PathBuf::from("/invalid"),
+                rpc_url: None,
+            };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+            let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
 
-        // Try to use the devnet wallet with localnet - this should fail
-        let err = create_wallet_context(&path, SuiNet::Localnet)
-            .await
-            .err()
-            .unwrap();
+            // Try to use the devnet wallet with localnet - this should fail
+            let err = create_wallet_context(&path, SuiNet::Localnet)
+                .await
+                .err()
+                .unwrap();
 
-        assert_matches!(err, NexusCliError::Any(e) if e.to_string().contains("The Sui net of the wallet does not match"));
+            assert_matches!(err, NexusCliError::Any(e) if e.to_string().contains("The Sui net of the wallet does not match"));
 
-        std::env::remove_var("SUI_SECRET_MNEMONIC");
-        std::env::remove_var("SUI_CONFIG_DIR");
+            std::env::remove_var("SUI_SECRET_MNEMONIC");
+            std::env::remove_var("SUI_CONFIG_DIR");
+        }
     }
 
     #[rstest]
     #[tokio::test]
     #[serial]
     async fn test_create_wallet_context_rpc_url() {
-        // Set up a clean temporary config directory
-        let temp_dir = tempdir().unwrap();
-        let sui_config_dir = temp_dir.path().to_str().unwrap();
-        std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
+        // SAFETY: tests.
+        unsafe {
+            // Set up a clean temporary config directory
+            let temp_dir = tempdir().unwrap();
+            let sui_config_dir = temp_dir.path().to_str().unwrap();
+            std::env::set_var("SUI_CONFIG_DIR", sui_config_dir);
 
-        std::env::set_var(
-            "SUI_SECRET_MNEMONIC",
-            "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
-        );
-        std::env::set_var("SUI_RPC_URL", "http://localhost:9000");
+            std::env::set_var(
+                "SUI_SECRET_MNEMONIC",
+                "cost harsh bright regular skin trumpet pave about edit forget isolate monkey",
+            );
+            std::env::set_var("SUI_RPC_URL", "http://localhost:9000");
 
-        let conf = SuiConf {
-            net: SuiNet::Devnet,
-            wallet_path: PathBuf::from("/invalid"),
-            rpc_url: None,
-        };
+            let conf = SuiConf {
+                net: SuiNet::Devnet,
+                wallet_path: PathBuf::from("/invalid"),
+                rpc_url: None,
+            };
 
-        let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
+            let path = resolve_wallet_path(None, &conf).expect("Failed to resolve wallet path");
 
-        let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
+            let wallet = create_wallet_context(&path, SuiNet::Devnet).await;
 
-        match wallet {
-            Ok(_) => {} // Test passes
-            Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+            match wallet {
+                Ok(_) => {} // Test passes
+                Err(e) => panic!("Expected wallet creation to succeed, but got error: {}", e),
+            }
+
+            std::env::remove_var("SUI_SECRET_MNEMONIC");
+            std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_CONFIG_DIR");
         }
-
-        std::env::remove_var("SUI_SECRET_MNEMONIC");
-        std::env::remove_var("SUI_RPC_URL");
-        std::env::remove_var("SUI_CONFIG_DIR");
     }
 
     #[rstest]
@@ -765,37 +804,41 @@ mod tests {
         assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
-        assert_eq!(objects.tool_registry.object_id, "0x5".parse().unwrap());
-        assert_eq!(objects.tool_registry.version, 1.into());
         assert_eq!(
-            objects.tool_registry.digest,
-            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-                .parse()
-                .unwrap()
+            *objects.tool_registry.object_id(),
+            sui::types::Address::from_static("0x5")
         );
-        assert_eq!(objects.default_tap.object_id, "0x6".parse().unwrap());
-        assert_eq!(objects.default_tap.version, 1.into());
+        assert_eq!(objects.tool_registry.version(), 1);
         assert_eq!(
-            objects.default_tap.digest,
-            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-                .parse()
-                .unwrap()
+            *objects.tool_registry.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
-        assert_eq!(objects.gas_service.object_id, "0x7".parse().unwrap());
-        assert_eq!(objects.gas_service.version, 1.into());
         assert_eq!(
-            objects.gas_service.digest,
-            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-                .parse()
-                .unwrap()
+            *objects.default_tap.object_id(),
+            sui::types::Address::from_static("0x6")
         );
-        assert_eq!(objects.pre_key_vault.object_id, "0x8".parse().unwrap());
-        assert_eq!(objects.pre_key_vault.version, 1.into());
+        assert_eq!(objects.default_tap.version(), 1);
         assert_eq!(
-            objects.pre_key_vault.digest,
-            "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-                .parse()
-                .unwrap()
+            *objects.default_tap.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.gas_service.object_id(),
+            sui::types::Address::from_static("0x7")
+        );
+        assert_eq!(objects.gas_service.version(), 1);
+        assert_eq!(
+            *objects.gas_service.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.pre_key_vault.object_id(),
+            sui::types::Address::from_static("0x8")
+        );
+        assert_eq!(objects.pre_key_vault.version(), 1);
+        assert_eq!(
+            *objects.pre_key_vault.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
 
         mock.assert_async().await;

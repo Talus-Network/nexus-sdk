@@ -5,20 +5,22 @@ pub fn mock_sui_coin(balance: u64) -> sui::Coin {
     sui::Coin {
         coin_type: "Sui".to_string(),
         coin_object_id: sui::ObjectID::random(),
-        version: sui::SequenceNumber::new(),
+        version: sui::SequenceNumber::from_u64(1),
         digest: sui::ObjectDigest::random(),
         balance,
         previous_transaction: sui::TransactionDigest::random(),
     }
 }
 
-/// Create a new [`sui::ObjectRef`] with random values.
-pub fn mock_sui_object_ref() -> sui::ObjectRef {
-    sui::ObjectRef {
-        object_id: sui::ObjectID::random(),
-        version: sui::SequenceNumber::new(),
-        digest: sui::ObjectDigest::random(),
-    }
+/// Create a new [`sui::types::ObjectReference`] with random values.
+pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
+    let mut rng = rand::thread_rng();
+
+    sui::types::ObjectReference::new(
+        sui::types::Address::generate(&mut rng),
+        1,
+        sui::types::Digest::generate(&mut rng),
+    )
 }
 
 /// Create a new [`sui::EventID`] with random values.
@@ -31,11 +33,13 @@ pub fn mock_sui_event_id() -> sui::EventID {
 
 /// Create a new [`sui::EventID`] with random values.
 pub fn mock_nexus_objects() -> NexusObjects {
+    let mut rng = rand::thread_rng();
+
     NexusObjects {
-        workflow_pkg_id: sui::ObjectID::random(),
-        primitives_pkg_id: sui::ObjectID::random(),
-        interface_pkg_id: sui::ObjectID::random(),
-        network_id: sui::ObjectID::random(),
+        workflow_pkg_id: sui::types::Address::generate(&mut rng),
+        primitives_pkg_id: sui::types::Address::generate(&mut rng),
+        interface_pkg_id: sui::types::Address::generate(&mut rng),
+        network_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
         default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
@@ -55,45 +59,173 @@ pub fn mock_sui_mnemonic() -> (sui::Address, String) {
     (addr, secret_mnemonic)
 }
 
-/// Create a new [`sui::TransactionBlockEffects`] with random values. Note that
-/// this function can be changed in the future to allow more customization.
-pub fn mock_sui_transaction_block_effects(
-    created: Option<Vec<sui::OwnedObjectRef>>,
-    mutated: Option<Vec<sui::OwnedObjectRef>>,
-    unwrapped: Option<Vec<sui::OwnedObjectRef>>,
-    deleted: Option<Vec<sui::ObjectRef>>,
-) -> sui::TransactionBlockEffects {
-    sui::TransactionBlockEffects::V1(sui::TransactionBlockEffectsV1 {
-        status: sui::ExecutionStatus::Success,
-        executed_epoch: 1,
-        gas_used: sui::GasCostSummary {
-            computation_cost: 0,
-            storage_cost: 0,
-            storage_rebate: 0,
-            non_refundable_storage_fee: 0,
+pub mod grpc {
+    use {
+        mockall::mock,
+        sui_rpc::proto::sui::rpc::v2::{
+            ledger_service_server::{LedgerService, LedgerServiceServer},
+            subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
+            transaction_execution_service_server::{
+                TransactionExecutionService,
+                TransactionExecutionServiceServer,
+            },
+            *,
         },
-        modified_at_versions: vec![],
-        shared_objects: vec![],
-        transaction_digest: sui::TransactionDigest::random(),
-        created: created.unwrap_or_default(),
-        mutated: mutated.unwrap_or_default(),
-        unwrapped: unwrapped.unwrap_or_default(),
-        deleted: deleted.unwrap_or_default(),
-        unwrapped_then_deleted: vec![],
-        wrapped: vec![],
-        gas_object: sui::OwnedObjectRef {
-            owner: sui::Owner::AddressOwner(sui::ObjectID::random().into()),
-            reference: mock_sui_object_ref(),
-        },
-        events_digest: None,
-        dependencies: vec![],
-    })
+        tonic::{Request, Response, Status},
+    };
+
+    // Mocking LedgerService RPC endpoints for deeper testing.
+    mock! {
+        pub LedgerService {}
+
+        #[tonic::async_trait]
+        impl LedgerService for LedgerService {
+            async fn get_service_info(
+                &self,
+                request: Request<GetServiceInfoRequest>,
+            ) -> Result<Response<GetServiceInfoResponse>, Status>;
+
+            async fn get_object(
+                &self,
+                request: Request<GetObjectRequest>,
+            ) -> Result<Response<GetObjectResponse>, Status>;
+
+            async fn batch_get_objects(
+                &self,
+                request: Request<BatchGetObjectsRequest>,
+            ) -> Result<Response<BatchGetObjectsResponse>, Status>;
+
+            async fn get_transaction(
+                &self,
+                request: Request<GetTransactionRequest>,
+            ) -> Result<Response<GetTransactionResponse>, Status>;
+
+            async fn batch_get_transactions(
+                &self,
+                request: Request<BatchGetTransactionsRequest>,
+            ) -> Result<Response<BatchGetTransactionsResponse>, Status>;
+
+            async fn get_checkpoint(
+                &self,
+                request: Request<GetCheckpointRequest>,
+            ) -> Result<Response<GetCheckpointResponse>, Status>;
+
+            async fn get_epoch(
+                &self,
+                request: Request<GetEpochRequest>,
+            ) -> Result<Response<GetEpochResponse>, Status>;
+        }
+    }
+
+    // Mocking TransactionExecutionService RPC endpoints for deeper testing.
+    mock! {
+        pub TransactionExecutionService {}
+
+        #[tonic::async_trait]
+        impl TransactionExecutionService for TransactionExecutionService {
+            async fn execute_transaction(
+                &self,
+                request: tonic::Request<ExecuteTransactionRequest>,
+            ) -> Result<tonic::Response<ExecuteTransactionResponse>, tonic::Status>;
+
+            async fn simulate_transaction(
+                &self,
+                request: tonic::Request<SimulateTransactionRequest>,
+            ) -> Result<tonic::Response<SimulateTransactionResponse>, tonic::Status>;
+        }
+    }
+
+    // Mocking SubscriptionService RPC endpoints for deeper testing.
+    pub type BoxCheckpointStream = std::pin::Pin<
+        Box<
+            dyn futures::Stream<Item = Result<SubscribeCheckpointsResponse, Status>>
+                + Send
+                + 'static,
+        >,
+    >;
+
+    #[tonic::async_trait]
+    pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
+        async fn subscribe_checkpoints(
+            &self,
+            request: Request<SubscribeCheckpointsRequest>,
+        ) -> Result<Response<BoxCheckpointStream>, Status>;
+    }
+
+    pub struct SubscriptionServiceAdapter<W: SubscriptionServiceWrapper> {
+        pub inner: std::sync::Arc<W>,
+    }
+
+    impl<W: SubscriptionServiceWrapper> SubscriptionServiceAdapter<W> {
+        pub fn new(inner: std::sync::Arc<W>) -> Self {
+            Self { inner }
+        }
+    }
+
+    #[tonic::async_trait]
+    impl<W: SubscriptionServiceWrapper> SubscriptionService for SubscriptionServiceAdapter<W> {
+        type SubscribeCheckpointsStream = BoxCheckpointStream;
+
+        async fn subscribe_checkpoints(
+            &self,
+            request: Request<SubscribeCheckpointsRequest>,
+        ) -> Result<Response<Self::SubscribeCheckpointsStream>, Status> {
+            self.inner.subscribe_checkpoints(request).await
+        }
+    }
+
+    mock! {
+        pub SubscriptionService {}
+
+        #[tonic::async_trait]
+        impl SubscriptionServiceWrapper for SubscriptionService {
+            async fn subscribe_checkpoints(
+                &self,
+                request: tonic::Request<SubscribeCheckpointsRequest>,
+            ) -> Result<tonic::Response<BoxCheckpointStream>, tonic::Status>;
+        }
+    }
+
+    #[derive(Default)]
+    pub struct ServerMocks {
+        pub ledger_service_mock: Option<MockLedgerService>,
+        pub execution_service_mock: Option<MockTransactionExecutionService>,
+        pub subscription_service_mock: Option<MockSubscriptionService>,
+    }
+
+    pub fn mock_server(mocks: ServerMocks) -> String {
+        let port = portpicker::pick_unused_port().expect("No ports free");
+        let addr = format!("127.0.0.1:{}", port);
+        let thread_addr = addr.clone();
+
+        let ledger_service = mocks
+            .ledger_service_mock
+            .map(|m| LedgerServiceServer::new(m));
+        let execution_service = mocks
+            .execution_service_mock
+            .map(|m| TransactionExecutionServiceServer::new(m));
+        let subscription_service = mocks.subscription_service_mock.map(|m| {
+            SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
+        });
+
+        tokio::spawn(async move {
+            tonic::transport::Server::builder()
+                .add_optional_service(ledger_service)
+                .add_optional_service(execution_service)
+                .add_optional_service(subscription_service)
+                .serve(thread_addr.parse().unwrap())
+                .await
+                .unwrap();
+        });
+
+        format!("http://{}", addr)
+    }
 }
 
 /// Mocking RPC endpoints for deeper testing.
 pub mod rpc {
     use {
-        crate::{events::NexusEventKind, idents::primitives, sui, test_utils::sui_mocks},
+        crate::{events::NexusEventKind, sui, test_utils::sui_mocks},
         mockito::{Matcher, Mock, ServerGuard},
         serde_json::json,
     };
@@ -102,62 +234,6 @@ pub mod rpc {
     struct PartialRequest {
         jsonrpc: String,
         id: u64,
-    }
-
-    pub fn mock_rpc_discover(server: &mut ServerGuard) -> Mock {
-        server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "rpc.discover"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
-
-                json!({
-                    "result": {
-                        "openrpc": "1.2.6",
-                        "info": { "version": "1.58.3" },
-                        "methods": []
-                    },
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
-                })
-                .to_string()
-                .into()
-            })
-            .expect(1)
-            .create()
-    }
-
-    pub fn mock_reference_gas_price(server: &mut ServerGuard, price: String) -> Mock {
-        server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "suix_getReferenceGasPrice"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
-
-                json!({
-                    "result": price,
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
-                })
-                .to_string()
-                .into()
-            })
-            .expect(1)
-            .create()
     }
 
     pub fn mock_event_api_query_events(
@@ -190,8 +266,8 @@ pub mod rpc {
                                     sender: sui::ObjectID::random().into(),
                                     type_: sui::MoveStructTag {
                                         address: sui::ObjectID::random().into(),
-                                        module: primitives::Event::EVENT_WRAPPER.module.into(),
-                                        name: primitives::Event::EVENT_WRAPPER.name.into(),
+                                        module: sui::move_ident_str!("event").into(),
+                                        name: sui::move_ident_str!("EventWrapper").into(),
                                         type_params: vec![
                                             sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
                                                 address: sui::ObjectID::random().into(),
@@ -216,140 +292,5 @@ pub mod rpc {
                 .into()
             })
             .create()
-    }
-
-    pub fn mock_read_api_get_object(
-        server: &mut ServerGuard,
-        object_id: sui::ObjectID,
-        object: sui::ParsedMoveObject,
-    ) -> Mock {
-        server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "sui_getObject"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
-
-                json!({
-                    "result": sui::ObjectResponse::new_with_data(
-                        sui::ObjectData {
-                            object_id,
-                            version: sui::SequenceNumber::from_u64(1),
-                            digest: sui::ObjectDigest::random(),
-                            type_: None,
-                            owner: Some(sui::Owner::AddressOwner(sui::ObjectID::random().into())),
-                            previous_transaction: None,
-                            storage_rebate: None,
-                            display: None,
-                            content: Some(sui::ParsedData::MoveObject(object.clone())),
-                            bcs: None,
-                        }
-                    ),
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
-                })
-                .to_string()
-                .into()
-            })
-            .create()
-    }
-
-    pub fn mock_governance_api_execute_execute_transaction_block(
-        server: &mut ServerGuard,
-        digest: sui::TransactionDigest,
-        effects: Option<sui::TransactionBlockEffects>,
-        events: Option<sui::TransactionBlockEvents>,
-        balance_changes: Option<Vec<sui::BalanceChange>>,
-        object_changes: Option<Vec<sui::ObjectChange>>,
-    ) -> (Mock, Mock) {
-        let effects_execute = effects.or(Some(sui_mocks::mock_sui_transaction_block_effects(
-            None, None, None, None,
-        )));
-        let effects_confirm = effects_execute.clone();
-        let events_confirm = events.clone();
-        let object_changes_confirm = object_changes.clone();
-        let balance_changes_confirm = balance_changes.clone();
-
-        let execute_mock = server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "sui_executeTransactionBlock"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
-
-                json!({
-                    "result": sui::TransactionBlockResponse {
-                        digest,
-                        transaction: None,
-                        raw_transaction: vec![],
-                        effects: effects_execute.clone(),
-                        events: events.clone(),
-                        object_changes: object_changes.clone(),
-                        balance_changes: balance_changes.clone(),
-                        timestamp_ms: None,
-                        confirmed_local_execution: Some(true),
-                        checkpoint: None,
-                        errors: vec![],
-                        raw_effects: vec![],
-                    },
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
-                })
-                .to_string()
-                .into()
-            })
-            .expect(1)
-            .create();
-
-        let confirm_mock = server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "sui_getTransactionBlock"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
-
-                json!({
-                    "result": sui::TransactionBlockResponse {
-                        digest,
-                        transaction: None,
-                        raw_transaction: vec![],
-                        effects: effects_confirm.clone(),
-                        events: events_confirm.clone(),
-                        object_changes: object_changes_confirm.clone(),
-                        balance_changes: balance_changes_confirm.clone(),
-                        timestamp_ms: None,
-                        confirmed_local_execution: Some(true),
-                        checkpoint: None,
-                        errors: vec![],
-                        raw_effects: vec![],
-                    },
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
-                })
-                .to_string()
-                .into()
-            })
-            .expect(1)
-            .create();
-
-        (execute_mock, confirm_mock)
     }
 }

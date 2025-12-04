@@ -8,8 +8,8 @@ use {
 pub(crate) async fn buy_limited_invocations_gas_ticket(
     tool_fqn: ToolFqn,
     invocations: u64,
-    coin: sui::ObjectID,
-    sui_gas_coin: Option<sui::ObjectID>,
+    coin: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Buying a limited invocations gas ticket for '{invocations}' invocations for tool '{tool_fqn}'");

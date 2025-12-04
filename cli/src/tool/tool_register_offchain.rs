@@ -18,11 +18,11 @@ use {
 /// Validate and then register a new offchain Tool.
 pub(crate) async fn register_off_chain_tool(
     url: reqwest::Url,
-    collateral_coin: Option<sui::ObjectID>,
+    collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
     batch: bool,
     no_save: bool,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     // Validate either a single tool or a batch of tools if the `batch` flag is
@@ -156,10 +156,8 @@ pub(crate) async fn register_off_chain_tool(
                     object_id,
                     ..
                 } if object_type.address == *objects.primitives_pkg_id
-                    && object_type.module
-                        == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
-                    && object_type.name
-                        == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
+                    && object_type.module == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
+                    && object_type.name == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name =>
                 {
                     Some((object_id, object_type))
                 }
@@ -171,8 +169,8 @@ pub(crate) async fn register_off_chain_tool(
         let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
             match object_type.type_params.first() {
                 Some(sui::MoveTypeTag::Struct(what_for))
-                    if what_for.module == workflow::ToolRegistry::OVER_TOOL.module.into()
-                        && what_for.name == workflow::ToolRegistry::OVER_TOOL.name.into() =>
+                    if what_for.module == workflow::ToolRegistry::OVER_TOOL.module
+                        && what_for.name == workflow::ToolRegistry::OVER_TOOL.name =>
                 {
                     Some(object_id)
                 }
@@ -190,8 +188,8 @@ pub(crate) async fn register_off_chain_tool(
         let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
             match object_type.type_params.first() {
                 Some(sui::MoveTypeTag::Struct(what_for))
-                    if what_for.module == workflow::Gas::OVER_GAS.module.into()
-                        && what_for.name == workflow::Gas::OVER_GAS.name.into() =>
+                    if what_for.module == workflow::Gas::OVER_GAS.module
+                        && what_for.name == workflow::Gas::OVER_GAS.name =>
                 {
                     Some(object_id)
                 }
@@ -257,9 +255,9 @@ pub(crate) async fn register_off_chain_tool(
 /// if the coins are not present.
 pub(super) async fn fetch_gas_and_collateral_coins(
     sui: &sui::Client,
-    addr: sui::Address,
-    sui_gas_coin: Option<sui::ObjectID>,
-    sui_collateral_coin: Option<sui::ObjectID>,
+    addr: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_collateral_coin: Option<sui::types::Address>,
 ) -> AnyResult<(sui::Coin, sui::Coin), NexusCliError> {
     let mut coins = fetch_all_coins_for_address(sui, addr).await?;
 
