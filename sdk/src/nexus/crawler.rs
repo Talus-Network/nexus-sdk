@@ -2,8 +2,9 @@
 //! and dynamic field data from Sui GRPC and deserialize them into Rust structs.
 
 use {
-    crate::sui,
-    anyhow::bail,
+    crate::sui::{self, traits::FieldMaskUtil},
+    anyhow::{anyhow, bail},
+    base64::{prelude::BASE64_STANDARD, Engine},
     serde::{de::DeserializeOwned, Deserialize, Deserializer},
     std::{
         collections::{HashMap, HashSet},
@@ -11,7 +12,6 @@ use {
         marker::PhantomData,
         sync::Arc,
     },
-    sui_rpc::field::FieldMaskUtil,
     tokio::sync::Mutex,
 };
 
@@ -46,6 +46,74 @@ impl Crawler {
         })
     }
 
+    /// Fetch many objects by their IDs in batch and deserialize them into the
+    /// specified type.
+    pub async fn get_objects<T>(
+        &self,
+        object_ids: &[sui::types::Address],
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask =
+            sui::grpc::FieldMask::from_paths(&["object_id", "owner", "version", "digest", "json"]);
+
+        let request = {
+            let mut req = sui::grpc::BatchGetObjectsRequest::default();
+
+            req.set_requests(
+                object_ids
+                    .iter()
+                    .map(|&id| {
+                        sui::grpc::GetObjectRequest::default()
+                            .with_object_id(id)
+                            .with_read_mask(field_mask.clone())
+                    })
+                    .collect(),
+            );
+
+            req.set_read_mask(field_mask);
+
+            req
+        };
+
+        let mut client = self.client.lock().await;
+
+        let response = client
+            .ledger_client()
+            .batch_get_objects(request)
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
+
+        response
+            .objects
+            .into_iter()
+            .map(|result| {
+                let object = result
+                    .object_opt()
+                    .ok_or_else(|| anyhow!("Object not found"))?;
+
+                let object_id = object
+                    .object_id_opt()
+                    .ok_or_else(|| anyhow!("Object ID missing"))?
+                    .parse()
+                    .map_err(|_| anyhow!("Could not parse object ID"))?;
+
+                let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
+                let data = self.parse_object_content(&object)?;
+
+                Ok(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data,
+                    digest,
+                })
+            })
+            .collect()
+    }
+
     /// Fetch an object's metadata only, omitting its content.
     pub async fn get_object_metadata(
         &self,
@@ -66,6 +134,64 @@ impl Crawler {
         })
     }
 
+    /// Fetch all dynamic object fields for a given parent and parse them into a
+    /// HashMap<K, V>.
+    pub async fn get_dynamic_fields<K, V>(
+        &self,
+        parent: &DynamicMap<K, V>,
+    ) -> anyhow::Result<HashMap<K, V>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let names_and_ids = self
+            .fetch_dynamic_fields::<K>(parent.id(), parent.size())
+            .await?;
+
+        // Now fetch all dynamic field objects in batch.
+        let child_ids = names_and_ids
+            .iter()
+            .filter_map(|(_, _, id)| *id)
+            .collect::<Vec<_>>();
+
+        let child_objects = self.get_objects::<DynamicPair<K, V>>(&child_ids).await?;
+
+        Ok(child_objects
+            .into_iter()
+            .map(|obj| (obj.data.name, obj.data.value.into_inner()))
+            .collect())
+    }
+
+    /// Fetch all dynamic object fields for a given parent and parse them into a
+    /// HashMap<K, V>. Since the values are objects, they need to be fetched
+    /// first.
+    pub async fn get_dynamic_field_objects<K, V>(
+        &self,
+        parent: &DynamicObjectMap<K, V>,
+    ) -> anyhow::Result<HashMap<K, Response<V>>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let names_and_ids = self
+            .fetch_dynamic_fields::<K>(parent.id(), parent.size())
+            .await?;
+
+        // Now fetch all dynamic field objects in batch.
+        let child_ids = names_and_ids
+            .iter()
+            .filter_map(|(_, id, _)| *id)
+            .collect::<Vec<_>>();
+
+        let child_objects = self.get_objects::<V>(&child_ids).await?;
+
+        Ok(names_and_ids
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .zip(child_objects.into_iter())
+            .collect())
+    }
+
     /// Helper function to fetch an object based on its ID and field mask.
     async fn fetch_object(
         &self,
@@ -83,13 +209,89 @@ impl Crawler {
             .get_object(request)
             .await
             .map(|r| r.into_inner())
-            .map_err(|e| anyhow::anyhow!("Could not fetch object: {e}"))?;
+            .map_err(|e| anyhow!("Could not fetch object: {e}"))?;
 
         let Some(object) = response.object else {
             bail!("Object '{object_id}' not found");
         };
 
         Ok(object)
+    }
+
+    /// Helper function to fetch all dynamic fields for a given parent object.
+    /// Optionally stopping at `stop_at` if we're only interested in a singular
+    /// item.
+    async fn fetch_dynamic_fields<K>(
+        &self,
+        parent_id: sui::types::Address,
+        expected_size: usize,
+    ) -> anyhow::Result<Vec<(K, Option<sui::types::Address>, Option<sui::types::Address>)>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+    {
+        let mut results = Vec::with_capacity(expected_size);
+        let mut page_token = None;
+        let field_mask = sui::grpc::FieldMask::from_paths(&["name", "child_id", "field_id"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                // Parse the dynamic field name as K.
+                let name = bcs::from_bytes::<K>(
+                    field
+                        .name_opt()
+                        .ok_or_else(|| {
+                            anyhow!("Dynamic field name missing for parent '{parent_id}'")
+                        })?
+                        .value(),
+                )
+                .map_err(|e| {
+                    anyhow!("Could not parse dynamic field name for parent '{parent_id}': {e}")
+                })?;
+
+                let field_id = field
+                    .field_id_opt()
+                    .map(|id| id.parse())
+                    .transpose()
+                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?;
+
+                let child_id = field
+                    .child_id_opt()
+                    .map(|id| id.parse())
+                    .transpose()
+                    .map_err(|_| anyhow!("Could not parse child ID for dynamic field"))?;
+
+                results.push((name, child_id, field_id));
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
     }
 
     /// Helper function to parse metadata from an object.
@@ -100,19 +302,19 @@ impl Crawler {
     ) -> anyhow::Result<(sui::types::Owner, sui::types::Digest, sui::types::Version)> {
         let owner = object
             .owner_opt()
-            .ok_or_else(|| anyhow::anyhow!("Owner missing for object '{object_id}'"))?
+            .ok_or_else(|| anyhow!("Owner missing for object '{object_id}'"))?
             .try_into()
-            .map_err(|_| anyhow::anyhow!("Could not parse owner for object '{object_id}'"))?;
+            .map_err(|_| anyhow!("Could not parse owner for object '{object_id}'"))?;
 
         let digest = object
             .digest_opt()
-            .ok_or_else(|| anyhow::anyhow!("Digest missing for object '{object_id}'"))?
+            .ok_or_else(|| anyhow!("Digest missing for object '{object_id}'"))?
             .parse()
-            .map_err(|_| anyhow::anyhow!("Could not parse digest for object '{object_id}'"))?;
+            .map_err(|_| anyhow!("Could not parse digest for object '{object_id}'"))?;
 
         let version = object
             .version_opt()
-            .ok_or_else(|| anyhow::anyhow!("Version missing for object '{object_id}'"))?;
+            .ok_or_else(|| anyhow!("Version missing for object '{object_id}'"))?;
 
         Ok((owner, digest, version))
     }
@@ -234,7 +436,7 @@ where
         where
             K: Eq + Hash,
         {
-            contents: Vec<ObjectKV<K, V>>,
+            contents: Vec<Pair<K, V>>,
         }
 
         let Wrapper { contents } = Wrapper::<K, V>::deserialize(deserializer)?;
@@ -242,7 +444,7 @@ where
         Ok(Self {
             contents: contents
                 .into_iter()
-                .map(|ObjectKV { key, value }| (key, value))
+                .map(|Pair { key, value }| (key, value))
                 .collect(),
         })
     }
@@ -266,15 +468,91 @@ impl<K, V> DynamicMap<K, V> {
     pub fn size(&self) -> usize {
         self.size.parse().unwrap_or(0)
     }
+}
 
-    // TODO: fetching.
+/// Wrapper around a dynamic object map-like structure within parsed Sui object
+/// data. These need to be fetched dynamically from Sui based on the parent
+/// object ID. And then each object needs to be fetched separately (or batched).
+#[derive(Clone, Debug, Deserialize)]
+pub struct DynamicObjectMap<K, V> {
+    id: sui::types::Address,
+    size: String,
+    #[serde(default)]
+    _marker: PhantomData<(K, V)>,
+}
+
+impl<K, V> DynamicObjectMap<K, V> {
+    pub fn id(&self) -> sui::types::Address {
+        self.id
+    }
+
+    pub fn size(&self) -> usize {
+        self.size.parse().unwrap_or(0)
+    }
+}
+
+/// Wrapper around a base64-encoded byte vector within a Sui object.
+#[derive(Clone, Debug)]
+pub struct Bytes(Vec<u8>);
+
+impl Bytes {
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn inner(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn inner_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for Bytes {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+
+        let bytes = BASE64_STANDARD
+            .decode(s.as_bytes())
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(Self(bytes))
+    }
 }
 
 /// Internal wrapper around a key-value pair within a map-like structure.
 #[derive(Clone, Debug, Deserialize)]
-struct ObjectKV<K, V> {
+struct Pair<K, V> {
+    #[serde(alias = "key", alias = "name")]
     key: K,
     value: V,
+}
+
+/// Internal wrapper around dynamic map fields.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum ValueOrWrapper<V> {
+    Value(V),
+    Wrapper { value: V },
+}
+
+impl<V> ValueOrWrapper<V> {
+    fn into_inner(self) -> V {
+        match self {
+            ValueOrWrapper::Value(v) => v,
+            ValueOrWrapper::Wrapper { value } => value,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DynamicPair<K, V> {
+    name: K,
+    value: ValueOrWrapper<V>,
 }
 
 // == Helper functions ==
@@ -291,19 +569,19 @@ fn prost_value_to_json_value(value: &prost_types::Value) -> anyhow::Result<serde
     let kind = value
         .kind
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Missing kind in prost_types::Value"))?;
+        .ok_or_else(|| anyhow!("Missing kind in prost_types::Value"))?;
 
     match kind {
         Kind::NullValue(_) => Ok(Value::Null),
         Kind::NumberValue(n) => match (n.fract() == 0.0, *n < 0.0) {
             (true, false) => Ok(Value::Number(Number::from_u128(*n as u128).ok_or_else(
-                || anyhow::anyhow!("Could not convert number value '{n}' to JSON number"),
+                || anyhow!("Could not convert number value '{n}' to JSON number"),
             )?)),
             (true, true) => Ok(Value::Number(Number::from_i128(*n as i128).ok_or_else(
-                || anyhow::anyhow!("Could not convert number value '{n}' to JSON number"),
+                || anyhow!("Could not convert number value '{n}' to JSON number"),
             )?)),
             (false, _) => Ok(Value::Number(Number::from_f64(*n).ok_or_else(|| {
-                anyhow::anyhow!("Could not convert number value '{n}' to JSON number")
+                anyhow!("Could not convert number value '{n}' to JSON number")
             })?)),
         },
         Kind::StringValue(s) => Ok(Value::String(s.clone())),

@@ -2,14 +2,12 @@
 
 use {
     nexus_sdk::{
-        nexus::crawler::{Crawler, DynamicMap, Map, Set},
-        object_crawler::*,
+        nexus::crawler::{Bytes, Crawler, DynamicMap, DynamicObjectMap, Map, Set},
         sui,
         test_utils,
     },
     serde::{Deserialize, Serialize},
     std::{str::FromStr, sync::Arc},
-    sui_rpc::field::FieldMaskUtil,
     tokio::sync::Mutex,
 };
 
@@ -22,22 +20,17 @@ struct Guy {
     age: u8,
     hobbies: Set<String>,
     groups: Map<Name, Vec<Name>>,
-    chair: DynamicMap<Name, Structure<Name>>,
-    timetable: DynamicMap<Name, Structure<Value>>,
-    friends: DynamicMap<Name, Structure<PlainValue>>,
-    bag: DynamicMap<Name, Structure<PlainValue>>,
-    heterogeneous: DynamicMap<HeterogeneousKey, Structure<HeterogeneousValue>>,
-    linked_table: DynamicMap<Name, Structure<Name>>,
+    chair: DynamicMap<Name, Name>,
+    timetable: DynamicObjectMap<Name, Value>,
+    friends: DynamicObjectMap<Name, PlainValue>,
+    bag: DynamicMap<Name, PlainValue>,
+    heterogeneous: DynamicMap<Name, HeterogeneousValue>,
+    linked_table: DynamicMap<Name, Name>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 struct Name {
     name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct AnotherName {
-    another_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -46,7 +39,7 @@ struct Value {
     #[allow(dead_code)]
     id: sui::types::Address,
     value: Name,
-    pouch: DynamicMap<Name, PlainValue>,
+    pouch: DynamicObjectMap<Name, PlainValue>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,7 +47,7 @@ struct PlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    value: Vec<u8>,
+    value: Bytes,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -62,14 +55,7 @@ struct AnotherPlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    another_value: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(untagged)]
-enum HeterogeneousKey {
-    Name(Name),
-    AnotherName(AnotherName),
+    another_value: Bytes,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -116,14 +102,6 @@ async fn test_object_crawler() {
         .object_changes
         .expect("TX response must have object changes");
 
-    let pkg_id = *changes
-        .iter()
-        .find_map(|c| match c {
-            sui::ObjectChange::Published { package_id, .. } => Some(package_id),
-            _ => None,
-        })
-        .expect("Move package must be published");
-
     let guy = *changes
         .iter()
         .find_map(|c| match c {
@@ -148,230 +126,196 @@ async fn test_object_crawler() {
         .await
         .expect("Could not fetch Guy object.");
 
-    println!("Fetched Guy object: {:#?}", guy);
+    assert!(guy.is_shared());
 
-    // // Name type tag.
-    // let name_tag = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-    //     address: *pkg_id,
-    //     module: sui::move_ident_str!("main").into(),
-    //     name: sui::move_ident_str!("Name").into(),
-    //     type_params: vec![],
-    // }));
+    let guy = guy.data;
 
-    // // Fetch the base object.
-    // let guy = fetch_one::<Structure<Guy>>(&sui, guy)
-    //     .await
-    //     .unwrap()
-    //     .data
-    //     .into_inner();
+    assert_eq!(guy.name, "John Doe");
+    assert_eq!(guy.age, 30);
+    assert_eq!(
+        guy.hobbies.into_inner(),
+        vec!["Reading".to_string(), "Swimming".to_string()]
+            .into_iter()
+            .collect()
+    );
 
-    // assert_eq!(guy.name, "John Doe");
-    // assert_eq!(guy.age, 30);
-    // assert_eq!(
-    //     guy.hobbies.into_inner(),
-    //     vec!["Reading".to_string(), "Swimming".to_string()]
-    //         .into_iter()
-    //         .collect()
-    // );
+    // Check VecMap and nested vector fetched correctly.
+    let groups = guy.groups.into_inner();
+    assert_eq!(groups.len(), 2);
 
-    // // Check VecMap and nested vector fetched correctly.
-    // let groups = guy.groups.into_inner();
-    // assert_eq!(groups.len(), 2);
+    // Contains book club with the correct people.
+    let group = groups.clone().into_iter().find(|(group, people)| {
+        group.clone().name == "Book Club"
+            && people.iter().any(|p| p.name == "Alice")
+            && people.iter().any(|p| p.name == "Bob")
+    });
 
-    // // Contains book club with the correct people.
-    // let group = groups.clone().into_iter().find(|(group, people)| {
-    //     group.clone().into_inner().name == "Book Club"
-    //         && people.iter().any(|p| p.inner().name == "Alice")
-    //         && people.iter().any(|p| p.inner().name == "Bob")
-    // });
+    assert!(group.is_some());
 
-    // assert!(group.is_some());
+    // Contains swimming club with the correct people.
+    let group = groups.clone().into_iter().find(|(group, people)| {
+        group.clone().name == "Swimming Club"
+            && people.iter().any(|p| p.name == "Charlie")
+            && people.iter().any(|p| p.name == "David")
+    });
 
-    // // Contains swimming club with the correct people.
-    // let group = groups.clone().into_iter().find(|(group, people)| {
-    //     group.clone().into_inner().name == "Swimming Club"
-    //         && people.iter().any(|p| p.inner().name == "Charlie")
-    //         && people.iter().any(|p| p.inner().name == "David")
-    // });
+    assert!(group.is_some());
 
-    // assert!(group.is_some());
+    // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
+    assert_eq!(guy.timetable.size(), 2);
+    let timetable = crawler
+        .get_dynamic_field_objects(&guy.timetable)
+        .await
+        .unwrap();
+    assert_eq!(timetable.len(), 2);
 
-    // // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
-    // let timetable = guy.timetable.fetch_all(&sui).await.unwrap();
-    // assert_eq!(timetable.len(), 2);
+    // Fetch monday.
+    let monday = timetable
+        .get(&Name {
+            name: "Monday".to_string(),
+        })
+        .unwrap();
 
-    // // Fetch monday.
-    // let monday = guy
-    //     .timetable
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Monday".to_string(),
-    //         },
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(monday.value.into_inner().name, "Meeting");
+    assert_eq!(monday.data.value.name, "Meeting");
 
-    // let pouch = monday.pouch.fetch_all(&sui).await.unwrap();
-    // assert_eq!(pouch.len(), 1);
-    // let (key, value) = pouch.into_iter().next().unwrap();
-    // assert_eq!(key.name, "Pouch Item");
-    // assert_eq!(value.into_inner().value, b"Pouch Data");
+    assert_eq!(monday.data.pouch.size(), 1);
+    let pouch = crawler
+        .get_dynamic_field_objects(&monday.data.pouch)
+        .await
+        .unwrap();
 
-    // // Fetch tuesday
-    // let monday = guy
-    //     .timetable
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Tuesday".to_string(),
-    //         },
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(monday.value.into_inner().name, "Code Review");
+    assert_eq!(pouch.len(), 1);
+    let (key, value) = pouch.into_iter().next().unwrap();
+    assert_eq!(key.name, "Pouch Item");
+    assert_eq!(value.data.value.into_inner(), b"Pouch Data");
 
-    // let pouch = monday.pouch.fetch_all(&sui).await.unwrap();
-    // assert_eq!(pouch.len(), 1);
-    // let (key, value) = pouch.into_iter().next().unwrap();
-    // assert_eq!(key.name, "Pouch Code");
-    // assert_eq!(value.into_inner().value, b"MOREDATA15");
+    // Fetch tuesday
+    let tuesday = timetable
+        .get(&Name {
+            name: "Tuesday".to_string(),
+        })
+        .unwrap();
 
-    // // Fetch chair which is a Table. Weirdly.
-    // let chair = guy.chair.fetch_all(&sui).await.unwrap();
-    // assert_eq!(chair.len(), 2);
+    assert_eq!(tuesday.data.value.name, "Code Review");
 
-    // // Fetch chairman.
-    // let chairman = guy
-    //     .chair
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Chairman".to_string(),
-    //         },
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(chairman.name, "John Doe");
+    assert_eq!(tuesday.data.pouch.size(), 1);
+    let pouch = crawler
+        .get_dynamic_field_objects(&tuesday.data.pouch)
+        .await
+        .unwrap();
+    assert_eq!(pouch.len(), 1);
+    let (key, value) = pouch.into_iter().next().unwrap();
+    assert_eq!(key.name, "Pouch Code");
+    assert_eq!(value.data.value.into_inner(), b"MOREDATA15");
 
-    // // Fetch vice chairman.
-    // let vice_chairman = guy
-    //     .chair
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Vice Chairman".to_string(),
-    //         },
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(vice_chairman.name, "Alice");
+    // Fetch chair which is a Table. Weirdly.
+    assert_eq!(guy.chair.size(), 2);
+    let chair = crawler.get_dynamic_fields(&guy.chair).await.unwrap();
+    assert_eq!(chair.len(), 2);
 
-    // // Fetch friends which is an ObjectBag.
-    // let friends = guy.friends.fetch_all(&sui).await.unwrap();
-    // assert_eq!(friends.len(), 2);
+    // Fetch chairman.
+    let chairman = chair
+        .get(&Name {
+            name: "Chairman".to_string(),
+        })
+        .unwrap();
 
-    // // Fetch first friend.
-    // let charlie = guy
-    //     .friends
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Charlie".to_string(),
-    //         },
-    //         name_tag.clone(),
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(charlie.value, b"Never Seen");
+    assert_eq!(chairman.name, "John Doe");
 
-    // // Fetch second friend.
-    // let david = guy
-    //     .friends
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "David".to_string(),
-    //         },
-    //         name_tag.clone(),
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(david.value, b"Definitely Imagination");
+    // Fetch vice chairman.
+    let vice_chairman = chair
+        .get(&Name {
+            name: "Vice Chairman".to_string(),
+        })
+        .unwrap();
 
-    // // Now fetch bag which is a Bag. Finally.
-    // let bag = guy.bag.fetch_all(&sui).await.unwrap();
-    // assert_eq!(bag.len(), 2);
+    assert_eq!(vice_chairman.name, "Alice");
 
-    // // Fetch first item from bag.
-    // let item1 = guy
-    //     .bag
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Bag Item".to_string(),
-    //         },
-    //         name_tag.clone(),
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(item1.value, b"Bag Data");
+    // Fetch friends which is an ObjectBag.
+    assert_eq!(guy.friends.size(), 2);
+    let friends = crawler
+        .get_dynamic_field_objects(&guy.friends)
+        .await
+        .unwrap();
+    assert_eq!(friends.len(), 2);
 
-    // // Fetch second item from bag.
-    // let item2 = guy
-    //     .bag
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Bag Item 2".to_string(),
-    //         },
-    //         name_tag.clone(),
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(item2.value, b"Bag Data 2");
+    // Fetch first friend.
+    let charlie = friends
+        .get(&Name {
+            name: "Charlie".to_string(),
+        })
+        .unwrap();
 
-    // // Fetch heterogeneous Bag.
-    // let heterogeneous = guy.heterogeneous.fetch_all(&sui).await.unwrap();
-    // assert!(heterogeneous.len() == 2);
+    assert_eq!(charlie.data.value.clone().into_inner(), b"Never Seen");
 
-    // for (key, value) in heterogeneous {
-    //     match key {
-    //         HeterogeneousKey::Name(name) => {
-    //             assert_eq!(name.name, "Bag Item");
-    //             assert_matches!(value.into_inner(), HeterogeneousValue::Value(v) if v.value == b"Bag Data");
-    //         }
-    //         HeterogeneousKey::AnotherName(name) => {
-    //             assert_eq!(name.another_name, "Another Bag Item");
-    //             assert_matches!(value.into_inner(), HeterogeneousValue::AnotherValue(v) if v.another_value == b"Another Bag Data");
-    //         }
-    //     }
-    // }
+    // Fetch second friend.
+    let david = friends
+        .get(&Name {
+            name: "David".to_string(),
+        })
+        .unwrap();
 
-    // // Fetch linked table.
-    // let linked_table = guy.linked_table.fetch_all(&sui).await.unwrap();
-    // assert_eq!(linked_table.len(), 1);
+    assert_eq!(
+        david.data.value.clone().into_inner(),
+        b"Definitely Imagination"
+    );
 
-    // // Fetch first value from linked table.
-    // let linked_item = guy
-    //     .linked_table
-    //     .fetch_one(
-    //         &sui,
-    //         Name {
-    //             name: "Key 1".to_string(),
-    //         },
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .into_inner();
-    // assert_eq!(linked_item.name, "Value 1");
+    // Now fetch bag which is a Bag. Finally.
+    assert_eq!(guy.bag.size(), 2);
+    let bag = crawler.get_dynamic_fields(&guy.bag).await.unwrap();
+    assert_eq!(bag.len(), 2);
+
+    // Fetch first item from bag.
+    let item1 = bag
+        .get(&Name {
+            name: "Bag Item".to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(item1.value.clone().into_inner(), b"Bag Data");
+
+    // Fetch second item from bag.
+    let item2 = bag
+        .get(&Name {
+            name: "Bag Item 2".to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(item2.value.clone().into_inner(), b"Bag Data 2");
+
+    // Fetch heterogeneous Bag.
+    assert_eq!(guy.heterogeneous.size(), 2);
+    let heterogeneous = crawler
+        .get_dynamic_fields(&guy.heterogeneous)
+        .await
+        .unwrap();
+    assert!(heterogeneous.len() == 2);
+
+    for (key, value) in heterogeneous {
+        if key.name == "Bag Item" {
+            assert!(
+                matches!(value, HeterogeneousValue::Value(v) if v.value.clone().into_inner() == b"Bag Data")
+            );
+        } else if key.name == "Another Bag Item" {
+            assert!(
+                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone().into_inner() == b"Another Bag Data")
+            );
+        } else {
+            panic!("Unexpected key in heterogeneous bag: {:?}", key);
+        }
+    }
+
+    // Fetch linked table.
+    assert_eq!(guy.linked_table.size(), 1);
+    let linked_table = crawler.get_dynamic_fields(&guy.linked_table).await.unwrap();
+    assert_eq!(linked_table.len(), 1);
+
+    // Fetch first value from linked table.
+    let linked_item = linked_table
+        .get(&Name {
+            name: "Key 1".to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(linked_item.name, "Value 1");
 }
