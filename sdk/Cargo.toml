@@ -281,7 +281,7 @@ optional = true
 
 [dependencies.sui-sdk-types]
 version = "0.1.0"
-features = ["rand"]
+features = ["rand", "serde"]
 optional = true
 
 [dependencies.sui-crypto]

@@ -16,6 +16,7 @@ use {
 };
 
 /// The main crawler struct.
+#[derive(Clone)]
 pub struct Crawler {
     client: Arc<Mutex<sui::grpc::Client>>,
 }

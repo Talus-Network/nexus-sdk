@@ -59,6 +59,23 @@ pub fn mock_sui_mnemonic() -> (sui::Address, String) {
     (addr, secret_mnemonic)
 }
 
+/// Generate a mock [`sui::types::Event`]
+pub fn mock_sui_event(
+    package_id: sui::types::Address,
+    type_: sui::types::StructTag,
+    contents: Vec<u8>,
+) -> sui::types::Event {
+    let mut rng = rand::thread_rng();
+
+    sui::types::Event {
+        package_id,
+        type_,
+        contents,
+        sender: sui::types::Address::generate(&mut rng),
+        module: sui::types::Identifier::new("test_module").unwrap(),
+    }
+}
+
 pub mod grpc {
     use {
         mockall::mock,

@@ -251,101 +251,103 @@ impl WorkflowActions {
         execution_tx_digest: sui::types::Digest,
         timeout: Option<Duration>,
     ) -> Result<InspectExecutionResult, NexusError> {
+        Err(NexusError::Configuration("Not yet implemented".to_string()))
+        // TODO: fix when we can fetch events from GQL
         // Setup MSPC channel.
-        let (tx, rx) = unbounded_channel::<NexusEvent>();
+        // let (tx, rx) = unbounded_channel::<NexusEvent>();
 
-        let mut cursor = Some(sui::EventID {
-            tx_digest: execution_tx_digest
-                .to_string()
-                .parse()
-                .expect("TODO: remove old sdk"),
-            event_seq: 0,
-        });
+        // let mut cursor = Some(sui::EventID {
+        //     tx_digest: execution_tx_digest
+        //         .to_string()
+        //         .parse()
+        //         .expect("TODO: remove old sdk"),
+        //     event_seq: 0,
+        // });
 
-        let sui_client = self.client.sui_client.clone();
+        // let sui_client = self.client.sui_client.clone();
 
-        // Create some initial timings and restrictions.
-        let timeout = timeout.unwrap_or(Duration::from_secs(300));
-        let mut poll_interval = Duration::from_millis(100);
-        let max_poll_interval = Duration::from_secs(2);
-        let started = Instant::now();
+        // // Create some initial timings and restrictions.
+        // let timeout = timeout.unwrap_or(Duration::from_secs(300));
+        // let mut poll_interval = Duration::from_millis(100);
+        // let max_poll_interval = Duration::from_secs(2);
+        // let started = Instant::now();
 
-        let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
+        // let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
 
-        let poller = tokio::spawn(async move {
-            // Loop until we find an [`NexusEventKind::ExecutionFinished`] event.
-            loop {
-                if started.elapsed() > timeout {
-                    return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
-                }
+        // let poller = tokio::spawn(async move {
+        //     // Loop until we find an [`NexusEventKind::ExecutionFinished`] event.
+        //     loop {
+        //         if started.elapsed() > timeout {
+        //             return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
+        //         }
 
-                let query = sui::EventFilter::MoveEventModule {
-                    package: sui::ObjectID::from_hex_literal(&primitives_pkg_id.to_string())
-                        .expect("TODO: remove ObjectID"),
-                    module: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str())
-                        .expect("TODO: old SDK"),
-                };
+        //         let query = sui::EventFilter::MoveEventModule {
+        //             package: sui::ObjectID::from_hex_literal(&primitives_pkg_id.to_string())
+        //                 .expect("TODO: remove ObjectID"),
+        //             module: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str())
+        //                 .expect("TODO: old SDK"),
+        //         };
 
-                let limit = None;
-                let descending_order = false;
+        //         let limit = None;
+        //         let descending_order = false;
 
-                let page = sui_client
-                    .event_api()
-                    .query_events(query, cursor, limit, descending_order)
-                    .await
-                    .map_err(|e| NexusError::Rpc(e.into()))?;
+        //         let page = sui_client
+        //             .event_api()
+        //             .query_events(query, cursor, limit, descending_order)
+        //             .await
+        //             .map_err(|e| NexusError::Rpc(e.into()))?;
 
-                cursor = page.next_cursor;
+        //         cursor = page.next_cursor;
 
-                let mut found_event = false;
+        //         let mut found_event = false;
 
-                for event in page.data {
-                    let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
-                        continue;
-                    };
+        //         for event in page.data {
+        //             let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
+        //                 continue;
+        //             };
 
-                    let execution_id = match &event.data {
-                        NexusEventKind::WalkAdvanced(e) => e.execution,
-                        NexusEventKind::WalkFailed(e) => e.execution,
-                        NexusEventKind::EndStateReached(e) => e.execution,
-                        NexusEventKind::ExecutionFinished(e) => e.execution,
-                        _ => continue,
-                    };
+        //             let execution_id = match &event.data {
+        //                 NexusEventKind::WalkAdvanced(e) => e.execution,
+        //                 NexusEventKind::WalkFailed(e) => e.execution,
+        //                 NexusEventKind::EndStateReached(e) => e.execution,
+        //                 NexusEventKind::ExecutionFinished(e) => e.execution,
+        //                 _ => continue,
+        //             };
 
-                    // Only process events for the given execution ID.
-                    if execution_id != dag_execution_id {
-                        continue;
-                    }
+        //             // Only process events for the given execution ID.
+        //             if execution_id != dag_execution_id {
+        //                 continue;
+        //             }
 
-                    // We did find relevant events, do not increase the polling
-                    // interval.
-                    found_event = true;
+        //             // We did find relevant events, do not increase the polling
+        //             // interval.
+        //             found_event = true;
 
-                    if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-                        tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+        //             if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
+        //                 tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
 
-                        return Ok(());
-                    }
+        //                 return Ok(());
+        //             }
 
-                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-                }
+        //             tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+        //         }
 
-                // If no new events were found, increase the polling interval.
-                // Otherwise, reset it to the initial value.
-                if found_event {
-                    poll_interval = Duration::from_millis(100);
-                } else {
-                    poll_interval = (poll_interval * 2).min(max_poll_interval);
-                }
+        //         // If no new events were found, increase the polling interval.
+        //         // Otherwise, reset it to the initial value.
+        //         if found_event {
+        //             poll_interval = Duration::from_millis(100);
+        //         } else {
+        //             poll_interval = (poll_interval * 2).min(max_poll_interval);
+        //         }
 
-                tokio::time::sleep(poll_interval).await;
-            }
-        });
+        //         tokio::time::sleep(poll_interval).await;
+        //     }
+        // });
 
-        Ok(InspectExecutionResult {
-            next_event: rx,
-            poller,
-        })
+        // Ok(InspectExecutionResult {
+        //     next_event: rx,
+        //     poller,
+        // })
     }
 }
 

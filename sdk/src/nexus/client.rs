@@ -4,6 +4,7 @@
 use {
     crate::{
         nexus::{
+            crawler::Crawler,
             crypto::CryptoActions,
             error::NexusError,
             gas::GasActions,
@@ -23,7 +24,7 @@ use {
 /// Resulting struct from executing a transaction.
 pub struct ExecutedTransaction {
     pub effects: sui::types::TransactionEffectsV2,
-    pub events: sui::types::TransactionEvents,
+    pub events: Vec<sui::types::Event>,
     pub objects: Vec<sui::types::Object>,
     pub digest: sui::types::Digest,
 }
@@ -39,18 +40,13 @@ pub struct Signer {
 }
 
 impl Signer {
-    /// Get a reference to the Sui client.
-    pub(super) async fn get_client(&self) -> MutexGuard<'_, sui::grpc::Client> {
-        self.client.lock().await
-    }
-
     /// Get the active address from the signer.
-    pub(super) fn get_active_address(&self) -> sui::types::Address {
+    pub fn get_active_address(&self) -> sui::types::Address {
         self.pk.public_key().derive_address()
     }
 
     /// Sign a transaction block using the signer.
-    pub(super) async fn sign_tx(
+    pub async fn sign_tx(
         &self,
         tx: &sui::types::Transaction,
     ) -> Result<sui::types::UserSignature, NexusError> {
@@ -60,7 +56,7 @@ impl Signer {
     }
 
     /// Execute a transaction block and return the response.
-    pub(super) async fn execute_tx(
+    pub async fn execute_tx(
         &self,
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
@@ -73,8 +69,8 @@ impl Signer {
             .with_signatures(vec![signature.into()])
             .with_read_mask(sui::grpc::FieldMask::from_paths(&[
                 "effects.bcs",
-                "events.bcs",
-                "objects.objects.bcs",
+                "events.events",
+                "objects.objects",
                 "digest",
             ]));
 
@@ -102,6 +98,27 @@ impl Signer {
                 "Failed to read transaction events."
             )));
         };
+
+        #[derive(Debug, serde::Deserialize)]
+        struct Wrapper<T> {
+            event: T,
+        }
+
+        #[derive(Debug, serde::Deserialize)]
+        struct DagCreatedEvent {
+            dag: sui::types::Address,
+        }
+
+        // TODO: TryFrom Vec<u8> bcs for Events
+        for event in &events.0 {
+            println!("{:?}", event.type_);
+
+            let data = bcs::from_bytes::<Wrapper<DagCreatedEvent>>(&event.contents);
+
+            println!("Parsed event data: {:#?}", data);
+        }
+
+        println!("Events: {:?}", events);
 
         // Deserialize objects.
         let Ok(objects) = response
@@ -147,7 +164,7 @@ impl Signer {
 
         Ok(ExecutedTransaction {
             effects: *effects,
-            events,
+            events: events.0,
             objects,
             digest: sui::types::Digest::from_str(digest)
                 .map_err(|e| NexusError::Parsing(e.into()))?,
@@ -262,15 +279,19 @@ impl NexusClientBuilder {
             .nexus_objects
             .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
 
-        let mut client = sui_rpc::Client::new(&rpc_url).map_err(|e| NexusError::Rpc(e.into()))?;
+        let client = Arc::new(Mutex::new(
+            sui_rpc::Client::new(&rpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
+        ));
 
         let reference_gas_price = client
+            .lock()
+            .await
             .get_reference_gas_price()
             .await
             .map_err(|e| NexusError::Rpc(e.into()))?;
 
         let signer = Signer {
-            client: Arc::new(Mutex::new(client)),
+            client: client.clone(),
             pk,
             transaction_timeout: self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
         };
@@ -292,6 +313,7 @@ impl NexusClientBuilder {
             gas,
             nexus_objects: Arc::new(nexus_objects),
             reference_gas_price,
+            crawler: Crawler::new(client),
             sui_client,
         })
     }
@@ -308,6 +330,8 @@ pub struct NexusClient {
     pub(super) nexus_objects: Arc<NexusObjects>,
     /// Save reference gas price to avoid fetching it multiple times.
     pub(super) reference_gas_price: u64,
+    /// Provide access to an instantiated object crawler.
+    pub(super) crawler: Crawler,
     #[deprecated(since = "0.4.0")]
     pub sui_client: sui::Client,
 }
@@ -344,6 +368,16 @@ impl NexusClient {
         SchedulerActions {
             client: self.clone(),
         }
+    }
+
+    /// Return a [`Crawler`] instance for object crawling operations.
+    pub fn crawler(&self) -> Crawler {
+        self.crawler.clone()
+    }
+
+    /// Return a [`Signer`] instance for signing transactions.
+    pub fn signer(&self) -> Signer {
+        self.signer.clone()
     }
 }
 

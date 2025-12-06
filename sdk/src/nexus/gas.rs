@@ -4,7 +4,6 @@
 
 use crate::{
     nexus::{client::NexusClient, error::NexusError},
-    object_crawler::fetch_one,
     sui,
     transactions::gas,
 };
@@ -25,10 +24,13 @@ impl GasActions {
     ) -> Result<AddBudgetResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let grpc_client = self.client.signer.get_client().await;
-        let coin = fetch_one::<serde_json::Value>(&self.client.sui_client, coin_object_id)
+
+        let coin = self
+            .client
+            .crawler()
+            .get_object_metadata(coin_object_id)
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(|e| NexusError::Rpc(e))?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 

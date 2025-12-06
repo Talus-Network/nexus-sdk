@@ -167,53 +167,55 @@ impl CryptoActions {
     where
         F: FnMut(NexusEvent) -> Option<T>,
     {
-        let timeout = Duration::from_secs(300);
-        let mut poll_interval = Duration::from_millis(100);
-        let max_poll_interval = Duration::from_secs(2);
-        let started = Instant::now();
+        Err(NexusError::Configuration("Not yet implemented".to_string()))
+        // TODO: fix when we can ferch events from GQL
+        // let timeout = Duration::from_secs(300);
+        // let mut poll_interval = Duration::from_millis(100);
+        // let max_poll_interval = Duration::from_secs(2);
+        // let started = Instant::now();
 
-        let sui_client = self.client.sui_client.clone();
+        // let sui_client = self.client.sui_client.clone();
 
-        loop {
-            if started.elapsed() > timeout {
-                return Err(NexusError::Timeout(anyhow!(
-                    "Timeout {timeout:?} reached while waiting for event"
-                )));
-            }
+        // loop {
+        //     if started.elapsed() > timeout {
+        //         return Err(NexusError::Timeout(anyhow!(
+        //             "Timeout {timeout:?} reached while waiting for event"
+        //         )));
+        //     }
 
-            let limit = None;
-            let descending_order = false;
+        //     let limit = None;
+        //     let descending_order = false;
 
-            let page = sui_client
-                .event_api()
-                .query_events(filter.clone(), cursor, limit, descending_order)
-                .await
-                .map_err(|e| NexusError::Rpc(e.into()))?;
+        //     let page = sui_client
+        //         .event_api()
+        //         .query_events(filter.clone(), cursor, limit, descending_order)
+        //         .await
+        //         .map_err(|e| NexusError::Rpc(e.into()))?;
 
-            cursor = page.next_cursor;
+        //     cursor = page.next_cursor;
 
-            let mut found_event = false;
+        //     let mut found_event = false;
 
-            for event in page.data {
-                let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
-                    continue;
-                };
+        //     for event in page.data {
+        //         let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
+        //             continue;
+        //         };
 
-                if let Some(result) = predicate(event) {
-                    return Ok(result);
-                }
+        //         if let Some(result) = predicate(event) {
+        //             return Ok(result);
+        //         }
 
-                found_event = true;
-            }
+        //         found_event = true;
+        //     }
 
-            if found_event {
-                poll_interval = Duration::from_millis(100);
-            } else {
-                poll_interval = (poll_interval * 2).min(max_poll_interval);
-            }
+        //     if found_event {
+        //         poll_interval = Duration::from_millis(100);
+        //     } else {
+        //         poll_interval = (poll_interval * 2).min(max_poll_interval);
+        //     }
 
-            tokio::time::sleep(poll_interval).await;
-        }
+        //     tokio::time::sleep(poll_interval).await;
+        // }
     }
 }
 
