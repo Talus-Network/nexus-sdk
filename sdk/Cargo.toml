@@ -46,9 +46,6 @@ sui_types = [
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 
-# Object crawler feature enables the use of the `object_crawler` module.
-object_crawler = ["sui_types", "serde_json", "prost-types"]
-
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
@@ -58,7 +55,7 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures"]
 
 # Events feature enables the use of the `events` module.
-events = ["sui_idents", "types"]
+events = ["sui_idents", "types", "graphql_client", "reqwest"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -72,7 +69,7 @@ dag = ["petgraph"]
 schema_gen = ["sui_types", "serde_json"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
-nexus = ["transactions", "dag", "object_crawler", "bcs"]
+nexus = ["transactions", "events", "dag", "bcs", "prost-types"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -99,7 +96,6 @@ full = [
     "sui_idents",
     "types",
     "events",
-    "object_crawler",
     "transactions",
     "walrus",
     "dag",
@@ -222,6 +218,10 @@ optional = true
 # === Optional deps ===
 [dependencies.futures-util]
 version = "0.3"
+optional = true
+
+[dependencies.graphql_client]
+workspace = true
 optional = true
 
 [dependencies.lazy-regex]

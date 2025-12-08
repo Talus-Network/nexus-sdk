@@ -4,17 +4,18 @@ use {
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
 
+mod fetching;
+mod graphql;
 mod parsing;
 
-pub use parsing::*;
+pub use {fetching::*, graphql::*, parsing::*};
 
 /// Struct holding the Sui event ID, the event generic arguments and the data
 /// as one of [NexusEventKind].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NexusEvent {
-    // /// The event transaction digest and event sequence. Useful to filter down
-    // /// events.
-    // pub id: sui::EventID,
+    /// The event transaction digest and event sequence.
+    pub id: (sui::types::Digest, u64),
     /// If the `T in NexusEvent<T>` is also a generic, this field holds the
     /// generic type. Note that this can be nested indefinitely.
     pub generics: Vec<sui::types::TypeTag>,
@@ -66,6 +67,24 @@ macro_rules! events {
                     }
                 )*
                 _ => anyhow::bail!("Unknown event: {}", name),
+            }
+        }
+
+        // == Serialize to BCS ==
+
+        pub(crate) fn serialize_bcs(event: &NexusEventKind) -> anyhow::Result<Vec<u8>> {
+            #[derive(Serialize)]
+            struct Wrapper<'a, T> {
+                event: &'a T,
+            }
+
+            match event {
+                $(
+                    NexusEventKind::$variant(ev) => {
+                        let wrapper = Wrapper { event: ev };
+                        Ok(bcs::to_bytes(&wrapper)?)
+                    }
+                )*
             }
         }
     };

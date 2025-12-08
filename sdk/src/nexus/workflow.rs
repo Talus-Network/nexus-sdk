@@ -10,7 +10,6 @@ use {
         events::{NexusEvent, NexusEventKind},
         idents::{primitives, workflow},
         nexus::{client::NexusClient, error::NexusError},
-        object_crawler::fetch_one,
         sui,
         transactions::dag,
         types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
@@ -163,11 +162,13 @@ impl WorkflowActions {
         // == Craft and submit the execute DAG transaction ==
 
         let address = self.client.signer.get_active_address();
-        let sui_client = &self.client.sui_client;
         let nexus_objects = &self.client.nexus_objects;
-        let dag = fetch_one::<serde_json::Value>(sui_client, dag_object_id)
+        let dag = self
+            .client
+            .crawler()
+            .get_object_metadata(dag_object_id)
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(|e| NexusError::Rpc(e))?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 

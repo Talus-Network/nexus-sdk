@@ -6,9 +6,9 @@ use {
         idents::sui_framework,
         nexus::{
             client::{ExecutedTransaction, NexusClient},
+            crawler::Response,
             error::NexusError,
         },
-        object_crawler::{fetch_one, Response, Structure},
         sui,
         transactions::scheduler as scheduler_tx,
         types::{DataStorage, Task},
@@ -468,7 +468,7 @@ impl SchedulerActions {
 
     async fn enqueue_occurrence(
         &self,
-        task: &Response<Structure<Task>>,
+        task: &Response<Task>,
         request: OccurrenceRequest,
         address: sui::types::Address,
     ) -> Result<ScheduleExecutionResult, NexusError> {
@@ -532,13 +532,10 @@ impl SchedulerActions {
         })
     }
 
-    async fn fetch_task(
-        &self,
-        task_id: sui::types::Address,
-    ) -> Result<Response<Structure<Task>>, NexusError> {
-        let sui_client = &self.client.sui_client;
-
-        fetch_one::<Structure<Task>>(sui_client, task_id)
+    async fn fetch_task(&self, task_id: sui::types::Address) -> Result<Response<Task>, NexusError> {
+        self.client
+            .crawler()
+            .get_object::<Task>(task_id)
             .await
             .map_err(NexusError::Rpc)
     }

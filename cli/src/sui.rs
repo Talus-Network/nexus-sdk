@@ -1,6 +1,6 @@
 use {
     crate::{loading, notify_success, prelude::*},
-    nexus_sdk::{nexus::client::NexusClient, object_crawler::fetch_one, sui},
+    nexus_sdk::{nexus::client::NexusClient, sui},
     std::str::FromStr,
 };
 
@@ -207,20 +207,23 @@ pub(crate) async fn fetch_object_by_id(
     sui: &sui::Client,
     object_id: sui::types::Address,
 ) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    let object_handle = loading!("Fetching object {object_id}...");
+    todo!();
 
-    match fetch_one::<serde_json::Value>(sui, object_id).await {
-        Ok(response) => {
-            object_handle.success();
+    // TODO: re-implement
+    // let object_handle = loading!("Fetching object {object_id}...");
 
-            Ok(response.object_ref())
-        }
-        Err(e) => {
-            object_handle.error();
+    // match fetch_one::<serde_json::Value>(sui, object_id).await {
+    //     Ok(response) => {
+    //         object_handle.success();
 
-            Err(NexusCliError::Any(e))
-        }
-    }
+    //         Ok(response.object_ref())
+    //     }
+    //     Err(e) => {
+    //         object_handle.error();
+
+    //         Err(NexusCliError::Any(e))
+    //     }
+    // }
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.

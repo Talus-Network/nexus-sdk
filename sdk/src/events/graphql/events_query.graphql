@@ -1,0 +1,24 @@
+query EventsQuery($after: String, $filter: EventFilter!) {
+  events(first: 100, after: $after, filter: $filter) {
+    nodes {
+      sequenceNumber
+      transaction {
+        digest
+      }
+      transactionModule {
+        package {
+          address
+        }
+      }
+      contents {
+        bcs
+        type {
+          repr
+        }
+      }
+    }
+    pageInfo {
+      endCursor
+    }
+  }
+}

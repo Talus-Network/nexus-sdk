@@ -239,75 +239,79 @@ pub mod grpc {
     }
 }
 
-/// Mocking RPC endpoints for deeper testing.
-pub mod rpc {
+/// Mocking GQL endpoints for deeper testing.
+pub mod gql {
     use {
-        crate::{events::NexusEventKind, sui, test_utils::sui_mocks},
-        mockito::{Matcher, Mock, ServerGuard},
+        crate::{
+            events::{serialize_bcs, NexusEventKind},
+            sui,
+        },
+        base64::{prelude::BASE64_STANDARD, Engine},
+        mockito::{Mock, ServerGuard},
         serde_json::json,
     };
 
-    #[derive(serde::Deserialize)]
-    struct PartialRequest {
-        jsonrpc: String,
-        id: u64,
-    }
-
-    pub fn mock_event_api_query_events(
+    pub fn mock_event_query(
         server: &mut ServerGuard,
-        events: Vec<(String, NexusEventKind)>,
+        primitives_pkg_id: sui::types::Address,
+        events: Vec<NexusEventKind>,
+        digest: Option<sui::types::Digest>,
+        end_cursor: Option<&str>,
     ) -> Mock {
-        server
-            .mock("POST", "/")
-            .match_header("content-type", "application/json")
-            .match_body(Matcher::PartialJson(json!({
-                "method": "suix_queryEvents"
-            })))
-            .with_status(200)
-            .with_body_from_request(move |req| {
-                let req: PartialRequest = serde_json::from_str(
-                    &req.utf8_lossy_body().expect("Failed to parse request body"),
-                )
-                .expect("Failed to parse PartialRequest");
+        let mut rng = rand::thread_rng();
 
+        server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_body(
                 json!({
-                    "result": {
-                        "data": events
-                            .iter()
-                            .map(|(event_name, event)|
-                                sui::Event {
-                                    id: sui_mocks::mock_sui_event_id(),
-                                    package_id: sui::ObjectID::random(),
-                                    parsed_json: serde_json::to_value(event).expect("Failed to serialize event"),
-                                    transaction_module: sui::move_ident_str!("test").into(),
-                                    sender: sui::ObjectID::random().into(),
-                                    type_: sui::MoveStructTag {
-                                        address: sui::ObjectID::random().into(),
-                                        module: sui::move_ident_str!("event").into(),
-                                        name: sui::move_ident_str!("EventWrapper").into(),
-                                        type_params: vec![
-                                            sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-                                                address: sui::ObjectID::random().into(),
-                                                module: sui::move_ident_str!("test").into(),
-                                                name: sui::Identifier::new(event_name.clone()).expect("Failed to parse event name"),
-                                                type_params: vec![],
-                                            })),
-                                        ],
-                                    },
-                                    bcs: sui::BcsEvent::Base64 { bcs: vec![] },
-                                    timestamp_ms: None,
-                                }
-                            )
-                            .collect::<Vec<sui::Event>>(),
-                        "nextCursor": null,
-                        "hasNextPage": false,
+                    "data": {
+                        "events": {
+                            "nodes": events
+                                .iter()
+                                .zip(0..events.len())
+                                .map(|(event, id)|
+                                    json!({
+                                        "sequenceNumber": id,
+                                        "transaction": {
+                                            "digest": digest.unwrap_or_else(|| sui::types::Digest::generate(&mut rng)),
+                                        },
+                                        "transactionModule": {
+                                            "package": {
+                                                "address": primitives_pkg_id,
+                                            }
+                                        },
+                                        "contents": {
+                                            "bcs": BASE64_STANDARD.encode(serialize_bcs(&event).unwrap()),
+                                            "type": {
+                                                "repr": sui::types::StructTag::new(
+                                                    primitives_pkg_id,
+                                                    sui::types::Identifier::from_static("event"),
+                                                    sui::types::Identifier::from_static("EventWrapper"),
+                                                    vec![
+                                                        sui::types::TypeTag::Struct(
+                                                            Box::new(sui::types::StructTag::new(
+                                                                primitives_pkg_id,
+                                                                sui::types::Identifier::from_static("test"),
+                                                                event.name().parse().unwrap(),
+                                                                vec![],
+                                                            )),
+                                                        ),
+                                                    ],
+                                                )
+                                            }
+                                        }
+                                    })
+                                )
+                                .collect::<Vec<serde_json::Value>>(),
+                            "pageInfo": {
+                                "endCursor": end_cursor.unwrap_or("12345"),
+                            }
+                        },
                     },
-                    "jsonrpc": req.jsonrpc,
-                    "id": req.id
                 })
-                .to_string()
-                .into()
-            })
+                .to_string(),
+            )
             .create()
     }
 }
