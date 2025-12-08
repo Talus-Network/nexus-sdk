@@ -13,7 +13,7 @@ use {
 };
 
 /// Create a mock [`NexusClient`] that is connected to a mock RPC using [`mockito`].
-pub async fn mock_nexus_client(rpc_url: &str) -> NexusClient {
+pub async fn mock_nexus_client(grpc_url: &str) -> NexusClient {
     let mut rng = rand::thread_rng();
     let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
     let nexus_objects = sui_mocks::mock_nexus_objects();
@@ -21,7 +21,7 @@ pub async fn mock_nexus_client(rpc_url: &str) -> NexusClient {
 
     NexusClient::builder()
         .with_private_key(pk)
-        .with_rpc_url(rpc_url)
+        .with_grpc_url(grpc_url)
         .with_nexus_objects(nexus_objects)
         .with_gas(vec![coin], 1000)
         .build()

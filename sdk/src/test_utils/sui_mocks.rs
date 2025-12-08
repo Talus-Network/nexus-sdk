@@ -78,10 +78,10 @@ pub fn mock_sui_event(
 
 pub mod grpc {
     use {
+        super::*,
         mockall::mock,
         sui_rpc::proto::sui::rpc::v2::{
             ledger_service_server::{LedgerService, LedgerServiceServer},
-            subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
                 TransactionExecutionService,
                 TransactionExecutionServiceServer,
@@ -152,62 +152,10 @@ pub mod grpc {
         }
     }
 
-    // Mocking SubscriptionService RPC endpoints for deeper testing.
-    pub type BoxCheckpointStream = std::pin::Pin<
-        Box<
-            dyn futures::Stream<Item = Result<SubscribeCheckpointsResponse, Status>>
-                + Send
-                + 'static,
-        >,
-    >;
-
-    #[tonic::async_trait]
-    pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
-        async fn subscribe_checkpoints(
-            &self,
-            request: Request<SubscribeCheckpointsRequest>,
-        ) -> Result<Response<BoxCheckpointStream>, Status>;
-    }
-
-    pub struct SubscriptionServiceAdapter<W: SubscriptionServiceWrapper> {
-        pub inner: std::sync::Arc<W>,
-    }
-
-    impl<W: SubscriptionServiceWrapper> SubscriptionServiceAdapter<W> {
-        pub fn new(inner: std::sync::Arc<W>) -> Self {
-            Self { inner }
-        }
-    }
-
-    #[tonic::async_trait]
-    impl<W: SubscriptionServiceWrapper> SubscriptionService for SubscriptionServiceAdapter<W> {
-        type SubscribeCheckpointsStream = BoxCheckpointStream;
-
-        async fn subscribe_checkpoints(
-            &self,
-            request: Request<SubscribeCheckpointsRequest>,
-        ) -> Result<Response<Self::SubscribeCheckpointsStream>, Status> {
-            self.inner.subscribe_checkpoints(request).await
-        }
-    }
-
-    mock! {
-        pub SubscriptionService {}
-
-        #[tonic::async_trait]
-        impl SubscriptionServiceWrapper for SubscriptionService {
-            async fn subscribe_checkpoints(
-                &self,
-                request: tonic::Request<SubscribeCheckpointsRequest>,
-            ) -> Result<tonic::Response<BoxCheckpointStream>, tonic::Status>;
-        }
-    }
-
     #[derive(Default)]
     pub struct ServerMocks {
         pub ledger_service_mock: Option<MockLedgerService>,
         pub execution_service_mock: Option<MockTransactionExecutionService>,
-        pub subscription_service_mock: Option<MockSubscriptionService>,
     }
 
     pub fn mock_server(mocks: ServerMocks) -> String {
@@ -221,21 +169,116 @@ pub mod grpc {
         let execution_service = mocks
             .execution_service_mock
             .map(|m| TransactionExecutionServiceServer::new(m));
-        let subscription_service = mocks.subscription_service_mock.map(|m| {
-            SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
-        });
 
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_optional_service(ledger_service)
                 .add_optional_service(execution_service)
-                .add_optional_service(subscription_service)
                 .serve(thread_addr.parse().unwrap())
                 .await
                 .unwrap();
         });
 
         format!("http://{}", addr)
+    }
+
+    pub fn mock_execute_transaction_and_wait_for_checkpoint(
+        tx_service: &mut MockTransactionExecutionService,
+        ledger_service: &mut MockLedgerService,
+        digest: sui::types::Digest,
+        objects: Vec<sui::grpc::Object>,
+        changed_objects: Vec<sui::grpc::ChangedObject>,
+        events: Vec<sui::types::Event>,
+    ) {
+        ledger_service
+            .expect_get_checkpoint()
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetCheckpointResponse::default();
+                let mut checkpoint = sui::grpc::Checkpoint::default();
+                let mut tx = sui::grpc::ExecutedTransaction::default();
+                tx.set_digest(digest);
+                checkpoint.set_transactions(vec![tx]);
+                checkpoint.set_sequence_number(1);
+                response.set_checkpoint(checkpoint);
+
+                Ok(tonic::Response::new(response))
+            });
+
+        tx_service
+            .expect_execute_transaction()
+            .returning(move |_request| {
+                let mut response = sui::grpc::ExecuteTransactionResponse::default();
+                let mut tx = sui::grpc::ExecutedTransaction::default();
+
+                let mut tx_objects = sui::grpc::ObjectSet::default();
+                tx_objects.set_objects(objects.clone());
+                tx.set_objects(tx_objects);
+
+                let mut effects = sui::grpc::TransactionEffects::default();
+                let effect = sui::types::TransactionEffectsV2 {
+                    status: sui::types::ExecutionStatus::Success,
+                    epoch: 1,
+                    gas_used: sui::types::GasCostSummary {
+                        computation_cost: 0,
+                        storage_cost: 0,
+                        storage_rebate: 0,
+                        non_refundable_storage_fee: 0,
+                    },
+                    transaction_digest: digest,
+                    gas_object_index: Some(0),
+                    events_digest: None,
+                    dependencies: vec![],
+                    lamport_version: 1,
+                    changed_objects: vec![sui::types::ChangedObject {
+                        object_id: sui::types::Address::from_static("0x1"),
+                        input_state: sui::types::ObjectIn::NotExist,
+                        output_state: sui::types::ObjectOut::ObjectWrite {
+                            digest: sui::types::Digest::from_static("456def"),
+                            owner: sui::types::Owner::Address(sui::types::Address::from_static(
+                                "0x1",
+                            )),
+                        },
+                        id_operation: sui::types::IdOperation::None,
+                    }],
+                    unchanged_consensus_objects: vec![],
+                    auxiliary_data_digest: None,
+                };
+                effects.set_bcs(
+                    bcs::to_bytes(&sui::types::TransactionEffects::V2(Box::new(effect))).unwrap(),
+                );
+                tx.set_effects(effects);
+
+                let mut tx_events = sui::grpc::TransactionEvents::default();
+                tx_events.set_events(
+                    events
+                        .clone()
+                        .into_iter()
+                        .filter_map(|e| e.try_into().ok())
+                        .collect(),
+                );
+                tx.set_events(tx_events);
+                tx.set_digest(digest);
+                tx.set_checkpoint(1);
+
+                response.set_transaction(tx);
+
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_reference_gas_price(
+        ledger_service: &mut MockLedgerService,
+        reference_gas_price: u64,
+    ) {
+        ledger_service
+            .expect_get_epoch()
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetEpochResponse::default();
+                let mut epoch = sui::grpc::Epoch::default();
+                epoch.set_reference_gas_price(reference_gas_price);
+                response.set_epoch(epoch);
+                Ok(tonic::Response::new(response))
+            });
     }
 }
 
@@ -260,6 +303,44 @@ pub mod gql {
     ) -> Mock {
         let mut rng = rand::thread_rng();
 
+        let mock_events = events
+            .iter()
+            .enumerate()
+            .map(|(id, event)| {
+                json!({
+                    "sequenceNumber": id,
+                    "transaction": {
+                        "digest": digest.unwrap_or_else(|| sui::types::Digest::generate(&mut rng)),
+                    },
+                    "transactionModule": {
+                        "package": {
+                            "address": primitives_pkg_id,
+                        }
+                    },
+                    "contents": {
+                        "bcs": BASE64_STANDARD.encode(serialize_bcs(&event).unwrap()),
+                        "type": {
+                            "repr": sui::types::StructTag::new(
+                                primitives_pkg_id,
+                                sui::types::Identifier::from_static("event"),
+                                sui::types::Identifier::from_static("EventWrapper"),
+                                vec![
+                                    sui::types::TypeTag::Struct(
+                                        Box::new(sui::types::StructTag::new(
+                                            primitives_pkg_id,
+                                            sui::types::Identifier::from_static("test"),
+                                            event.name().parse().unwrap(),
+                                            vec![],
+                                        )),
+                                    ),
+                                ],
+                            )
+                        }
+                    }
+                })
+            })
+            .collect::<Vec<serde_json::Value>>();
+
         server
             .mock("POST", "/graphql")
             .with_status(200)
@@ -267,43 +348,7 @@ pub mod gql {
                 json!({
                     "data": {
                         "events": {
-                            "nodes": events
-                                .iter()
-                                .zip(0..events.len())
-                                .map(|(event, id)|
-                                    json!({
-                                        "sequenceNumber": id,
-                                        "transaction": {
-                                            "digest": digest.unwrap_or_else(|| sui::types::Digest::generate(&mut rng)),
-                                        },
-                                        "transactionModule": {
-                                            "package": {
-                                                "address": primitives_pkg_id,
-                                            }
-                                        },
-                                        "contents": {
-                                            "bcs": BASE64_STANDARD.encode(serialize_bcs(&event).unwrap()),
-                                            "type": {
-                                                "repr": sui::types::StructTag::new(
-                                                    primitives_pkg_id,
-                                                    sui::types::Identifier::from_static("event"),
-                                                    sui::types::Identifier::from_static("EventWrapper"),
-                                                    vec![
-                                                        sui::types::TypeTag::Struct(
-                                                            Box::new(sui::types::StructTag::new(
-                                                                primitives_pkg_id,
-                                                                sui::types::Identifier::from_static("test"),
-                                                                event.name().parse().unwrap(),
-                                                                vec![],
-                                                            )),
-                                                        ),
-                                                    ],
-                                                )
-                                            }
-                                        }
-                                    })
-                                )
-                                .collect::<Vec<serde_json::Value>>(),
+                            "nodes": mock_events,
                             "pageInfo": {
                                 "endCursor": end_cursor.unwrap_or("12345"),
                             }

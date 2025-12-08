@@ -27,6 +27,7 @@ pub struct EventPage {
 
 /// The fetcher struct itself. Responsible for creating a poller thread,
 /// fetching and parsing events and sending them over a channel.
+#[derive(Clone)]
 pub struct EventFetcher {
     url: String,
     channel_capacity: usize,
@@ -62,6 +63,7 @@ impl EventFetcher {
     pub fn poll_nexus_events(
         &self,
         from_cursor: Option<String>,
+        from_checkpoint: Option<u64>,
     ) -> (
         tokio::task::JoinHandle<()>,
         tokio::sync::mpsc::Receiver<EventPage>,
@@ -73,6 +75,7 @@ impl EventFetcher {
             let nexus_objects = self.nexus_objects.clone();
             let url = self.url.clone();
             let mut cursor = from_cursor;
+            let mut at_checkpoint = from_checkpoint;
 
             // Polling intervals.
             let mut poll_interval = tokio::time::Duration::from_millis(100);
@@ -91,6 +94,7 @@ impl EventFetcher {
                 loop {
                     let request = events_query::Variables {
                         after: cursor.clone(),
+                        at_checkpoint,
                         filter: events_query::EventFilter {
                             type_: Some(event_wrapper.clone()),
                             sender: None,
@@ -159,11 +163,11 @@ impl EventFetcher {
                             &contents,
                             &nexus_objects,
                         )
-                        .inspect_err(|e| println!("Failed to parse event: {:?}", e))
                         .ok()
                     });
 
                     cursor = Some(next_cursor.clone());
+                    at_checkpoint = None;
 
                     match notify_about_events
                         .send(EventPage {
@@ -229,7 +233,7 @@ mod tests {
 
         let fetcher = EventFetcher::new(&format!("{}/graphql", &server.url()), Arc::new(objects));
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None);
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
 
         if let Some(page) = receiver.recv().await {
             assert_eq!(page.next_cursor, "12345".to_string());

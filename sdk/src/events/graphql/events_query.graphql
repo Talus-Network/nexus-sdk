@@ -1,5 +1,14 @@
-query EventsQuery($after: String, $filter: EventFilter!) {
-  events(first: 100, after: $after, filter: $filter) {
+query EventsQuery(
+  $after: String
+  $at_checkpoint: UInt53
+  $filter: EventFilter!
+) {
+  events(
+    first: 100
+    after: $after
+    atCheckpoint: $at_checkpoint
+    filter: $filter
+  ) {
     nodes {
       sequenceNumber
       transaction {

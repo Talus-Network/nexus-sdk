@@ -7,8 +7,8 @@
 use {
     crate::{
         crypto::session::Session,
-        events::{NexusEvent, NexusEventKind},
-        idents::{primitives, workflow},
+        events::{EventPage, NexusEvent, NexusEventKind},
+        idents::workflow,
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::dag,
@@ -249,106 +249,61 @@ impl WorkflowActions {
     pub async fn inspect_execution(
         &self,
         dag_execution_id: sui::types::Address,
-        execution_tx_digest: sui::types::Digest,
+        execution_checkpoint: u64,
         timeout: Option<Duration>,
     ) -> Result<InspectExecutionResult, NexusError> {
-        Err(NexusError::Configuration("Not yet implemented".to_string()))
-        // TODO: fix when we can fetch events from GQL
         // Setup MSPC channel.
-        // let (tx, rx) = unbounded_channel::<NexusEvent>();
+        let (tx, rx) = unbounded_channel::<NexusEvent>();
 
-        // let mut cursor = Some(sui::EventID {
-        //     tx_digest: execution_tx_digest
-        //         .to_string()
-        //         .parse()
-        //         .expect("TODO: remove old sdk"),
-        //     event_seq: 0,
-        // });
+        // Create some initial timings and restrictions.
+        let timeout = timeout.unwrap_or(Duration::from_secs(300));
+        let started = Instant::now();
 
-        // let sui_client = self.client.sui_client.clone();
+        let poller = {
+            let fetcher = self.client.event_fetcher().clone();
 
-        // // Create some initial timings and restrictions.
-        // let timeout = timeout.unwrap_or(Duration::from_secs(300));
-        // let mut poll_interval = Duration::from_millis(100);
-        // let max_poll_interval = Duration::from_secs(2);
-        // let started = Instant::now();
+            tokio::spawn(async move {
+                let (_poller, mut next_page) =
+                    fetcher.poll_nexus_events(None, Some(execution_checkpoint));
 
-        // let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
+                // Loop until we find an [`NexusEventKind::ExecutionFinished`] event.
+                while let Some(EventPage { events, .. }) = next_page.recv().await {
+                    if started.elapsed() > timeout {
+                        return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
+                    }
 
-        // let poller = tokio::spawn(async move {
-        //     // Loop until we find an [`NexusEventKind::ExecutionFinished`] event.
-        //     loop {
-        //         if started.elapsed() > timeout {
-        //             return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
-        //         }
+                    for event in events {
+                        let execution_id = match &event.data {
+                            NexusEventKind::WalkAdvanced(e) => e.execution,
+                            NexusEventKind::WalkFailed(e) => e.execution,
+                            NexusEventKind::EndStateReached(e) => e.execution,
+                            NexusEventKind::ExecutionFinished(e) => e.execution,
+                            _ => continue,
+                        };
 
-        //         let query = sui::EventFilter::MoveEventModule {
-        //             package: sui::ObjectID::from_hex_literal(&primitives_pkg_id.to_string())
-        //                 .expect("TODO: remove ObjectID"),
-        //             module: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str())
-        //                 .expect("TODO: old SDK"),
-        //         };
+                        // Only process events for the given execution ID.
+                        if execution_id != dag_execution_id {
+                            continue;
+                        }
 
-        //         let limit = None;
-        //         let descending_order = false;
+                        if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
+                            tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
 
-        //         let page = sui_client
-        //             .event_api()
-        //             .query_events(query, cursor, limit, descending_order)
-        //             .await
-        //             .map_err(|e| NexusError::Rpc(e.into()))?;
+                            return Ok(());
+                        }
 
-        //         cursor = page.next_cursor;
+                        tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+                    }
+                }
 
-        //         let mut found_event = false;
+                Ok(())
+            })
+        };
 
-        //         for event in page.data {
-        //             let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
-        //                 continue;
-        //             };
-
-        //             let execution_id = match &event.data {
-        //                 NexusEventKind::WalkAdvanced(e) => e.execution,
-        //                 NexusEventKind::WalkFailed(e) => e.execution,
-        //                 NexusEventKind::EndStateReached(e) => e.execution,
-        //                 NexusEventKind::ExecutionFinished(e) => e.execution,
-        //                 _ => continue,
-        //             };
-
-        //             // Only process events for the given execution ID.
-        //             if execution_id != dag_execution_id {
-        //                 continue;
-        //             }
-
-        //             // We did find relevant events, do not increase the polling
-        //             // interval.
-        //             found_event = true;
-
-        //             if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-        //                 tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-
-        //                 return Ok(());
-        //             }
-
-        //             tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-        //         }
-
-        //         // If no new events were found, increase the polling interval.
-        //         // Otherwise, reset it to the initial value.
-        //         if found_event {
-        //             poll_interval = Duration::from_millis(100);
-        //         } else {
-        //             poll_interval = (poll_interval * 2).min(max_poll_interval);
-        //         }
-
-        //         tokio::time::sleep(poll_interval).await;
-        //     }
-        // });
-
-        // Ok(InspectExecutionResult {
-        //     next_event: rx,
-        //     poller,
-        // })
+        Ok(InspectExecutionResult {
+            next_event: rx,
+            poller,
+        })
     }
 }
 

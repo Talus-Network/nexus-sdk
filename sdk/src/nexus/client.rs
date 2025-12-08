@@ -3,6 +3,7 @@
 
 use {
     crate::{
+        events::{EventFetcher, FromSuiGrpcEvent, NexusEvent},
         nexus::{
             crawler::Crawler,
             crypto::CryptoActions,
@@ -14,7 +15,7 @@ use {
         sui::{self, traits::*},
         types::NexusObjects,
     },
-    std::{str::FromStr, sync::Arc},
+    std::sync::Arc,
     tokio::{
         sync::{Mutex, MutexGuard, Notify},
         time::Duration,
@@ -24,9 +25,10 @@ use {
 /// Resulting struct from executing a transaction.
 pub struct ExecutedTransaction {
     pub effects: sui::types::TransactionEffectsV2,
-    pub events: Vec<sui::types::Event>,
+    pub events: Vec<NexusEvent>,
     pub objects: Vec<sui::types::Object>,
     pub digest: sui::types::Digest,
+    pub checkpoint: u64,
 }
 
 /// We want to provide flexibility when it comes to signing transactions. We
@@ -37,6 +39,7 @@ pub struct Signer {
     client: Arc<Mutex<sui::grpc::Client>>,
     pk: sui::crypto::Ed25519PrivateKey,
     transaction_timeout: Duration,
+    nexus_objects: Arc<NexusObjects>,
 }
 
 impl Signer {
@@ -62,7 +65,7 @@ impl Signer {
         signature: sui::types::UserSignature,
         gas_coin: &mut sui::types::ObjectReference,
     ) -> Result<ExecutedTransaction, NexusError> {
-        let mut client: MutexGuard<'_, sui_rpc::Client> = self.client.lock().await;
+        let mut client = self.client.lock().await;
 
         let request = sui::grpc::ExecuteTransactionRequest::default()
             .with_transaction(tx)
@@ -72,16 +75,32 @@ impl Signer {
                 "events.events",
                 "objects.objects",
                 "digest",
+                "checkpoint",
             ]));
 
         let response = client
-            .execute_transaction_and_wait_for_checkpoint(request, self.transaction_timeout)
+            .execution_client()
+            .execute_transaction(request)
             .await
             .map(|res| res.into_inner().transaction)
-            .map_err(|e: sui_rpc::client::ExecuteAndWaitError| {
-                NexusError::Wallet(anyhow::anyhow!(e))
-            })?
+            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?
             .ok_or_else(|| NexusError::Wallet(anyhow::anyhow!("No transaction in response")))?;
+
+        drop(client);
+
+        let digest = response
+            .digest()
+            .parse()
+            .map_err(|e: sui::types::DigestParseError| NexusError::Parsing(e.into()))?;
+        let checkpoint = response.checkpoint();
+
+        // Wait for the transaction to be included in a checkpoint.
+        tokio::select! {
+            _ = self.confirm_tx(checkpoint, &digest) => (),
+            _ = tokio::time::sleep(self.transaction_timeout) => {
+                return Err(NexusError::Timeout(anyhow::anyhow!("Transaction confirmation timed out")));
+            }
+        }
 
         // Deserialize effects.
         let Ok(sui::types::TransactionEffects::V2(effects)) =
@@ -99,26 +118,9 @@ impl Signer {
             )));
         };
 
-        #[derive(Debug, serde::Deserialize)]
-        struct Wrapper<T> {
-            event: T,
-        }
-
-        #[derive(Debug, serde::Deserialize)]
-        struct DagCreatedEvent {
-            dag: sui::types::Address,
-        }
-
-        // TODO: TryFrom Vec<u8> bcs for Events
-        for event in &events.0 {
-            println!("{:?}", event.type_);
-
-            let data = bcs::from_bytes::<Wrapper<DagCreatedEvent>>(&event.contents);
-
-            println!("Parsed event data: {:#?}", data);
-        }
-
-        println!("Events: {:?}", events);
+        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
+            NexusEvent::from_sui_grpc_event(index as u64, digest, event, &self.nexus_objects).ok()
+        });
 
         // Deserialize objects.
         let Ok(objects) = response
@@ -132,8 +134,6 @@ impl Signer {
                 "Failed to read transaction objects."
             )));
         };
-
-        let digest = response.digest();
 
         if let sui::types::ExecutionStatus::Failure { error, command } = effects.status() {
             return Err(NexusError::Wallet(anyhow::anyhow!(
@@ -162,13 +162,48 @@ impl Signer {
             );
         }
 
+        let evts = nexus_events.collect();
+
+        println!("Executed tx with events: {:#?}", evts);
+
         Ok(ExecutedTransaction {
             effects: *effects,
-            events: events.0,
+            events: evts,
             objects,
-            digest: sui::types::Digest::from_str(digest)
-                .map_err(|e| NexusError::Parsing(e.into()))?,
+            digest,
+            checkpoint,
         })
+    }
+
+    /// Confirm that a transaction has been included in a checkpoint.
+    async fn confirm_tx(&self, checkpoint: u64, digest: &sui::types::Digest) -> () {
+        loop {
+            let mut client = self.client.lock().await;
+
+            let request = sui::grpc::GetCheckpointRequest::default()
+                .with_sequence_number(checkpoint)
+                .with_read_mask(sui::grpc::FieldMask::from_paths(&["transactions.digest"]));
+
+            let response = match client
+                .ledger_client()
+                .get_checkpoint(request)
+                .await
+                .map(|res| res.into_inner().checkpoint)
+            {
+                Ok(Some(resp)) => resp,
+                _ => continue,
+            };
+
+            if response
+                .transactions()
+                .iter()
+                .any(|tx| tx.digest() == digest.to_string())
+            {
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
 
@@ -210,7 +245,8 @@ impl Gas {
 #[derive(Default)]
 pub struct NexusClientBuilder {
     pk: Option<sui::crypto::Ed25519PrivateKey>,
-    rpc_url: Option<String>,
+    grpc_url: Option<String>,
+    gql_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     nexus_objects: Option<NexusObjects>,
@@ -229,9 +265,15 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Which RPC to connect to.
-    pub fn with_rpc_url(mut self, rpc_url: &str) -> Self {
-        self.rpc_url = Some(rpc_url.to_string());
+    /// Which GRPC to connect to.
+    pub fn with_grpc_url(mut self, grpc_url: &str) -> Self {
+        self.grpc_url = Some(grpc_url.to_string());
+        self
+    }
+
+    /// Which GraphQL to connect to.
+    pub fn with_gql_url(mut self, gql_url: &str) -> Self {
+        self.gql_url = Some(gql_url.to_string());
         self
     }
 
@@ -260,8 +302,8 @@ impl NexusClientBuilder {
             .pk
             .ok_or_else(|| NexusError::Configuration("User's private key is required".into()))?;
 
-        let rpc_url = self
-            .rpc_url
+        let grpc_url = self
+            .grpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
         // Need at least one gas coin.
@@ -275,12 +317,13 @@ impl NexusClientBuilder {
             .gas_budget
             .ok_or_else(|| NexusError::Configuration("Gas budget is required".into()))?;
 
-        let nexus_objects = self
-            .nexus_objects
-            .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
+        let nexus_objects = Arc::new(
+            self.nexus_objects
+                .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?,
+        );
 
         let client = Arc::new(Mutex::new(
-            sui_rpc::Client::new(&rpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
+            sui_rpc::Client::new(&grpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
         ));
 
         let reference_gas_price = client
@@ -294,6 +337,7 @@ impl NexusClientBuilder {
             client: client.clone(),
             pk,
             transaction_timeout: self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+            nexus_objects: Arc::clone(&nexus_objects),
         };
 
         let gas = Gas {
@@ -302,19 +346,18 @@ impl NexusClientBuilder {
             budget: gas_budget,
         };
 
-        // TODO: swap.
-        let sui_client = sui::ClientBuilder::default()
-            .build("https://fullnode.testnet.sui.io:443")
-            .await
-            .map_err(|e| NexusError::Rpc(e.into()))?;
-
         Ok(NexusClient {
             signer,
             gas,
-            nexus_objects: Arc::new(nexus_objects),
+            nexus_objects: Arc::clone(&nexus_objects),
             reference_gas_price,
             crawler: Crawler::new(client),
-            sui_client,
+            event_fetcher: EventFetcher::new(
+                &self
+                    .gql_url
+                    .unwrap_or_else(|| format!("{}/graphql", &grpc_url)),
+                Arc::clone(&nexus_objects),
+            ),
         })
     }
 }
@@ -332,8 +375,8 @@ pub struct NexusClient {
     pub(super) reference_gas_price: u64,
     /// Provide access to an instantiated object crawler.
     pub(super) crawler: Crawler,
-    #[deprecated(since = "0.4.0")]
-    pub sui_client: sui::Client,
+    /// Provide access to an instantiated event fetcher.
+    pub(super) event_fetcher: EventFetcher,
 }
 
 impl NexusClient {
@@ -378,6 +421,11 @@ impl NexusClient {
     /// Return a [`Signer`] instance for signing transactions.
     pub fn signer(&self) -> Signer {
         self.signer.clone()
+    }
+
+    /// Return an [`EventFetcher`] instance for fetching Nexus events.
+    pub fn event_fetcher(&self) -> EventFetcher {
+        self.event_fetcher.clone()
     }
 }
 
@@ -462,7 +510,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -479,7 +527,7 @@ mod tests {
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -513,7 +561,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
@@ -528,7 +576,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
@@ -545,7 +593,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -563,7 +611,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_gas(coins, budget);
 
         let result = builder.build().await;
@@ -581,7 +629,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget)
             .with_transaction_timeout(Duration::from_secs(10));
@@ -593,101 +641,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_tx_mutates_gas_coin() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-        let (set_digest, get_digest) = std::sync::mpsc::channel::<sui::types::Digest>();
 
-        ledger_service_mock
-            .expect_get_epoch()
-            .returning(|_request| {
-                let mut response = sui::grpc::GetEpochResponse::default();
-                let mut epoch = sui::grpc::Epoch::default();
-                epoch.set_reference_gas_price(1000);
-                response.set_epoch(epoch);
-                Ok(tonic::Response::new(response))
-            });
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        subscription_service_mock
-            .expect_subscribe_checkpoints()
-            .returning(move |_request| {
-                let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
-                let mut checkpoint = sui::grpc::Checkpoint::default();
-                let mut tx = sui::grpc::ExecutedTransaction::default();
-                let digest = get_digest.recv().unwrap();
-                tx.set_digest(digest);
-                checkpoint.set_transactions(vec![tx]);
-                checkpoint.set_sequence_number(1);
-                response.set_checkpoint(checkpoint);
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            vec![],
+            vec![],
+            vec![],
+        );
 
-                let output = vec![Ok(response)];
-                let stream = futures::stream::iter(output.into_iter());
-
-                Ok(tonic::Response::new(
-                    Box::pin(stream) as sui_mocks::grpc::BoxCheckpointStream
-                ))
-            });
-
-        tx_service_mock
-            .expect_execute_transaction()
-            .returning(|_request| {
-                let mut response = sui::grpc::ExecuteTransactionResponse::default();
-                let mut tx = sui::grpc::ExecutedTransaction::default();
-
-                let objects = sui::grpc::ObjectSet::default();
-                tx.set_objects(objects);
-
-                let mut effects = sui::grpc::TransactionEffects::default();
-                let effect = sui::types::TransactionEffectsV2 {
-                    status: sui::types::ExecutionStatus::Success,
-                    epoch: 1,
-                    gas_used: sui::types::GasCostSummary {
-                        computation_cost: 0,
-                        storage_cost: 0,
-                        storage_rebate: 0,
-                        non_refundable_storage_fee: 0,
-                    },
-                    transaction_digest: sui::types::Digest::from_static("123abc"),
-                    gas_object_index: Some(0),
-                    events_digest: None,
-                    dependencies: vec![],
-                    lamport_version: 1,
-                    changed_objects: vec![sui::types::ChangedObject {
-                        object_id: sui::types::Address::from_static("0x1"),
-                        input_state: sui::types::ObjectIn::NotExist,
-                        output_state: sui::types::ObjectOut::ObjectWrite {
-                            digest: sui::types::Digest::from_static("456def"),
-                            owner: sui::types::Owner::Address(sui::types::Address::from_static(
-                                "0x1",
-                            )),
-                        },
-                        id_operation: sui::types::IdOperation::None,
-                    }],
-                    unchanged_consensus_objects: vec![],
-                    auxiliary_data_digest: None,
-                };
-                effects.set_bcs(
-                    bcs::to_bytes(&sui::types::TransactionEffects::V2(Box::new(effect))).unwrap(),
-                );
-                tx.set_effects(effects);
-
-                let mut events = sui::grpc::TransactionEvents::default();
-                let event = sui::types::TransactionEvents(vec![]);
-                events.set_bcs(bcs::to_bytes(&event).unwrap());
-                tx.set_events(events);
-
-                tx.set_digest("123abc");
-
-                response.set_transaction(tx);
-                Ok(tonic::Response::new(response))
-            });
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(subscription_service_mock),
         });
-        let client = nexus_mocks::mock_nexus_client(&rpc_url).await;
+
+        let client = nexus_mocks::mock_nexus_client(&grpc_url).await;
 
         assert_eq!(client.reference_gas_price, 1000);
 
@@ -705,8 +681,6 @@ mod tests {
 
         let tx = tx.finish().unwrap();
 
-        set_digest.send(tx.digest()).unwrap();
-
         let signature = client.signer.sign_tx(&tx).await.unwrap();
 
         let response = client
@@ -715,7 +689,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.digest, sui::types::Digest::from_static("123abc"));
+        assert_eq!(response.digest, digest);
 
         assert_eq!(gas_coin.version(), 2);
         assert_eq!(

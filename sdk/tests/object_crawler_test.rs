@@ -124,7 +124,7 @@ async fn test_object_crawler() {
     let gas = gas_coins.iter().nth(1).cloned().unwrap();
     let client = NexusClient::builder()
         .with_private_key(pk)
-        .with_rpc_url(&format!("http://127.0.0.1:{rpc_port}"))
+        .with_grpc_url(&format!("http://127.0.0.1:{rpc_port}"))
         .with_nexus_objects(nexus_objects)
         .with_gas(
             vec![sui::types::ObjectReference::new(
@@ -149,6 +149,10 @@ async fn test_object_crawler() {
 
     println!("digest: {:?}", res.tx_digest);
     println!("dag_id: {:?}", res.dag_object_id);
+
+    // TODO: extract helper to mock tx execution.
+    // TODO: extract helper to mock get object.
+    // TODO: make it work here end to end with crypto auth -- needs leader so tough luck
 
     // let changes = response
     //     .object_changes
