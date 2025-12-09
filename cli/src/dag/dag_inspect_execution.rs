@@ -16,15 +16,15 @@ use {
 /// execution digest.
 pub(crate) async fn inspect_dag_execution(
     dag_execution_id: sui::types::Address,
-    execution_digest: sui::types::Digest,
+    execution_checkpoint: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
-    let (nexus_client, _) = get_nexus_client(None, sui::MIST_PER_SUI / 10).await?;
+    let nexus_client = get_nexus_client(None, sui::MIST_PER_SUI / 10).await?;
 
     let mut result = nexus_client
         .workflow()
-        .inspect_execution(dag_execution_id, execution_digest, None)
+        .inspect_execution(dag_execution_id, execution_checkpoint, None)
         .await
         .map_err(NexusCliError::Nexus)?;
 

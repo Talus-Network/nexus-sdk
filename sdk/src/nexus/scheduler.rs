@@ -5,9 +5,10 @@ use {
         events::NexusEventKind,
         idents::sui_framework,
         nexus::{
-            client::{ExecutedTransaction, NexusClient},
+            client::NexusClient,
             crawler::Response,
             error::NexusError,
+            signer::ExecutedTransaction,
         },
         sui,
         transactions::scheduler as scheduler_tx,
@@ -654,7 +655,7 @@ mod tests {
         std::collections::HashMap,
     };
 
-    // TODO: test this with mock tonic server
+    // TODO: @david
     // fn sample_input_data() -> HashMap<String, HashMap<String, DataStorage>> {
     //     HashMap::from([(
     //         "entry_vertex".to_string(),

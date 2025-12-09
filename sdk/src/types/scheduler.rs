@@ -2,12 +2,7 @@
 //! It provides a way to serialize and deserialize the task and any helper structures.
 use {
     super::{
-        serde_parsers::{
-            deserialize_sui_address,
-            deserialize_sui_u64,
-            serialize_sui_address,
-            serialize_sui_u64,
-        },
+        serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         TypeName,
     },
     crate::sui,
@@ -15,6 +10,9 @@ use {
     serde_json::{Map as JsonMap, Value},
     std::borrow::Cow,
 };
+
+// TODO: @david - these types can be simplified with the new object crawler grpc
+// implementation. Probably can drop the custom deserialization logic.
 
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
 #[derive(Clone, Debug, Serialize)]
@@ -30,10 +28,6 @@ pub struct DagExecutionConfig {
     pub entry_group: Value,
     #[serde(default)]
     pub inputs: Value,
-    #[serde(
-        deserialize_with = "deserialize_sui_address",
-        serialize_with = "serialize_sui_address"
-    )]
     pub invoker: sui::types::Address,
 }
 
@@ -41,10 +35,6 @@ pub struct DagExecutionConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
     pub id: sui::UID,
-    #[serde(
-        deserialize_with = "deserialize_sui_address",
-        serialize_with = "serialize_sui_address"
-    )]
     pub owner: sui::types::Address,
     #[serde(default)]
     pub metadata: Value,
@@ -338,10 +328,6 @@ impl<'de> Deserialize<'de> for DagExecutionConfig {
             entry_group: Value,
             #[serde(default)]
             inputs: Value,
-            #[serde(
-                deserialize_with = "deserialize_sui_address",
-                serialize_with = "serialize_sui_address"
-            )]
             invoker: sui::types::Address,
         }
 

@@ -13,14 +13,21 @@ pub(crate) use {
     serde_json::json,
     std::{
         collections::HashMap,
-        path::{Path, PathBuf},
-        sync::atomic::{AtomicBool, Ordering},
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
     },
+    tokio::sync::Mutex,
 };
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
+
+/// Various Nexus RPC URLs.
+pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";
 
 /// objects.toml locations for each network.
 pub(crate) const DEVNET_OBJECTS_TOML: &str =

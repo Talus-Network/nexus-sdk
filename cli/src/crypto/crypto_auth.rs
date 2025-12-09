@@ -6,7 +6,7 @@ use {
 pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     command_title!("Establishing a secure session with the network");
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     // Fetch or create an identity key.
     if CryptoConf::get_identity_key(None).await.is_err() {
@@ -71,10 +71,13 @@ mod tests {
         // Isolate the filesystem & environment so the test is self-contained.
         let tmp = TempDir::new().expect("temp dir");
 
-        env::set_var("XDG_CONFIG_HOME", tmp.path());
+        // SAFETY: tests
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", tmp.path());
 
-        // Supply the master-key via environment variable.
-        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
+            // Supply the master-key via environment variable.
+            env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
+        }
 
         // Sanity-check that the master key can now be derived.
         crate::utils::secrets::master_key::get_master_key()
@@ -107,7 +110,10 @@ mod tests {
         // Basic sanity: session IDs match.
         assert_eq!(saved_session.lock().await.id(), &session_id);
 
-        // Clean-up env so other tests are unaffected.
-        env::remove_var("XDG_CONFIG_HOME");
+        // SAFETY: tests
+        unsafe {
+            // Clean-up env so other tests are unaffected.
+            env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 }

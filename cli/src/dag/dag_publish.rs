@@ -19,7 +19,7 @@ pub(crate) async fn publish_dag(
 
     command_title!("Publishing Nexus DAG");
 
-    let (nexus_client, _) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     let tx_handle = loading!("Crafting and executing transaction...");
 

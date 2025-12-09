@@ -39,9 +39,9 @@ mod tests {
         };
 
         let sui_conf = SuiConf {
-            net: SuiNet::Mainnet,
-            wallet_path: tempdir.join("wallet"),
-            rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            pk: Some(tempdir.join("pk.pem")),
+            grpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            gql_url: Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
         };
 
         let tools = HashMap::new();

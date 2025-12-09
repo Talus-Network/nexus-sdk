@@ -2,7 +2,7 @@ use {
     crate::{error::NexusCliError, prelude::AnyResult},
     anyhow::anyhow,
     nexus_sdk::{
-        object_crawler::{fetch_one, Structure, VecMap, VecSet},
+        nexus::crawler::{Crawler, Map, Set},
         sui,
         types::{
             hint_remote_fields,
@@ -19,7 +19,7 @@ use {
 };
 
 pub(crate) async fn fetch_encrypted_entry_ports(
-    sui: &sui::Client,
+    crawler: &Crawler,
     entry_group: String,
     dag_id: &sui::types::Address,
 ) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
@@ -29,15 +29,15 @@ pub(crate) async fn fetch_encrypted_entry_ports(
         encrypted: bool,
     }
 
-    type EntryGroups =
-        VecMap<Structure<TypeName>, VecMap<Structure<TypeName>, VecSet<Structure<EntryPort>>>>;
+    type EntryGroups = Map<TypeName, Map<TypeName, Set<EntryPort>>>;
 
     #[derive(Clone, Debug, Deserialize)]
     struct Dag {
         entry_groups: EntryGroups,
     }
 
-    let result = fetch_one::<Structure<Dag>>(sui, *dag_id)
+    let result = crawler
+        .get_object::<Dag>(*dag_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
 
@@ -47,7 +47,6 @@ pub(crate) async fn fetch_encrypted_entry_ports(
 
     let entry_group = result
         .data
-        .into_inner()
         .entry_groups
         .into_inner()
         .remove(&key.into())
@@ -62,13 +61,10 @@ pub(crate) async fn fetch_encrypted_entry_ports(
             let encrypted_ports: Vec<String> = ports
                 .into_inner()
                 .into_iter()
-                .filter_map(|port| {
-                    let port = port.into_inner();
-                    port.encrypted.then_some(port.name)
-                })
+                .filter_map(|port| port.encrypted.then_some(port.name))
                 .collect();
 
-            (!encrypted_ports.is_empty()).then_some((vertex.into_inner().name, encrypted_ports))
+            (!encrypted_ports.is_empty()).then_some((vertex.name, encrypted_ports))
         })
         .collect())
 }

@@ -41,14 +41,15 @@ pub(crate) async fn create_task(
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
 
-    let (nexus_client, sui) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     // Parse metadata arguments and prepare the DAG input payload.
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
     let input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
 
     // Fetch encrypted entry ports.
-    let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
+    let encrypt_handles =
+        helpers::fetch_encryption_targets(&nexus_client.crawler(), &dag_id, &entry_group).await?;
 
     // Build the remote storage configuration.
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;

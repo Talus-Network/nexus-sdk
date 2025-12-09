@@ -28,7 +28,7 @@ pub(crate) async fn execute_dag(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
-    let (nexus_client, sui) = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     // Build the remote storage conf.
     let conf = CliConf::load().await.unwrap_or_default();
@@ -48,7 +48,12 @@ pub(crate) async fn execute_dag(
     )?;
 
     // Fetch information about entry ports that need to be encrypted.
-    let encrypt = workflow::fetch_encrypted_entry_ports(&sui, entry_group.clone(), &dag_id).await?;
+    let encrypt = workflow::fetch_encrypted_entry_ports(
+        &nexus_client.crawler(),
+        entry_group.clone(),
+        &dag_id,
+    )
+    .await?;
 
     // Encrypt ports that need to be encrypted and store ports remote if they
     // need to be stored remotely.
@@ -114,7 +119,7 @@ pub(crate) async fn execute_dag(
         .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
     if inspect {
-        inspect_dag_execution(result.execution_object_id, result.tx_digest).await?;
+        inspect_dag_execution(result.execution_object_id, result.tx_checkpoint).await?;
     } else {
         json_output(
             &json!({ "digest": result.tx_digest, "execution_id": result.execution_object_id }),

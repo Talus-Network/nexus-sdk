@@ -126,28 +126,6 @@ where
     }
 }
 
-/// Deserialize a Sui address represented as a string.
-pub fn deserialize_sui_address<'de, D>(deserializer: D) -> Result<sui::types::Address, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: String = Deserialize::deserialize(deserializer)?;
-    value
-        .parse::<sui::types::Address>()
-        .map_err(serde::de::Error::custom)
-}
-
-/// Serialize a Sui address as a hex string.
-pub fn serialize_sui_address<S>(
-    value: &sui::types::Address,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&value.to_string())
-}
-
 /// Deserialize a `Vec<u8>` into a `String` using lossy UTF-8 conversion.
 pub fn deserialize_bytes_to_lossy_utf8<'de, D>(deserializer: D) -> Result<String, D::Error>
 where

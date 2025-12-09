@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, display::json_output, loading, prelude::*, sui::resolve_wallet_path},
+    crate::{command_title, display::json_output, loading, prelude::*},
     nexus_sdk::{
         types::StorageKind,
         walrus::{WALRUS_AGGREGATOR_URL, WALRUS_PUBLISHER_URL},
@@ -9,9 +9,9 @@ use {
 /// Set the Nexus CLI configuration from the provided arguments.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
-    sui_net: Option<SuiNet>,
-    sui_wallet_path: Option<PathBuf>,
-    sui_rpc_url: Option<reqwest::Url>,
+    sui_pk: Option<PathBuf>,
+    sui_grpc_url: Option<reqwest::Url>,
+    sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
     data_storage_walrus_publisher_url: Option<reqwest::Url>,
@@ -48,9 +48,9 @@ pub(crate) async fn set_nexus_conf(
         conf.nexus = Some(objects);
     }
 
-    conf.sui.net = sui_net.unwrap_or(conf.sui.net);
-    conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
-    conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
+    conf.sui.pk = sui_pk.or(conf.sui.pk);
+    conf.sui.grpc_url = sui_grpc_url.or(conf.sui.grpc_url);
+    conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
     // Preferred remote storage cannot be inline.
     if matches!(
@@ -105,6 +105,7 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap().into_path();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
+        let pk_path = tempdir.join("pk.pem");
         let mut rng = rand::thread_rng();
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
@@ -131,10 +132,10 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some(SuiNet::Mainnet),
-            Some(tempdir.join("wallet")),
+            Some(pk_path.clone()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
-            Some(tempdir.join("objects.toml")),
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
+            Some(objects_path),
             Some(reqwest::Url::parse("https://aggregator.url").unwrap()),
             Some(reqwest::Url::parse("https://publisher.url").unwrap()),
             Some(42),
@@ -150,11 +151,14 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.net, SuiNet::Mainnet);
-        assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
+        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
         assert_eq!(
-            conf.sui.rpc_url,
+            conf.sui.grpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
+        assert_eq!(
+            conf.sui.gql_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -173,8 +177,8 @@ mod tests {
 
         // Overriding one value will save that one value and leave other values intact.
         let result = set_nexus_conf(
-            Some(SuiNet::Testnet),
             None,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,
             None,
             None,
@@ -191,11 +195,14 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.net, SuiNet::Testnet);
-        assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
+        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
         assert_eq!(
-            conf.sui.rpc_url,
-            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+            conf.sui.grpc_url,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
+        );
+        assert_eq!(
+            conf.sui.gql_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -220,9 +227,9 @@ mod tests {
 
         // Run with data_storage_testnet = true
         let result = set_nexus_conf(
-            Some(SuiNet::Testnet),
-            Some(tempdir.join("wallet")),
+            None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
+            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,
@@ -257,9 +264,9 @@ mod tests {
         let path = tempdir.join("conf_inline.toml");
 
         let result = set_nexus_conf(
-            Some(SuiNet::Mainnet),
-            Some(tempdir.join("wallet")),
-            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            None,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
+            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,
