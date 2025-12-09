@@ -507,7 +507,7 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let sui::types::Command::MoveCall(call) = &commands.get(3).unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.get(2).unwrap() else {
             panic!("Expected a command to be a MoveCall to register an onchain tool");
         };
 
