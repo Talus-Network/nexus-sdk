@@ -105,7 +105,9 @@ where
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
 events! {
-    // "Scheduled" => Scheduled(RequestScheduledExecution<Box<NexusEventKind>>),
+
+    // TODO: @david to re-implement or to simplify by removing generic.
+    // RequestScheduledExecution => Scheduled, "RequestScheduledExecution",
 
     OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
     RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",

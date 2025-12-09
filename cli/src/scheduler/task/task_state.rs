@@ -36,7 +36,7 @@ pub(crate) async fn set_task_state(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("{request} scheduler task '{task_id}'");
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let action = match request {
         TaskStateRequest::Pause => TaskStateAction::Pause,

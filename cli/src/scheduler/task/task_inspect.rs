@@ -6,12 +6,9 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::build_sui_client,
+        sui::*,
     },
-    nexus_sdk::{
-        object_crawler::{fetch_one, Structure},
-        types::Task,
-    },
+    nexus_sdk::types::Task,
     serde_json::json,
 };
 
@@ -19,22 +16,21 @@ use {
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
 
-    // Load CLI configuration.
-    let conf_handle = loading!("Loading CLI configuration...");
-    let conf = CliConf::load().await.unwrap_or_default();
-    conf_handle.success();
+    let nexus_client = get_nexus_client(None, 100_000_000).await?;
+    let crawler = nexus_client.crawler();
 
-    // Build Sui client.
-    let sui = build_sui_client(&conf.sui).await?;
     let objects_handle = loading!("Fetching task object...");
+
     // Fetch the task object from chain.
-    let task = fetch_one::<Structure<Task>>(&sui, task_id)
+    let task = crawler
+        .get_object::<Task>(task_id)
         .await
         .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+
     objects_handle.success();
 
     let task_ref = task.object_ref();
-    let task_data = task.data.into_inner();
+    let task_data = task.data;
 
     notify_success!(
         "Task owner: {owner}",

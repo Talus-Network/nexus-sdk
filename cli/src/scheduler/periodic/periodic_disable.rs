@@ -19,7 +19,7 @@ pub(crate) async fn disable_periodic_task(
         task_id = task_id
     );
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()

@@ -1,5 +1,5 @@
 use {
-    crate::sui::{self, traits::*},
+    crate::{sui, sui::SuiTransactionBlockEffectsAPI},
     std::{fs::OpenOptions, path::PathBuf},
     sui_move_build::implicit_deps,
     sui_package_management::system_package_versions::latest_system_packages,

@@ -1,6 +1,6 @@
 //! Test utils for wallet management. Create and import mnemonics.
 
-use crate::{sui, sui::traits::AccountKeystore};
+use crate::{sui, sui::AccountKeystore};
 
 /// Create an ephemeral wallet context that can be loaded.
 pub fn create_ephemeral_wallet_context(

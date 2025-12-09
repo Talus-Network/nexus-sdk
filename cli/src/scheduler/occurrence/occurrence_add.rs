@@ -34,7 +34,7 @@ pub(crate) async fn add_occurrence_to_task(
     )
     .map_err(NexusCliError::Nexus)?;
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()

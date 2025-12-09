@@ -49,7 +49,7 @@ pub(crate) async fn create_task(
 
     // Fetch encrypted entry ports.
     let encrypt_handles =
-        helpers::fetch_encryption_targets(&nexus_client.crawler(), &dag_id, &entry_group).await?;
+        helpers::fetch_encryption_targets(nexus_client.crawler(), &dag_id, &entry_group).await?;
 
     // Build the remote storage configuration.
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
@@ -179,7 +179,8 @@ pub(crate) async fn create_task(
 
 fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
-        NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
+        // TODO: @david to re-implement or to simplify by removing generic.
+        // NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
             e.task,

@@ -33,7 +33,7 @@ pub struct Gas {
 
 impl Gas {
     /// Acquire a gas coin from the pool.
-    pub(super) async fn acquire_gas_coin(&self) -> sui::types::ObjectReference {
+    pub async fn acquire_gas_coin(&self) -> sui::types::ObjectReference {
         loop {
             // Try to grab one
             if let Some(coin) = self.coins.lock().await.pop() {
@@ -46,13 +46,13 @@ impl Gas {
     }
 
     /// Release a gas coin back to the pool.
-    pub(super) async fn release_gas_coin(&self, coin: sui::types::ObjectReference) {
+    pub async fn release_gas_coin(&self, coin: sui::types::ObjectReference) {
         self.coins.lock().await.push(coin);
         self.notify.notify_one();
     }
 
     /// Get the gas budget.
-    pub(super) fn get_budget(&self) -> u64 {
+    pub fn get_budget(&self) -> u64 {
         self.budget
     }
 }
@@ -230,18 +230,33 @@ impl NexusClient {
     }
 
     /// Return a [`Crawler`] instance for object crawling operations.
-    pub fn crawler(&self) -> Crawler {
-        self.crawler.clone()
+    pub fn crawler(&self) -> &Crawler {
+        &self.crawler
     }
 
     /// Return a [`Signer`] instance for signing transactions.
-    pub fn signer(&self) -> Signer {
-        self.signer.clone()
+    pub fn signer(&self) -> &Signer {
+        &self.signer
     }
 
     /// Return an [`EventFetcher`] instance for fetching Nexus events.
-    pub fn event_fetcher(&self) -> EventFetcher {
-        self.event_fetcher.clone()
+    pub fn event_fetcher(&self) -> &EventFetcher {
+        &self.event_fetcher
+    }
+
+    /// Return a reference to the [`Gas`] instance.
+    pub fn gas_config(&self) -> Gas {
+        self.gas.clone()
+    }
+
+    /// Get the reference gas price.
+    pub fn get_reference_gas_price(&self) -> u64 {
+        self.reference_gas_price
+    }
+
+    /// Get the Nexus objects.
+    pub fn get_nexus_objects(&self) -> Arc<NexusObjects> {
+        Arc::clone(&self.nexus_objects)
     }
 }
 

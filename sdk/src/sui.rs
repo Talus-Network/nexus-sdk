@@ -1,13 +1,31 @@
 //! This module attempts to make a little bit of sense when dealing with Sui
 //! types.
 //!
-//! Some are prefixed with `Sui`, some are not. This re-export will nest all
-//! Sui types under `predule::sui` and remove all `Sui` prefixes.
-//!
 //! This way we can use, for example `sui::types::Address` in our code.
-//!
-//! All move types are now also prefixed with `Move` to avoid confusion.
 
+pub mod tx {
+    pub use sui_transaction_builder::{unresolved::*, *};
+}
+
+pub mod types {
+    pub use sui_sdk_types::*;
+}
+
+pub mod crypto {
+    pub use sui_crypto::{ed25519::Ed25519PrivateKey, *};
+}
+
+pub mod grpc {
+    pub use sui_rpc::{field::FieldMask, proto::sui::rpc::v2::*, Client};
+}
+
+/// Sui traits re-exported so that we can `use sui::traits::*` in our code.
+pub mod traits {
+    pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil};
+}
+
+// TODO: Remove all old Sui SDK re-exports once they're gone from test utils.
+#[cfg(feature = "test_utils")]
 pub use {
     move_core_types::{
         account_address::AccountAddress as MoveAccountAddress,
@@ -28,6 +46,7 @@ pub use {
         SUI_CLIENT_CONFIG as CLIENT_CONFIG,
         SUI_KEYSTORE_FILENAME as KEYSTORE_FILENAME,
     },
+    sui_keys::keystore::AccountKeystore,
     sui_keys::{
         key_derive::generate_new_key,
         keystore::{FileBasedKeystore, Keystore},
@@ -59,6 +78,7 @@ pub use {
             SuiParsedData as ParsedData,
             SuiParsedMoveObject as ParsedMoveObject,
             SuiTransactionBlockEffects as TransactionBlockEffects,
+            SuiTransactionBlockEffectsAPI,
             SuiTransactionBlockEffectsV1 as TransactionBlockEffectsV1,
             SuiTransactionBlockEvents as TransactionBlockEvents,
             SuiTransactionBlockResponse as TransactionBlockResponse,
@@ -102,30 +122,3 @@ pub use {
         SUI_TESTNET_URL as TESTNET_URL,
     },
 };
-
-pub mod tx {
-    pub use sui_transaction_builder::{unresolved::*, *};
-}
-
-pub mod types {
-    pub use sui_sdk_types::*;
-}
-
-pub mod crypto {
-    pub use sui_crypto::{ed25519::Ed25519PrivateKey, *};
-}
-
-pub mod grpc {
-    pub use sui_rpc::{field::FieldMask, proto::sui::rpc::v2::*, Client};
-}
-
-/// Sui traits re-exported so that we can `use sui::traits::*` in our code.
-pub mod traits {
-    pub use {
-        sui_config::Config,
-        sui_crypto::SuiSigner,
-        sui_keys::keystore::AccountKeystore,
-        sui_rpc::field::FieldMaskUtil,
-        sui_sdk::rpc_types::SuiTransactionBlockEffectsAPI as TransactionBlockEffectsAPI,
-    };
-}

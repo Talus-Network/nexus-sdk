@@ -31,11 +31,6 @@ secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "ze
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
-    "sui_sdk",
-    "move_core_types",
-    "sui_keys",
-    "shared_crypto",
-    "sui_config",
     "sui-rpc",
     "sui-sdk-types",
     "sui-crypto",
@@ -75,6 +70,13 @@ nexus = ["transactions", "events", "dag", "bcs", "prost-types"]
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
 test_utils = [
+    # TODO: Remove sui deps from test-utils.
+    "sui_sdk",
+    "move_core_types",
+    "sui_keys",
+    "shared_crypto",
+    "sui_config",
+    # END
     "types",
     "tempfile",
     "tokio-retry",

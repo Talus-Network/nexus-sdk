@@ -48,12 +48,9 @@ pub(crate) async fn execute_dag(
     )?;
 
     // Fetch information about entry ports that need to be encrypted.
-    let encrypt = workflow::fetch_encrypted_entry_ports(
-        &nexus_client.crawler(),
-        entry_group.clone(),
-        &dag_id,
-    )
-    .await?;
+    let encrypt =
+        workflow::fetch_encrypted_entry_ports(nexus_client.crawler(), entry_group.clone(), &dag_id)
+            .await?;
 
     // Encrypt ports that need to be encrypted and store ports remote if they
     // need to be stored remotely.

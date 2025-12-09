@@ -23,7 +23,7 @@ pub(crate) async fn update_task_metadata(
 
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()
