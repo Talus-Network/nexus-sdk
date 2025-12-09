@@ -76,6 +76,23 @@ pub fn mock_sui_event(
     }
 }
 
+/// Finish the given [`sui::tx::TransactionBuilder`] with mock data.
+pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::types::Transaction {
+    let mut rng = rand::thread_rng();
+    let gas = mock_sui_object_ref();
+
+    tx.set_sender(sui::types::Address::generate(&mut rng));
+    tx.set_gas_budget(1000);
+    tx.set_gas_price(1000);
+    tx.add_gas_objects(vec![sui::tx::Input::owned(
+        *gas.object_id(),
+        gas.version(),
+        *gas.digest(),
+    )]);
+
+    tx.finish().expect("Transaction should build")
+}
+
 pub mod grpc {
     use {
         super::*,
@@ -186,10 +203,23 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         ledger_service: &mut MockLedgerService,
         digest: sui::types::Digest,
-        objects: Vec<sui::grpc::Object>,
-        changed_objects: Vec<sui::grpc::ChangedObject>,
+        gas_coin_digest: sui::types::Digest,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
     ) {
+        let mut changed_objects_with_coin = vec![sui::types::ChangedObject {
+            object_id: sui::types::Address::from_static("0x1"),
+            input_state: sui::types::ObjectIn::NotExist,
+            output_state: sui::types::ObjectOut::ObjectWrite {
+                digest: gas_coin_digest,
+                owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            },
+            id_operation: sui::types::IdOperation::None,
+        }];
+
+        changed_objects_with_coin.extend(changed_objects.clone());
+
         ledger_service
             .expect_get_checkpoint()
             .returning(move |_request| {
@@ -211,7 +241,13 @@ pub mod grpc {
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
                 let mut tx_objects = sui::grpc::ObjectSet::default();
-                tx_objects.set_objects(objects.clone());
+                tx_objects.set_objects(
+                    objects
+                        .clone()
+                        .into_iter()
+                        .filter_map(|o| o.try_into().ok())
+                        .collect(),
+                );
                 tx.set_objects(tx_objects);
 
                 let mut effects = sui::grpc::TransactionEffects::default();
@@ -229,17 +265,7 @@ pub mod grpc {
                     events_digest: None,
                     dependencies: vec![],
                     lamport_version: 1,
-                    changed_objects: vec![sui::types::ChangedObject {
-                        object_id: sui::types::Address::from_static("0x1"),
-                        input_state: sui::types::ObjectIn::NotExist,
-                        output_state: sui::types::ObjectOut::ObjectWrite {
-                            digest: sui::types::Digest::from_static("456def"),
-                            owner: sui::types::Owner::Address(sui::types::Address::from_static(
-                                "0x1",
-                            )),
-                        },
-                        id_operation: sui::types::IdOperation::None,
-                    }],
+                    changed_objects: changed_objects_with_coin.clone(),
                     unchanged_consensus_objects: vec![],
                     auxiliary_data_digest: None,
                 };
@@ -280,16 +306,30 @@ pub mod grpc {
                 Ok(tonic::Response::new(response))
             });
     }
+
+    pub fn mock_get_object_metadata(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+    ) {
+        ledger_service
+            .expect_get_object()
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner.clone()));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
 }
 
 /// Mocking GQL endpoints for deeper testing.
 pub mod gql {
     use {
-        crate::{
-            events::{serialize_bcs, NexusEventKind},
-            sui,
-        },
-        base64::{prelude::BASE64_STANDARD, Engine},
+        crate::{events::NexusEventKind, sui},
         mockito::{Mock, ServerGuard},
         serde_json::json,
     };
@@ -318,7 +358,7 @@ pub mod gql {
                         }
                     },
                     "contents": {
-                        "bcs": BASE64_STANDARD.encode(serialize_bcs(&event).unwrap()),
+                        "json": serde_json::to_value(&event).unwrap(),
                         "type": {
                             "repr": sui::types::StructTag::new(
                                 primitives_pkg_id,
@@ -357,6 +397,7 @@ pub mod gql {
                 })
                 .to_string(),
             )
+            .expect(1)
             .create()
     }
 }

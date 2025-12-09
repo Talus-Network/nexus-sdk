@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, primitives, sui_framework, workflow},
+        idents::{move_std, primitives, pure_arg, sui_framework, workflow},
         sui,
         types::{DataStorage, NexusObjects, Storable, StorageKind},
     },
@@ -62,17 +62,9 @@ where
     );
 
     for (key, value) in key_values.into_iter() {
-        let key = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::String(key.as_ref().to_owned())),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let key = tx.input(pure_arg(&key.as_ref().to_string())?);
 
-        let value = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::String(value.as_ref().to_owned())),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let value = tx.input(pure_arg(&value.as_ref().to_string())?);
 
         tx.move_call(
             sui::tx::Function::new(
@@ -339,11 +331,7 @@ pub fn new_execution_policy(
 
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let gas_price_arg = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(gas_price)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let gas_price_arg = tx.input(pure_arg(&gas_price)?);
 
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
@@ -528,28 +516,16 @@ pub fn add_occurrence_absolute_for_task(
     let task = shared_task_arg(tx, task)?;
 
     // `start_time_ms: u64`
-    let start_time_ms = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(start_time_ms)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let start_time_ms = tx.input(pure_arg(&start_time_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(sui::tx::Input {
-        value: match deadline_offset_ms {
-            Some(n) => Some(sui::tx::Value::Number(n)),
-            None => Some(sui::tx::Value::Null),
-        },
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
+    let deadline_offset_ms = tx.input(match deadline_offset_ms {
+        Some(n) => pure_arg(&n)?,
+        None => pure_arg(&0u8)?,
     });
 
     // `gas_price: u64`
-    let gas_price = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(gas_price)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let gas_price = tx.input(pure_arg(&gas_price)?);
 
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
@@ -582,28 +558,16 @@ pub fn add_occurrence_relative_for_task(
     let task = shared_task_arg(tx, task)?;
 
     // `start_offset_ms: u64`
-    let start_offset_ms = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(start_offset_ms)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let start_offset_ms = tx.input(pure_arg(&start_offset_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(sui::tx::Input {
-        value: match deadline_offset_ms {
-            Some(n) => Some(sui::tx::Value::Number(n)),
-            None => Some(sui::tx::Value::Null),
-        },
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
+    let deadline_offset_ms = tx.input(match deadline_offset_ms {
+        Some(n) => pure_arg(&n)?,
+        None => pure_arg(&0u8)?,
     });
 
     // `gas_price: u64`
-    let gas_price = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(gas_price)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let gas_price = tx.input(pure_arg(&gas_price)?);
 
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
@@ -645,45 +609,25 @@ pub fn new_or_modify_periodic_for_task(
     let task = shared_task_arg(tx, task)?;
 
     // `first_start_ms: u64`
-    let first_start_ms = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(first_start_ms)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let first_start_ms = tx.input(pure_arg(&first_start_ms)?);
 
     // `period_ms: u64`
-    let period_ms = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(period_ms)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let period_ms = tx.input(pure_arg(&period_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(sui::tx::Input {
-        value: match deadline_offset_ms {
-            Some(n) => Some(sui::tx::Value::Number(n)),
-            None => Some(sui::tx::Value::Null),
-        },
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
+    let deadline_offset_ms = tx.input(match deadline_offset_ms {
+        Some(n) => pure_arg(&n)?,
+        None => pure_arg(&0u8)?,
     });
 
     // `max_iterations: option::Option<u64>`
-    let max_iterations = tx.input(sui::tx::Input {
-        value: match max_iterations {
-            Some(n) => Some(sui::tx::Value::Number(n)),
-            None => Some(sui::tx::Value::Null),
-        },
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
+    let max_iterations = tx.input(match max_iterations {
+        Some(n) => pure_arg(&n)?,
+        None => pure_arg(&0u8)?,
     });
 
     // `gas_price: u64`
-    let gas_price = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(gas_price)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let gas_price = tx.input(pure_arg(&gas_price)?);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -886,18 +830,10 @@ pub fn dag_begin_execution_from_scheduler(
     ));
 
     // `amount_execution: u64`
-    let amount_execution_arg = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(amount_execution)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let amount_execution_arg = tx.input(pure_arg(&amount_execution)?);
 
     // `amount_priority: u64`
-    let amount_priority_arg = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(amount_priority)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let amount_priority_arg = tx.input(pure_arg(&amount_priority)?);
 
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
@@ -1102,7 +1038,7 @@ mod tests {
         fn expect_option_u64(&self, argument: &sui::types::Argument, value: Option<u64>) {
             match value {
                 Some(inner) => {
-                    let mut bytes = vec![1];
+                    let mut bytes = vec![];
                     bytes.extend_from_slice(&inner.to_le_bytes());
                     self.expect_pure_bytes(argument, &bytes);
                 }
@@ -1121,7 +1057,7 @@ mod tests {
 
         assert_matches!(scheduler_arg, sui::types::Argument::Result(2));
 
-        let inspector = TxInspector::new(tx.finish().expect("Failed to finish tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 3);
 
         let empty_call = inspector.move_call(0);
@@ -1161,7 +1097,7 @@ mod tests {
 
         assert_matches!(result, sui::types::Argument::Result(1));
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 2);
     }
 
@@ -1169,28 +1105,16 @@ mod tests {
     fn new_task_adds_clock_argument() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let metadata = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(1)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-        let constraints = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(2)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-        let execution = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(3)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let metadata = tx.input(pure_arg(&1_u64).unwrap());
+        let constraints = tx.input(pure_arg(&2_u64).unwrap());
+        let execution = tx.input(pure_arg(&3_u64).unwrap());
 
         let result = new_task(&mut tx, &objects, metadata, constraints, execution)
             .expect("ptb construction succeeds");
 
         assert_matches!(result, sui::types::Argument::Result(0));
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
 
         let call = inspector.move_call(0);
@@ -1198,9 +1122,9 @@ mod tests {
         assert_eq!(call.module, workflow::Scheduler::NEW.module);
         assert_eq!(call.function, workflow::Scheduler::NEW.name);
         assert_eq!(call.arguments.len(), 4);
-        inspector.expect_pure_bytes(&call.arguments[0], &[1]);
-        inspector.expect_pure_bytes(&call.arguments[1], &[2]);
-        inspector.expect_pure_bytes(&call.arguments[2], &[3]);
+        inspector.expect_u64(&call.arguments[0], 1);
+        inspector.expect_u64(&call.arguments[1], 2);
+        inspector.expect_u64(&call.arguments[2], 3);
         inspector.expect_clock(&call.arguments[3]);
     }
 
@@ -1210,22 +1134,18 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let metadata = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(9)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let metadata = tx.input(pure_arg(&9_u64).unwrap());
 
         update_metadata(&mut tx, &objects, &task, metadata).expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(call.module, workflow::Scheduler::UPDATE_METADATA.module);
         assert_eq!(call.function, workflow::Scheduler::UPDATE_METADATA.name);
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
-        inspector.expect_pure_bytes(&call.arguments[1], &[9]);
+        inspector.expect_u64(&call.arguments[1], 9);
     }
 
     #[test]
@@ -1236,7 +1156,7 @@ mod tests {
         let arg = new_queue_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
         assert_matches!(arg, sui::types::Argument::Result(0));
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert!(call.arguments.is_empty());
@@ -1254,21 +1174,13 @@ mod tests {
     fn register_queue_generator_invokes_scheduler() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let constraints = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(11)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-        let queue_state = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(12)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let constraints = tx.input(pure_arg(&11_u64).unwrap());
+        let queue_state = tx.input(pure_arg(&12_u64).unwrap());
 
         register_queue_generator(&mut tx, &objects, constraints, queue_state)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(
@@ -1280,8 +1192,8 @@ mod tests {
             workflow::Scheduler::REGISTER_QUEUE_GENERATOR.name
         );
         assert_eq!(call.arguments.len(), 2);
-        inspector.expect_pure_bytes(&call.arguments[0], &[11]);
-        inspector.expect_pure_bytes(&call.arguments[1], &[12]);
+        inspector.expect_u64(&call.arguments[0], 11);
+        inspector.expect_u64(&call.arguments[1], 12);
     }
 
     #[test]
@@ -1293,7 +1205,7 @@ mod tests {
             new_periodic_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
         assert_matches!(arg, sui::types::Argument::Result(0));
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert!(call.arguments.is_empty());
@@ -1311,21 +1223,13 @@ mod tests {
     fn register_periodic_generator_invokes_scheduler() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let constraints = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(21)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-        let periodic_state = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(22)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
+        let constraints = tx.input(pure_arg(&21_u64).unwrap());
+        let periodic_state = tx.input(pure_arg(&22_u64).unwrap());
 
         register_periodic_generator(&mut tx, &objects, constraints, periodic_state)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(
@@ -1337,8 +1241,8 @@ mod tests {
             workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.name
         );
         assert_eq!(call.arguments.len(), 2);
-        inspector.expect_pure_bytes(&call.arguments[0], &[21]);
-        inspector.expect_pure_bytes(&call.arguments[1], &[22]);
+        inspector.expect_u64(&call.arguments[0], 21);
+        inspector.expect_u64(&call.arguments[1], 22);
     }
 
     #[test]
@@ -1350,7 +1254,7 @@ mod tests {
         let witness = execute(&mut tx, &objects, &task).expect("ptb construction succeeds");
         assert_matches!(witness, sui::types::Argument::Result(0));
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 1);
@@ -1364,22 +1268,17 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let proof = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(5)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-
+        let proof = tx.input(pure_arg(&5_u64).unwrap());
         finish(&mut tx, &objects, &task, proof).expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(call.module, workflow::Scheduler::FINISH.module);
         assert_eq!(call.function, workflow::Scheduler::FINISH.name);
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
-        inspector.expect_pure_bytes(&call.arguments[1], &[5]);
+        inspector.expect_u64(&call.arguments[1], 5);
     }
 
     #[test]
@@ -1389,13 +1288,13 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
 
         let start_time = 10;
-        let deadline = Some(20);
+        let deadline = None;
         let gas_price = 30;
 
         add_occurrence_absolute_for_task(&mut tx, &objects, &task, start_time, deadline, gas_price)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 5);
@@ -1426,7 +1325,7 @@ mod tests {
         )
         .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 5);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1462,7 +1361,7 @@ mod tests {
         )
         .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1481,7 +1380,7 @@ mod tests {
 
         disable_periodic_for_task(&mut tx, &objects, &task).expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1496,7 +1395,7 @@ mod tests {
         pause_time_constraint_for_task(&mut tx, &objects, &task)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1511,7 +1410,7 @@ mod tests {
         resume_time_constraint_for_task(&mut tx, &objects, &task)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1526,7 +1425,7 @@ mod tests {
         cancel_time_constraint_for_task(&mut tx, &objects, &task)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1540,7 +1439,7 @@ mod tests {
 
         check_queue_occurrence(&mut tx, &objects, &task).expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(
             call.function,
@@ -1559,7 +1458,7 @@ mod tests {
 
         check_periodic_occurrence(&mut tx, &objects, &task).expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(
             call.function,
@@ -1574,21 +1473,12 @@ mod tests {
     fn register_begin_execution_routes_through_default_tap() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let policy = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(13)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-        let config = tx.input(sui::tx::Input {
-            value: Some(sui::tx::Value::Number(14)),
-            kind: Some(sui::tx::InputKind::Pure),
-            ..Default::default()
-        });
-
+        let policy = tx.input(pure_arg(&13_u64).unwrap());
+        let config = tx.input(pure_arg(&14_u64).unwrap());
         register_begin_execution(&mut tx, &objects, policy, config)
             .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
@@ -1600,8 +1490,8 @@ mod tests {
             workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.name
         );
         assert_eq!(call.arguments.len(), 2);
-        inspector.expect_pure_bytes(&call.arguments[0], &[13]);
-        inspector.expect_pure_bytes(&call.arguments[1], &[14]);
+        inspector.expect_u64(&call.arguments[0], 13);
+        inspector.expect_u64(&call.arguments[1], 14);
     }
 
     #[test]
@@ -1630,7 +1520,7 @@ mod tests {
         )
         .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
         assert_eq!(call.arguments.len(), 9);
@@ -1684,7 +1574,7 @@ mod tests {
         )
         .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 2);
 
         let scheduler_call = inspector.move_call(0);
@@ -1756,7 +1646,7 @@ mod tests {
         )
         .expect("ptb construction succeeds");
 
-        let inspector = TxInspector::new(tx.finish().expect("failed to build tx"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let scheduler_call = inspector.move_call(0);
         assert_eq!(
             scheduler_call.function,

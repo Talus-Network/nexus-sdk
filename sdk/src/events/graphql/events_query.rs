@@ -2,7 +2,7 @@ use graphql_client::GraphQLQuery;
 
 type SuiAddress = sui_sdk_types::Address;
 type UInt53 = u64;
-type Base64 = String;
+type JSON = serde_json::Value;
 
 #[derive(GraphQLQuery)]
 #[graphql(

@@ -17,7 +17,7 @@ use {
     },
     std::sync::Arc,
     tokio::{
-        sync::{Mutex, MutexGuard, Notify},
+        sync::{Mutex, Notify},
         time::Duration,
     },
 };
@@ -643,6 +643,8 @@ mod tests {
     async fn test_execute_tx_mutates_gas_coin() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -653,6 +655,7 @@ mod tests {
             &mut tx_service_mock,
             &mut ledger_service_mock,
             digest,
+            gas_coin_digest,
             vec![],
             vec![],
             vec![],
@@ -663,7 +666,7 @@ mod tests {
             execution_service_mock: Some(tx_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&grpc_url).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
 
         assert_eq!(client.reference_gas_price, 1000);
 
@@ -680,7 +683,6 @@ mod tests {
         )]);
 
         let tx = tx.finish().unwrap();
-
         let signature = client.signer.sign_tx(&tx).await.unwrap();
 
         let response = client
@@ -692,9 +694,6 @@ mod tests {
         assert_eq!(response.digest, digest);
 
         assert_eq!(gas_coin.version(), 2);
-        assert_eq!(
-            gas_coin.digest(),
-            &sui::types::Digest::from_static("456def")
-        );
+        assert_eq!(gas_coin.digest(), &gas_coin_digest);
     }
 }

@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{primitives, sui_framework, workflow},
+        idents::{primitives, pure_arg, sui_framework, workflow},
         sui,
         types::{
             Dag,
@@ -430,11 +430,7 @@ pub fn execute(
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
     // `gas_price: u64`
-    let gas_price_arg = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(gas_price)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let gas_price_arg = tx.input(pure_arg(&gas_price)?);
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -582,16 +578,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         empty(&mut tx, &objects);
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -617,16 +604,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         publish(&mut tx, &objects, dag);
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -665,16 +643,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_vertex(&mut tx, &objects, dag, &vertex).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -706,16 +675,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_default_value(&mut tx, &objects, dag, &default_value).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -752,16 +712,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_edge(&mut tx, &objects, dag, &edge).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -787,16 +738,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         mark_entry_vertex(&mut tx, &objects, dag, vertex, entry_group).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -834,16 +776,7 @@ mod tests {
             entry_group,
         )
         .unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -888,16 +821,7 @@ mod tests {
             &input_data,
         )
         .unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -933,16 +857,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_output(&mut tx, &objects, dag, &output).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -972,16 +887,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         create_output(&mut tx, &objects, dag, &output).unwrap();
-        tx.set_sender(sui::types::Address::from_static("0x1"));
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        let gas = sui_mocks::mock_sui_object_ref();
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
-            *gas.object_id(),
-            gas.version(),
-            *gas.digest(),
-        )]);
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind

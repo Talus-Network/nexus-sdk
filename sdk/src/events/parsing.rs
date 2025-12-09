@@ -15,7 +15,7 @@ use {
         types::NexusObjects,
     },
     anyhow::bail,
-    base64::{prelude::BASE64_STANDARD, Engine},
+    serde_json::json,
 };
 
 /// [`sui_sdk_types::Event`] -> [`NexusEvent`]
@@ -129,18 +129,24 @@ impl FromSuiGqlEvent for NexusEvent {
 
         let event_name = event_type.name().as_str();
 
-        let Some(bcs) = event
-            .bcs
+        let Some(json) = event
+            .json
             .as_ref()
-            .and_then(|b| BASE64_STANDARD.decode(b).ok())
+            .and_then(|j| j.as_object())
+            .and_then(|obj| obj.get("event"))
         else {
-            bail!("Event contents missing BCS data");
+            bail!("Event contents missing JSON data");
         };
+
+        let data = json!({
+            "_nexus_event_type": event_name,
+            "event": json
+        });
 
         Ok(NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
-            data: parse_bcs(event_name, bcs.as_slice())?,
+            data: serde_json::from_value(data)?,
         })
     }
 }
@@ -350,7 +356,7 @@ mod tests {
             event: DAGCreatedEvent { dag: dag_addr },
         };
         let gql_event = EventsQueryEventsNodesContents {
-            bcs: Some(BASE64_STANDARD.encode(bcs::to_bytes(&data).unwrap())),
+            json: Some(serde_json::to_value(&data).unwrap()),
             type_: Some(EventsQueryEventsNodesContentsType {
                 repr: sui::types::StructTag::new(
                     primitives_pkg_id,
@@ -393,7 +399,7 @@ mod tests {
             event: DAGCreatedEvent { dag: dag_addr },
         };
         let gql_event = EventsQueryEventsNodesContents {
-            bcs: Some(BASE64_STANDARD.encode(bcs::to_bytes(&data).unwrap())),
+            json: Some(serde_json::to_value(&data).unwrap()),
             type_: Some(EventsQueryEventsNodesContentsType {
                 repr: sui::types::StructTag::new(
                     non_nexus_pkg_id,
@@ -438,7 +444,7 @@ mod tests {
             vec![wrapper_type.clone()],
         );
         let gql_event = EventsQueryEventsNodesContents {
-            bcs: Some(BASE64_STANDARD.encode(bcs::to_bytes(&data).unwrap())),
+            json: Some(serde_json::to_value(&data).unwrap()),
             type_: Some(EventsQueryEventsNodesContentsType {
                 repr: non_wrapper_tag.to_string(),
             }),
@@ -467,7 +473,7 @@ mod tests {
             event: DAGCreatedEvent { dag: dag_addr },
         };
         let gql_event = EventsQueryEventsNodesContents {
-            bcs: Some(BASE64_STANDARD.encode(bcs::to_bytes(&data).unwrap())),
+            json: Some(serde_json::to_value(&data).unwrap()),
             type_: Some(EventsQueryEventsNodesContentsType {
                 repr: wrapper_tag.to_string(),
             }),
@@ -499,7 +505,7 @@ mod tests {
             event: DAGCreatedEvent { dag: dag_addr },
         };
         let gql_event = EventsQueryEventsNodesContents {
-            bcs: Some(BASE64_STANDARD.encode(bcs::to_bytes(&data).unwrap())),
+            json: Some(serde_json::to_value(&data).unwrap()),
             type_: Some(EventsQueryEventsNodesContentsType {
                 repr: sui::types::StructTag::new(
                     primitives_pkg_id,

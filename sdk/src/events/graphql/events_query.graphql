@@ -4,7 +4,7 @@ query EventsQuery(
   $filter: EventFilter!
 ) {
   events(
-    first: 100
+    first: 50
     after: $after
     atCheckpoint: $at_checkpoint
     filter: $filter
@@ -20,7 +20,7 @@ query EventsQuery(
         }
       }
       contents {
-        bcs
+        json
         type {
           repr
         }

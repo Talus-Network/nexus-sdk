@@ -26,7 +26,7 @@ pub struct NexusEvent {
 macro_rules! events {
     (
         $(
-            $struct_name:ident => $variant:ident
+            $struct_name:ident => $variant:ident, $name:expr
         ),* $(,)?
     ) => {
 
@@ -36,6 +36,7 @@ macro_rules! events {
         #[serde(tag = "_nexus_event_type", content = "event")]
         pub enum NexusEventKind {
             $(
+                #[serde(rename = $name)]
                 $variant($struct_name),
             )*
         }
@@ -67,24 +68,6 @@ macro_rules! events {
                     }
                 )*
                 _ => anyhow::bail!("Unknown event: {}", name),
-            }
-        }
-
-        // == Serialize to BCS ==
-
-        pub(crate) fn serialize_bcs(event: &NexusEventKind) -> anyhow::Result<Vec<u8>> {
-            #[derive(Serialize)]
-            struct Wrapper<'a, T> {
-                event: &'a T,
-            }
-
-            match event {
-                $(
-                    NexusEventKind::$variant(ev) => {
-                        let wrapper = Wrapper { event: ev };
-                        Ok(bcs::to_bytes(&wrapper)?)
-                    }
-                )*
             }
         }
     };
@@ -124,30 +107,30 @@ where
 events! {
     // "Scheduled" => Scheduled(RequestScheduledExecution<Box<NexusEventKind>>),
 
-    OccurrenceScheduledEvent => OccurrenceScheduled,
-    RequestWalkExecutionEvent => RequestWalkExecution,
-    AnnounceInterfacePackageEvent => AnnounceInterfacePackage,
-    OffChainToolRegisteredEvent => OffChainToolRegistered,
-    OnChainToolRegisteredEvent => OnChainToolRegistered,
-    ToolUnregisteredEvent => ToolUnregistered,
-    WalkAdvancedEvent => WalkAdvanced,
-    WalkFailedEvent => WalkFailed,
-    EndStateReachedEvent => EndStateReached,
-    ExecutionFinishedEvent => ExecutionFinished,
-    MissedOccurrenceEvent => MissedOccurrence,
-    TaskCreatedEvent => TaskCreated,
-    TaskPausedEvent => TaskPaused,
-    TaskResumedEvent => TaskResumed,
-    TaskCanceledEvent => TaskCanceled,
-    OccurrenceConsumedEvent => OccurrenceConsumed,
-    PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured,
-    FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated,
-    GasSettlementUpdateEvent => GasSettlementUpdate,
-    PreKeyVaultCreatedEvent => PreKeyVaultCreated,
-    PreKeyRequestedEvent => PreKeyRequested,
-    PreKeyFulfilledEvent => PreKeyFulfilled,
-    PreKeyAssociatedEvent => PreKeyAssociated,
-    DAGCreatedEvent => DAGCreated,
+    OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
+    RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
+    AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
+    OffChainToolRegisteredEvent => OffChainToolRegistered, "OffChainToolRegisteredEvent",
+    OnChainToolRegisteredEvent => OnChainToolRegistered, "OnChainToolRegisteredEvent",
+    ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
+    WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
+    WalkFailedEvent => WalkFailed, "WalkFailedEvent",
+    EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
+    ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
+    MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
+    TaskCreatedEvent => TaskCreated, "TaskCreatedEvent",
+    TaskPausedEvent => TaskPaused, "TaskPausedEvent",
+    TaskResumedEvent => TaskResumed, "TaskResumedEvent",
+    TaskCanceledEvent => TaskCanceled, "TaskCanceledEvent",
+    OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
+    PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
+    FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
+    GasSettlementUpdateEvent => GasSettlementUpdate, "GasSettlementUpdateEvent",
+    PreKeyVaultCreatedEvent => PreKeyVaultCreated, "PreKeyVaultCreatedEvent",
+    PreKeyRequestedEvent => PreKeyRequested, "PreKeyRequestedEvent",
+    PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
+    PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
+    DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     // These events are unused for now.
     // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
     // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
@@ -537,8 +520,8 @@ mod tests {
     use super::*;
 
     events!(
-        DummyEvent => Dummy,
-        AnotherEvent => Another
+        DummyEvent => Dummy, "DummyEvent",
+        AnotherEvent => Another, "AnotherEvent",
     );
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

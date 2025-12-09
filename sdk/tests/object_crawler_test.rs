@@ -150,9 +150,9 @@ async fn test_object_crawler() {
     println!("digest: {:?}", res.tx_digest);
     println!("dag_id: {:?}", res.dag_object_id);
 
-    // TODO: extract helper to mock tx execution.
+    // TODO: improve helper to mock tx execution.
     // TODO: extract helper to mock get object.
-    // TODO: make it work here end to end with crypto auth -- needs leader so tough luck
+    // TODO: tests for gas, workflow and crypto.
 
     // let changes = response
     //     .object_changes

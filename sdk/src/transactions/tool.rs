@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, primitives, sui_framework, workflow},
+    idents::{move_std, primitives, pure_arg, sui_framework, workflow},
     sui,
     types::{NexusObjects, ToolMeta},
     ToolFqn,
@@ -25,59 +25,16 @@ pub fn register_off_chain_for_self(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
-    let url = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            meta.url
-                .to_string()
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let url = tx.input(pure_arg(&meta.url)?);
 
     // `description: vector<u8>`
-    let description = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            meta.description
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let description = tx.input(pure_arg(&meta.description)?);
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            meta.input_schema
-                .to_string()
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let input_schema = tx.input(pure_arg(&meta.input_schema)?);
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            meta.output_schema
-                .to_string()
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let output_schema = tx.input(pure_arg(&meta.output_schema)?);
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -132,12 +89,7 @@ pub fn register_off_chain_for_self(
     ));
 
     // `single_invocation_cost_mist: u64`
-    let single_invocation_cost_mist = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(invocation_cost as u64)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
-
+    let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
     // `nexus_workflow::gas::set_single_invocation_cost_mist`
     tx.move_call(
         sui::tx::Function::new(
@@ -240,46 +192,16 @@ pub fn register_on_chain_for_self(
     let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            input_schema
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let input_schema = tx.input(pure_arg(&input_schema)?);
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            output_schema
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let output_schema = tx.input(pure_arg(&output_schema)?);
 
     // `fqn: AsciiString`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
     // `description: vector<u8>`
-    let description = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Array(
-            description
-                .as_bytes()
-                .iter()
-                .map(|b| sui::tx::Value::Number(*b as u64))
-                .collect(),
-        )),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let description = tx.input(pure_arg(&description)?);
 
     // `witness_id: ID`
     let witness_id = sui_framework::Address::address_from_type(tx, witness_id)?;
@@ -383,11 +305,7 @@ pub fn set_invocation_cost(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `single_invocation_cost_mist: u64`
-    let single_invocation_cost_mist = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(invocation_cost as u64)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
 
     // `nexus_workflow::gas::set_single_invocation_cost_mist`
     Ok(tx.move_call(
@@ -528,7 +446,7 @@ mod tests {
             invocation_cost,
         )
         .expect("Failed to build PTB for registering a tool.");
-        let tx = tx.finish().expect("Failed to finish tx");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -581,7 +499,7 @@ mod tests {
             address,
         )
         .expect("Failed to build PTB for registering an onchain tool.");
-        let tx = tx.finish().expect("Failed to finish tx");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -614,7 +532,7 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         unregister(&mut tx, &objects, &tool_fqn, &owner_cap)
             .expect("Failed to build PTB for unregistering a tool.");
-        let tx = tx.finish().expect("Failed to finish tx");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -641,7 +559,7 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         claim_collateral_for_self(&mut tx, &objects, &tool_fqn, &owner_cap)
             .expect("Failed to build PTB for claiming collateral for a tool.");
-        let tx = tx.finish().expect("Failed to finish tx");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -675,7 +593,7 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         set_invocation_cost(&mut tx, &objects, &tool_fqn, &owner_cap, invocation_cost)
             .expect("Failed to build PTB for setting invocation cost.");
-        let tx = tx.finish().expect("Failed to finish tx");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind

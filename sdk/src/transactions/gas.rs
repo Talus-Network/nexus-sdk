@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, sui_framework, workflow},
+    idents::{move_std, pure_arg, sui_framework, workflow},
     sui,
     types::NexusObjects,
     ToolFqn,
@@ -87,11 +87,7 @@ pub fn enable_expiry(
     ));
 
     // `cost_per_minute: u64`
-    let cost_per_minute = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(cost_per_minute)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let cost_per_minute = tx.input(pure_arg(&cost_per_minute)?);
 
     // `fqn: ToolFqn`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
@@ -177,11 +173,7 @@ pub fn buy_expiry_gas_ticket(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `minutes: u64`
-    let minutes = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(minutes)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let minutes = tx.input(pure_arg(&minutes)?);
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -241,25 +233,13 @@ pub fn enable_limited_invocations(
     ));
 
     // `cost_per_invocation: u64`
-    let cost_per_invocation = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(cost_per_invocation)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let cost_per_invocation = tx.input(pure_arg(&cost_per_invocation)?);
 
     // `min_invocations: u64`
-    let min_invocations = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(min_invocations)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let min_invocations = tx.input(pure_arg(&min_invocations)?);
 
     // `max_invocations: u64`
-    let max_invocations = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(max_invocations)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let max_invocations = tx.input(pure_arg(&max_invocations)?);
 
     // `fqn: ToolFqn`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
@@ -353,11 +333,7 @@ pub fn buy_limited_invocations_gas_ticket(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `invocations: u64`
-    let invocations = tx.input(sui::tx::Input {
-        value: Some(sui::tx::Value::Number(invocations)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    });
+    let invocations = tx.input(pure_arg(&invocations)?);
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -411,7 +387,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         add_budget(&mut tx, &objects, invoker_address, &coin).unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -437,7 +413,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         enable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap, cost_per_minute).unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -462,7 +438,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         disable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap).unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -488,7 +464,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         buy_expiry_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, minutes).unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -531,7 +507,7 @@ mod tests {
             max_invocations,
         )
         .unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -562,7 +538,7 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         disable_limited_invocations(&mut tx, &objects, &tool_fqn, &owner_cap).unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
@@ -595,7 +571,7 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         buy_limited_invocations_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, invocations)
             .unwrap();
-        let tx = tx.finish().expect("Transaction should build");
+        let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
         ) = tx.kind
