@@ -222,6 +222,7 @@ pub mod grpc {
 
         ledger_service
             .expect_get_checkpoint()
+            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetCheckpointResponse::default();
                 let mut checkpoint = sui::grpc::Checkpoint::default();
@@ -236,6 +237,7 @@ pub mod grpc {
 
         tx_service
             .expect_execute_transaction()
+            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::ExecuteTransactionResponse::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
@@ -298,6 +300,7 @@ pub mod grpc {
     ) {
         ledger_service
             .expect_get_epoch()
+            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetEpochResponse::default();
                 let mut epoch = sui::grpc::Epoch::default();
@@ -314,6 +317,7 @@ pub mod grpc {
     ) {
         ledger_service
             .expect_get_object()
+            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
                 let mut grpc_object = sui::grpc::Object::default();

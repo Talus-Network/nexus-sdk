@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        events::{NexusEvent, NexusEventKind},
+        events::NexusEventKind,
         idents::sui_framework,
         nexus::{
             client::{ExecutedTransaction, NexusClient},
@@ -14,7 +14,7 @@ use {
         types::{DataStorage, Task},
     },
     anyhow::anyhow,
-    std::{collections::HashMap, convert::TryInto, str::FromStr},
+    std::collections::HashMap,
 };
 
 /// High-level interface for scheduler operations.
@@ -541,55 +541,23 @@ impl SchedulerActions {
     }
 }
 
-// TODO: fix this when we can parse nexus events from tx response.
-fn extract_task_id(_response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
-    Ok(sui::types::Address::from_static("0x1"))
-    // let events = response
-    //     .events
-    //     .as_ref()
-    //     .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreatedEvent not found in response")))?;
-
-    // for raw_event in &events.data {
-    //     let Ok(event): anyhow::Result<NexusEvent> = raw_event.clone().try_into() else {
-    //         continue;
-    //     };
-    //     if let NexusEventKind::TaskCreated(created) = event.data {
-    //         return Ok(created.task);
-    //     }
-    // }
-
-    // Err(NexusError::Parsing(anyhow!(
-    //     "TaskCreatedEvent not found in response"
-    // )))
+fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
+    response
+        .events
+        .iter()
+        .find_map(|event| match &event.data {
+            NexusEventKind::TaskCreated(e) => Some(e.task),
+            _ => None,
+        })
+        .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreatedEvent not found in response")))
 }
 
-// TODO: fix this when we can parse nexus events from tx response.
-fn extract_occurrence_event(_response: &ExecutedTransaction) -> Option<NexusEventKind> {
-    None
-    // let events = response.events.as_ref()?;
-
-    // for raw_event in &events.data {
-    //     let Ok(event): anyhow::Result<NexusEvent> = raw_event.clone().try_into() else {
-    //         continue;
-    //     };
-
-    //     match &event.data {
-    //         NexusEventKind::Scheduled(envelope)
-    //             if matches!(
-    //                 envelope.request.as_ref(),
-    //                 NexusEventKind::OccurrenceScheduled(_)
-    //             ) =>
-    //         {
-    //             return Some(event.data);
-    //         }
-    //         NexusEventKind::OccurrenceScheduled(_) => {
-    //             return Some(event.data);
-    //         }
-    //         _ => continue,
-    //     }
-    // }
-
-    // None
+fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEventKind> {
+    // TODO: @david check that the bcs deser works here.
+    response.events.iter().find_map(|event| match &event.data {
+        NexusEventKind::OccurrenceScheduled(_) => Some(event.data.clone()),
+        _ => None,
+    })
 }
 
 fn validate_schedule_options(

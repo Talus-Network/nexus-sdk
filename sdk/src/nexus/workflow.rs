@@ -274,34 +274,32 @@ impl WorkflowActions {
                 loop {
                     tokio::select! {
                         maybe_page = next_page.recv() => {
-                            match maybe_page {
-                                Some(EventPage { events, .. }) => {
-                                    for event in events {
-                                        let execution_id = match &event.data {
-                                            NexusEventKind::WalkAdvanced(e) => e.execution,
-                                            NexusEventKind::WalkFailed(e) => e.execution,
-                                            NexusEventKind::EndStateReached(e) => e.execution,
-                                            NexusEventKind::ExecutionFinished(e) => e.execution,
-                                            _ => continue,
-                                        };
+                            let events = match maybe_page {
+                                Some(EventPage { events, .. }) => events,
+                                None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
+                            };
 
-                                        // Only process events for the given execution ID.
-                                        if execution_id != dag_execution_id {
-                                            continue;
-                                        }
+                            for event in events {
+                                let execution_id = match &event.data {
+                                    NexusEventKind::WalkAdvanced(e) => e.execution,
+                                    NexusEventKind::WalkFailed(e) => e.execution,
+                                    NexusEventKind::EndStateReached(e) => e.execution,
+                                    NexusEventKind::ExecutionFinished(e) => e.execution,
+                                    _ => continue,
+                                };
 
-                                        if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-                                            tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-
-                                            return Ok(());
-                                        }
-
-                                        tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-                                    }
-                                },
-                                None => {
-                                    return Err(NexusError::Rpc(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'")));
+                                // Only process events for the given execution ID.
+                                if execution_id != dag_execution_id {
+                                    continue;
                                 }
+
+                                if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
+                                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+
+                                    return Ok(());
+                                }
+
+                                tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
                             }
                         }
 

@@ -73,59 +73,53 @@ impl GasActions {
 
 #[cfg(test)]
 mod tests {
-    use {
-        crate::{
-            sui,
-            test_utils::{nexus_mocks, sui_mocks},
-        },
-        std::collections::BTreeMap,
+    use crate::{
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
     };
 
     #[tokio::test]
     async fn test_gas_actions_add_budget() {
-        // TODO: test this with mock tonic server
-        // let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let coin_object_id = sui::types::Address::generate(&mut rng);
 
-        // let coin_object_id = sui::types::Address::random();
-        // let coin_object = sui::ParsedMoveObject {
-        //     type_: sui::MoveStructTag {
-        //         address: *nexus_client.nexus_objects.workflow_pkg_id,
-        //         module: sui::move_ident_str!("coin").into(),
-        //         name: sui::move_ident_str!("Coin").into(),
-        //         type_params: vec![],
-        //     },
-        //     has_public_transfer: false,
-        //     fields: sui::MoveStruct::WithFields(BTreeMap::from([(
-        //         "test".into(),
-        //         sui::MoveValue::Number(1),
-        //     )])),
-        // };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
 
-        // let get_object_call =
-        //     sui_mocks::rpc::mock_read_api_get_object(&mut server, coin_object_id, coin_object);
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        // let tx_digest = sui::TransactionDigest::random();
-        // let (execute_call, confirm_call) =
-        //     sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-        //         &mut server,
-        //         tx_digest,
-        //         None,
-        //         None,
-        //         None,
-        //         None,
-        //     );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+        );
 
-        // let result = nexus_client
-        //     .gas()
-        //     .add_budget(coin_object_id)
-        //     .await
-        //     .expect("Failed to add budget");
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_digest,
+            vec![],
+            vec![],
+            vec![],
+        );
 
-        // get_object_call.assert_async().await;
+        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+        });
 
-        // execute_call.assert_async().await;
-        // confirm_call.assert_async().await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
 
-        // assert_eq!(result.tx_digest, tx_digest);
+        let result = client
+            .gas()
+            .add_budget(coin_object_id)
+            .await
+            .expect("Failed to add budget");
+
+        assert_eq!(result.tx_digest, tx_digest);
     }
 }

@@ -164,8 +164,6 @@ impl Signer {
 
         let evts = nexus_events.collect();
 
-        println!("Executed tx with events: {:#?}", evts);
-
         Ok(ExecutedTransaction {
             effects: *effects,
             events: evts,
