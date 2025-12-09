@@ -1,8 +1,11 @@
 //! Type conversion utilities for Move types to JSON schema.
 
 use {
-    crate::sui,
-    anyhow::Result as AnyResult,
+    crate::{
+        idents::{move_std, sui_framework},
+        sui,
+    },
+    anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{json, Value},
 };
 
@@ -10,62 +13,68 @@ use {
 ///
 /// This function introspects Move types and generates corresponding JSON schema
 /// representations that can be used for tool registration and validation.
-pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -> AnyResult<Value> {
-    use crate::sui::MoveNormalizedType;
+pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> AnyResult<Value> {
+    use sui::grpc::open_signature_body::Type;
 
-    match move_type {
-        MoveNormalizedType::Bool => Ok(json!({
-            "type": "bool",
-            "description": "Boolean value"
-        })),
-        MoveNormalizedType::U8 => Ok(json!({
-            "type": "u8",
-            "description": "8-bit unsigned integer"
-        })),
-        MoveNormalizedType::U16 => Ok(json!({
-            "type": "u16",
-            "description": "16-bit unsigned integer"
-        })),
-        MoveNormalizedType::U32 => Ok(json!({
-            "type": "u32",
-            "description": "32-bit unsigned integer"
-        })),
-        MoveNormalizedType::U64 => Ok(json!({
-            "type": "u64",
-            "description": "64-bit unsigned integer"
-        })),
-        MoveNormalizedType::U128 => Ok(json!({
-            "type": "u128",
-            "description": "128-bit unsigned integer"
-        })),
-        MoveNormalizedType::U256 => Ok(json!({
-            "type": "u256",
-            "description": "256-bit unsigned integer"
-        })),
-        MoveNormalizedType::Address => Ok(json!({
+    let Some(kind) = move_type.r#type else {
+        bail!("Move type missing kind");
+    };
+
+    match kind.try_into() {
+        Ok(Type::Address) => Ok(json!({
             "type": "address",
             "description": "Sui address"
         })),
-        MoveNormalizedType::Signer => Ok(json!({
-            "type": "signer",
-            "description": "Transaction signer"
+        Ok(Type::Bool) => Ok(json!({
+            "type": "bool",
+            "description": "Boolean value"
         })),
-        MoveNormalizedType::Vector(inner_type) => {
+        Ok(Type::U8) => Ok(json!({
+            "type": "u8",
+            "description": "8-bit unsigned integer"
+        })),
+        Ok(Type::U16) => Ok(json!({
+            "type": "u16",
+            "description": "16-bit unsigned integer"
+        })),
+        Ok(Type::U32) => Ok(json!({
+            "type": "u32",
+            "description": "32-bit unsigned integer"
+        })),
+        Ok(Type::U64) => Ok(json!({
+            "type": "u64",
+            "description": "64-bit unsigned integer"
+        })),
+        Ok(Type::U128) => Ok(json!({
+            "type": "u128",
+            "description": "128-bit unsigned integer"
+        })),
+        Ok(Type::U256) => Ok(json!({
+            "type": "u256",
+            "description": "256-bit unsigned integer"
+        })),
+        Ok(Type::Vector) => {
+            let inner_type = move_type
+                .type_parameter_instantiation
+                .get(0)
+                .ok_or_else(|| anyhow!("Vector type missing inner type"))?;
+
             let inner_schema = convert_move_type_to_schema(inner_type)?;
+
             Ok(json!({
                 "type": "vector",
                 "description": "Vector of values",
                 "element_type": inner_schema
             }))
         }
-        MoveNormalizedType::Struct {
-            address,
-            module,
-            name,
-            type_arguments: _,
-        } => {
-            if address == "0x1" {
-                match (module.as_str(), name.as_str()) {
+        Ok(Type::Datatype) => {
+            let struct_tag: sui::types::StructTag = move_type
+                .type_name_opt()
+                .and_then(|n| n.parse().ok())
+                .ok_or_else(|| anyhow!("Datatype type missing or invalid StructTag"))?;
+
+            if *struct_tag.address() == move_std::PACKAGE_ID {
+                match (struct_tag.module().as_str(), struct_tag.name().as_str()) {
                     ("string", "String") => Ok(json!({
                         "type": "string",
                         "description": "0x1::string::String"
@@ -76,11 +85,11 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
                     })),
                     _ => Ok(json!({
                         "type": "object",
-                        "description": format!("0x1::{}::{}", module, name)
+                        "description": format!("0x1::{}::{}", struct_tag.module(), struct_tag.name())
                     })),
                 }
-            } else if address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string() {
-                match (module.as_str(), name.as_str()) {
+            } else if *struct_tag.address() == sui_framework::PACKAGE_ID {
+                match (struct_tag.module().as_str(), struct_tag.name().as_str()) {
                     ("object", "ID") => Ok(json!({
                         "type": "object_id",
                         "description": "Sui object ID"
@@ -91,65 +100,38 @@ pub fn convert_move_type_to_schema(move_type: &crate::sui::MoveNormalizedType) -
                     })),
                     _ => Ok(json!({
                         "type": "object",
-                        "description": format!("0x2::{}::{}", module, name)
+                        "description": format!("0x2::{}::{}", struct_tag.module(), struct_tag.name())
                     })),
                 }
             } else {
                 Ok(json!({
                     "type": "object",
-                    "description": format!("{}::{}::{}", address, module, name)
+                    "description": format!("{}::{}::{}", struct_tag.address(), struct_tag.module(), struct_tag.name())
                 }))
             }
         }
-        MoveNormalizedType::Reference(inner_type) => {
-            // References don't change the fundamental type for transaction building.
-            // &u64 is still u64, &MyStruct is still MyStruct.
-            let mut inner_schema = convert_move_type_to_schema(inner_type)?;
-            if let Value::Object(ref mut schema_obj) = inner_schema {
-                schema_obj.insert("mutable".to_string(), Value::Bool(false));
-            }
-            Ok(inner_schema)
-        }
-        MoveNormalizedType::MutableReference(inner_type) => {
-            let mut inner_schema = convert_move_type_to_schema(inner_type)?;
-            if let Value::Object(ref mut schema_obj) = inner_schema {
-                schema_obj.insert("mutable".to_string(), Value::Bool(true));
-            }
-            Ok(inner_schema)
-        }
-        MoveNormalizedType::TypeParameter(_) => Ok(json!({
+        Ok(Type::Parameter) => Ok(json!({
             "type": "generic",
             "description": "Generic type parameter"
         })),
+        _ => {
+            bail!("Unsupported Move type for schema conversion: {:?}", kind);
+        }
     }
 }
 
 /// Check if a parameter is TxContext (should be excluded from the inputschema).
-pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
-    use crate::sui::MoveNormalizedType;
-
-    let struct_type = match move_type {
-        MoveNormalizedType::Struct { .. } => Some(move_type),
-        MoveNormalizedType::MutableReference(inner) | MoveNormalizedType::Reference(inner) => {
-            if let MoveNormalizedType::Struct { .. } = inner.as_ref() {
-                Some(inner.as_ref())
-            } else {
-                None
-            }
-        }
-        _ => None,
+pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
     };
 
-    if let Some(MoveNormalizedType::Struct {
-        address,
-        module,
-        name,
-        ..
-    }) = struct_type
-    {
-        (address == "0x2" || address == &sui::FRAMEWORK_PACKAGE_ID.to_string())
-            && module == "tx_context"
-            && name == "TxContext"
+    let maybe_struct_tag: Option<sui::types::StructTag> = type_name.parse().ok();
+
+    if let Some(struct_tag) = maybe_struct_tag {
+        *struct_tag.address() == sui_framework::PACKAGE_ID
+            && struct_tag.module().as_str() == "tx_context"
+            && struct_tag.name().as_str() == "TxContext"
     } else {
         false
     }
@@ -157,75 +139,76 @@ pub fn is_tx_context_param(move_type: &crate::sui::MoveNormalizedType) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::sui::MoveNormalizedType};
+    use {super::*, sui::grpc::open_signature_body::Type};
 
     // Helper function to create a struct type.
-    fn make_struct(address: &str, module: &str, name: &str) -> MoveNormalizedType {
-        MoveNormalizedType::Struct {
-            address: address.to_string(),
-            module: module.to_string(),
-            name: name.to_string(),
-            type_arguments: vec![],
-        }
+    fn make_struct(address: &str, module: &str, name: &str) -> sui::grpc::OpenSignatureBody {
+        sui::grpc::OpenSignatureBody::default()
+            .with_type(Type::Datatype)
+            .with_type_name(format!("{}::{}::{}", address, module, name))
+    }
+
+    fn make_prim(kind: Type) -> sui::grpc::OpenSignatureBody {
+        sui::grpc::OpenSignatureBody::default().with_type(kind)
+    }
+
+    fn make_vec(inner: sui::grpc::OpenSignatureBody) -> sui::grpc::OpenSignatureBody {
+        sui::grpc::OpenSignatureBody::default()
+            .with_type(Type::Vector)
+            .with_type_parameter_instantiation(vec![inner])
     }
 
     #[test]
     fn test_primitive_types() {
         // Bool.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::Bool).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::Bool)).unwrap();
         assert_eq!(schema["type"], "bool");
 
         // U8.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U8).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U8)).unwrap();
         assert_eq!(schema["type"], "u8");
 
         // U16.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U16).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U16)).unwrap();
         assert_eq!(schema["type"], "u16");
 
         // U32.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U32).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U32)).unwrap();
         assert_eq!(schema["type"], "u32");
 
         // U64.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U64).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U64)).unwrap();
         assert_eq!(schema["type"], "u64");
 
         // U128.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U128).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U128)).unwrap();
         assert_eq!(schema["type"], "u128");
 
         // U256.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::U256).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::U256)).unwrap();
         assert_eq!(schema["type"], "u256");
 
         // Address.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::Address).unwrap();
+        let schema = convert_move_type_to_schema(&make_prim(Type::Address)).unwrap();
         assert_eq!(schema["type"], "address");
-
-        // Signer.
-        let schema = convert_move_type_to_schema(&MoveNormalizedType::Signer).unwrap();
-        assert_eq!(schema["type"], "signer");
     }
 
     #[test]
     fn test_vector_types() {
         // Vector<u8>.
-        let vec_u8 = MoveNormalizedType::Vector(Box::new(MoveNormalizedType::U8));
+        let vec_u8 = make_vec(make_prim(Type::U8));
         let schema = convert_move_type_to_schema(&vec_u8).unwrap();
         assert_eq!(schema["type"], "vector");
         assert_eq!(schema["element_type"]["type"], "u8");
 
         // Vector<bool>.
-        let vec_bool = MoveNormalizedType::Vector(Box::new(MoveNormalizedType::Bool));
+        let vec_bool = make_vec(make_prim(Type::Bool));
         let schema = convert_move_type_to_schema(&vec_bool).unwrap();
         assert_eq!(schema["type"], "vector");
         assert_eq!(schema["element_type"]["type"], "bool");
 
         // Nested vector Vector<Vector<u64>>.
-        let vec_vec_u64 = MoveNormalizedType::Vector(Box::new(MoveNormalizedType::Vector(
-            Box::new(MoveNormalizedType::U64),
-        )));
+        let vec_vec_u64 = make_vec(make_vec(make_prim(Type::U64)));
         let schema = convert_move_type_to_schema(&vec_vec_u64).unwrap();
         assert_eq!(schema["type"], "vector");
         assert_eq!(schema["element_type"]["type"], "vector");
@@ -318,46 +301,17 @@ mod tests {
         assert_eq!(schema["type"], "object");
         assert_eq!(
             schema["description"],
-            "0x123456789abcdef::my_module::MyStruct"
+            format!(
+                "{}::my_module::MyStruct",
+                sui::types::Address::from_static("0x123456789abcdef")
+            )
         );
-    }
-
-    #[test]
-    fn test_reference_types() {
-        // Immutable reference to u64.
-        let ref_u64 = MoveNormalizedType::Reference(Box::new(MoveNormalizedType::U64));
-        let schema = convert_move_type_to_schema(&ref_u64).unwrap();
-        assert_eq!(schema["type"], "u64");
-        assert_eq!(schema["mutable"], false);
-
-        // Immutable reference to object.
-        let object = make_struct("0x2", "coin", "Coin");
-        let ref_object = MoveNormalizedType::Reference(Box::new(object));
-        let schema = convert_move_type_to_schema(&ref_object).unwrap();
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["mutable"], false);
-    }
-
-    #[test]
-    fn test_mutable_reference_types() {
-        // Mutable reference to u64.
-        let mut_ref_u64 = MoveNormalizedType::MutableReference(Box::new(MoveNormalizedType::U64));
-        let schema = convert_move_type_to_schema(&mut_ref_u64).unwrap();
-        assert_eq!(schema["type"], "u64");
-        assert_eq!(schema["mutable"], true);
-
-        // Mutable reference to object.
-        let object = make_struct("0x2", "coin", "Coin");
-        let mut_ref_object = MoveNormalizedType::MutableReference(Box::new(object));
-        let schema = convert_move_type_to_schema(&mut_ref_object).unwrap();
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["mutable"], true);
     }
 
     #[test]
     fn test_type_parameter() {
         // Generic type parameter.
-        let generic = MoveNormalizedType::TypeParameter(0);
+        let generic = make_prim(Type::Parameter);
         let schema = convert_move_type_to_schema(&generic).unwrap();
         assert_eq!(schema["type"], "generic");
     }
@@ -374,46 +328,30 @@ mod tests {
     }
 
     #[test]
-    fn test_is_tx_context_param_reference() {
-        // Immutable reference to TxContext.
-        let tx_context = make_struct("0x2", "tx_context", "TxContext");
-        let ref_tx_context = MoveNormalizedType::Reference(Box::new(tx_context));
-        assert!(is_tx_context_param(&ref_tx_context));
-
-        // Mutable reference to TxContext.
-        let tx_context = make_struct("0x2", "tx_context", "TxContext");
-        let mut_ref_tx_context = MoveNormalizedType::MutableReference(Box::new(tx_context));
-        assert!(is_tx_context_param(&mut_ref_tx_context));
-    }
-
-    #[test]
     fn test_is_tx_context_param_primitive() {
         // Primitives are not TxContext.
-        assert!(!is_tx_context_param(&MoveNormalizedType::U64));
-        assert!(!is_tx_context_param(&MoveNormalizedType::Bool));
-        assert!(!is_tx_context_param(&MoveNormalizedType::Address));
+        assert!(!is_tx_context_param(&make_prim(Type::U64)));
+        assert!(!is_tx_context_param(&make_prim(Type::Bool)));
+        assert!(!is_tx_context_param(&make_prim(Type::Address)));
     }
 
     #[test]
     fn test_complex_nested_types() {
-        // Vector of references to objects.
-        let object = make_struct("0x2", "coin", "Coin");
-        let ref_object = MoveNormalizedType::Reference(Box::new(object));
-        let vec_ref_object = MoveNormalizedType::Vector(Box::new(ref_object));
-        let schema = convert_move_type_to_schema(&vec_ref_object).unwrap();
+        // Vector  to objects.
+        let vector = make_vec(make_struct("0x2", "coin", "Coin"));
+        let schema = convert_move_type_to_schema(&vector).unwrap();
         assert_eq!(schema["type"], "vector");
         assert_eq!(schema["element_type"]["type"], "object");
-        assert_eq!(schema["element_type"]["mutable"], false);
     }
 
     #[test]
     fn test_schema_structure_completeness() {
         // Verify that all schemas have both type and description fields.
         let test_types = vec![
-            MoveNormalizedType::Bool,
-            MoveNormalizedType::U8,
-            MoveNormalizedType::U256,
-            MoveNormalizedType::Address,
+            make_prim(Type::Bool),
+            make_prim(Type::U8),
+            make_prim(Type::U256),
+            make_prim(Type::Address),
             make_struct("0x1", "string", "String"),
             make_struct("0x2", "object", "ID"),
             make_struct("0x2", "coin", "Coin"),

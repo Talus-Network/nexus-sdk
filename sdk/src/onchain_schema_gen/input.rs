@@ -3,8 +3,10 @@
 use {
     super::types::{convert_move_type_to_schema, is_tx_context_param},
     crate::sui,
-    anyhow::{anyhow, Result as AnyResult},
+    anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
+    std::sync::Arc,
+    tokio::sync::Mutex,
 };
 
 /// Generate input schema by introspecting the execute function's parameters.
@@ -13,30 +15,46 @@ use {
 /// execute function's parameters to generate a JSON schema. It automatically
 /// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
 pub async fn generate_input_schema(
-    sui: &sui::Client,
-    package_address: sui::ObjectID,
+    client: Arc<Mutex<sui::grpc::Client>>,
+    package_address: sui::types::Address,
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<String> {
+    let request = sui::grpc::GetPackageRequest::default().with_package_id(package_address);
+
+    let mut client = client.lock().await;
+
     // Fetch all normalized Move modules for the package.
-    let all_modules = sui
-        .read_api()
-        .get_normalized_move_modules_by_package(package_address)
-        .await?;
+    let Some(package) = client
+        .package_client()
+        .get_package(request)
+        .await
+        .map(|resp| resp.into_inner().package)?
+    else {
+        bail!("Package '{}' not found", package_address)
+    };
+
+    drop(client);
+
+    let all_modules = package.modules();
 
     // Find the specific module.
-    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
-        anyhow!(
-            "Module '{}' not found in package '{}'",
-            module_name,
-            package_address
-        )
-    })?;
+    let normalized_module = all_modules
+        .into_iter()
+        .find(|m| m.name() == module_name)
+        .ok_or_else(|| {
+            anyhow!(
+                "Module '{}' not found in package '{}'",
+                module_name,
+                package_address
+            )
+        })?;
 
     // Find the execute function.
     let execute_func = normalized_module
-        .exposed_functions
-        .get(execute_function)
+        .functions()
+        .into_iter()
+        .find(|f| f.name() == execute_function)
         .ok_or_else(|| {
             anyhow!(
                 "Function '{}' not found in module '{}'",
@@ -49,15 +67,23 @@ pub async fn generate_input_schema(
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for (i, param_type) in execute_func.parameters.iter().enumerate() {
-        let is_tx_context = is_tx_context_param(param_type);
+    for (i, param_type) in execute_func.parameters().iter().enumerate() {
+        let signature = param_type.body_opt().ok_or_else(|| {
+            anyhow!(
+                "Parameter type missing body in function '{}' of module '{}'",
+                execute_function,
+                module_name
+            )
+        })?;
+
+        let is_tx_context = is_tx_context_param(signature);
 
         // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
         if i == 0 || is_tx_context {
             continue;
         }
 
-        let param_schema = convert_move_type_to_schema(param_type)?;
+        let param_schema = convert_move_type_to_schema(signature)?;
 
         // Store parameter information with index as the default name.
         let param_obj = match param_schema {
@@ -132,10 +158,20 @@ mod tests {
             })
             .expect("Move package must be published");
 
+        let client = Arc::new(Mutex::new(
+            sui::grpc::Client::new(&format!("http://127.0.0.1:{rpc_port}"))
+                .expect("Could not create gRPC client"),
+        ));
+
         // Generate input schema for the onchain_tool::execute function.
-        let schema_str = generate_input_schema(&sui, pkg_id, "onchain_tool", "execute")
-            .await
-            .expect("Failed to generate input schema");
+        let schema_str = generate_input_schema(
+            client,
+            pkg_id.to_string().parse().unwrap(),
+            "onchain_tool",
+            "execute",
+        )
+        .await
+        .expect("Failed to generate input schema");
 
         // Parse the schema.
         let schema: serde_json::Value =
@@ -153,7 +189,6 @@ mod tests {
             .get("0")
             .expect("Schema should have parameter 0 (counter)");
         assert_eq!(param0["type"], "object");
-        assert_eq!(param0["mutable"], true);
         assert!(param0["description"]
             .as_str()
             .unwrap()
