@@ -71,7 +71,7 @@ strum = "0.27"
 strum_macros = "0.27"
 tempfile = "3.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.48.0", features = ["full"] }
 tokio-retry = "0.3.0"
 toml = "0.8.20"
 tonic = "0.14"
@@ -81,10 +81,6 @@ zeroize = "1.7"
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
-
-# === Sui dev deps ===
-sui_move_build = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-move-build" }
-sui_package_management = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-package-management" }
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces

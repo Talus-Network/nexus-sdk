@@ -71,44 +71,45 @@ async fn test_object_crawler() {
     // Spin up the Sui instance.
     let (_container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
 
+    let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+    let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
+
+    let mut rng = rand::thread_rng();
+
     // Create a wallet and request some gas tokens.
-    let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
-        .expect("Failed to create a wallet.");
-    let sui = wallet.get_client().await.expect("Could not get Sui client");
+    let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+    let addr = pk.public_key().derive_address();
 
-    let addr = wallet
-        .active_address()
-        .expect("Failed to get active address.");
-
-    test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+    test_utils::faucet::request_tokens(&faucet_url, addr)
         .await
         .expect("Failed to request tokens from faucet.");
 
-    let gas_coins = test_utils::gas::fetch_gas_coins(&sui, addr)
+    let gas_coins = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
         .await
         .expect("Failed to fetch gas coins.");
 
     // Publish test contract and fetch some IDs.
     let response = test_utils::contracts::publish_move_package(
-        &mut wallet,
+        &pk,
+        &rpc_url,
         "tests/move/object_crawler_test",
         gas_coins.iter().nth(0).cloned().unwrap(),
     )
     .await;
 
-    let changes = response
-        .object_changes
-        .expect("TX response must have object changes");
-
-    let guy = *changes
+    let guy = response
+        .objects
         .iter()
-        .find_map(|c| match c {
-            sui::ObjectChange::Created {
-                object_id,
-                object_type,
-                ..
-            } if object_type.name == sui::move_ident_str!("Guy").into() => Some(object_id),
-            _ => None,
+        .find_map(|obj| {
+            let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+                return None;
+            };
+
+            if *object_type.name() == sui::types::Identifier::from_static("Guy") {
+                Some(obj.object_id())
+            } else {
+                None
+            }
         })
         .expect("Guy object must be created");
 

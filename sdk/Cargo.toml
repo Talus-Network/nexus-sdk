@@ -69,13 +69,6 @@ nexus = ["transactions", "events", "dag", "bcs", "prost-types"]
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
 # testcontainers-modules as dependencies.
 test_utils = [
-    # TODO: Remove sui deps from test-utils.
-    "sui_sdk",
-    "move_core_types",
-    "sui_keys",
-    "shared_crypto",
-    "sui_config",
-    # END
     "types",
     "tempfile",
     "tokio-retry",
@@ -293,42 +286,16 @@ optional = true
 version = "0.1.0"
 optional = true
 
-[dependencies.sui_sdk]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-sdk"
-optional = true
-
-[dependencies.move_core_types]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "move-core-types"
-optional = true
-
-[dependencies.sui_keys]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-keys"
-optional = true
-
-[dependencies.sui_config]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-config"
-optional = true
-
-[dependencies.shared_crypto]
-git = "https://github.com/mystenlabs/sui"
-tag = "mainnet-v1.45.3"
-package = "shared-crypto"
-optional = true
-
 [dependencies.sui_move_build]
-workspace = true
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.45.3"
+package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
-workspace = true
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.45.3"
+package = "sui-package-management"
 optional = true
 
 [dependencies.testcontainers-modules]

@@ -1,17 +1,5 @@
 use crate::{sui, types::NexusObjects};
 
-/// Create a new [`sui::Coin`] with random values.
-pub fn mock_sui_coin(balance: u64) -> sui::Coin {
-    sui::Coin {
-        coin_type: "Sui".to_string(),
-        coin_object_id: sui::ObjectID::random(),
-        version: sui::SequenceNumber::from_u64(1),
-        digest: sui::ObjectDigest::random(),
-        balance,
-        previous_transaction: sui::TransactionDigest::random(),
-    }
-}
-
 /// Create a new [`sui::types::ObjectReference`] with random values.
 pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
     let mut rng = rand::thread_rng();
@@ -45,18 +33,6 @@ pub fn mock_nexus_objects() -> NexusObjects {
         gas_service: mock_sui_object_ref(),
         pre_key_vault: mock_sui_object_ref(),
     }
-}
-
-/// Generate a new Sui address and its corresponding mnemonic.
-pub fn mock_sui_mnemonic() -> (sui::Address, String) {
-    let derivation_path = None;
-    let word_length = None;
-
-    let (addr, _, _, secret_mnemonic) =
-        sui::generate_new_key(sui::SignatureScheme::ED25519, derivation_path, word_length)
-            .expect("Failed to generate key.");
-
-    (addr, secret_mnemonic)
 }
 
 /// Generate a mock [`sui::types::Event`]

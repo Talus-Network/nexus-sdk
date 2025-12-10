@@ -1,35 +1,53 @@
 use {
-    crate::{sui, sui::SuiTransactionBlockEffectsAPI},
-    std::{fs::OpenOptions, path::PathBuf},
+    crate::{
+        nexus::signer::{ExecutedTransaction, Signer},
+        sui::{self, SuiTransactionBlockEffectsAPI},
+        test_utils::sui_mocks,
+    },
+    std::{fs::OpenOptions, path::PathBuf, sync::Arc},
     sui_move_build::implicit_deps,
     sui_package_management::system_package_versions::latest_system_packages,
+    tokio::sync::Mutex,
 };
 
 /// Publishes a Move package to Sui.
 ///
 /// `path_str` is the path relative to the project `Cargo.toml` directory.
 pub async fn publish_move_package(
-    wallet: &mut sui::WalletContext,
+    pk: &sui::crypto::Ed25519PrivateKey,
+    rpc_url: &str,
     path_str: &str,
-    gas_coin: sui::Coin,
-) -> sui::TransactionBlockResponse {
+    gas_coin: sui::types::ObjectReference,
+) -> ExecutedTransaction {
     let install_dir = PathBuf::from(path_str);
     let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
 
-    let sui = wallet
-        .get_client()
-        .await
-        .expect("Failed to get Sui client.");
+    let client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
+    let addr = pk.public_key().derive_address();
+    let signer = Signer::new(
+        Arc::new(Mutex::new(client.clone())),
+        pk.clone(),
+        std::time::Duration::from_secs(30),
+        Arc::new(sui_mocks::mock_nexus_objects()),
+    );
 
-    let addr = wallet
-        .active_address()
-        .expect("Failed to get active address.");
-
-    let chain_id = sui
-        .read_api()
-        .get_chain_identifier()
+    let reference_gas_price = client
+        .get_reference_gas_price()
         .await
-        .expect("Failed to get chain identifier.");
+        .expect("Failed to get reference gas price.");
+
+    let chain_id = {
+        let response = client
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .expect("Failed to get service info.");
+
+        response
+            .into_inner()
+            .chain_id
+            .expect("Chain ID missing in service info.")
+    };
 
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing();
@@ -39,58 +57,31 @@ pub async fn publish_move_package(
         .build(&install_dir)
         .expect("Failed to build package.");
 
-    let reference_gas_price = sui
-        .read_api()
-        .get_reference_gas_price()
-        .await
-        .expect("Failed to fetch reference gas price.");
-
     let with_unpublished_deps = false;
 
-    let tx = sui
-        .transaction_builder()
-        .publish_tx_kind(
-            addr,
-            package.get_package_bytes(with_unpublished_deps),
-            package.get_dependency_storage_package_ids(),
-        )
-        .await
-        .expect("Failed to build transaction.");
+    let mut tx = sui::tx::TransactionBuilder::new();
 
-    let tx_data = sui
-        .transaction_builder()
-        .tx_data(
-            addr,
-            tx,
-            sui::MIST_PER_SUI,
-            reference_gas_price,
-            vec![gas_coin.coin_object_id],
-            None,
-        )
-        .await
-        .expect("Failed to build transaction data.");
+    tx.publish(
+        package.get_package_bytes(with_unpublished_deps),
+        package
+            .get_dependency_storage_package_ids()
+            .iter()
+            .map(|id| id.to_string().parse().unwrap())
+            .collect(),
+    );
 
-    // Prepare some options for the transaction. Object changes and events are
-    // used to parse useful IDs from.
-    let envelope = wallet.sign_transaction(&tx_data);
-    let resp_options = sui::TransactionBlockResponseOptions::new()
-        .with_events()
-        .with_effects()
-        .with_object_changes();
-    let resp_finality = sui::ExecuteTransactionRequestType::WaitForLocalExecution;
+    tx.set_sender(addr);
+    tx.set_gas_budget(1_000_000_000);
+    tx.set_gas_price(reference_gas_price);
+    tx.add_gas_objects(vec![sui::types::Input::ImmutableOrOwned(gas_coin)]);
 
-    // Execute the transaction.
-    let response = sui
-        .quorum_driver_api()
-        .execute_transaction_block(envelope, resp_options, Some(resp_finality))
+    tx.finish().expect("Failed to finish transaction.");
+
+    let signature = signer.sign_tx(tx);
+    let response = signer
+        .execute_tx(tx, signature, &mut gas_coin.clone())
         .await
         .expect("Failed to execute transaction.");
-
-    if let Some(effects) = response.effects.clone() {
-        if effects.clone().into_status().is_err() {
-            panic!("Transaction has erroneous effects: {path_str} {effects}");
-        }
-    }
 
     // Create the lock file if not exists.
     OpenOptions::new()

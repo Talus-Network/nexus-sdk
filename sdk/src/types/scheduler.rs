@@ -450,7 +450,7 @@ fn is_value_wrapper_key(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, serde_json::json};
+    use {super::*, crate::idents::sui_framework, serde_json::json};
 
     #[test]
     fn policy_deserializes_from_wrapped_move_struct() {
@@ -462,12 +462,12 @@ mod tests {
             dfa: ConfiguredAutomaton {
                 id: dfa_id,
                 dfa: json!({
-                    "type": sui::MoveStructTag {
-                        address: *sui::FRAMEWORK_PACKAGE_ID,
-                        module: sui::move_ident_str!("dummy").into(),
-                        name: sui::move_ident_str!("Config").into(),
-                        type_params: vec![sui::MoveTypeTag::Address],
-                    }
+                    "type": sui::types::StructTag::new(
+                        sui_framework::PACKAGE_ID,
+                        sui::types::Identifier::from_static("dummy"),
+                        sui::types::Identifier::from_static("Config"),
+                        vec![sui::types::TypeTag::Address],
+                    ),
                 }),
             },
             alphabet_index: Value::Null,

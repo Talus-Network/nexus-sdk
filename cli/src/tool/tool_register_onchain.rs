@@ -1234,14 +1234,14 @@ mod tests {
         let (_container, rpc_port, faucet_port) =
             test_utils::containers::setup_sui_instance().await;
 
-        // Create a wallet and request some gas tokens.
-        let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
-            .expect("Failed to create a wallet.");
-        let sui = wallet.get_client().await.expect("Could not get Sui client");
+        let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+        let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
 
-        let addr = wallet
-            .active_address()
-            .expect("Failed to get active address.");
+        let mut rng = rand::thread_rng();
+
+        // Create a wallet and request some gas tokens.
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let addr = pk.public_key().derive_address();
 
         test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
             .await
@@ -1256,20 +1256,18 @@ mod tests {
 
         // Publish test onchain_tool package.
         let response = test_utils::contracts::publish_move_package(
-            &mut wallet,
+            &pk,
+            &rpc_url,
             "../sdk/tests/move/onchain_tool_test",
             gas_coin,
         )
         .await;
 
-        let changes = response
-            .object_changes
-            .expect("TX response must have object changes");
-
-        let pkg_id = *changes
+        let pkg_id = response
+            .objects
             .iter()
-            .find_map(|c| match c {
-                sui::ObjectChange::Published { package_id, .. } => Some(package_id),
+            .find_map(|c| match c.data() {
+                sui::types::ObjectData::Package(m) => Some(m.id),
                 _ => None,
             })
             .expect("Move package must be published");
