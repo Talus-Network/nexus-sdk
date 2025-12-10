@@ -41,7 +41,7 @@ impl ModuleAndNameIdent {
 }
 
 /// Helper to create a pure [`sui::tx::Input`].
-pub(crate) fn pure_arg<T: Serialize>(value: &T) -> anyhow::Result<sui::tx::Input> {
+pub fn pure_arg<T: Serialize>(value: &T) -> anyhow::Result<sui::tx::Input> {
     Ok(sui::tx::Input {
         value: Some(sui::tx::Value::String(BASE64.encode(bcs::to_bytes(value)?))),
         kind: Some(sui::tx::InputKind::Pure),

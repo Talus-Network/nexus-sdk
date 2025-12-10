@@ -45,12 +45,11 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
-# Types feature enables the use of the `types` module. Also adds reqwest as a
-# dependency.
+# Types feature enables the use of the `types` module.
 types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures"]
 
 # Events feature enables the use of the `events` module.
-events = ["sui_idents", "types", "graphql_client", "reqwest"]
+events = ["sui_idents", "types", "graphql_client"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -245,7 +244,6 @@ optional = true
 [dependencies.reqwest]
 workspace = true
 optional = true
-features = ["json", "stream"]
 
 [dependencies.serde_json]
 workspace = true

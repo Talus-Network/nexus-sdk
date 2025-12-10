@@ -1,9 +1,6 @@
 use {
     crate::{loading, prelude::*},
-    nexus_sdk::{
-        nexus::{client::NexusClient, crawler::Crawler},
-        sui,
-    },
+    nexus_sdk::{nexus::client::NexusClient, sui},
 };
 
 /// Build Sui client for the provided Sui net.
@@ -132,42 +129,6 @@ pub(crate) async fn fetch_coins_for_address(
             ))
         })
         .collect())
-}
-
-/// Fetch reference gas price from Sui.
-pub(crate) async fn fetch_reference_gas_price(
-    client: Arc<Mutex<sui::grpc::Client>>,
-) -> AnyResult<u64, NexusCliError> {
-    let gas_price_handle = loading!("Fetching reference gas price...");
-
-    let mut client = client.lock().await;
-
-    let response = match client.get_reference_gas_price().await {
-        Ok(response) => response,
-        Err(e) => {
-            gas_price_handle.error();
-
-            return Err(NexusCliError::Rpc(e.into()));
-        }
-    };
-
-    drop(client);
-
-    gas_price_handle.success();
-
-    Ok(response)
-}
-
-/// Fetch a single object from Sui by its ID.
-pub(crate) async fn fetch_object_metadata(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    object_id: sui::types::Address,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    Crawler::new(client)
-        .get_object_metadata(object_id)
-        .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| NexusCliError::Any(e))
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.

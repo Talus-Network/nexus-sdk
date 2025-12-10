@@ -321,6 +321,7 @@ impl WorkflowActions {
 #[cfg(test)]
 mod tests {
     use {
+        super::*,
         crate::{
             events::{
                 EndStateReachedEvent,
@@ -328,15 +329,12 @@ mod tests {
                 NexusEventKind,
                 WalkAdvancedEvent,
             },
-            nexus::error::NexusError,
-            sui,
+            sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{Dag, NexusData, PortsData, RuntimeVertex, StorageConf, TypeName},
+            types::{NexusData, RuntimeVertex, TypeName},
         },
         mockito::Server,
         serde_json::json,
-        std::collections::HashMap,
-        sui_sdk_types::bcs::ToBcs,
     };
 
     #[tokio::test]

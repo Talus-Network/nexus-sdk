@@ -35,6 +35,9 @@ pub(crate) const DEVNET_OBJECTS_TOML: &str =
 pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
+/// What is the default gas budget to use?
+pub(crate) const DEFAULT_GAS_BUDGET: u64 = 100_000_000;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
     #[default]
@@ -76,7 +79,7 @@ pub(crate) struct GasArgs {
         short = 'b',
         help = "The gas budget for the transaction.",
         value_name = "AMOUNT",
-        default_value_t = sui::MIST_PER_SUI / 10
+        default_value_t = DEFAULT_GAS_BUDGET
     )]
     pub(crate) sui_gas_budget: u64,
 }

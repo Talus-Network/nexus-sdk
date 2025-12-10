@@ -1,7 +1,7 @@
 use {
     crate::{sui, types::*, ToolFqn},
-    bcs,
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
+    anyhow::{bail, Result},
+    serde::{Deserialize, Serialize},
 };
 
 mod fetching;
@@ -32,7 +32,7 @@ macro_rules! events {
 
         // == enum NexusEventKind ==
 
-        #[derive(Clone, Debug, Deserialize, Serialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize)]
         #[serde(tag = "_nexus_event_type", content = "event")]
         pub enum NexusEventKind {
             $(
@@ -54,7 +54,7 @@ macro_rules! events {
 
         // == Parsing from BCS ==
 
-        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> anyhow::Result<NexusEventKind> {
+        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<NexusEventKind> {
             #[derive(Deserialize)]
             struct Wrapper<T> {
                 event: T,
@@ -67,40 +67,40 @@ macro_rules! events {
                         Ok(NexusEventKind::$variant(obj.event))
                     }
                 )*
-                _ => anyhow::bail!("Unknown event: {}", name),
+                _ => bail!("Unknown event: {}", name),
             }
         }
     };
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "T: Serialize + DeserializeOwned")]
-pub struct RequestScheduledExecution<T>
-where
-    T: Clone,
-{
-    pub request: T,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub priority: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub request_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub start_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub deadline_ms: u64,
-}
+// TODO: @david to re-implement or to simplify by removing generic.
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// pub struct RequestScheduledExecution<T>
+// where
+//     T: Clone + Serialize + DeserializeOwned,
+// {
+//     pub request: T,
+//     #[serde(
+//         deserialize_with = "deserialize_sui_u64",
+//         serialize_with = "serialize_sui_u64"
+//     )]
+//     pub priority: u64,
+//     #[serde(
+//         deserialize_with = "deserialize_sui_u64",
+//         serialize_with = "serialize_sui_u64"
+//     )]
+//     pub request_ms: u64,
+//     #[serde(
+//         deserialize_with = "deserialize_sui_u64",
+//         serialize_with = "serialize_sui_u64"
+//     )]
+//     pub start_ms: u64,
+//     #[serde(
+//         deserialize_with = "deserialize_sui_u64",
+//         serialize_with = "serialize_sui_u64"
+//     )]
+//     pub deadline_ms: u64,
+// }
 
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
@@ -133,6 +133,7 @@ events! {
     PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
     PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
+
     // These events are unused for now.
     // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
     // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
@@ -603,334 +604,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-
-// // == Parsing ==
-
-// /// Parse [`sui::Event`] into [`NexusEvent`]. We check that the module and name
-// /// of the event wrapper are what we expect. Then we add the event name as a
-// /// field in the json object with the [`NEXUS_EVENT_TYPE_TAG`] key. This way we
-// /// can automatically deserialize into the correct [`NexusEventKind`].
-// impl TryInto<NexusEvent> for sui::Event {
-//     type Error = anyhow::Error;
-
-//     fn try_into(self) -> anyhow::Result<NexusEvent> {
-//         let id = self.id;
-
-//         let sui::MoveStructTag {
-//             name,
-//             module,
-//             type_params,
-//             ..
-//         } = self.type_;
-
-//         // TODO: fix this once we swap to gql for event fetching.
-//         if name != sui::Identifier::new(primitives::Event::EVENT_WRAPPER.name.as_str()).unwrap()
-//             || module
-//                 != sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str()).unwrap()
-//         {
-//             anyhow::bail!("Event is not a Nexus event");
-//         };
-
-//         // Extract the event name from its type parameters. This is used to
-//         // match the corresponding [NexusEventKind].
-//         let Some(sui::MoveTypeTag::Struct(type_param)) = type_params.into_iter().next() else {
-//             anyhow::bail!("Event is not a struct");
-//         };
-
-//         let sui::MoveStructTag {
-//             name, type_params, ..
-//         } = *type_param;
-
-//         // This allows us to insert the event name to the json object. This way
-//         // we can then automatically deserialize into the correct
-//         // [NexusEventKind].
-//         let mut payload = self.parsed_json;
-
-//         let event_kind_name = name.to_string();
-
-//         if event_kind_name == "RequestScheduledExecution" {
-//             fn extract_struct_name(tag: &sui::MoveTypeTag) -> Option<String> {
-//                 match tag {
-//                     sui::MoveTypeTag::Struct(inner) => {
-//                         if inner.type_params.is_empty() {
-//                             Some(inner.name.to_string())
-//                         } else {
-//                             inner
-//                                 .type_params
-//                                 .iter()
-//                                 .find_map(extract_struct_name)
-//                                 .or_else(|| Some(inner.name.to_string()))
-//                         }
-//                     }
-//                     _ => None,
-//                 }
-//             }
-//             let inner_name = type_params
-//                 .first()
-//                 .and_then(extract_struct_name)
-//                 .ok_or_else(|| anyhow::anyhow!("Scheduled event missing inner type parameter"))?;
-
-//             let request_value = payload
-//                 .get_mut("event")
-//                 .and_then(|event| event.get_mut("request"))
-//                 .ok_or_else(|| anyhow::anyhow!("Scheduled event is missing request payload"))?;
-
-//             let inner_payload = request_value.clone();
-//             *request_value = serde_json::json!({
-//                 NEXUS_EVENT_TYPE_TAG: inner_name,
-//                 "event": inner_payload,
-//             });
-//         }
-
-//         payload
-//             .as_object_mut()
-//             .ok_or_else(|| anyhow::anyhow!("Event payload could not be accessed"))?
-//             .insert(NEXUS_EVENT_TYPE_TAG.to_string(), event_kind_name.into());
-
-//         let data = match serde_json::from_value(payload) {
-//             Ok(data) => data,
-//             Err(e) => {
-//                 anyhow::bail!("Could not deserialize event data for event '{name}': {e}");
-//             }
-//         };
-
-//         Ok(NexusEvent {
-//             id,
-//             generics: type_params,
-//             data,
-//         })
-//     }
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use {super::*, assert_matches::assert_matches};
-
-//     fn dummy_event(
-//         name: sui::Identifier,
-//         data: serde_json::Value,
-//         generics: Vec<sui::MoveTypeTag>,
-//     ) -> sui::Event {
-//         sui::Event {
-//             id: sui::EventID {
-//                 tx_digest: sui::TransactionDigest::random(),
-//                 event_seq: 42,
-//             },
-//             package_id: sui::ObjectID::random(),
-//             transaction_module: sui::move_ident_str!("primitives").into(),
-//             sender: sui::ObjectID::random().into(),
-//             bcs: sui::BcsEvent::new(vec![]),
-//             timestamp_ms: None,
-//             type_: sui::MoveStructTag {
-//                 address: *sui::ObjectID::random(),
-//                 name: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.name.as_str()).unwrap(),
-//                 module: sui::Identifier::new(primitives::Event::EVENT_WRAPPER.module.as_str())
-//                     .unwrap(),
-//                 type_params: vec![sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-//                     address: *sui::ObjectID::random(),
-//                     name,
-//                     module: sui::move_ident_str!("dag").into(),
-//                     type_params: generics,
-//                 }))],
-//             },
-//             parsed_json: data,
-//         }
-//     }
-
-//     #[test]
-//     fn test_sui_event_desers_into_nexus_event() {
-//         let dag = sui::ObjectID::random();
-//         let execution = sui::ObjectID::random();
-//         let evaluations = sui::ObjectID::random();
-
-//         let generic = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-//             address: *sui::ObjectID::random(),
-//             name: sui::move_ident_str!("Foo").into(),
-//             module: sui::move_ident_str!("bar").into(),
-//             type_params: vec![],
-//         }));
-
-//         let event = dummy_event(
-//             sui::move_ident_str!("RequestWalkExecutionEvent").into(),
-//             serde_json::json!({
-//                 "event":{
-//                     "dag": dag.to_string(),
-//                     "execution": execution.to_string(),
-//                     "walk_index": "42",
-//                     "next_vertex": {
-//                         "variant": "Plain",
-//                         "fields": {
-//                             "vertex": { "name": "foo" },
-//                         }
-//                     },
-//                     "evaluations": evaluations.to_string(),
-//                     "worksheet_from_type": {
-//                         "name": "bar",
-//                     },
-//                 }
-//             }),
-//             vec![generic.clone()],
-//         );
-
-//         let event: NexusEvent = event.try_into().unwrap();
-
-//         assert_eq!(event.generics, vec![generic]);
-//         assert_matches!(event.data, NexusEventKind::RequestWalkExecution(e)
-//             // TODO: remove .to_string() once types match.
-//             if e.dag.to_string() == dag.to_string() &&
-//                 e.execution.to_string() == execution.to_string() &&
-//                 e.evaluations.to_string() == evaluations.to_string() &&
-//                 e.walk_index == 42 &&
-//                 matches!(&e.next_vertex, RuntimeVertex::Plain { vertex } if vertex.name == "foo") &&
-//                 e.worksheet_from_type.name == *"bar"
-//         );
-//     }
-
-//     #[test]
-//     fn test_sui_event_desers_into_nexus_event_with_schedule_wrapper() {
-//         let dag = sui::ObjectID::random();
-//         let execution = sui::ObjectID::random();
-//         let evaluations = sui::ObjectID::random();
-
-//         let inner = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-//             address: *sui::ObjectID::random(),
-//             name: sui::move_ident_str!("RequestWalkExecutionEvent").into(),
-//             module: sui::move_ident_str!("dag").into(),
-//             type_params: vec![],
-//         }));
-
-//         let outer = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-//             address: *sui::ObjectID::random(),
-//             name: sui::move_ident_str!("RequestScheduledExecution").into(),
-//             module: sui::move_ident_str!("scheduler").into(),
-//             type_params: vec![inner.clone()],
-//         }));
-
-//         let event = dummy_event(
-//             sui::move_ident_str!("RequestScheduledExecution").into(),
-//             serde_json::json!({
-//                 "event":{
-//                     "request": {
-//                         "dag": dag.to_string(),
-//                         "execution": execution.to_string(),
-//                         "walk_index": "42",
-//                         "next_vertex": {
-//                             "variant": "Plain",
-//                             "fields": {
-//                                 "vertex": { "name": "foo" },
-//                             }
-//                         },
-//                         "evaluations": evaluations.to_string(),
-//                         "worksheet_from_type": {
-//                             "name": "bar",
-//                         },
-//                     },
-//                     "priority": "7",
-//                     "request_ms": "1",
-//                     "start_ms": "2",
-//                     "deadline_ms": "3",
-//                 }
-//             }),
-//             vec![outer.clone()],
-//         );
-
-//         let event: NexusEvent = event.try_into().unwrap();
-
-//         assert_eq!(event.generics, vec![outer]);
-
-//         let NexusEventKind::Scheduled(scheduled) = event.data else {
-//             panic!("Expected scheduled event");
-//         };
-
-//         assert_eq!(scheduled.priority, 7);
-//         assert_eq!(scheduled.request_ms, 1);
-//         assert_eq!(scheduled.start_ms, 2);
-//         assert_eq!(scheduled.deadline_ms, 3);
-
-//         let inner_event = *scheduled.request;
-//         let NexusEventKind::RequestWalkExecution(inner) = inner_event else {
-//             panic!("Expected RequestWalkExecution inner event");
-//         };
-
-//         // TODO: remove .to_string() once types match.
-//         assert_eq!(inner.dag.to_string(), dag.to_string());
-//         assert_eq!(inner.execution.to_string(), execution.to_string());
-//         assert_eq!(inner.evaluations.to_string(), evaluations.to_string());
-//         assert_eq!(inner.walk_index, 42);
-//         match inner.next_vertex {
-//             RuntimeVertex::Plain { vertex } => assert_eq!(vertex.name, *"foo"),
-//             _ => panic!("Unexpected vertex"),
-//         }
-//         assert_eq!(inner.worksheet_from_type.name, *"bar");
-//     }
-
-//     fn queue_generator_symbol() -> PolicySymbol {
-//         PolicySymbol::Witness(MoveTypeName {
-//             name: "0x1::scheduler::QueueGeneratorWitness".into(),
-//         })
-//     }
-
-//     #[test]
-//     fn test_sui_event_desers_into_occurrence_scheduled_event() {
-//         let task = sui::ObjectID::random();
-//         let generator = queue_generator_symbol();
-
-//         let inner = sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-//             address: *sui::ObjectID::random(),
-//             name: sui::move_ident_str!("OccurrenceScheduledEvent").into(),
-//             module: sui::move_ident_str!("scheduler").into(),
-//             type_params: vec![],
-//         }));
-
-//         let event = dummy_event(
-//             sui::move_ident_str!("OccurrenceScheduledEvent").into(),
-//             serde_json::json!({
-//                 "event":{
-//                     "task": task.to_string(),
-//                     "generator": serde_json::to_value(&generator).unwrap()
-//                 }
-//             }),
-//             vec![inner.clone()],
-//         );
-
-//         let event: NexusEvent = event.try_into().unwrap();
-
-//         assert_eq!(event.generics, vec![inner]);
-//         let NexusEventKind::OccurrenceScheduled(scheduled) = event.data else {
-//             panic!("Expected OccurrenceScheduled event");
-//         };
-
-//         // TODO: remove .to_string() once types match.
-//         assert_eq!(scheduled.task.to_string(), task.to_string());
-//         assert_eq!(scheduled.generator, generator);
-//     }
-
-//     #[test]
-//     fn test_nexus_event_kind_name_returns_correct_name() {
-//         let mut rng = rand::thread_rng();
-//         let dummy_event = NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
-//             dag: sui::types::Address::generate(&mut rng),
-//             execution: sui::types::Address::generate(&mut rng),
-//             walk_index: 1,
-//             next_vertex: RuntimeVertex::Plain {
-//                 vertex: TypeName::new("vertex"),
-//             },
-//             evaluations: sui::types::Address::generate(&mut rng),
-//             worksheet_from_type: TypeName {
-//                 name: "worksheet".into(),
-//             },
-//         });
-//         assert_eq!(dummy_event.name(), "RequestWalkExecutionEvent");
-
-//         let dummy_event = NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
-//             shared_objects: vec![sui::types::Address::generate(&mut rng)],
-//         });
-//         assert_eq!(dummy_event.name(), "AnnounceInterfacePackageEvent");
-
-//         let dummy_event = NexusEventKind::ToolRegistryCreated(serde_json::json!({}));
-//         assert_eq!(dummy_event.name(), "ToolRegistryCreatedEvent");
-
-//         let dummy_event = NexusEventKind::LeaderClaimedGas(serde_json::json!({}));
-//         assert_eq!(dummy_event.name(), "LeaderClaimedGasEvent");
-//     }
-// }

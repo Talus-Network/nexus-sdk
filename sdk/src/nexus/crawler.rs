@@ -32,7 +32,7 @@ impl Crawler {
         T: DeserializeOwned,
     {
         let field_mask =
-            sui::grpc::FieldMask::from_paths(&["object_id", "owner", "version", "digest", "json"]);
+            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest", "json"]);
 
         let object = self.fetch_object(object_id, field_mask).await?;
         let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
@@ -57,7 +57,7 @@ impl Crawler {
         T: DeserializeOwned,
     {
         let field_mask =
-            sui::grpc::FieldMask::from_paths(&["object_id", "owner", "version", "digest", "json"]);
+            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest", "json"]);
 
         let request = {
             let mut req = sui::grpc::BatchGetObjectsRequest::default();
@@ -121,7 +121,7 @@ impl Crawler {
         object_id: sui::types::Address,
     ) -> anyhow::Result<Response<()>> {
         let field_mask =
-            sui::grpc::FieldMask::from_paths(&["object_id", "owner", "version", "digest"]);
+            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest"]);
 
         let object = self.fetch_object(object_id, field_mask).await?;
         let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
@@ -232,7 +232,7 @@ impl Crawler {
     {
         let mut results = Vec::with_capacity(expected_size);
         let mut page_token = None;
-        let field_mask = sui::grpc::FieldMask::from_paths(&["name", "child_id", "field_id"]);
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -329,7 +329,7 @@ impl Crawler {
             bail!("Object content missing");
         };
 
-        prost_value_to_json_value(&json)
+        prost_value_to_json_value(json)
             .and_then(|v| serde_json::from_value::<T>(v).map_err(anyhow::Error::new))
     }
 }

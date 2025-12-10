@@ -14,6 +14,12 @@ pub(crate) async fn buy_expiry_gas_ticket(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Buying an expiry gas ticket for '{minutes}' minutes for tool '{tool_fqn}'");
 
+    if Some(coin) == sui_gas_coin {
+        return Err(NexusCliError::Any(anyhow!(
+            "The coin used to pay for the ticket cannot be the same as the gas coin."
+        )));
+    }
+
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let signer = nexus_client.signer();
     let gas_config = nexus_client.gas_config();

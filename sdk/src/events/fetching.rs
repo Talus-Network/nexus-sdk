@@ -15,6 +15,7 @@ use {
         idents::primitives,
         types::NexusObjects,
     },
+    graphql_client::{GraphQLQuery, Response},
     reqwest::Client,
     std::sync::Arc,
 };
@@ -105,19 +106,32 @@ impl EventFetcher {
                         },
                     };
 
-                    // Fetch events from the GQL endpoint.
-                    let Ok(response) = graphql_client::reqwest::post_graphql::<EventsQuery, _>(
-                        &Client::new(),
-                        &url,
-                        request,
-                    )
-                    .await
-                    else {
-                        tokio::time::sleep(poll_interval).await;
+                    let query = EventsQuery::build_query(request);
+                    let client = Client::new();
 
-                        poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                    // Send the GQL request.
+                    let response = match client.post(&url).json(&query).send().await {
+                        Ok(resp) => resp,
+                        Err(_) => {
+                            tokio::time::sleep(poll_interval).await;
 
-                        continue;
+                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+
+                            continue;
+                        }
+                    };
+
+                    // Parse the GQL response.
+                    let response: Response<events_query::ResponseData> = match response.json().await
+                    {
+                        Ok(data) => data,
+                        Err(_) => {
+                            tokio::time::sleep(poll_interval).await;
+
+                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+
+                            continue;
+                        }
                     };
 
                     // Parse the response data.

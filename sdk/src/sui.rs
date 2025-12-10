@@ -21,7 +21,7 @@ pub mod grpc {
 
 /// Sui traits re-exported so that we can `use sui::traits::*` in our code.
 pub mod traits {
-    pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil};
+    pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil, sui_sdk_types::bcs::ToBcs};
 }
 
 // TODO: Remove all old Sui SDK re-exports once they're gone from test utils.

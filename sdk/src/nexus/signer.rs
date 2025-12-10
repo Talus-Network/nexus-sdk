@@ -73,7 +73,7 @@ impl Signer {
         let request = sui::grpc::ExecuteTransactionRequest::default()
             .with_transaction(tx)
             .with_signatures(vec![signature.into()])
-            .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
                 "effects.bcs",
                 "events.events",
                 "objects.objects",
@@ -91,11 +91,11 @@ impl Signer {
 
         drop(client);
 
+        let checkpoint = response.checkpoint();
         let digest = response
             .digest()
             .parse()
             .map_err(|e: sui::types::DigestParseError| NexusError::Parsing(e.into()))?;
-        let checkpoint = response.checkpoint();
 
         // Wait for the transaction to be included in a checkpoint.
         tokio::select! {
@@ -183,7 +183,7 @@ impl Signer {
 
             let request = sui::grpc::GetCheckpointRequest::default()
                 .with_sequence_number(checkpoint)
-                .with_read_mask(sui::grpc::FieldMask::from_paths(&["transactions.digest"]));
+                .with_read_mask(sui::grpc::FieldMask::from_paths(["transactions.digest"]));
 
             let response = match client
                 .ledger_client()

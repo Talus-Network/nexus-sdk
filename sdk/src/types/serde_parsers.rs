@@ -1,5 +1,4 @@
 use {
-    crate::sui,
     serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
     serde_json::Value,
 };

@@ -25,7 +25,7 @@ pub fn register_off_chain_for_self(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
-    let url = tx.input(pure_arg(&meta.url)?);
+    let url = tx.input(pure_arg(&meta.url.to_string())?);
 
     // `description: vector<u8>`
     let description = tx.input(pure_arg(&meta.description)?);
@@ -169,11 +169,11 @@ pub fn register_on_chain_for_self(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     package_address: sui::types::Address,
-    module_name: String,
-    input_schema: String,
-    output_schema: String,
+    module_name: &str,
+    input_schema: &str,
+    output_schema: &str,
     fqn: &ToolFqn,
-    description: String,
+    description: &str,
     witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
@@ -475,11 +475,11 @@ mod tests {
         let mut rng = rand::thread_rng();
         let objects = sui_mocks::mock_nexus_objects();
         let package_address = sui::types::Address::generate(&mut rng);
-        let module_name = "onchain_tool".to_string();
-        let input_schema = json!({}).to_string();
-        let output_schema = json!({}).to_string();
+        let module_name = "onchain_tool";
+        let input_schema = &json!({}).to_string();
+        let output_schema = &json!({}).to_string();
         let fqn = fqn!("xyz.dummy.tool@1");
-        let description = "a dummy onchain tool".to_string();
+        let description = "a dummy onchain tool";
         let witness_id = sui::types::Address::generate(&mut rng);
         let collateral_coin = sui_mocks::mock_sui_object_ref();
         let address = sui::types::Address::generate(&mut rng);

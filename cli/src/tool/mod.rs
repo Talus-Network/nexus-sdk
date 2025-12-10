@@ -32,7 +32,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: Option<sui::types::Address>,
+        collateral_coin: sui::types::Address,
 
         #[arg(
             long = "invocation-cost",
@@ -62,12 +62,15 @@ pub(crate) enum RegisterCommand {
     #[command(about = "Register an onchain tool")]
     Onchain {
         #[arg(
-            long = "module-path",
-            short = 'm',
-            help = "The module path in the format 'package_address::module_name'.",
-            value_name = "MODULE_PATH"
+            long = "package",
+            short = 'p',
+            help = "The onchain tool package address",
+            value_name = "ADDRESS"
         )]
-        module_path: sui::MoveModuleId,
+        package: sui::types::Address,
+
+        #[arg(long = "module", short = 'm', help = "The onchain tool module name")]
+        module: sui::types::Identifier,
 
         #[arg(
             long = "tool-fqn",
@@ -99,7 +102,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: Option<sui::types::Address>,
+        collateral_coin: sui::types::Address,
 
         #[arg(
             long = "no-save",
@@ -291,7 +294,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 .await
             }
             RegisterCommand::Onchain {
-                module_path,
+                package,
+                module,
                 tool_fqn,
                 description,
                 witness_id,
@@ -300,7 +304,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 gas,
             } => {
                 register_onchain_tool(
-                    module_path,
+                    package,
+                    module,
                     tool_fqn,
                     description,
                     witness_id,

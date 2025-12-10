@@ -1,6 +1,5 @@
 [toolchain]
-# TODO: investigate and remove
-# channel = "1.86"
+channel = "1.88"
 components = [
     "rustc",
     "cargo",

@@ -34,8 +34,7 @@ impl GasActions {
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address.into(), &coin.object_ref())
-        {
+        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address, &coin.object_ref()) {
             return Err(NexusError::TransactionBuilding(e));
         }
 

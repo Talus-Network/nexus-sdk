@@ -34,7 +34,7 @@ pub struct DagExecutionConfig {
 /// Representation of `nexus_workflow::scheduler::Task`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
-    pub id: sui::UID,
+    pub id: sui::types::Address,
     pub owner: sui::types::Address,
     #[serde(default)]
     pub metadata: Value,
@@ -50,7 +50,7 @@ pub struct Task {
 /// Minimal representation of `nexus_primitives::policy::Policy`.
 #[derive(Clone, Debug, Serialize)]
 pub struct Policy {
-    pub id: sui::UID,
+    pub id: sui::types::Address,
     pub dfa: ConfiguredAutomaton,
     #[serde(default)]
     pub alphabet_index: Value,
@@ -66,7 +66,7 @@ pub struct Policy {
 /// Minimal representation of `nexus_primitives::automaton::ConfiguredAutomaton`.
 #[derive(Clone, Debug, Serialize)]
 pub struct ConfiguredAutomaton {
-    pub id: sui::UID,
+    pub id: sui::types::Address,
     #[serde(default)]
     pub dfa: Value,
 }
@@ -264,7 +264,7 @@ impl<'de> Deserialize<'de> for Policy {
     {
         #[derive(Deserialize)]
         struct Inner {
-            id: sui::UID,
+            id: sui::types::Address,
             dfa: ConfiguredAutomaton,
             #[serde(default)]
             alphabet_index: Value,
@@ -296,7 +296,7 @@ impl<'de> Deserialize<'de> for ConfiguredAutomaton {
     {
         #[derive(Deserialize)]
         struct Inner {
-            id: sui::UID,
+            id: sui::types::Address,
             #[serde(default)]
             dfa: Value,
         }
@@ -454,13 +454,13 @@ mod tests {
 
     #[test]
     fn policy_deserializes_from_wrapped_move_struct() {
-        let policy_id = sui::ObjectID::from_hex_literal("0x2").expect("valid object id");
-        let dfa_id = sui::ObjectID::from_hex_literal("0x3").expect("valid object id");
+        let policy_id = sui::types::Address::from_static("0x2");
+        let dfa_id = sui::types::Address::from_static("0x3");
 
         let expected = Policy {
-            id: sui::UID::new(policy_id),
+            id: policy_id,
             dfa: ConfiguredAutomaton {
-                id: sui::UID::new(dfa_id),
+                id: dfa_id,
                 dfa: json!({
                     "type": sui::MoveStructTag {
                         address: *sui::FRAMEWORK_PACKAGE_ID,

@@ -220,13 +220,6 @@ impl CryptoConf {
     }
 }
 
-// == Used by serde ==
-
-fn default_sui_wallet_path() -> PathBuf {
-    let config_dir = sui::config_dir().expect("Unable to determine SUI config directory");
-    config_dir.join(sui::CLIENT_CONFIG)
-}
-
 #[cfg(test)]
 #[allow(clippy::single_component_path_imports)]
 mod tests {

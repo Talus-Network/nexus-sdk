@@ -55,13 +55,7 @@ pub async fn generate_output_schema(
         .datatypes()
         .into_iter()
         .find(|kind| kind.name() == output_enum_name)
-        .ok_or_else(|| {
-            anyhow!(
-                "Enum '{}' not found in module '{}'",
-                output_enum_name,
-                module_name
-            )
-        })?;
+        .ok_or_else(|| anyhow!("Enum '{output_enum_name}' not found in module '{module_name}'"))?;
 
     // Parse the enum variants from the normalized enum.
     let mut schema_map = Map::new();
@@ -69,7 +63,7 @@ pub async fn generate_output_schema(
     // Iterate through each variant in the enum.
     for variant in &output_enum.variants {
         let Some(variant_name) = variant.name_opt() else {
-            bail!("Variant name missing in enum '{}'", output_enum_name)
+            bail!("Variant name missing in enum '{output_enum_name}'")
         };
 
         let variant_fields = &variant.fields;

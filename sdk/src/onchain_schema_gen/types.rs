@@ -56,7 +56,7 @@ pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> 
         Ok(Type::Vector) => {
             let inner_type = move_type
                 .type_parameter_instantiation
-                .get(0)
+                .first()
                 .ok_or_else(|| anyhow!("Vector type missing inner type"))?;
 
             let inner_schema = convert_move_type_to_schema(inner_type)?;
@@ -115,7 +115,7 @@ pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> 
             "description": "Generic type parameter"
         })),
         _ => {
-            bail!("Unsupported Move type for schema conversion: {:?}", kind);
+            bail!("Unsupported Move type for schema conversion: {kind:?}");
         }
     }
 }
