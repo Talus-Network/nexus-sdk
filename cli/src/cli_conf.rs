@@ -47,6 +47,7 @@ impl CliConf {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub(crate) struct SuiConf {
     #[serde(default)]
     pub(crate) pk: Option<PathBuf>,
@@ -56,15 +57,6 @@ pub(crate) struct SuiConf {
     pub(crate) gql_url: Option<reqwest::Url>,
 }
 
-impl Default for SuiConf {
-    fn default() -> Self {
-        Self {
-            pk: None,
-            grpc_url: None,
-            gql_url: None,
-        }
-    }
-}
 
 /// Remote data storage configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

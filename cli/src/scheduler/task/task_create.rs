@@ -96,7 +96,7 @@ pub(crate) async fn create_task(
 
     CryptoConf::release_session(session, None)
         .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {e}")))?;
 
     let schedule_requested = schedule_start_ms.is_some()
         || schedule_start_offset_ms.is_some()

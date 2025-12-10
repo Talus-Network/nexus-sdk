@@ -49,7 +49,7 @@ pub(crate) async fn fetch_encrypted_entry_ports(
         .data
         .entry_groups
         .into_inner()
-        .remove(&key.into())
+        .remove(&key)
         .ok_or_else(|| {
             NexusCliError::Any(anyhow!("Entry group '{entry_group}' not found in DAG"))
         })?;

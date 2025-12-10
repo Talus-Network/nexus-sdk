@@ -90,7 +90,7 @@ pub(crate) async fn register_off_chain_tool(
             &mut tx,
             nexus_objects,
             &meta,
-            address.into(),
+            address,
             &collateral_coin,
             invocation_cost,
         ) {

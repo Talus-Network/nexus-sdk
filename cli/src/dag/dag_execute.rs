@@ -113,7 +113,7 @@ pub(crate) async fn execute_dag(
     // Update the session in the configuration.
     CryptoConf::release_session(session, None)
         .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {e}")))?;
 
     if inspect {
         inspect_dag_execution(result.execution_object_id, result.tx_checkpoint).await?;

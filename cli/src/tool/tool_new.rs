@@ -75,13 +75,13 @@ impl ToolTemplate {
                         Some(move_toml_template.render(context! { name_snake_case })?),
                     ),
                     (
-                        format!("sources/{}.move", name_snake_case),
+                        format!("sources/{name_snake_case}.move"),
                         Some(tool_move_template.render(
                             context! { name_snake_case, name_pascal_case, name_uppercase },
                         )?),
                     ),
                     (
-                        format!("tests/{}_tests.move", name_snake_case),
+                        format!("tests/{name_snake_case}_tests.move"),
                         Some(tests_move_template.render(context! { name_snake_case })?),
                     ),
                     (

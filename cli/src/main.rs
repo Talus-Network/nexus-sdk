@@ -60,7 +60,7 @@ async fn main() {
             // to display the CLI help or version.
             match e.kind() {
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
-                    println!("{}", e);
+                    println!("{e}");
 
                     std::process::exit(0);
                 }

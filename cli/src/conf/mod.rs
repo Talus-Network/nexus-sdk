@@ -107,7 +107,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
 
             if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
                 let conf = toml::to_string_pretty(&conf).map_err(|e| {
-                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
+                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {e}"))
                 })?;
 
                 println!("{conf}");
