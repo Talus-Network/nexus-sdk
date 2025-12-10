@@ -2,6 +2,7 @@ use graphql_client::GraphQLQuery;
 
 type SuiAddress = sui_sdk_types::Address;
 type UInt53 = u64;
+#[allow(clippy::upper_case_acronyms)]
 type JSON = serde_json::Value;
 
 #[derive(GraphQLQuery)]

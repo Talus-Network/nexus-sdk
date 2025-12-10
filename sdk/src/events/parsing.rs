@@ -66,7 +66,7 @@ impl FromSuiGrpcEvent for NexusEvent {
         }
 
         // Extract the name of the event we want to parse into.
-        let Some(event_type) = event.type_.type_params().get(0).and_then(|tag| match tag {
+        let Some(event_type) = event.type_.type_params().first().and_then(|tag| match tag {
             sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
             _ => None,
         }) else {
@@ -93,10 +93,7 @@ impl FromSuiGqlEvent for NexusEvent {
     ) -> anyhow::Result<NexusEvent> {
         // Only accept events that come from the Nexus packages.
         if !is_nexus_package(package_id, objects) {
-            bail!(
-                "Event does not come from a Nexus package, it comes from '{}' instead",
-                package_id
-            );
+            bail!("Event does not come from a Nexus package, it comes from '{package_id}' instead");
         }
 
         let struct_tag: sui::types::StructTag = event
@@ -120,7 +117,7 @@ impl FromSuiGqlEvent for NexusEvent {
         }
 
         // Extract the name of the event we want to parse into.
-        let Some(event_type) = struct_tag.type_params().get(0).and_then(|tag| match tag {
+        let Some(event_type) = struct_tag.type_params().first().and_then(|tag| match tag {
             sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
             _ => None,
         }) else {

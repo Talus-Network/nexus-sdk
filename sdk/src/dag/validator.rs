@@ -141,9 +141,8 @@ fn follows_concurrency_rules(
             // If there is no path to this input port then it is unreachable.
             if all_nodes_in_paths.is_empty() {
                 bail!(
-                    "'{}' is unreachable when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' is unreachable when invoking group '{group}'",
+                    graph[input_port]
                 );
             }
 
@@ -151,17 +150,15 @@ fn follows_concurrency_rules(
 
             if concurrency < 0 {
                 bail!(
-                    "'{}' is unreachable when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' is unreachable when invoking group '{group}'",
+                    graph[input_port]
                 )
             }
 
             if concurrency > 0 {
                 bail!(
-                    "'{}' has a race condition on it when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' has a race condition on it when invoking group '{group}'",
+                    graph[input_port]
                 )
             }
         }
@@ -235,10 +232,7 @@ fn validate_for_each_pairs(
     while let Some((node, vertex, state)) = stack.pop() {
         if graph.edges(node).count() == 0 {
             if state == InForEach {
-                bail!(
-                    "'{}' has a for-each edge without a corresponding collect",
-                    vertex
-                );
+                bail!("'{vertex}' has a for-each edge without a corresponding collect");
             }
 
             continue;
@@ -393,9 +387,8 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
                 // Check that the group references a vertex that exists.
                 if !dag.vertices.iter().any(|v| &v.name == vertex) {
                     bail!(
-                        "Entry group '{}' references a non-existing vertex '{}'.",
-                        entry_group.name,
-                        vertex
+                        "Entry group '{}' references a non-existing vertex '{vertex}'.",
+                        entry_group.name
                     );
                 }
 

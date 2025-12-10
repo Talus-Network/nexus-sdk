@@ -101,8 +101,8 @@ impl Crawler {
                     .parse()
                     .map_err(|_| anyhow!("Could not parse object ID"))?;
 
-                let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
-                let data = self.parse_object_content(&object)?;
+                let (owner, digest, version) = self.parse_object_metadata(object_id, object)?;
+                let data = self.parse_object_content(object)?;
 
                 Ok(Response {
                     object_id,

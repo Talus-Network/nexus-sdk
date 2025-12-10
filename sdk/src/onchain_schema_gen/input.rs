@@ -31,7 +31,7 @@ pub async fn generate_input_schema(
         .await
         .map(|resp| resp.into_inner().package)?
     else {
-        bail!("Package '{}' not found", package_address)
+        bail!("Package '{package_address}' not found")
     };
 
     drop(client);
@@ -40,27 +40,19 @@ pub async fn generate_input_schema(
 
     // Find the specific module.
     let normalized_module = all_modules
-        .into_iter()
+        .iter()
         .find(|m| m.name() == module_name)
         .ok_or_else(|| {
-            anyhow!(
-                "Module '{}' not found in package '{}'",
-                module_name,
-                package_address
-            )
+            anyhow!("Module '{module_name}' not found in package '{package_address}'")
         })?;
 
     // Find the execute function.
     let execute_func = normalized_module
         .functions()
-        .into_iter()
+        .iter()
         .find(|f| f.name() == execute_function)
         .ok_or_else(|| {
-            anyhow!(
-                "Function '{}' not found in module '{}'",
-                execute_function,
-                module_name
-            )
+            anyhow!("Function '{execute_function}' not found in module '{module_name}'")
         })?;
 
     // Parse function parameters.
@@ -69,11 +61,7 @@ pub async fn generate_input_schema(
 
     for (i, param_type) in execute_func.parameters().iter().enumerate() {
         let signature = param_type.body_opt().ok_or_else(|| {
-            anyhow!(
-                "Parameter type missing body in function '{}' of module '{}'",
-                execute_function,
-                module_name
-            )
+            anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
         })?;
 
         let is_tx_context = is_tx_context_param(signature);

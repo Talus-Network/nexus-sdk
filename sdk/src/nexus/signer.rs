@@ -130,7 +130,7 @@ impl Signer {
             .objects()
             .objects()
             .iter()
-            .map(|obj| sui::types::Object::try_from(obj))
+            .map(sui::types::Object::try_from)
             .collect::<Result<Vec<_>, _>>()
         else {
             return Err(NexusError::Wallet(anyhow::anyhow!(
@@ -140,9 +140,7 @@ impl Signer {
 
         if let sui::types::ExecutionStatus::Failure { error, command } = effects.status() {
             return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transaction execution failed: {:?} in command: {:?}",
-                error,
-                command
+                "Transaction execution failed: {error:?} in command: {command:?}"
             )));
         }
 

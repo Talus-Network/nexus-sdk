@@ -30,7 +30,7 @@ impl GasActions {
             .crawler()
             .get_object_metadata(coin_object_id)
             .await
-            .map_err(|e| NexusError::Rpc(e))?;
+            .map_err(NexusError::Rpc)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 

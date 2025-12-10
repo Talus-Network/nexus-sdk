@@ -31,7 +31,7 @@ pub async fn generate_output_schema(
         .await
         .map(|resp| resp.into_inner().package)?
     else {
-        bail!("Package '{}' not found", package_address)
+        bail!("Package '{package_address}' not found")
     };
 
     drop(client);
@@ -40,20 +40,16 @@ pub async fn generate_output_schema(
 
     // Find the specific module.
     let normalized_module = all_modules
-        .into_iter()
+        .iter()
         .find(|m| m.name() == module_name)
         .ok_or_else(|| {
-            anyhow!(
-                "Module '{}' not found in package '{}'",
-                module_name,
-                package_address
-            )
+            anyhow!("Module '{module_name}' not found in package '{package_address}'")
         })?;
 
     // Find the Output enum.
     let output_enum = normalized_module
         .datatypes()
-        .into_iter()
+        .iter()
         .find(|kind| kind.name() == output_enum_name)
         .ok_or_else(|| anyhow!("Enum '{output_enum_name}' not found in module '{module_name}'"))?;
 
@@ -74,18 +70,12 @@ pub async fn generate_output_schema(
         for field in variant_fields {
             let Some(field_type) = &field.r#type else {
                 bail!(
-                    "Field type missing body in variant '{}' of enum '{}'",
-                    variant_name,
-                    output_enum_name
+                    "Field type missing body in variant '{variant_name}' of enum '{output_enum_name}'"
                 )
             };
 
             let Some(field_name) = field.name_opt() else {
-                bail!(
-                    "Field name missing in variant '{}' of enum '{}'",
-                    variant_name,
-                    output_enum_name
-                )
+                bail!("Field name missing in variant '{variant_name}' of enum '{output_enum_name}'")
             };
 
             let field_schema = convert_move_type_to_schema(field_type)?;
