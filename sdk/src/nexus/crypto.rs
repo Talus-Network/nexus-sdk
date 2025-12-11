@@ -9,20 +9,19 @@ use {
             session::{Message, Session},
             x3dh::{IdentityKey, PreKeyBundle},
         },
-        events::{NexusEvent, NexusEventKind},
-        idents::primitives,
+        events::{NexusEventKind, PreKeyFulfilledEvent},
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::crypto,
     },
     anyhow::anyhow,
-    std::time::{Duration, Instant},
+    std::time::Duration,
 };
 
 pub struct HandshakeResult {
     pub session: Session,
-    pub claim_tx_digest: sui::TransactionDigest,
-    pub associate_tx_digest: sui::TransactionDigest,
+    pub claim_tx_digest: sui::types::Digest,
+    pub associate_tx_digest: sui::types::Digest,
 }
 
 pub struct CryptoActions {
@@ -33,12 +32,12 @@ impl CryptoActions {
     /// Perform crypto handshake with Nexus and return the [`Session`] and
     /// the [`IdentityKey`] generated.
     pub async fn handshake(&self, ik: &IdentityKey) -> Result<HandshakeResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
+        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
 
         // == Claim PreKey transaction ==
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = crypto::claim_pre_key_for_self(&mut tx, nexus_objects) {
             return Err(NexusError::TransactionBuilding(e));
@@ -46,34 +45,34 @@ impl CryptoActions {
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let claim_response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
 
         // == Wait for pre key fulfillment ==
 
-        let cursor = claim_response
-            .events
-            .as_ref()
-            .and_then(|events| events.data.last())
-            .map(|event| event.id);
-
         let fulfilled_event = self
-            .wait_for_pre_key_fulfilled_event(address, cursor)
+            .wait_for_pre_key_fulfilled_event(address, claim_response.checkpoint)
             .await?;
 
         let pre_key_bytes = fulfilled_event.pre_key_bytes;
@@ -89,7 +88,7 @@ impl CryptoActions {
 
         // == Associate PreKey transaction ==
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = crypto::associate_pre_key_with_sender(&mut tx, nexus_objects, message) {
             return Err(NexusError::TransactionBuilding(e));
@@ -97,20 +96,26 @@ impl CryptoActions {
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let associate_response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -124,182 +129,127 @@ impl CryptoActions {
 
     async fn wait_for_pre_key_fulfilled_event(
         &self,
-        requested_by: sui::Address,
-        cursor: Option<sui::EventID>,
-    ) -> Result<crate::events::PreKeyFulfilledEvent, NexusError> {
-        let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
+        requested_by: sui::types::Address,
+        checkpoint: u64,
+    ) -> Result<PreKeyFulfilledEvent, NexusError> {
+        let fetcher = self.client.event_fetcher();
+        let timeout = tokio::time::sleep(Duration::from_secs(20));
+        let (_poller, mut next_page) = fetcher.poll_nexus_events(None, Some(checkpoint));
 
-        let filter = sui::EventFilter::MoveEventModule {
-            package: primitives_pkg_id,
-            module: primitives::Event::EVENT_WRAPPER.module.into(),
-        };
-
-        self.poll_event_until(filter, cursor, |event| match event.data {
-            NexusEventKind::PreKeyFulfilled(e) if e.requested_by == requested_by => Some(e),
-            _ => None,
-        })
-        .await
-    }
-
-    async fn poll_event_until<T, F>(
-        &self,
-        filter: sui::EventFilter,
-        mut cursor: Option<sui::EventID>,
-        mut predicate: F,
-    ) -> Result<T, NexusError>
-    where
-        F: FnMut(NexusEvent) -> Option<T>,
-    {
-        let timeout = Duration::from_secs(300);
-        let mut poll_interval = Duration::from_millis(100);
-        let max_poll_interval = Duration::from_secs(2);
-        let started = Instant::now();
-
-        let sui_client = self.client.signer.get_client().await?;
+        tokio::pin!(timeout);
 
         loop {
-            if started.elapsed() > timeout {
-                return Err(NexusError::Timeout(anyhow!(
-                    "Timeout {timeout:?} reached while waiting for event"
-                )));
-            }
+            tokio::select! {
+                result = next_page.recv() => {
+                    let page = match result {
+                        Some(page) => page,
+                        None => {
+                            return Err(NexusError::Channel(anyhow!("Event fetcher stopped unexpectedly")));
+                        }
+                    };
 
-            let limit = None;
-            let descending_order = false;
-
-            let page = sui_client
-                .event_api()
-                .query_events(filter.clone(), cursor, limit, descending_order)
-                .await
-                .map_err(|e| NexusError::Rpc(e.into()))?;
-
-            cursor = page.next_cursor;
-
-            let mut found_event = false;
-
-            for event in page.data {
-                let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
-                    continue;
-                };
-
-                if let Some(result) = predicate(event) {
-                    return Ok(result);
+                    for event in page.events {
+                        if let NexusEventKind::PreKeyFulfilled(e) = event.data {
+                            if e.requested_by == requested_by {
+                                return Ok(e);
+                            }
+                        }
+                    }
                 }
 
-                found_event = true;
+                _ = &mut timeout => {
+                    return Err(NexusError::Timeout(anyhow!("Timeout reached while waiting for PreKeyFulfilledEvent")));
+                }
             }
-
-            if found_event {
-                poll_interval = Duration::from_millis(100);
-            } else {
-                poll_interval = (poll_interval * 2).min(max_poll_interval);
-            }
-
-            tokio::time::sleep(poll_interval).await;
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        crypto::x3dh::{IdentityKey, PreKeyBundle},
-        events::{NexusEventKind, PreKeyFulfilledEvent},
-        idents::{primitives, workflow},
-        sui,
-        test_utils::{nexus_mocks, sui_mocks},
+    use {
+        crate::{
+            crypto::x3dh::{IdentityKey, PreKeyBundle},
+            events::{NexusEventKind, PreKeyFulfilledEvent},
+            sui,
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+        mockito::Server,
     };
 
     #[tokio::test]
     async fn test_crypto_actions_handshake() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let ik = IdentityKey::generate();
-        let address = nexus_client
-            .signer
-            .get_active_address()
-            .await
-            .expect("Failed to get active address");
+        let mut rng = rand::thread_rng();
+        let claim_tx_digest = sui::types::Digest::generate(&mut rng);
+        let associate_tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
 
+        let ik = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
         let spk_secret = IdentityKey::generate().secret().clone();
         let bundle = PreKeyBundle::new(&receiver_id, 1, &spk_secret, None, None);
 
-        let claim_tx_digest = sui::TransactionDigest::random();
-        let (claim_execute_call, claim_confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                claim_tx_digest,
-                Some(sui_mocks::mock_sui_transaction_block_effects(
-                    None, None, None, None,
-                )),
-                Some(sui::TransactionBlockEvents {
-                    data: vec![sui::Event {
-                        id: sui::EventID {
-                            tx_digest: claim_tx_digest,
-                            event_seq: 0,
-                        },
-                        package_id: nexus_client.nexus_objects.primitives_pkg_id,
-                        transaction_module: primitives::Event::EVENT_WRAPPER.module.into(),
-                        sender: address,
-                        bcs: sui::BcsEvent::new(vec![]),
-                        timestamp_ms: None,
-                        type_: sui::MoveStructTag {
-                            address: nexus_client.nexus_objects.primitives_pkg_id.into(),
-                            module: primitives::Event::EVENT_WRAPPER.module.into(),
-                            name: primitives::Event::EVENT_WRAPPER.name.into(),
-                            type_params: vec![sui::MoveTypeTag::Struct(Box::new(
-                                sui::MoveStructTag {
-                                    address: nexus_client.nexus_objects.workflow_pkg_id.into(),
-                                    module: workflow::PreKeyVault::PRE_KEY_VAULT.module.into(),
-                                    name: sui::move_ident_str!("PreKeyRequestedEvent").into(),
-                                    type_params: vec![],
-                                },
-                            ))],
-                        },
-                        parsed_json: serde_json::json!({
-                            "event": {
-                                "requested_by": address.to_string(),
-                            }
-                        }),
-                    }],
-                }),
-                None,
-                None,
-            );
+        let mut server = Server::new_async().await;
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let _event_query = sui_mocks::rpc::mock_event_api_query_events(
-            &mut server,
-            vec![(
-                "PreKeyFulfilledEvent".to_string(),
-                NexusEventKind::PreKeyFulfilled(PreKeyFulfilledEvent {
-                    requested_by: address,
-                    pre_key_bytes: bincode::serialize(&bundle).unwrap(),
-                }),
-            )],
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            claim_tx_digest,
+            gas_coin_digest,
+            vec![],
+            vec![],
+            vec![],
         );
 
-        let associate_tx_digest = sui::TransactionDigest::random();
-        let (associate_execute_call, associate_confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                associate_tx_digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            associate_tx_digest,
+            gas_coin_digest,
+            vec![],
+            vec![],
+            vec![],
+        );
 
-        let result = nexus_client
+        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+        });
+
+        let client = nexus_mocks::mock_nexus_client(
+            &nexus_objects,
+            &grpc_url,
+            Some(&format!("{}/graphql", server.url())),
+        )
+        .await;
+
+        let pre_key_fulfilled_event = NexusEventKind::PreKeyFulfilled(PreKeyFulfilledEvent {
+            requested_by: client.signer.get_active_address(),
+            pre_key_bytes: bincode::serialize(&bundle).unwrap(),
+        });
+
+        let event_mock = sui_mocks::gql::mock_event_query(
+            &mut server,
+            nexus_objects.primitives_pkg_id,
+            vec![pre_key_fulfilled_event],
+            None,
+            None,
+        );
+
+        let result = client
             .crypto()
             .handshake(&ik)
             .await
             .expect("Failed to perform handshake");
 
-        claim_execute_call.assert_async().await;
-        claim_confirm_call.assert_async().await;
-
-        associate_execute_call.assert_async().await;
-        associate_confirm_call.assert_async().await;
+        event_mock.assert_async().await;
 
         assert_eq!(result.claim_tx_digest, claim_tx_digest);
         assert_eq!(result.associate_tx_digest, associate_tx_digest);

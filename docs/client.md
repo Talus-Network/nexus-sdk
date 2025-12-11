@@ -28,29 +28,9 @@ use nexus_sdk::nexus::client::NexusClient;
 async fn main() -> anyhow::Result<()> {
     // Build the Nexus client
     let client = NexusClient::builder()
-        .with_wallet_context(/* your `sui_sdk::wallet_context::WalletContext */)
-        .with_gas(vec![/* your gas coins */], 10_000_000)?
-        .with_nexus_objects(/* your `nexus_sdk::types::NexusObjects` */)
-        .build()
-        .await?;
-
-    println!("✅ Nexus client initialized!");
-
-    Ok(())
-}
-```
-
-Alternatively, you can initialize using a mnemonic:
-
-```rust
-use nexus_sdk::nexus::client::NexusClient;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Build the Nexus client
-    let client = NexusClient::builder()
-        .with_mnemonic(/* secret mnemonic */, /* your `sui_sdk::SuiClient` */)?
-        .with_gas(vec![/* your gas coins */], 10_000_000)?
+        .with_rpc_url(/* your Sui RPC URL */)
+        .with_private_key(/* Your wallet private key */)
+        .with_gas(vec![/* your gas coins */], 10_000_000)
         .with_nexus_objects(/* your `nexus_sdk::types::NexusObjects` */)
         .build()
         .await?;
@@ -64,13 +44,6 @@ async fn main() -> anyhow::Result<()> {
 ---
 
 ## 🔑 Signer
-
-### Supported Signer Types
-
-| Type               | Description                                                       |
-| ------------------ | ----------------------------------------------------------------- |
-| `Signer::Wallet`   | Uses a local [`WalletContext`] for signing transactions           |
-| `Signer::Mnemonic` | Uses a [`SuiClient`] + in-memory keystore derived from a mnemonic |
 
 ### Key Public Behaviors
 
