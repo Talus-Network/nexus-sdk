@@ -5,7 +5,7 @@ use {
     crate::sui::{self, traits::FieldMaskUtil},
     anyhow::{anyhow, bail},
     base64::{prelude::BASE64_STANDARD, Engine},
-    serde::{de::DeserializeOwned, Deserialize, Deserializer},
+    serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     std::{
         collections::{HashMap, HashSet},
         hash::Hash,
@@ -332,6 +332,40 @@ impl Crawler {
         prost_value_to_json_value(json)
             .and_then(|v| serde_json::from_value::<T>(v).map_err(anyhow::Error::new))
     }
+}
+
+/// Wrapper for `sui::vec_map::VecMap` serialized shape: `{ contents: [{ key, value }, ...] }`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VecMap<K, V> {
+    pub contents: Vec<VecMapEntry<K, V>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VecMapEntry<K, V> {
+    pub key: K,
+    pub value: V,
+}
+
+impl<K, V> Default for VecMap<K, V> {
+    fn default() -> Self {
+        Self {
+            contents: Vec::new(),
+        }
+    }
+}
+
+/// Wrapper for `sui::bag::Bag` projection.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Bag {
+    pub id: sui::types::Address,
+    pub size: u64,
+}
+
+/// Wrapper for `sui::object_bag::ObjectBag` projection.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ObjectBag {
+    pub id: sui::types::Address,
+    pub size: u64,
 }
 
 /// A generic response wrapper for fetched objects. Contains metadata such as

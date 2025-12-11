@@ -37,33 +37,21 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
         owner = task_data.owner.to_string().truecolor(100, 100, 100)
     );
 
-    if let Some(metadata) = task_data.metadata.as_object() {
-        item!("Metadata entries: {count}", count = metadata.len());
-        for (key, value) in metadata.iter().take(10) {
-            item!(
-                "  {key}: {value}",
-                key = key.truecolor(100, 100, 100),
-                value = value
-            );
-        }
-        if metadata.len() > 10 {
-            item!(
-                "  ... ({remain} more entries)",
-                remain = metadata.len() - 10
-            );
-        }
-    } else {
-        item!("Metadata entries: 0");
+    let metadata = &task_data.metadata.values.contents;
+    item!("Metadata entries: {count}", count = metadata.len());
+    for entry in metadata.iter().take(10) {
+        item!(
+            "  {key}: {value}",
+            key = entry.key.truecolor(100, 100, 100),
+            value = entry.value
+        );
     }
-
-    item!(
-        "Constraints payload bytes: {bytes}",
-        bytes = task_data.constraints.to_string().len()
-    );
-    item!(
-        "Execution payload bytes: {bytes}",
-        bytes = task_data.execution.data.to_string().len()
-    );
+    if metadata.len() > 10 {
+        item!(
+            "  ... ({remain} more entries)",
+            remain = metadata.len() - 10
+        );
+    }
 
     json_output(&json!({
         "task_ref": {

@@ -5,9 +5,12 @@ use {
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         TypeName,
     },
-    crate::sui,
+    crate::{
+        nexus::crawler::{Bag, ObjectBag, VecMap},
+        sui,
+        types::NexusData,
+    },
     serde::{Deserialize, Deserializer, Serialize},
-    serde_json::Value,
 };
 
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
@@ -20,10 +23,8 @@ pub struct DagExecutionConfig {
         serialize_with = "serialize_sui_u64"
     )]
     pub gas_price: u64,
-    #[serde(default)]
-    pub entry_group: Value,
-    #[serde(default)]
-    pub inputs: Value,
+    pub entry_group: SchedulerEntryGroup,
+    pub inputs: VecMap<String, NexusData>,
     pub invoker: sui::types::Address,
 }
 
@@ -32,39 +33,42 @@ pub struct DagExecutionConfig {
 pub struct Task {
     pub id: sui::types::Address,
     pub owner: sui::types::Address,
-    #[serde(default)]
-    pub metadata: Value,
-    #[serde(default)]
-    pub constraints: Value,
-    pub execution: Policy,
-    #[serde(default)]
-    pub data: Value,
-    #[serde(default)]
-    pub objects: Value,
+    pub metadata: Metadata,
+    pub constraints: Policy<ConstraintsData>,
+    pub execution: Policy<ExecutionData>,
+    pub state: TaskState,
+    pub data: Bag,
+    pub objects: ObjectBag,
 }
 
 /// Minimal representation of `nexus_primitives::policy::Policy`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Policy {
+pub struct Policy<T> {
     pub id: sui::types::Address,
     pub dfa: ConfiguredAutomaton,
-    #[serde(default)]
-    pub alphabet_index: Value,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub state_index: u64,
-    #[serde(default)]
-    pub data: Value,
+    pub data: T,
 }
 
 /// Minimal representation of `nexus_primitives::automaton::ConfiguredAutomaton`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ConfiguredAutomaton {
     pub id: sui::types::Address,
-    #[serde(default)]
-    pub dfa: Value,
+    pub dfa: DeterministicAutomaton,
+}
+
+/// Deterministic automaton backing a policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DeterministicAutomaton {
+    pub states: Vec<u64>,
+    pub alphabet: Vec<PolicySymbol>,
+    pub transition: Vec<Vec<u64>>,
+    pub accepting: Vec<bool>,
+    pub start: u64,
 }
 
 /// Representation of `nexus_primitives::policy::Symbol`.
@@ -195,6 +199,46 @@ impl PolicySymbol {
     }
 }
 
+/// Scheduler task state.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskState {
+    Active,
+    Paused,
+    Canceled,
+}
+
+/// Marker data stored in the constraints policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ConstraintsData {}
+
+/// Marker data stored in the execution policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExecutionData {}
+
+/// Task metadata wrapper (VecMap<String, String>).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Metadata {
+    pub values: VecMap<String, String>,
+}
+
+/// Representation of `nexus_workflow::dag::EntryGroup`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchedulerEntryGroup {
+    pub name: String,
+}
+
+impl<K, V> VecMap<K, V>
+where
+    K: Eq + std::hash::Hash,
+{
+    pub fn into_map(self) -> std::collections::HashMap<K, V> {
+        self.contents
+            .into_iter()
+            .map(|e| (e.key, e.value))
+            .collect()
+    }
+}
+
 /// Representation of `nexus_primitives::automaton::TransitionKey`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct TransitionKey<State, Symbol> {
@@ -211,7 +255,7 @@ pub struct TransitionConfigKey<State, Symbol> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::idents::sui_framework, bcs, rand::thread_rng, serde_json::json};
+    use {super::*, rand::thread_rng, serde_json::json};
 
     #[test]
     fn policy_deserializes_from_json() {
@@ -222,27 +266,24 @@ mod tests {
             id: policy_id,
             dfa: ConfiguredAutomaton {
                 id: dfa_id,
-                dfa: json!({
-                    "type": sui::types::StructTag::new(
-                        sui_framework::PACKAGE_ID,
-                        sui::types::Identifier::from_static("dummy"),
-                        sui::types::Identifier::from_static("Config"),
-                        vec![sui::types::TypeTag::Address],
-                    ),
-                }),
+                dfa: DeterministicAutomaton {
+                    states: vec![0],
+                    alphabet: vec![PolicySymbol::Witness(TypeName::new("0x1::module::Type"))],
+                    transition: vec![vec![0]],
+                    accepting: vec![true],
+                    start: 0,
+                },
             },
-            alphabet_index: Value::Null,
             state_index: 5,
-            data: json!({ "extra": "payload" }),
+            data: ConstraintsData::default(),
         };
 
-        let parsed: Policy =
+        let parsed: Policy<ConstraintsData> =
             serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
         assert_eq!(parsed.id, expected.id);
         assert_eq!(parsed.dfa.id, expected.dfa.id);
         assert_eq!(parsed.dfa.dfa, expected.dfa.dfa);
-        assert_eq!(parsed.alphabet_index, expected.alphabet_index);
         assert_eq!(parsed.state_index, expected.state_index);
         assert_eq!(parsed.data, expected.data);
     }
@@ -258,8 +299,10 @@ mod tests {
             dag: dag_id,
             network: network_id,
             gas_price: 1000,
-            entry_group: json!({"name": "default"}),
-            inputs: json!({}),
+            entry_group: SchedulerEntryGroup {
+                name: "default".to_string(),
+            },
+            inputs: VecMap::default(),
             invoker,
         };
 

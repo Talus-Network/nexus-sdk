@@ -638,10 +638,28 @@ mod tests {
                 RequestScheduledOccurrenceEvent,
                 TaskCreatedEvent,
             },
-            nexus::{client::NexusClient, error::NexusError, signer::ExecutedTransaction},
+            nexus::{
+                client::NexusClient,
+                crawler::{Bag, ObjectBag, VecMap, VecMapEntry},
+                error::NexusError,
+                signer::ExecutedTransaction,
+            },
             sui,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{DataStorage, NexusData, NexusObjects, PolicySymbol, TypeName},
+            types::{
+                ConfiguredAutomaton,
+                ConstraintsData,
+                DataStorage,
+                DeterministicAutomaton,
+                ExecutionData,
+                Metadata,
+                NexusData,
+                NexusObjects,
+                Policy,
+                PolicySymbol,
+                TaskState,
+                TypeName,
+            },
         },
         rand::thread_rng,
         serde::Serialize,
@@ -685,25 +703,58 @@ mod tests {
         task_id: sui::types::Address,
         owner: sui::types::Address,
     ) -> serde_json::Value {
-        let execution_policy = crate::types::Policy {
-            id: sui::types::Address::from_static("0x500"),
-            dfa: crate::types::ConfiguredAutomaton {
-                id: sui::types::Address::from_static("0x600"),
-                dfa: json!({}),
+        let metadata = Metadata {
+            values: VecMap {
+                contents: vec![VecMapEntry {
+                    key: "initial".to_string(),
+                    value: "value".to_string(),
+                }],
             },
-            alphabet_index: json!({}),
+        };
+
+        let dfa = DeterministicAutomaton {
+            states: vec![0],
+            alphabet: vec![],
+            transition: vec![vec![]],
+            accepting: vec![true],
+            start: 0,
+        };
+
+        let constraints = Policy {
+            id: sui::types::Address::from_static("0x400"),
+            dfa: ConfiguredAutomaton {
+                id: sui::types::Address::from_static("0x401"),
+                dfa: dfa.clone(),
+            },
             state_index: 0,
-            data: json!({}),
+            data: ConstraintsData::default(),
+        };
+
+        let execution = Policy {
+            id: sui::types::Address::from_static("0x500"),
+            dfa: ConfiguredAutomaton {
+                id: sui::types::Address::from_static("0x600"),
+                dfa,
+            },
+            state_index: 0,
+            data: ExecutionData::default(),
         };
 
         let task = Task {
             id: task_id,
             owner,
-            metadata: json!({"initial": "value"}),
-            constraints: json!({}),
-            execution: execution_policy,
-            data: json!({}),
-            objects: json!({}),
+            metadata,
+            constraints,
+            execution,
+            state: TaskState::Active,
+            data: Bag {
+                id: sui::types::Address::from_static("0x700"),
+                size: 0,
+            },
+            objects: ObjectBag {
+                id: sui::types::Address::from_static("0x701"),
+                size: 0,
+            },
         };
 
         serde_json::to_value(task).expect("serialize task")
