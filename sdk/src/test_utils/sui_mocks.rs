@@ -211,12 +211,10 @@ pub mod grpc {
         let addr = format!("127.0.0.1:{}", port);
         let thread_addr = addr.clone();
 
-        let ledger_service = mocks
-            .ledger_service_mock
-            .map(|m| LedgerServiceServer::new(m));
+        let ledger_service = mocks.ledger_service_mock.map(LedgerServiceServer::new);
         let execution_service = mocks
             .execution_service_mock
-            .map(|m| TransactionExecutionServiceServer::new(m));
+            .map(TransactionExecutionServiceServer::new);
         let subscription_service = mocks.subscription_service_mock.map(|m| {
             SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
         });
@@ -269,7 +267,7 @@ pub mod grpc {
                 response.set_checkpoint(checkpoint);
 
                 let output = vec![Ok(response)];
-                let stream = futures::stream::iter(output.into_iter());
+                let stream = futures::stream::iter(output);
 
                 Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
@@ -282,13 +280,7 @@ pub mod grpc {
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
                 let mut tx_objects = sui::grpc::ObjectSet::default();
-                tx_objects.set_objects(
-                    objects
-                        .clone()
-                        .into_iter()
-                        .filter_map(|o| o.try_into().ok())
-                        .collect(),
-                );
+                tx_objects.set_objects(objects.clone().into_iter().map(Into::into).collect());
                 tx.set_objects(tx_objects);
 
                 let mut effects = sui::grpc::TransactionEffects::default();
@@ -316,13 +308,7 @@ pub mod grpc {
                 tx.set_effects(effects);
 
                 let mut tx_events = sui::grpc::TransactionEvents::default();
-                tx_events.set_events(
-                    events
-                        .clone()
-                        .into_iter()
-                        .filter_map(|e| e.try_into().ok())
-                        .collect(),
-                );
+                tx_events.set_events(events.clone().into_iter().map(Into::into).collect());
                 tx.set_events(tx_events);
                 tx.set_digest(digest);
                 tx.set_checkpoint(1);
@@ -360,7 +346,7 @@ pub mod grpc {
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
                 let mut grpc_object = sui::grpc::Object::default();
-                grpc_object.set_owner(sui::grpc::Owner::from(owner.clone()));
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
                 grpc_object.set_digest(*object_ref.digest());
                 grpc_object.set_version(object_ref.version());
                 response.set_object(grpc_object);
@@ -401,7 +387,7 @@ pub mod gql {
                         }
                     },
                     "contents": {
-                        "json": serde_json::to_value(&event).unwrap(),
+                        "json": serde_json::to_value(event).unwrap(),
                         "type": {
                             "repr": sui::types::StructTag::new(
                                 primitives_pkg_id,

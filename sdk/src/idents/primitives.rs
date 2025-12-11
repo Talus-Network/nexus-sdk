@@ -258,8 +258,8 @@ mod tests {
             tag,
             sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
                 primitives_pkg_id,
-                sui::types::Identifier::from_static("foo").into(),
-                sui::types::Identifier::from_static("bar").into(),
+                sui::types::Identifier::from_static("foo"),
+                sui::types::Identifier::from_static("bar"),
                 vec![],
             )))
         );
