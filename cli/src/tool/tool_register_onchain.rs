@@ -8,12 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{
-        idents::{primitives, workflow},
-        nexus::error::NexusError,
-        sui,
-        transactions::tool,
-    },
+    nexus_sdk::{idents::primitives, nexus::error::NexusError, sui, transactions::tool},
     serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
     std::{
@@ -257,35 +252,19 @@ fn extract_over_tool_owner_cap(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
 ) -> AnyResult<sui::types::Address, NexusCliError> {
-    // Parse the owner cap object IDs from the response.
-    let owner_caps = objects
-        .iter()
-        .filter_map(|obj| {
-            let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
-                return None;
-            };
+    // Find `CloneableOwnerCap<OverTool>` object ID
+    let over_tool = objects.iter().find_map(|obj| {
+        let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+            return None;
+        };
 
-            if *object_type.address() == nexus_objects.primitives_pkg_id
-                && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
-                && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
-            {
-                Some((obj.object_id(), object_type))
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    // Find `CloneableOwnerCap<OverTool>` object ID.
-    let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
-        match object_type.type_params().first() {
-            Some(sui::types::TypeTag::Struct(what_for))
-                if *what_for.module() == workflow::ToolRegistry::OVER_TOOL.module
-                    && *what_for.name() == workflow::ToolRegistry::OVER_TOOL.name =>
-            {
-                Some(object_id)
-            }
-            _ => None,
+        if *object_type.address() == nexus_objects.primitives_pkg_id
+            && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
+            && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
+        {
+            Some(obj.object_id())
+        } else {
+            None
         }
     });
 
@@ -302,7 +281,7 @@ fn extract_over_tool_owner_cap(
 
     notify_success!("Onchain tools use a different gas model. No OverGas cap was created.");
 
-    Ok(*over_tool_id)
+    Ok(over_tool_id)
 }
 
 /// Save the tool owner caps to the CLI configuration.
@@ -1243,11 +1222,11 @@ mod tests {
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
         let addr = pk.public_key().derive_address();
 
-        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+        test_utils::faucet::request_tokens(&faucet_url, addr)
             .await
             .expect("Failed to request tokens from faucet.");
 
-        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+        let gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
             .await
             .expect("Failed to fetch gas coin.")
             .into_iter()

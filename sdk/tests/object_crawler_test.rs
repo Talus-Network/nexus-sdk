@@ -97,6 +97,8 @@ async fn test_object_crawler() {
     )
     .await;
 
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
     let guy = response
         .objects
         .iter()

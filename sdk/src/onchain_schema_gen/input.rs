@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "test_utils")]
     async fn test_generate_input_schema_from_published_package() {
-        use {crate::test_utils, sui_rpc::proto::sui::rpc};
+        use crate::test_utils;
 
         // Spin up the Sui instance.
         let (_container, rpc_port, faucet_port) =
@@ -115,11 +115,11 @@ mod tests {
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
         let addr = pk.public_key().derive_address();
 
-        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+        test_utils::faucet::request_tokens(&faucet_url, addr)
             .await
             .expect("Failed to request tokens from faucet.");
 
-        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+        let gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
             .await
             .expect("Failed to fetch gas coin.")
             .into_iter()

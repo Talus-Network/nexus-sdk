@@ -1,11 +1,11 @@
-use crate::{sui, walrus::storage};
+use crate::{sui, sui::traits::*};
 
 /// Fetch gas coin for the provided address.
 pub async fn fetch_gas_coins(
-    rpc_url: &storage,
-    addr: sui::Address,
+    rpc_url: &str,
+    owner: sui::types::Address,
 ) -> anyhow::Result<Vec<sui::types::ObjectReference>> {
-    let client = sui::grpc::Client::new(rpc_url)?;
+    let mut client = sui::grpc::Client::new(rpc_url)?;
 
     let request = sui::grpc::ListOwnedObjectsRequest::default()
         .with_owner(owner)

@@ -272,22 +272,22 @@ mod tests {
                 network_id = "0x4"
 
                 [tool_registry]
-                objectId = "0x5"
+                object_id = "0x5"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
                 [default_tap]
-                objectId = "0x6"
+                object_id = "0x6"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
                 [gas_service]
-                objectId = "0x7"
+                object_id = "0x7"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
                 [pre_key_vault]
-                objectId = "0x8"
+                object_id = "0x8"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#

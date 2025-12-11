@@ -1,8 +1,7 @@
-
 [env]
 
-[env.test]
-chain-id = "cf6e5505"
-original-published-id = "0x9c260e3920ab4980ebb7a9efd48027ff1d3863415bcc6ad420f79fdb12c58c66"
-latest-published-id = "0x9c260e3920ab4980ebb7a9efd48027ff1d3863415bcc6ad420f79fdb12c58c66"
+[env.localnet]
+chain-id = "5vYTDKd2W1TRhJS27qhpkPm9PoCmANStAfiopTT4mk5a"
+original-published-id = "0x5d01cbeff35a34cb0a20bf11105775460ac7a78da96cb1ae9268dd34912bf3ee"
+latest-published-id = "0x5d01cbeff35a34cb0a20bf11105775460ac7a78da96cb1ae9268dd34912bf3ee"
 published-version = "1"

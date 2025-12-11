@@ -74,6 +74,7 @@ test_utils = [
     "tokio-retry",
     "sui_move_build",
     "sui_package_management",
+    "move_package",
     "portpicker",
     "testcontainers-modules",
     "mockall",
@@ -296,6 +297,12 @@ optional = true
 git = "https://github.com/MystenLabs/sui"
 tag = "mainnet-v1.61.2"
 package = "sui-package-management"
+optional = true
+
+[dependencies.move_package]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.61.2"
+package = "move-package"
 optional = true
 
 [dependencies.testcontainers-modules]

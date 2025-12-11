@@ -193,12 +193,13 @@ mod tests {
         let mut server = Server::new_async().await;
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
-            &mut ledger_service_mock,
+            &mut sub_service_mock,
             claim_tx_digest,
             gas_coin_digest,
             vec![],
@@ -208,7 +209,7 @@ mod tests {
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
-            &mut ledger_service_mock,
+            &mut sub_service_mock,
             associate_tx_digest,
             gas_coin_digest,
             vec![],
@@ -219,6 +220,7 @@ mod tests {
         let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
         });
 
         let client = nexus_mocks::mock_nexus_client(

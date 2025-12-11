@@ -12,11 +12,10 @@ pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
 }
 
 /// Create a new [`sui::EventID`] with random values.
-pub fn mock_sui_event_id() -> sui::EventID {
-    sui::EventID {
-        tx_digest: sui::TransactionDigest::random(),
-        event_seq: 0,
-    }
+pub fn mock_sui_event_id() -> (sui::types::Digest, u64) {
+    let mut rng = rand::thread_rng();
+
+    (sui::types::Digest::generate(&mut rng), 0)
 }
 
 /// Create a new [`sui::EventID`] with random values.
@@ -75,6 +74,7 @@ pub mod grpc {
         mockall::mock,
         sui_rpc::proto::sui::rpc::v2::{
             ledger_service_server::{LedgerService, LedgerServiceServer},
+            subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
                 TransactionExecutionService,
                 TransactionExecutionServiceServer,
@@ -145,10 +145,65 @@ pub mod grpc {
         }
     }
 
+    // Mocking SubscriptionService RPC endpoints for deeper testing.
+
+    pub type BoxCheckpointStream = std::pin::Pin<
+        Box<
+            dyn futures::Stream<Item = Result<SubscribeCheckpointsResponse, Status>>
+                + Send
+                + 'static,
+        >,
+    >;
+
+    #[tonic::async_trait]
+
+    pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
+        async fn subscribe_checkpoints(
+            &self,
+
+            request: Request<SubscribeCheckpointsRequest>,
+        ) -> Result<Response<BoxCheckpointStream>, Status>;
+    }
+
+    pub struct SubscriptionServiceAdapter<W: SubscriptionServiceWrapper> {
+        pub inner: std::sync::Arc<W>,
+    }
+
+    impl<W: SubscriptionServiceWrapper> SubscriptionServiceAdapter<W> {
+        pub fn new(inner: std::sync::Arc<W>) -> Self {
+            Self { inner }
+        }
+    }
+
+    #[tonic::async_trait]
+    impl<W: SubscriptionServiceWrapper> SubscriptionService for SubscriptionServiceAdapter<W> {
+        type SubscribeCheckpointsStream = BoxCheckpointStream;
+
+        async fn subscribe_checkpoints(
+            &self,
+            request: Request<SubscribeCheckpointsRequest>,
+        ) -> Result<Response<Self::SubscribeCheckpointsStream>, Status> {
+            self.inner.subscribe_checkpoints(request).await
+        }
+    }
+
+    mock! {
+        pub SubscriptionService {}
+
+        #[tonic::async_trait]
+        impl SubscriptionServiceWrapper for SubscriptionService {
+            async fn subscribe_checkpoints(
+                &self,
+                request: tonic::Request<SubscribeCheckpointsRequest>,
+            ) -> Result<tonic::Response<BoxCheckpointStream>, tonic::Status>;
+        }
+    }
+
     #[derive(Default)]
     pub struct ServerMocks {
         pub ledger_service_mock: Option<MockLedgerService>,
         pub execution_service_mock: Option<MockTransactionExecutionService>,
+        pub subscription_service_mock: Option<MockSubscriptionService>,
     }
 
     pub fn mock_server(mocks: ServerMocks) -> String {
@@ -162,11 +217,15 @@ pub mod grpc {
         let execution_service = mocks
             .execution_service_mock
             .map(|m| TransactionExecutionServiceServer::new(m));
+        let subscription_service = mocks.subscription_service_mock.map(|m| {
+            SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
+        });
 
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_optional_service(ledger_service)
                 .add_optional_service(execution_service)
+                .add_optional_service(subscription_service)
                 .serve(thread_addr.parse().unwrap())
                 .await
                 .unwrap();
@@ -177,7 +236,7 @@ pub mod grpc {
 
     pub fn mock_execute_transaction_and_wait_for_checkpoint(
         tx_service: &mut MockTransactionExecutionService,
-        ledger_service: &mut MockLedgerService,
+        sub_service: &mut MockSubscriptionService,
         digest: sui::types::Digest,
         gas_coin_digest: sui::types::Digest,
         objects: Vec<sui::types::Object>,
@@ -196,19 +255,23 @@ pub mod grpc {
 
         changed_objects_with_coin.extend(changed_objects.clone());
 
-        ledger_service
-            .expect_get_checkpoint()
+        sub_service
+            .expect_subscribe_checkpoints()
             .times(1)
             .returning(move |_request| {
-                let mut response = sui::grpc::GetCheckpointResponse::default();
+                let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
                 let mut checkpoint = sui::grpc::Checkpoint::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
+
                 tx.set_digest(digest);
                 checkpoint.set_transactions(vec![tx]);
                 checkpoint.set_sequence_number(1);
                 response.set_checkpoint(checkpoint);
 
-                Ok(tonic::Response::new(response))
+                let output = vec![Ok(response)];
+                let stream = futures::stream::iter(output.into_iter());
+
+                Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
 
         tx_service

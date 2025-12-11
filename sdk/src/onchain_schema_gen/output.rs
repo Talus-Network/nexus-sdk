@@ -120,11 +120,11 @@ mod tests {
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
         let addr = pk.public_key().derive_address();
 
-        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+        test_utils::faucet::request_tokens(&faucet_url, addr)
             .await
             .expect("Failed to request tokens from faucet.");
 
-        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+        let gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
             .await
             .expect("Failed to fetch gas coin.")
             .into_iter()

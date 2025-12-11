@@ -22,7 +22,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_nexus_conf() {
         let mut rng = rand::thread_rng();
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());

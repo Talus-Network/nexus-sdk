@@ -5772,6 +5772,7 @@ dependencies = [
  "lru 0.12.5",
  "mockall 0.14.0",
  "mockito",
+ "move-package",
  "petgraph 0.7.1",
  "portpicker",
  "prost-types",

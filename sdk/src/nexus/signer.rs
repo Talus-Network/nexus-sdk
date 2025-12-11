@@ -7,6 +7,7 @@ use {
         sui::{self, traits::*},
         types::NexusObjects,
     },
+    futures::TryStreamExt,
     std::sync::Arc,
     tokio::{sync::Mutex, time::Duration},
 };
@@ -68,42 +69,9 @@ impl Signer {
         signature: sui::types::UserSignature,
         gas_coin: &mut sui::types::ObjectReference,
     ) -> Result<ExecutedTransaction, NexusError> {
-        let mut client = self.client.lock().await;
-
-        let request = sui::grpc::ExecuteTransactionRequest::default()
-            .with_transaction(tx)
-            .with_signatures(vec![signature.into()])
-            .with_read_mask(sui::grpc::FieldMask::from_paths([
-                "effects.bcs",
-                "events.events",
-                "objects.objects",
-                "digest",
-                "checkpoint",
-            ]));
-
-        let response = client
-            .execution_client()
-            .execute_transaction(request)
-            .await
-            .map(|res| res.into_inner().transaction)
-            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?
-            .ok_or_else(|| NexusError::Wallet(anyhow::anyhow!("No transaction in response")))?;
-
-        drop(client);
-
-        let checkpoint = response.checkpoint();
-        let digest = response
-            .digest()
-            .parse()
-            .map_err(|e: sui::types::DigestParseError| NexusError::Parsing(e.into()))?;
-
-        // Wait for the transaction to be included in a checkpoint.
-        tokio::select! {
-            _ = self.confirm_tx(checkpoint, &digest) => (),
-            _ = tokio::time::sleep(self.transaction_timeout) => {
-                return Err(NexusError::Timeout(anyhow::anyhow!("Transaction confirmation timed out")));
-            }
-        }
+        let (response, digest, _checkpoint) = self
+            .execute_tx_and_wait_for_checkpoint(tx, signature)
+            .await?;
 
         // Deserialize effects.
         let Ok(sui::types::TransactionEffects::V2(effects)) =
@@ -113,6 +81,12 @@ impl Signer {
                 "Failed to read transaction effects."
             )));
         };
+
+        if let sui::types::ExecutionStatus::Failure { error, command } = effects.status() {
+            return Err(NexusError::Wallet(anyhow::anyhow!(
+                "Transaction execution failed: {error:?} in command: {command:?}"
+            )));
+        }
 
         // Deserialize events.
         let Ok(events) = sui::types::TransactionEvents::try_from(response.events()) else {
@@ -137,12 +111,6 @@ impl Signer {
                 "Failed to read transaction objects."
             )));
         };
-
-        if let sui::types::ExecutionStatus::Failure { error, command } = effects.status() {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transaction execution failed: {error:?} in command: {command:?}"
-            )));
-        }
 
         if let Some(new_gas_object) = effects
             .gas_object_index
@@ -170,38 +138,88 @@ impl Signer {
             events: evts,
             objects,
             digest,
-            checkpoint,
+            checkpoint: 0,
         })
     }
 
-    /// Confirm that a transaction has been included in a checkpoint.
-    async fn confirm_tx(&self, checkpoint: u64, digest: &sui::types::Digest) -> () {
-        loop {
-            let mut client = self.client.lock().await;
+    /// Execute a transaction while subscribing to a checkpoint stream to confirm
+    /// its inclusion in a checkpoint.
+    async fn execute_tx_and_wait_for_checkpoint(
+        &self,
+        tx: sui::types::Transaction,
+        signature: sui::types::UserSignature,
+    ) -> Result<(sui::grpc::ExecutedTransaction, sui::types::Digest, u64), NexusError> {
+        let mut client = self.client.lock().await;
 
-            let request = sui::grpc::GetCheckpointRequest::default()
-                .with_sequence_number(checkpoint)
-                .with_read_mask(sui::grpc::FieldMask::from_paths(["transactions.digest"]));
+        let checkpoints_request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
+            sui::grpc::FieldMask::from_str("transactions.digest,sequence_number"),
+        );
 
-            let response = match client
-                .ledger_client()
-                .get_checkpoint(request)
-                .await
-                .map(|res| res.into_inner().checkpoint)
-            {
-                Ok(Some(resp)) => resp,
-                _ => continue,
-            };
+        let tx_request = sui::grpc::ExecuteTransactionRequest::default()
+            .with_transaction(tx)
+            .with_signatures(vec![signature.into()])
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "effects.bcs",
+                "events.events",
+                "objects.objects",
+                "digest",
+            ]));
 
-            if response
-                .transactions()
-                .iter()
-                .any(|tx| tx.digest() == digest.to_string())
-            {
-                break;
+        // Subscribe to checkpoint stream before execution.
+        let mut checkpoint_stream = match client
+            .subscription_client()
+            .subscribe_checkpoints(checkpoints_request)
+            .await
+        {
+            Ok(stream) => stream.into_inner(),
+            Err(e) => return Err(NexusError::Rpc(e.into())),
+        };
+
+        let response = match client
+            .execution_client()
+            .execute_transaction(tx_request)
+            .await
+        {
+            Ok(resp) => resp.into_inner().transaction.ok_or_else(|| {
+                NexusError::Wallet(anyhow::anyhow!("No transaction in execution response"))
+            })?,
+            Err(e) => return Err(NexusError::Rpc(e.into())),
+        };
+
+        // Get the executed transaction digest to find it in the checkpoint
+        // stream.
+        let digest: sui::types::Digest = response
+            .digest()
+            .parse()
+            .map_err(|e: sui::types::DigestParseError| NexusError::Parsing(e.into()))?;
+
+        // Wait for the transaction to appear in a checkpoint.
+        let timeout_future = tokio::time::sleep(self.transaction_timeout);
+        let checkpoint_future = async {
+            while let Some(response) = checkpoint_stream.try_next().await? {
+                let checkpoint = response.checkpoint();
+
+                for tx in checkpoint.transactions() {
+                    if tx.digest() == digest.to_string() {
+                        return Ok(checkpoint.sequence_number());
+                    }
+                }
             }
+            Err(tonic::Status::aborted(
+                "checkpoint stream ended unexpectedly",
+            ))
+        };
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::select! {
+            result = checkpoint_future => {
+                match result {
+                    Ok(sequence_number) => Ok((response, digest, sequence_number)),
+                    Err(e) => Err(NexusError::Rpc(e.into()))
+                }
+            },
+            _ = timeout_future => {
+                Err(NexusError::Timeout(anyhow::anyhow!("Transaction confirmation timed out")))
+            }
         }
     }
 }

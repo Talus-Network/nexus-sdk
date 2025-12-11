@@ -102,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conf_loads_and_saves() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
         let pk_path = tempdir.join("pk.pem");
@@ -222,7 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_data_storage_testnet_preset() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf_testnet.toml");
 
         // Run with data_storage_testnet = true
@@ -260,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_preferred_storage_error() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf_inline.toml");
 
         let result = set_nexus_conf(

@@ -1,9 +1,11 @@
 use {
     crate::{
+        idents::sui_framework,
         nexus::signer::{ExecutedTransaction, Signer},
-        sui::{self, SuiTransactionBlockEffectsAPI},
+        sui,
         test_utils::sui_mocks,
     },
+    move_package::lock_file::{self, LockFile},
     std::{fs::OpenOptions, path::PathBuf, sync::Arc},
     sui_move_build::implicit_deps,
     sui_package_management::system_package_versions::latest_system_packages,
@@ -22,7 +24,7 @@ pub async fn publish_move_package(
     let install_dir = PathBuf::from(path_str);
     let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
 
-    let client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
+    let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
     let signer = Signer::new(
         Arc::new(Mutex::new(client.clone())),
@@ -51,7 +53,7 @@ pub async fn publish_move_package(
 
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing();
-    build_config.chain_id = Some(chain_id);
+    build_config.chain_id = Some(chain_id.clone());
     build_config.config.implicit_dependencies = implicit_deps(latest_system_packages());
     let package = build_config
         .build(&install_dir)
@@ -61,7 +63,7 @@ pub async fn publish_move_package(
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    tx.publish(
+    let upgrade_cap = tx.publish(
         package.get_package_bytes(with_unpublished_deps),
         package
             .get_dependency_storage_package_ids()
@@ -69,19 +71,40 @@ pub async fn publish_move_package(
             .map(|id| id.to_string().parse().unwrap())
             .collect(),
     );
+    let address =
+        sui_framework::Address::address_from_type(&mut tx, addr).expect("Failed to get address.");
+
+    tx.transfer_objects(vec![upgrade_cap], address);
 
     tx.set_sender(addr);
     tx.set_gas_budget(1_000_000_000);
     tx.set_gas_price(reference_gas_price);
-    tx.add_gas_objects(vec![sui::types::Input::ImmutableOrOwned(gas_coin)]);
+    tx.add_gas_objects(vec![sui::tx::Input::owned(
+        *gas_coin.object_id(),
+        gas_coin.version(),
+        *gas_coin.digest(),
+    )]);
 
-    tx.finish().expect("Failed to finish transaction.");
+    let tx = tx.finish().expect("Failed to finish transaction.");
 
-    let signature = signer.sign_tx(tx);
+    let signature = signer
+        .sign_tx(&tx)
+        .await
+        .expect("Failed to sign transaction.");
+
     let response = signer
         .execute_tx(tx, signature, &mut gas_coin.clone())
         .await
         .expect("Failed to execute transaction.");
+
+    let pkg_id = response
+        .objects
+        .iter()
+        .find_map(|c| match c.data() {
+            sui::types::ObjectData::Package(m) => Some(m.id),
+            _ => None,
+        })
+        .expect("Move package must be published");
 
     // Create the lock file if not exists.
     OpenOptions::new()
@@ -91,15 +114,20 @@ pub async fn publish_move_package(
         .open(&lock_file)
         .expect("Failed to create lock file.");
 
-    sui_package_management::update_lock_file(
-        wallet,
-        sui_package_management::LockCommand::Publish,
-        Some(install_dir),
-        Some(lock_file),
-        &response,
+    let mut lock =
+        LockFile::from(install_dir.clone(), &lock_file).expect("Failed to read lock file.");
+
+    lock_file::schema::update_managed_address(
+        &mut lock,
+        "localnet",
+        lock_file::schema::ManagedAddressUpdate::Published {
+            chain_id,
+            original_id: pkg_id.to_string(),
+        },
     )
-    .await
     .expect("Failed to update lock file.");
+
+    lock.commit(lock_file).expect("Failed to update lock file.");
 
     response
 }
