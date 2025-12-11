@@ -36,8 +36,11 @@ pub async fn setup_sui_instance() -> (SuiContainer, u16, u16) {
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
-        .with_name("taluslabs/sui-tools")
-        .with_tag(env!("SUI_SDK_TAG"))
+        // TODO: add indexer and gql.
+        // .with_cmd(cmd)
+        // TODO: adjust
+        .with_name("mysten/sui-tools")
+        .with_tag("mainnet-v1.61.2")
         .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
         .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123));
 
