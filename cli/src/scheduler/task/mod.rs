@@ -49,7 +49,7 @@ pub(crate) enum TaskCommand {
     Create {
         /// DAG object ID providing the execution definition.
         #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
-        dag_id: sui::ObjectID,
+        dag_id: sui::types::Address,
         /// Entry group to invoke when executing the DAG.
         #[arg(
             long = "entry-group",
@@ -111,13 +111,13 @@ pub(crate) enum TaskCommand {
     Inspect {
         /// Task object ID to inspect.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
     },
     #[command(about = "Update scheduler task metadata")]
     Metadata {
         /// Task object ID to update.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         /// Metadata entries to write as key=value pairs.
         #[arg(
             long = "metadata",
@@ -133,7 +133,7 @@ pub(crate) enum TaskCommand {
     Pause {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -141,7 +141,7 @@ pub(crate) enum TaskCommand {
     Resume {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -149,7 +149,7 @@ pub(crate) enum TaskCommand {
     Cancel {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },

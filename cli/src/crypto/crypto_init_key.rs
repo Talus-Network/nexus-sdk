@@ -94,14 +94,20 @@ mod tests {
 
         // Isolate XDG config so salt lives under the temp dir
         let tmp_xdg = TempDir::new().expect("temp xdg");
-        env::set_var("XDG_CONFIG_HOME", tmp_xdg.path());
+        // SAFETY: tests
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", tmp_xdg.path());
+        }
 
         // Ensure no lingering keyring entries
         let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
         let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
 
-        // Provide a passphrase-based key so we can serialize an encrypted crypto section
-        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test-passphrase-clear-crypto");
+        // SAFETY: tests
+        unsafe {
+            // Provide a passphrase-based key so we can serialize an encrypted crypto section
+            env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test-passphrase-clear-crypto");
+        }
 
         // Create a config with a crypto section and persist it at ~/.nexus/conf.toml
         CryptoConf::set_identity_key(IdentityKey::generate(), Some(&conf_path))
@@ -125,10 +131,13 @@ mod tests {
             "crypto section should be cleared after rotation"
         );
 
-        // Cleanup env and keyring
-        env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        env::remove_var("XDG_CONFIG_HOME");
-        env::remove_var("HOME");
+        // SAFETY: tests
+        unsafe {
+            // Cleanup env and keyring
+            env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+            env::remove_var("XDG_CONFIG_HOME");
+            env::remove_var("HOME");
+        }
 
         let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
         let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());

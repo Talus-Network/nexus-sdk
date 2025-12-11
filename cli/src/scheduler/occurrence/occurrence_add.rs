@@ -12,7 +12,7 @@ use {
 
 /// Schedule a one-off occurrence for a scheduler task.
 pub(crate) async fn add_occurrence_to_task(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     start_ms: Option<u64>,
     start_offset_ms: Option<u64>,
     deadline_offset_ms: Option<u64>,
@@ -34,7 +34,7 @@ pub(crate) async fn add_occurrence_to_task(
     )
     .map_err(NexusCliError::Nexus)?;
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()
