@@ -205,8 +205,9 @@ impl Signer {
                     }
                 }
             }
-            Err(tonic::Status::aborted(
-                "checkpoint stream ended unexpectedly",
+
+            Err(anyhow::anyhow!(
+                "Checkpoint stream closed before transaction was confirmed."
             ))
         };
 
