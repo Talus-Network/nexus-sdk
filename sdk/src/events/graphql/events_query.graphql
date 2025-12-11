@@ -1,0 +1,33 @@
+query EventsQuery(
+  $after: String
+  $at_checkpoint: UInt53
+  $filter: EventFilter!
+) {
+  events(
+    first: 50
+    after: $after
+    atCheckpoint: $at_checkpoint
+    filter: $filter
+  ) {
+    nodes {
+      sequenceNumber
+      transaction {
+        digest
+      }
+      transactionModule {
+        package {
+          address
+        }
+      }
+      contents {
+        json
+        type {
+          repr
+        }
+      }
+    }
+    pageInfo {
+      endCursor
+    }
+  }
+}
