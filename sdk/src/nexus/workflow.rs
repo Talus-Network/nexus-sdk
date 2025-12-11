@@ -629,7 +629,9 @@ mod tests {
             vec![],
             None,
             None,
-        );
+        )
+        .expect_at_least(1)
+        .expect_at_most(10);
 
         let client = nexus_mocks::mock_nexus_client(
             &nexus_objects,
@@ -643,7 +645,7 @@ mod tests {
             .inspect_execution(
                 execution_object_id,
                 1,
-                Some(std::time::Duration::from_millis(100)),
+                Some(std::time::Duration::from_secs(1)),
             )
             .await
             .expect("Failed to setup channel");

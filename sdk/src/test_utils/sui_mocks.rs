@@ -367,6 +367,52 @@ pub mod grpc {
                 Ok(tonic::Response::new(response))
             });
     }
+
+    /// Expect a `get_object` call and return an object populated with metadata
+    /// and a JSON payload (converted into `prost_types::Value`).
+    pub fn mock_get_object_json(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        json_value: serde_json::Value,
+    ) {
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner.clone()));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_object_id(object_ref.object_id().to_string());
+                grpc_object.json = Some(Box::new(json_to_prost_value(&json_value)));
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    fn json_to_prost_value(value: &serde_json::Value) -> prost_types::Value {
+        use prost_types::value::Kind;
+
+        let kind = match value {
+            serde_json::Value::Null => Kind::NullValue(0),
+            serde_json::Value::Bool(b) => Kind::BoolValue(*b),
+            serde_json::Value::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or_default()),
+            serde_json::Value::String(s) => Kind::StringValue(s.clone()),
+            serde_json::Value::Array(arr) => Kind::ListValue(prost_types::ListValue {
+                values: arr.iter().map(json_to_prost_value).collect(),
+            }),
+            serde_json::Value::Object(map) => Kind::StructValue(prost_types::Struct {
+                fields: map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), json_to_prost_value(v)))
+                    .collect(),
+            }),
+        };
+
+        prost_types::Value { kind: Some(kind) }
+    }
 }
 
 /// Mocking GQL endpoints for deeper testing.

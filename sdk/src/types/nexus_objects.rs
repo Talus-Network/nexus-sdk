@@ -1,7 +1,7 @@
 //! [`NexusObjects`] struct is holding the Nexus object IDs and refs that are
 //! generated during Nexus package deployment.
 #[cfg(feature = "sui_idents")]
-use super::scheduler::{MoveTypeName, PolicySymbol};
+use super::{scheduler::PolicySymbol, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(feature = "sui_idents")]
@@ -70,9 +70,7 @@ impl NexusObjects {
     }
 
     fn sched_generator_symbol(&self, ident: &ModuleAndNameIdent) -> PolicySymbol {
-        PolicySymbol::Witness(MoveTypeName {
-            name: ident.qualified_name(self.workflow_pkg_id),
-        })
+        PolicySymbol::Witness(TypeName::new(&ident.qualified_name(self.workflow_pkg_id)))
     }
 
     fn generator_matches(&self, symbol: &PolicySymbol, ident: &ModuleAndNameIdent) -> bool {

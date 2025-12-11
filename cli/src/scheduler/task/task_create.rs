@@ -179,8 +179,17 @@ pub(crate) async fn create_task(
 
 fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
-        // TODO: @david to re-implement or to simplify by removing generic.
-        // NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
+        NexusEventKind::RequestScheduledOccurrence(env) => Some(format!(
+            "task={} start_ms={} (generator={}, priority={})",
+            env.request.task,
+            env.start_ms,
+            describe_generator(&env.request.generator),
+            env.priority
+        )),
+        NexusEventKind::RequestScheduledWalk(env) => Some(format!(
+            "walk for dag execution start_ms={} (priority={})",
+            env.start_ms, env.priority
+        )),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
             e.task,
