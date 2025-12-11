@@ -205,8 +205,9 @@ impl Signer {
                     }
                 }
             }
-            Err(tonic::Status::aborted(
-                "checkpoint stream ended unexpectedly",
+
+            Err(anyhow::anyhow!(
+                "Checkpoint stream closed before transaction was confirmed."
             ))
         };
 
@@ -214,7 +215,7 @@ impl Signer {
             result = checkpoint_future => {
                 match result {
                     Ok(sequence_number) => Ok((response, digest, sequence_number)),
-                    Err(e) => Err(NexusError::Rpc(e.into()))
+                    Err(e) => Err(NexusError::Rpc(e))
                 }
             },
             _ = timeout_future => {

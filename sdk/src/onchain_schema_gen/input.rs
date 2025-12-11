@@ -145,7 +145,7 @@ mod tests {
             .expect("Move package must be published");
 
         let client = Arc::new(Mutex::new(
-            sui::grpc::Client::new(&format!("http://127.0.0.1:{rpc_port}"))
+            sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
                 .expect("Could not create gRPC client"),
         ));
 

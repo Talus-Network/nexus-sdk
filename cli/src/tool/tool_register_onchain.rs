@@ -1197,7 +1197,7 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         // Should fail because no owner cap is found.
-        let result = extract_over_tool_owner_cap(&vec![], &nexus_objects);
+        let result = extract_over_tool_owner_cap(&[], &nexus_objects);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

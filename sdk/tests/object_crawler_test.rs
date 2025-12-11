@@ -93,7 +93,7 @@ async fn test_object_crawler() {
         &pk,
         &rpc_url,
         "tests/move/object_crawler_test",
-        gas_coins.iter().nth(0).cloned().unwrap(),
+        gas_coins.first().cloned().unwrap(),
     )
     .await;
 
@@ -117,7 +117,7 @@ async fn test_object_crawler() {
 
     let guy = sui::types::Address::from_str(&guy.to_string()).unwrap();
 
-    let grpc = sui::grpc::Client::new(&format!("http://127.0.0.1:{rpc_port}"))
+    let grpc = sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
         .expect("Could not create gRPC client");
 
     let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
