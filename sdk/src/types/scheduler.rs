@@ -6,7 +6,7 @@ use {
         TypeName,
     },
     crate::{
-        nexus::crawler::{Bag, ObjectBag, VecMap},
+        nexus::crawler::{Bag, Map, ObjectBag},
         sui,
         types::NexusData,
     },
@@ -24,7 +24,7 @@ pub struct DagExecutionConfig {
     )]
     pub gas_price: u64,
     pub entry_group: SchedulerEntryGroup,
-    pub inputs: VecMap<String, NexusData>,
+    pub inputs: Map<String, NexusData>,
     pub invoker: sui::types::Address,
 }
 
@@ -215,28 +215,16 @@ pub struct ConstraintsData {}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ExecutionData {}
 
-/// Task metadata wrapper (VecMap<String, String>).
+/// Task metadata wrapper (Map<String, String>).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
-    pub values: VecMap<String, String>,
+    pub values: Map<String, String>,
 }
 
 /// Representation of `nexus_workflow::dag::EntryGroup`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchedulerEntryGroup {
     pub name: String,
-}
-
-impl<K, V> VecMap<K, V>
-where
-    K: Eq + std::hash::Hash,
-{
-    pub fn into_map(self) -> std::collections::HashMap<K, V> {
-        self.contents
-            .into_iter()
-            .map(|e| (e.key, e.value))
-            .collect()
-    }
 }
 
 /// Representation of `nexus_primitives::automaton::TransitionKey`.
@@ -302,7 +290,7 @@ mod tests {
             entry_group: SchedulerEntryGroup {
                 name: "default".to_string(),
             },
-            inputs: VecMap::default(),
+            inputs: Map::default(),
             invoker,
         };
 

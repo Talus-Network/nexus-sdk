@@ -140,7 +140,7 @@ async fn test_object_crawler() {
             .collect()
     );
 
-    // Check VecMap and nested vector fetched correctly.
+    // Check map and nested vector fetched correctly.
     let groups = guy.groups.into_inner();
     assert_eq!(groups.len(), 2);
 

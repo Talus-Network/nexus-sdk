@@ -640,7 +640,7 @@ mod tests {
             },
             nexus::{
                 client::NexusClient,
-                crawler::{Bag, ObjectBag, VecMap, VecMapEntry},
+                crawler::{Bag, Map, ObjectBag},
                 error::NexusError,
                 signer::ExecutedTransaction,
             },
@@ -704,12 +704,7 @@ mod tests {
         owner: sui::types::Address,
     ) -> serde_json::Value {
         let metadata = Metadata {
-            values: VecMap {
-                contents: vec![VecMapEntry {
-                    key: "initial".to_string(),
-                    value: "value".to_string(),
-                }],
-            },
+            values: Map::from_iter([("initial".to_string(), "value".to_string())]),
         };
 
         let dfa = DeterministicAutomaton {

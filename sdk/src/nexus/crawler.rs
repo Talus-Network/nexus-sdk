@@ -334,26 +334,6 @@ impl Crawler {
     }
 }
 
-/// Wrapper for `sui::vec_map::VecMap` serialized shape: `{ contents: [{ key, value }, ...] }`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VecMap<K, V> {
-    pub contents: Vec<VecMapEntry<K, V>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VecMapEntry<K, V> {
-    pub key: K,
-    pub value: V,
-}
-
-impl<K, V> Default for VecMap<K, V> {
-    fn default() -> Self {
-        Self {
-            contents: Vec::new(),
-        }
-    }
-}
-
 /// Wrapper for `sui::bag::Bag` projection.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Bag {
@@ -432,7 +412,7 @@ where
 /// Wrapper around any map-like structure within parsed Sui object data. These
 /// are always wrapped in a struct with a single `contents` field. The contents
 /// is a vec of key-value pairs.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Map<K, V>
 where
     K: Eq + Hash,
@@ -444,8 +424,22 @@ impl<K, V> Map<K, V>
 where
     K: Eq + Hash,
 {
+    pub fn new() -> Self {
+        Self {
+            contents: HashMap::new(),
+        }
+    }
+
+    pub fn from_map(contents: HashMap<K, V>) -> Self {
+        Self { contents }
+    }
+
     pub fn into_inner(self) -> HashMap<K, V> {
         self.contents
+    }
+
+    pub fn into_map(self) -> HashMap<K, V> {
+        self.into_inner()
     }
 
     pub fn inner(&self) -> &HashMap<K, V> {
@@ -454,6 +448,65 @@ where
 
     pub fn inner_mut(&mut self) -> &mut HashMap<K, V> {
         &mut self.contents
+    }
+}
+
+impl<K, V> Default for Map<K, V>
+where
+    K: Eq + Hash,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V> From<HashMap<K, V>> for Map<K, V>
+where
+    K: Eq + Hash,
+{
+    fn from(contents: HashMap<K, V>) -> Self {
+        Self { contents }
+    }
+}
+
+impl<K, V> FromIterator<(K, V)> for Map<K, V>
+where
+    K: Eq + Hash,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self {
+            contents: HashMap::from_iter(iter),
+        }
+    }
+}
+
+impl<K, V> Serialize for Map<K, V>
+where
+    K: Eq + Hash + Serialize,
+    V: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct PairRef<'a, K, V> {
+            key: &'a K,
+            value: &'a V,
+        }
+
+        #[derive(Serialize)]
+        struct Wrapper<'a, K, V> {
+            contents: Vec<PairRef<'a, K, V>>,
+        }
+
+        let contents = self
+            .contents
+            .iter()
+            .map(|(key, value)| PairRef { key, value })
+            .collect();
+
+        Wrapper { contents }.serialize(serializer)
     }
 }
 

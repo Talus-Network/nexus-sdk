@@ -37,13 +37,13 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
         owner = task_data.owner.to_string().truecolor(100, 100, 100)
     );
 
-    let metadata = &task_data.metadata.values.contents;
+    let metadata = task_data.metadata.values.inner();
     item!("Metadata entries: {count}", count = metadata.len());
-    for entry in metadata.iter().take(10) {
+    for (key, value) in metadata.iter().take(10) {
         item!(
             "  {key}: {value}",
-            key = entry.key.truecolor(100, 100, 100),
-            value = entry.value
+            key = key.truecolor(100, 100, 100),
+            value = value
         );
     }
     if metadata.len() > 10 {
