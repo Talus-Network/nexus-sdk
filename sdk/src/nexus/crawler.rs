@@ -31,11 +31,17 @@ impl Crawler {
     where
         T: DeserializeOwned,
     {
-        let field_mask =
-            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest", "json"]);
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "json",
+        ]);
 
         let object = self.fetch_object(object_id, field_mask).await?;
-        let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
         let data = self.parse_object_content(&object)?;
 
         Ok(Response {
@@ -44,6 +50,7 @@ impl Crawler {
             version,
             data,
             digest,
+            balance,
         })
     }
 
@@ -56,53 +63,29 @@ impl Crawler {
     where
         T: DeserializeOwned,
     {
-        let field_mask =
-            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest", "json"]);
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "json",
+        ]);
 
-        let request = {
-            let mut req = sui::grpc::BatchGetObjectsRequest::default();
+        let objects = self.fetch_objects(object_ids, field_mask).await?;
 
-            req.set_requests(
-                object_ids
-                    .iter()
-                    .map(|&id| {
-                        sui::grpc::GetObjectRequest::default()
-                            .with_object_id(id)
-                            .with_read_mask(field_mask.clone())
-                    })
-                    .collect(),
-            );
-
-            req.set_read_mask(field_mask);
-
-            req
-        };
-
-        let mut client = self.client.lock().await;
-
-        let response = client
-            .ledger_client()
-            .batch_get_objects(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
-
-        response
-            .objects
+        objects
             .into_iter()
-            .map(|result| {
-                let object = result
-                    .object_opt()
-                    .ok_or_else(|| anyhow!("Object not found"))?;
-
+            .map(|object| {
                 let object_id = object
                     .object_id_opt()
                     .ok_or_else(|| anyhow!("Object ID missing"))?
                     .parse()
                     .map_err(|_| anyhow!("Could not parse object ID"))?;
 
-                let (owner, digest, version) = self.parse_object_metadata(object_id, object)?;
-                let data = self.parse_object_content(object)?;
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+                let data = self.parse_object_content(&object)?;
 
                 Ok(Response {
                     object_id,
@@ -110,6 +93,7 @@ impl Crawler {
                     version,
                     data,
                     digest,
+                    balance,
                 })
             })
             .collect()
@@ -120,11 +104,16 @@ impl Crawler {
         &self,
         object_id: sui::types::Address,
     ) -> anyhow::Result<Response<()>> {
-        let field_mask =
-            sui::grpc::FieldMask::from_paths(["object_id", "owner", "version", "digest"]);
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+        ]);
 
         let object = self.fetch_object(object_id, field_mask).await?;
-        let (owner, digest, version) = self.parse_object_metadata(object_id, &object)?;
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
 
         Ok(Response {
             object_id,
@@ -132,7 +121,47 @@ impl Crawler {
             version,
             data: (),
             digest,
+            balance,
         })
+    }
+
+    /// Fetch many objects' metadata only in batch, omitting their content.
+    pub async fn get_objects_metadata(
+        &self,
+        object_ids: &[sui::types::Address],
+    ) -> anyhow::Result<Vec<Response<()>>> {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+        ]);
+
+        let objects = self.fetch_objects(object_ids, field_mask).await?;
+
+        objects
+            .into_iter()
+            .map(|object| {
+                let object_id = object
+                    .object_id_opt()
+                    .ok_or_else(|| anyhow!("Object ID missing"))?
+                    .parse()
+                    .map_err(|_| anyhow!("Could not parse object ID"))?;
+
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+
+                Ok(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data: (),
+                    digest,
+                    balance,
+                })
+            })
+            .collect()
     }
 
     /// Fetch all dynamic object fields for a given parent and parse them into a
@@ -219,6 +248,53 @@ impl Crawler {
         Ok(object)
     }
 
+    /// Helper function to fetch many objects based on their IDs and field mask.
+    async fn fetch_objects(
+        &self,
+        object_ids: &[sui::types::Address],
+        field_mask: sui::grpc::FieldMask,
+    ) -> anyhow::Result<Vec<sui::grpc::Object>> {
+        let request = {
+            let mut req = sui::grpc::BatchGetObjectsRequest::default();
+
+            req.set_requests(
+                object_ids
+                    .iter()
+                    .map(|&id| {
+                        sui::grpc::GetObjectRequest::default()
+                            .with_object_id(id)
+                            .with_read_mask(field_mask.clone())
+                    })
+                    .collect(),
+            );
+
+            req.set_read_mask(field_mask);
+
+            req
+        };
+
+        let mut client = self.client.lock().await;
+
+        let response = client
+            .ledger_client()
+            .batch_get_objects(request)
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
+
+        let mut objects = Vec::with_capacity(object_ids.len());
+
+        for result in response.objects {
+            let object = result
+                .object_opt()
+                .ok_or_else(|| anyhow!("Object not found"))?;
+
+            objects.push(object.clone());
+        }
+
+        Ok(objects)
+    }
+
     /// Helper function to fetch all dynamic fields for a given parent object.
     /// Optionally stopping at `stop_at` if we're only interested in a singular
     /// item.
@@ -300,7 +376,12 @@ impl Crawler {
         &self,
         object_id: sui::types::Address,
         object: &sui::grpc::Object,
-    ) -> anyhow::Result<(sui::types::Owner, sui::types::Digest, sui::types::Version)> {
+    ) -> anyhow::Result<(
+        sui::types::Owner,
+        sui::types::Digest,
+        sui::types::Version,
+        Option<u64>,
+    )> {
         let owner = object
             .owner_opt()
             .ok_or_else(|| anyhow!("Owner missing for object '{object_id}'"))?
@@ -317,7 +398,9 @@ impl Crawler {
             .version_opt()
             .ok_or_else(|| anyhow!("Version missing for object '{object_id}'"))?;
 
-        Ok((owner, digest, version))
+        let balance = object.balance_opt();
+
+        Ok((owner, digest, version, balance))
     }
 
     /// Helper function to turn returned object data in prost format into T.
@@ -357,12 +440,19 @@ pub struct Response<T> {
     pub version: sui::types::Version,
     pub data: T,
     pub digest: sui::types::Digest,
+    /// If the object is `0x2::coin::Coin`, contains the balance.
+    pub balance: Option<u64>,
 }
 
 impl<T> Response<T> {
     /// Check if the object is shared.
     pub fn is_shared(&self) -> bool {
         matches!(self.owner, sui::types::Owner::Shared(_))
+    }
+
+    /// Check if the object is immutable.
+    pub fn is_immutable(&self) -> bool {
+        matches!(self.owner, sui::types::Owner::Immutable)
     }
 
     /// Get initial version of the object if it's shared or current version
