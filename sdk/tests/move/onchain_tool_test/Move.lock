@@ -1,0 +1,8 @@
+
+[env]
+
+[env.test]
+chain-id = "6152dd4e"
+original-published-id = "0xb608589f9d87859a00c7045f0dd1103cf999138124f5a63812ea533741c679f4"
+latest-published-id = "0xb608589f9d87859a00c7045f0dd1103cf999138124f5a63812ea533741c679f4"
+published-version = "1"

@@ -25,7 +25,7 @@ pub struct DagExecutionConfig {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     #[serde(default)]
     pub entry_group: Value,
     #[serde(default)]
@@ -333,7 +333,7 @@ impl<'de> Deserialize<'de> for DagExecutionConfig {
                 deserialize_with = "deserialize_sui_u64",
                 serialize_with = "serialize_sui_u64"
             )]
-            gas_price: u64,
+            priority_fee_per_gas_unit: u64,
             #[serde(default)]
             entry_group: Value,
             #[serde(default)]
@@ -350,7 +350,7 @@ impl<'de> Deserialize<'de> for DagExecutionConfig {
         Ok(Self {
             dag: inner.dag,
             network: inner.network,
-            gas_price: inner.gas_price,
+            priority_fee_per_gas_unit: inner.priority_fee_per_gas_unit,
             entry_group: inner.entry_group,
             inputs: inner.inputs,
             invoker: inner.invoker,
@@ -514,7 +514,7 @@ mod tests {
         let expected = DagExecutionConfig {
             dag: dag_id,
             network: network_id,
-            gas_price: 1000,
+            priority_fee_per_gas_unit: 1000,
             entry_group: json!({"name": "default"}),
             inputs: json!({}),
             invoker,
@@ -527,7 +527,10 @@ mod tests {
 
         assert_eq!(parsed.dag, expected.dag);
         assert_eq!(parsed.network, expected.network);
-        assert_eq!(parsed.gas_price, expected.gas_price);
+        assert_eq!(
+            parsed.priority_fee_per_gas_unit,
+            expected.priority_fee_per_gas_unit
+        );
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
         assert_eq!(parsed.invoker, expected.invoker);

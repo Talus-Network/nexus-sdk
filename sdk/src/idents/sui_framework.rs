@@ -104,6 +104,30 @@ impl VecMap {
     };
 }
 
+// == `sui::table_vec` ==
+
+pub struct TableVec;
+
+const TABLE_VEC_MODULE: &sui::MoveIdentStr = sui::move_ident_str!("table_vec");
+
+impl TableVec {
+    /// `sui::table_vec::drop`
+    pub const DROP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TABLE_VEC_MODULE,
+        name: sui::move_ident_str!("drop"),
+    };
+    /// `sui::table_vec::empty`
+    pub const EMPTY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TABLE_VEC_MODULE,
+        name: sui::move_ident_str!("empty"),
+    };
+    /// `sui::table_vec::push_back`
+    pub const PUSH_BACK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TABLE_VEC_MODULE,
+        name: sui::move_ident_str!("push_back"),
+    };
+}
+
 // == `sui::transfer` ==
 
 pub struct Transfer;

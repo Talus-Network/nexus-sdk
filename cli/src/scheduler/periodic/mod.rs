@@ -22,9 +22,13 @@ pub(crate) enum PeriodicCommand {
         /// Maximum number of generated occurrences (None for infinite).
         #[arg(long = "max-iterations", value_name = "COUNT")]
         max_iterations: Option<u64>,
-        /// Gas price associated with occurrences.
-        #[arg(long = "gas-price", value_name = "AMOUNT", default_value_t = 0u64)]
-        gas_price: u64,
+        /// Priority fee per gas unit associated with occurrences.
+        #[arg(
+            long = "priority-fee-per-gas-unit",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        priority_fee_per_gas_unit: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -46,7 +50,7 @@ pub(crate) async fn handle(command: PeriodicCommand) -> AnyResult<(), NexusCliEr
             period_ms,
             deadline_offset_ms,
             max_iterations,
-            gas_price,
+            priority_fee_per_gas_unit,
             gas,
         } => {
             periodic_set::set_periodic_task(
@@ -55,7 +59,7 @@ pub(crate) async fn handle(command: PeriodicCommand) -> AnyResult<(), NexusCliEr
                 period_ms,
                 deadline_offset_ms,
                 max_iterations,
-                gas_price,
+                priority_fee_per_gas_unit,
                 gas,
             )
             .await

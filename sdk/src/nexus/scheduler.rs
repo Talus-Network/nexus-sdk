@@ -41,7 +41,7 @@ pub struct CreateTaskParams {
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, DataStorage>>,
     pub metadata: Vec<(String, String)>,
-    pub execution_gas_price: u64,
+    pub execution_priority_fee_per_gas_unit: u64,
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
 }
@@ -66,7 +66,7 @@ pub struct OccurrenceRequest {
     pub deadline_ms: Option<u64>,
     pub start_offset_ms: Option<u64>,
     pub deadline_offset_ms: Option<u64>,
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
 }
 
 impl OccurrenceRequest {
@@ -75,7 +75,7 @@ impl OccurrenceRequest {
         deadline_ms: Option<u64>,
         start_offset_ms: Option<u64>,
         deadline_offset_ms: Option<u64>,
-        gas_price: u64,
+        priority_fee_per_gas_unit: u64,
         require_start: bool,
     ) -> Result<Self, NexusError> {
         validate_schedule_options(
@@ -91,7 +91,7 @@ impl OccurrenceRequest {
             deadline_ms,
             start_offset_ms,
             deadline_offset_ms,
-            gas_price,
+            priority_fee_per_gas_unit,
         })
     }
 }
@@ -110,7 +110,7 @@ pub struct PeriodicScheduleConfig {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
 }
 
 pub struct PeriodicScheduleResult {
@@ -142,7 +142,7 @@ impl SchedulerActions {
             entry_group,
             input_data,
             metadata,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             initial_schedule: initial_schedule_request,
             generator,
         } = params;
@@ -162,7 +162,7 @@ impl SchedulerActions {
             &mut tx,
             objects,
             dag_id,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             entry_group.as_str(),
             &input_data,
         )
@@ -357,7 +357,7 @@ impl SchedulerActions {
                 period_ms: config.period_ms,
                 deadline_offset_ms: config.deadline_offset_ms,
                 max_iterations: config.max_iterations,
-                gas_price: config.gas_price,
+                priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
             },
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -441,7 +441,7 @@ impl SchedulerActions {
                 &task.object_ref(),
                 start_ms,
                 deadline_offset,
-                request.gas_price,
+                request.priority_fee_per_gas_unit,
             )
         } else {
             scheduler_tx::add_occurrence_relative_for_task(
@@ -450,7 +450,7 @@ impl SchedulerActions {
                 &task.object_ref(),
                 request.start_offset_ms.expect("validated start offset"),
                 request.deadline_offset_ms,
-                request.gas_price,
+                request.priority_fee_per_gas_unit,
             )
         }
         .map_err(NexusError::TransactionBuilding)?;
@@ -841,7 +841,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![("team".into(), "sdk".into())],
-            execution_gas_price: 1,
+            execution_priority_fee_per_gas_unit: 1,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
         };
@@ -927,7 +927,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![],
-            execution_gas_price: 5,
+            execution_priority_fee_per_gas_unit: 5,
             initial_schedule: Some(initial_schedule),
             generator: GeneratorKind::Queue,
         };
@@ -1161,7 +1161,7 @@ mod tests {
             period_ms: 5_000,
             deadline_offset_ms: Some(1_000),
             max_iterations: Some(5),
-            gas_price: 20,
+            priority_fee_per_gas_unit: 20,
         };
 
         let result = nexus_client

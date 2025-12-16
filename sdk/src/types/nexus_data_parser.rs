@@ -54,8 +54,8 @@ impl NexusDataAsStruct {
 /// Check if a string represents a large number (u128/u256 range).
 /// Handles both positive and negative integers.
 fn is_large_number(s: &str) -> bool {
-    if s.starts_with('-') {
-        s[1..].chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    if let Some(stripped) = s.strip_prefix('-') {
+        stripped.chars().all(|c| c.is_ascii_digit()) && stripped.len() > 21
     } else {
         s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
     }

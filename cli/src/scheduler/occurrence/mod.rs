@@ -32,9 +32,13 @@ pub(crate) enum OccurrenceCommand {
         start: OccurrenceStartOptions,
         #[command(flatten)]
         deadline: OccurrenceDeadlineOptions,
-        /// Gas price paid as priority fee associated with the occurrence.
-        #[arg(long = "gas-price", value_name = "AMOUNT", default_value_t = 0u64)]
-        gas_price: u64,
+        /// Priority fee per gas unit applied to the occurrence.
+        #[arg(
+            long = "priority-fee-per-gas-unit",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        priority_fee_per_gas_unit: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -46,7 +50,7 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
             task_id,
             start,
             deadline,
-            gas_price,
+            priority_fee_per_gas_unit,
             gas,
         } => {
             let OccurrenceStartOptions {
@@ -60,7 +64,7 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
                 start_ms,
                 start_offset_ms,
                 deadline_offset_ms,
-                gas_price,
+                priority_fee_per_gas_unit,
                 gas,
             )
             .await

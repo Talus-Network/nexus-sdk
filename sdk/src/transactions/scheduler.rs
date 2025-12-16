@@ -22,7 +22,7 @@ pub struct PeriodicScheduleInputs {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
 }
 
 // Shared helper for turning a scheduler task object ref into a mutable shared argument.
@@ -91,14 +91,12 @@ pub fn new_task(
     constraints: sui::Argument,
     execution: sui::Argument,
 ) -> anyhow::Result<sui::Argument> {
-    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
-
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
         workflow::Scheduler::NEW.module.into(),
         workflow::Scheduler::NEW.name.into(),
         vec![],
-        vec![metadata, constraints, execution, clock],
+        vec![metadata, constraints, execution],
     ))
 }
 
@@ -158,11 +156,19 @@ pub fn new_constraints_policy(
     };
 
     let constraint_sequence = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        move_std::Vector::SINGLETON.module.into(),
-        move_std::Vector::SINGLETON.name.into(),
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::EMPTY.module.into(),
+        sui_framework::TableVec::EMPTY.name.into(),
         vec![symbol_type.clone()],
-        vec![constraint_symbol],
+        vec![],
+    );
+
+    tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::PUSH_BACK.module.into(),
+        sui_framework::TableVec::PUSH_BACK.name.into(),
+        vec![symbol_type.clone()],
+        vec![constraint_sequence, constraint_symbol],
     );
 
     let constraints = tx.programmable_move_call(
@@ -170,6 +176,14 @@ pub fn new_constraints_policy(
         workflow::Scheduler::NEW_CONSTRAINTS_POLICY.module.into(),
         workflow::Scheduler::NEW_CONSTRAINTS_POLICY.name.into(),
         vec![],
+        vec![constraint_sequence],
+    );
+
+    tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::DROP.module.into(),
+        sui_framework::TableVec::DROP.name.into(),
+        vec![symbol_type.clone()],
         vec![constraint_sequence],
     );
 
@@ -263,7 +277,7 @@ pub fn new_execution_policy(
     tx: &mut sui::ProgrammableTransactionBuilder,
     objects: &NexusObjects,
     dag_id: sui::ObjectID,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::Argument> {
@@ -283,11 +297,19 @@ pub fn new_execution_policy(
     );
 
     let execution_sequence = tx.programmable_move_call(
-        sui::MOVE_STDLIB_PACKAGE_ID,
-        move_std::Vector::SINGLETON.module.into(),
-        move_std::Vector::SINGLETON.name.into(),
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::EMPTY.module.into(),
+        sui_framework::TableVec::EMPTY.name.into(),
         vec![symbol_type.clone()],
-        vec![execution_symbol],
+        vec![],
+    );
+
+    tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::PUSH_BACK.module.into(),
+        sui_framework::TableVec::PUSH_BACK.name.into(),
+        vec![symbol_type.clone()],
+        vec![execution_sequence, execution_symbol],
     );
 
     let execution = tx.programmable_move_call(
@@ -298,9 +320,17 @@ pub fn new_execution_policy(
         vec![execution_sequence],
     );
 
+    tx.programmable_move_call(
+        sui::FRAMEWORK_PACKAGE_ID,
+        sui_framework::TableVec::DROP.module.into(),
+        sui_framework::TableVec::DROP.name.into(),
+        vec![symbol_type.clone()],
+        vec![execution_sequence],
+    );
+
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let gas_price_arg = tx.pure(gas_price)?;
+    let priority_fee_per_gas_unit = tx.pure(priority_fee_per_gas_unit)?;
 
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
@@ -315,9 +345,9 @@ pub fn new_execution_policy(
         vec![
             dag_id_arg,
             network_id_arg,
-            gas_price_arg,
             entry_group,
             with_vertex_inputs,
+            priority_fee_per_gas_unit,
         ],
     );
 
@@ -465,7 +495,7 @@ pub fn add_occurrence_absolute_for_task(
     task: &sui::ObjectRef,
     start_time_ms: u64,
     deadline_offset_ms: Option<u64>,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
 ) -> anyhow::Result<sui::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
@@ -476,8 +506,8 @@ pub fn add_occurrence_absolute_for_task(
     // `deadline_offset_ms: option::Option<u64>`
     let deadline_offset_ms = tx.pure(deadline_offset_ms)?;
 
-    // `gas_price: u64`
-    let gas_price = tx.pure(gas_price)?;
+    // `priority_fee_per_gas_unit: u64`
+    let priority_fee_per_gas_unit = tx.pure(priority_fee_per_gas_unit)?;
 
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
@@ -491,7 +521,13 @@ pub fn add_occurrence_absolute_for_task(
             .name
             .into(),
         vec![],
-        vec![task, start_time_ms, deadline_offset_ms, gas_price, clock],
+        vec![
+            task,
+            start_time_ms,
+            deadline_offset_ms,
+            priority_fee_per_gas_unit,
+            clock,
+        ],
     ))
 }
 
@@ -502,7 +538,7 @@ pub fn add_occurrence_relative_for_task(
     task: &sui::ObjectRef,
     start_offset_ms: u64,
     deadline_offset_ms: Option<u64>,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
 ) -> anyhow::Result<sui::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
@@ -513,8 +549,8 @@ pub fn add_occurrence_relative_for_task(
     // `deadline_offset_ms: option::Option<u64>`
     let deadline_offset_ms = tx.pure(deadline_offset_ms)?;
 
-    // `gas_price: u64`
-    let gas_price = tx.pure(gas_price)?;
+    // `priority_fee_per_gas_unit: u64`
+    let priority_fee_per_gas_unit = tx.pure(priority_fee_per_gas_unit)?;
 
     // `clock: &Clock`
     let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
@@ -528,7 +564,13 @@ pub fn add_occurrence_relative_for_task(
             .name
             .into(),
         vec![],
-        vec![task, start_offset_ms, deadline_offset_ms, gas_price, clock],
+        vec![
+            task,
+            start_offset_ms,
+            deadline_offset_ms,
+            priority_fee_per_gas_unit,
+            clock,
+        ],
     ))
 }
 
@@ -547,7 +589,7 @@ pub fn new_or_modify_periodic_for_task(
         period_ms,
         deadline_offset_ms,
         max_iterations,
-        gas_price,
+        priority_fee_per_gas_unit,
     } = schedule;
 
     // `task: &mut Task`
@@ -565,8 +607,8 @@ pub fn new_or_modify_periodic_for_task(
     // `max_iterations: option::Option<u64>`
     let max_iterations = tx.pure(max_iterations)?;
 
-    // `gas_price: u64`
-    let gas_price = tx.pure(gas_price)?;
+    // `priority_fee_per_gas_unit: u64`
+    let priority_fee_per_gas_unit = tx.pure(priority_fee_per_gas_unit)?;
 
     Ok(tx.programmable_move_call(
         objects.workflow_pkg_id,
@@ -583,7 +625,7 @@ pub fn new_or_modify_periodic_for_task(
             period_ms,
             deadline_offset_ms,
             max_iterations,
-            gas_price,
+            priority_fee_per_gas_unit,
         ],
     ))
 }
@@ -1025,7 +1067,7 @@ mod tests {
     }
 
     #[test]
-    fn new_task_adds_clock_argument() {
+    fn new_task_builds_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::ProgrammableTransactionBuilder::new();
         let metadata = tx.pure(1u8).expect("metadata input");
@@ -1044,11 +1086,10 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Scheduler::NEW.module.to_string());
         assert_eq!(call.function, workflow::Scheduler::NEW.name.to_string());
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments.len(), 3);
         inspector.expect_pure_bytes(&call.arguments[0], &[1]);
         inspector.expect_pure_bytes(&call.arguments[1], &[2]);
         inspector.expect_pure_bytes(&call.arguments[2], &[3]);
-        inspector.expect_clock(&call.arguments[3]);
     }
 
     #[test]
@@ -1235,10 +1276,17 @@ mod tests {
 
         let start_time = 10;
         let deadline = Some(20);
-        let gas_price = 30;
+        let priority_fee_per_gas_unit = 30;
 
-        add_occurrence_absolute_for_task(&mut tx, &objects, &task, start_time, deadline, gas_price)
-            .expect("ptb construction succeeds");
+        add_occurrence_absolute_for_task(
+            &mut tx,
+            &objects,
+            &task,
+            start_time,
+            deadline,
+            priority_fee_per_gas_unit,
+        )
+        .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(tx.finish());
         assert_eq!(inspector.commands_len(), 1);
@@ -1247,7 +1295,7 @@ mod tests {
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_time);
         inspector.expect_option_u64(&call.arguments[2], deadline);
-        inspector.expect_u64(&call.arguments[3], gas_price);
+        inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
         inspector.expect_clock(&call.arguments[4]);
     }
 
@@ -1259,7 +1307,7 @@ mod tests {
 
         let start_offset = 5;
         let deadline_offset = Some(15);
-        let gas_price = 25;
+        let priority_fee_per_gas_unit = 25;
 
         add_occurrence_relative_for_task(
             &mut tx,
@@ -1267,7 +1315,7 @@ mod tests {
             &task,
             start_offset,
             deadline_offset,
-            gas_price,
+            priority_fee_per_gas_unit,
         )
         .expect("ptb construction succeeds");
 
@@ -1277,7 +1325,7 @@ mod tests {
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_offset);
         inspector.expect_option_u64(&call.arguments[2], deadline_offset);
-        inspector.expect_u64(&call.arguments[3], gas_price);
+        inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
         inspector.expect_clock(&call.arguments[4]);
     }
 
@@ -1291,7 +1339,7 @@ mod tests {
         let period = 1_000;
         let deadline_offset = Some(500);
         let max_iterations = Some(3);
-        let gas_price = 75;
+        let priority_fee_per_gas_unit = 75;
 
         new_or_modify_periodic_for_task(
             &mut tx,
@@ -1302,7 +1350,7 @@ mod tests {
                 period_ms: period,
                 deadline_offset_ms: deadline_offset,
                 max_iterations,
-                gas_price,
+                priority_fee_per_gas_unit,
             },
         )
         .expect("ptb construction succeeds");
@@ -1315,7 +1363,7 @@ mod tests {
         inspector.expect_u64(&call.arguments[2], period);
         inspector.expect_option_u64(&call.arguments[3], deadline_offset);
         inspector.expect_option_u64(&call.arguments[4], max_iterations);
-        inspector.expect_u64(&call.arguments[5], gas_price);
+        inspector.expect_u64(&call.arguments[5], priority_fee_per_gas_unit);
     }
 
     #[test]
