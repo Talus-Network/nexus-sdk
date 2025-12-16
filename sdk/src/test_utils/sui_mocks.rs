@@ -19,6 +19,13 @@ pub fn mock_sui_event_id() -> (sui::types::Digest, u64) {
 }
 
 /// Create a new [`sui::EventID`] with random values.
+pub fn mock_sui_address() -> sui::types::Address {
+    let mut rng = rand::thread_rng();
+
+    sui::types::Address::generate(&mut rng)
+}
+
+/// Create a new [`sui::EventID`] with random values.
 pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
@@ -339,6 +346,7 @@ pub mod grpc {
         ledger_service: &mut MockLedgerService,
         object_ref: sui::types::ObjectReference,
         owner: sui::types::Owner,
+        balance: Option<u64>,
     ) {
         ledger_service
             .expect_get_object()
@@ -349,7 +357,34 @@ pub mod grpc {
                 grpc_object.set_owner(sui::grpc::Owner::from(owner));
                 grpc_object.set_digest(*object_ref.digest());
                 grpc_object.set_version(object_ref.version());
+                grpc_object.set_balance(balance.unwrap_or(0));
                 response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_objects_metadata(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(sui::types::ObjectReference, sui::types::Owner, Option<u64>)>,
+    ) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+                for (object_ref, owner, balance) in objects.clone() {
+                    let mut parent_object = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_object_id(*object_ref.object_id());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_balance(balance.unwrap_or(0));
+                    parent_object.set_object(grpc_object);
+                    objs.push(parent_object);
+                }
+                response.set_objects(objs);
                 Ok(tonic::Response::new(response))
             });
     }

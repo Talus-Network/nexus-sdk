@@ -9451,7 +9451,7 @@ dependencies = [
 [[package]]
 name = "testcontainers-modules"
 version = "0.11.6"
-source = "git+https://github.com/Talus-Network/testcontainers-rs-modules-community?branch=feat%2Fadd-sui-support#2a59cac5f48ff020d02d4a1d6fada8100e960690"
+source = "git+https://github.com/Talus-Network/testcontainers-rs-modules-community?branch=feat%2Fadd-sui-support#d49fb6d4bd73abb8fb768cd1ceefc303d4d84e1a"
 dependencies = [
  "reqwest",
  "testcontainers",

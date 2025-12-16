@@ -95,6 +95,7 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
             sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
         );
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(

@@ -69,7 +69,13 @@ enum HeterogeneousValue {
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
-    let (_container, rpc_port, faucet_port) = test_utils::containers::setup_sui_instance().await;
+    let test_utils::containers::SuiInstance {
+        rpc_port,
+        faucet_port,
+        pg: _pg,
+        container: _container,
+        ..
+    } = test_utils::containers::setup_sui_instance().await;
 
     let rpc_url = format!("http://127.0.0.1:{rpc_port}");
     let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
@@ -93,7 +99,7 @@ async fn test_object_crawler() {
         &pk,
         &rpc_url,
         "tests/move/object_crawler_test",
-        gas_coins.first().cloned().unwrap(),
+        gas_coins.first().cloned().unwrap().0,
     )
     .await;
 

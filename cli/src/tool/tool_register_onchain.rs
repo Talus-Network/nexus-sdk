@@ -1210,8 +1210,13 @@ mod tests {
         use crate::test_utils;
 
         // Spin up the Sui instance.
-        let (_container, rpc_port, faucet_port) =
-            test_utils::containers::setup_sui_instance().await;
+        let test_utils::containers::SuiInstance {
+            rpc_port,
+            faucet_port,
+            pg: _pg,
+            container: _container,
+            ..
+        } = test_utils::containers::setup_sui_instance().await;
 
         let rpc_url = format!("http://127.0.0.1:{rpc_port}");
         let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
@@ -1226,7 +1231,7 @@ mod tests {
             .await
             .expect("Failed to request tokens from faucet.");
 
-        let gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
+        let (gas_coin, _) = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
             .await
             .expect("Failed to fetch gas coin.")
             .into_iter()

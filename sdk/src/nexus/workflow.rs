@@ -447,6 +447,7 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(dag_object_id, 0, tx_digest),
             sui::types::Owner::Shared(0),
+            None,
         );
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(

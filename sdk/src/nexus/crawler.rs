@@ -738,7 +738,7 @@ struct DynamicPair<K, V> {
 /// Helper function to transform [`prost_types::Value`] which is returned by the
 /// GRPC into a [`serde_json::Value`]. This can then be easily deserialized into
 /// any Rust struct.
-fn prost_value_to_json_value(value: &prost_types::Value) -> anyhow::Result<serde_json::Value> {
+pub fn prost_value_to_json_value(value: &prost_types::Value) -> anyhow::Result<serde_json::Value> {
     use {
         prost_types::value::Kind,
         serde_json::{Map, Number, Value},
