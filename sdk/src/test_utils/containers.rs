@@ -59,11 +59,13 @@ pub async fn setup_sui_instance() -> SuiInstance {
     request.name = "sui-net";
     let _ = docker.create_network(request).await.ok();
 
+    let container_name = format!("sui-postgres-{}", rpc_host_port);
+
     let pg_request = Postgres::default()
         .with_tag("latest")
-        .with_mount(Mount::volume_mount("postgres_data", "/tmp/postgres_data"))
+        .with_mount(Mount::tmpfs_mount("/postgres_data"))
         .with_network("sui-net")
-        .with_container_name("sui-postgres");
+        .with_container_name(&container_name);
 
     let pg_container = pg_request
         .start()
@@ -74,7 +76,10 @@ pub async fn setup_sui_instance() -> SuiInstance {
         .with_force_regenesis(true)
         .with_faucet(true)
         .with_indexer(true)
-        .with_indexer_pg_url("postgres://postgres:postgres@sui-postgres:5432/postgres")
+        .with_indexer_pg_url(format!(
+            "postgres://postgres:postgres@{}:5432/postgres",
+            container_name
+        ))
         .with_graphql(true)
         .with_name("mysten/sui-tools")
         .with_tag("mainnet-v1.61.2")

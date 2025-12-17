@@ -474,7 +474,7 @@ mod tests {
     async fn test_execute_tx_mutates_gas_coin() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -486,8 +486,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
@@ -526,7 +527,7 @@ mod tests {
 
         assert_eq!(response.digest, digest);
 
-        assert_eq!(gas_coin.version(), 2);
-        assert_eq!(gas_coin.digest(), &gas_coin_digest);
+        assert_eq!(gas_coin.version(), gas_coin_ref.version());
+        assert_eq!(gas_coin.digest(), gas_coin_ref.digest());
     }
 }

@@ -2,9 +2,10 @@
 
 use {
     nexus_sdk::{
-        nexus::crawler::{Bytes, Crawler, DynamicMap, DynamicObjectMap, Map, Set},
+        nexus::crawler::{Crawler, DynamicMap, DynamicObjectMap, Map, Set},
         sui,
         test_utils,
+        types::deserialize_encoded_bytes,
     },
     serde::{Deserialize, Serialize},
     std::{str::FromStr, sync::Arc},
@@ -47,7 +48,8 @@ struct PlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    value: Bytes,
+    #[serde(deserialize_with = "deserialize_encoded_bytes")]
+    value: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -55,7 +57,11 @@ struct AnotherPlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    another_value: Bytes,
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
+    another_value: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -194,7 +200,7 @@ async fn test_object_crawler() {
     assert_eq!(pouch.len(), 1);
     let (key, value) = pouch.into_iter().next().unwrap();
     assert_eq!(key.name, "Pouch Item");
-    assert_eq!(value.data.value.into_inner(), b"Pouch Data");
+    assert_eq!(value.data.value, b"Pouch Data");
 
     // Fetch tuesday
     let tuesday = timetable
@@ -213,7 +219,7 @@ async fn test_object_crawler() {
     assert_eq!(pouch.len(), 1);
     let (key, value) = pouch.into_iter().next().unwrap();
     assert_eq!(key.name, "Pouch Code");
-    assert_eq!(value.data.value.into_inner(), b"MOREDATA15");
+    assert_eq!(value.data.value, b"MOREDATA15");
 
     // Fetch chair which is a Table. Weirdly.
     assert_eq!(guy.chair.size(), 2);
@@ -253,7 +259,7 @@ async fn test_object_crawler() {
         })
         .unwrap();
 
-    assert_eq!(charlie.data.value.clone().into_inner(), b"Never Seen");
+    assert_eq!(charlie.data.value.clone(), b"Never Seen");
 
     // Fetch second friend.
     let david = friends
@@ -262,10 +268,7 @@ async fn test_object_crawler() {
         })
         .unwrap();
 
-    assert_eq!(
-        david.data.value.clone().into_inner(),
-        b"Definitely Imagination"
-    );
+    assert_eq!(david.data.value.clone(), b"Definitely Imagination");
 
     // Now fetch bag which is a Bag. Finally.
     assert_eq!(guy.bag.size(), 2);
@@ -279,7 +282,7 @@ async fn test_object_crawler() {
         })
         .unwrap();
 
-    assert_eq!(item1.value.clone().into_inner(), b"Bag Data");
+    assert_eq!(item1.value.clone(), b"Bag Data");
 
     // Fetch second item from bag.
     let item2 = bag
@@ -288,7 +291,7 @@ async fn test_object_crawler() {
         })
         .unwrap();
 
-    assert_eq!(item2.value.clone().into_inner(), b"Bag Data 2");
+    assert_eq!(item2.value.clone(), b"Bag Data 2");
 
     // Fetch heterogeneous Bag.
     assert_eq!(guy.heterogeneous.size(), 2);
@@ -301,11 +304,11 @@ async fn test_object_crawler() {
     for (key, value) in heterogeneous {
         if key.name == "Bag Item" {
             assert!(
-                matches!(value, HeterogeneousValue::Value(v) if v.value.clone().into_inner() == b"Bag Data")
+                matches!(value, HeterogeneousValue::Value(v) if v.value.clone() == b"Bag Data")
             );
         } else if key.name == "Another Bag Item" {
             assert!(
-                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone().into_inner() == b"Another Bag Data")
+                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone() == b"Another Bag Data")
             );
         } else {
             panic!("Unexpected key in heterogeneous bag: {:?}", key);

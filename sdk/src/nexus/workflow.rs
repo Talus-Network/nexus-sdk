@@ -341,7 +341,7 @@ mod tests {
     async fn test_workflow_actions_publish() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
 
@@ -374,8 +374,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![dag_created],
             vec![],
             vec![],
@@ -411,7 +412,7 @@ mod tests {
     async fn test_workflow_actions_execute() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
@@ -453,11 +454,19 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             tx_digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![execution_created],
             vec![],
             vec![],
+        );
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            gas_coin_ref.clone(),
+            sui::types::Owner::Immutable,
+            Some(1000),
         );
 
         let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {

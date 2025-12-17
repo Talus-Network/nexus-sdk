@@ -4,7 +4,6 @@
 use {
     crate::sui::{self, traits::FieldMaskUtil},
     anyhow::{anyhow, bail},
-    base64::{prelude::BASE64_STANDARD, Engine},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     std::{
         collections::{HashMap, HashSet},
@@ -666,39 +665,6 @@ impl<K, V> DynamicObjectMap<K, V> {
 
     pub fn size(&self) -> usize {
         self.size.parse().unwrap_or(0)
-    }
-}
-
-/// Wrapper around a base64-encoded byte vector within a Sui object.
-#[derive(Clone, Debug)]
-pub struct Bytes(Vec<u8>);
-
-impl Bytes {
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
-    }
-
-    pub fn inner(&self) -> &[u8] {
-        &self.0
-    }
-
-    pub fn inner_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for Bytes {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-
-        let bytes = BASE64_STANDARD
-            .decode(s.as_bytes())
-            .map_err(serde::de::Error::custom)?;
-
-        Ok(Self(bytes))
     }
 }
 

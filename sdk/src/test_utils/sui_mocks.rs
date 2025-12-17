@@ -242,8 +242,9 @@ pub mod grpc {
     pub fn mock_execute_transaction_and_wait_for_checkpoint(
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
         digest: sui::types::Digest,
-        gas_coin_digest: sui::types::Digest,
+        gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
@@ -252,7 +253,7 @@ pub mod grpc {
             object_id: sui::types::Address::from_static("0x1"),
             input_state: sui::types::ObjectIn::NotExist,
             output_state: sui::types::ObjectOut::ObjectWrite {
-                digest: gas_coin_digest,
+                digest: *gas_coin_ref.digest(),
                 owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
             },
             id_operation: sui::types::IdOperation::None,
@@ -324,6 +325,13 @@ pub mod grpc {
 
                 Ok(tonic::Response::new(response))
             });
+
+        mock_get_object_metadata(
+            ledger_service,
+            gas_coin_ref,
+            sui::types::Owner::Immutable,
+            Some(1000),
+        );
     }
 
     pub fn mock_reference_gas_price(
