@@ -29,6 +29,12 @@ runs:
     - name: Set up Docker
       uses: docker/setup-docker-action@v4
 
+    - name: Restart Docker to reinitialize iptables
+      shell: bash
+      run: |
+        sudo systemctl restart docker
+        sleep 5
+
     - name: Install Rust Toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
