@@ -134,6 +134,7 @@ impl CryptoActions {
     ) -> Result<PreKeyFulfilledEvent, NexusError> {
         let fetcher = self.client.event_fetcher();
         let timeout = tokio::time::sleep(Duration::from_secs(20));
+
         let (_poller, mut next_page) = fetcher.poll_nexus_events(None, Some(checkpoint));
 
         tokio::pin!(timeout);
@@ -182,7 +183,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let claim_tx_digest = sui::types::Digest::generate(&mut rng);
         let associate_tx_digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         let ik = IdentityKey::generate();
@@ -200,8 +201,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             claim_tx_digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
@@ -210,8 +212,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             associate_tx_digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],

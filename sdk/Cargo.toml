@@ -307,9 +307,8 @@ optional = true
 
 [dependencies.testcontainers-modules]
 git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
-# TODO: change this once merged.
 branch = "feat/add-sui-support"
-features = ["sui", "redis"]
+features = ["sui", "redis", "postgres"]
 optional = true
 
 # === Dev deps ===

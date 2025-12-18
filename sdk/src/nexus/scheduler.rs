@@ -836,7 +836,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let owner = sui::types::Address::generate(&mut rng);
@@ -855,8 +855,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             events,
@@ -902,7 +903,7 @@ mod tests {
 
         let creation_digest = sui::types::Digest::generate(&mut rng);
         let schedule_digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let owner = sui::types::Address::generate(&mut rng);
@@ -922,11 +923,23 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             creation_digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             creation_events,
+        );
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
         );
 
         // Scheduled occurrence event
@@ -946,8 +959,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             schedule_digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![event_bcs(
@@ -955,17 +969,6 @@ mod tests {
                 nexus_objects.workflow_pkg_id,
                 scheduled_event.clone(),
             )],
-        );
-
-        // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
-        let task_ref =
-            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
         );
 
         let (_url, nexus_client) = mock_nexus_client_with_server(
@@ -1016,7 +1019,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1036,8 +1039,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
@@ -1075,7 +1079,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1095,8 +1099,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
@@ -1130,7 +1135,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1156,8 +1161,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![event_bcs(
@@ -1201,7 +1207,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1227,8 +1233,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![event_bcs(
@@ -1271,7 +1278,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1291,8 +1298,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
@@ -1333,7 +1341,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
 
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let task_id = sui::types::Address::generate(&mut rng);
@@ -1353,8 +1361,9 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],

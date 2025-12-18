@@ -3,7 +3,7 @@
 use {
     crate::{
         events::{FromSuiGrpcEvent, NexusEvent},
-        nexus::error::NexusError,
+        nexus::{crawler::Crawler, error::NexusError},
         sui::{self, traits::*},
         types::NexusObjects,
     },
@@ -69,7 +69,7 @@ impl Signer {
         signature: sui::types::UserSignature,
         gas_coin: &mut sui::types::ObjectReference,
     ) -> Result<ExecutedTransaction, NexusError> {
-        let (response, digest, _checkpoint) = self
+        let (response, digest, checkpoint) = self
             .execute_tx_and_wait_for_checkpoint(tx, signature)
             .await?;
 
@@ -112,33 +112,23 @@ impl Signer {
             )));
         };
 
-        if let Some(new_gas_object) = effects
-            .gas_object_index
-            .and_then(|index| effects.changed_objects.get(index as usize))
-        {
-            let sui::types::ObjectOut::ObjectWrite { digest, .. } = new_gas_object.output_state
-            else {
-                return Err(NexusError::Wallet(anyhow::anyhow!(
-                    "Gas object change is not an ObjectWrite."
-                )));
-            };
+        // Re-fetch the gas coin's new reference.
+        let crawler = Crawler::new(self.client.clone());
 
-            // Version is incremented and digest is updated.
-            *gas_coin = sui::types::ObjectReference::new(
-                new_gas_object.object_id,
-                gas_coin.version() + 1,
-                digest,
-            );
-        }
+        let gas_coin_ref = crawler
+            .get_object_metadata(*gas_coin.object_id())
+            .await
+            .map_err(|e| NexusError::Rpc(e.into()))?
+            .object_ref();
 
-        let evts = nexus_events.collect();
+        *gas_coin = gas_coin_ref;
 
         Ok(ExecutedTransaction {
             effects: *effects,
-            events: evts,
+            events: nexus_events.collect(),
             objects,
             digest,
-            checkpoint: 0,
+            checkpoint,
         })
     }
 
@@ -152,7 +142,7 @@ impl Signer {
         let mut client = self.client.lock().await;
 
         let checkpoints_request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
-            sui::grpc::FieldMask::from_str("transactions.digest,sequence_number"),
+            sui::grpc::FieldMask::from_paths(["transactions.digest", "sequence_number"]),
         );
 
         let tx_request = sui::grpc::ExecuteTransactionRequest::default()

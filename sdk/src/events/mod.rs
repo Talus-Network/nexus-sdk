@@ -76,7 +76,6 @@ macro_rules! events {
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
 events! {
-
     RequestScheduledOccurrenceEvent => RequestScheduledOccurrence, "RequestScheduledOccurrenceEvent",
     RequestScheduledWalkEvent => RequestScheduledWalk, "RequestScheduledWalkEvent",
     OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
@@ -520,6 +519,10 @@ pub struct PreKeyFulfilledEvent {
     /// The address of the user that requested the pre key.
     pub requested_by: sui::types::Address,
     /// Bytes of the fulfilled pre key.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub pre_key_bytes: Vec<u8>,
 }
 
@@ -529,8 +532,16 @@ pub struct PreKeyAssociatedEvent {
     /// The address of the user the pre key is associated with.
     pub claimed_by: sui::types::Address,
     /// Bytes of the pre key.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub pre_key: Vec<u8>,
     /// Bytes of the initial message.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub initial_message: Vec<u8>,
 }
 
