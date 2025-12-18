@@ -22,7 +22,7 @@ pub(crate) async fn execute_dag(
     input_json: serde_json::Value,
     remote: Vec<String>,
     inspect: bool,
-    price_priority_fee: u64,
+    priority_fee_per_gas_unit: u64,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -70,7 +70,7 @@ pub(crate) async fn execute_dag(
         .execute(
             dag_id,
             input_data,
-            price_priority_fee,
+            priority_fee_per_gas_unit,
             Some(&entry_group),
             &storage_conf,
             Arc::clone(&session),

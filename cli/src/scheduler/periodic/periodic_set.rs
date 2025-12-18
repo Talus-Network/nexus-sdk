@@ -17,7 +17,7 @@ pub(crate) async fn set_periodic_task(
     period_ms: u64,
     deadline_offset_ms: Option<u64>,
     max_iterations: Option<u64>,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
@@ -36,7 +36,7 @@ pub(crate) async fn set_periodic_task(
                 period_ms,
                 deadline_offset_ms,
                 max_iterations,
-                gas_price,
+                priority_fee_per_gas_unit,
             },
         )
         .await
@@ -50,7 +50,7 @@ pub(crate) async fn set_periodic_task(
         "period_ms": period_ms,
         "deadline_offset_ms": deadline_offset_ms,
         "max_iterations": max_iterations,
-        "gas_price": gas_price,
+        "priority_fee_per_gas_unit": priority_fee_per_gas_unit,
     }))?;
 
     Ok(())

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
-- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `--priority-fee-per-gas-unit` flag on `nexus dag execute` to forward a priority fee with DAG executions
 - `nexus tool register onchain` command to register onchain tools
 - onchain tool development guide
 - `nexus tool new` onchain tool move template
