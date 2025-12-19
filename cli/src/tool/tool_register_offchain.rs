@@ -12,7 +12,6 @@ use {
     nexus_sdk::{
         idents::{primitives, workflow},
         nexus::error::NexusError,
-        test_utils::gas::fetch_gas_coins,
         transactions::tool,
     },
 };
