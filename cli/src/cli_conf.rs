@@ -48,8 +48,9 @@ impl CliConf {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) struct SuiConf {
+    /// Sui private key base64 encoded bytes.
     #[serde(default)]
-    pub(crate) pk: Option<PathBuf>,
+    pub(crate) pk: Option<String>,
     #[serde(default)]
     pub(crate) grpc_url: Option<reqwest::Url>,
     #[serde(default)]

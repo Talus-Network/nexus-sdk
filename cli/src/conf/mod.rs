@@ -28,11 +28,10 @@ pub(crate) enum ConfCommand {
     Set {
         #[arg(
             long = "sui.pk",
-            help = "Set the Sui private key path",
-            value_name = "PATH",
-            value_parser = ValueParser::from(expand_tilde)
+            help = "Set the Sui private key base64 encoded bytes",
+            value_name = "BASE64"
         )]
-        sui_pk: Option<PathBuf>,
+        sui_pk: Option<String>,
         #[arg(
             long = "sui.grpc-url",
             help = "Set a Sui node GRPC URL",

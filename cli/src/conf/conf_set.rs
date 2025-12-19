@@ -9,7 +9,7 @@ use {
 /// Set the Nexus CLI configuration from the provided arguments.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
-    sui_pk: Option<PathBuf>,
+    sui_pk: Option<String>,
     sui_grpc_url: Option<reqwest::Url>,
     sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
@@ -103,7 +103,6 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
-        let pk_path = tempdir.join("pk.pem");
         let mut rng = rand::thread_rng();
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
@@ -130,7 +129,7 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some(pk_path.clone()),
+            Some("123".to_string()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
             Some(objects_path),
@@ -149,7 +148,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
+        assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
             conf.sui.grpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
@@ -193,7 +192,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
+        assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
             conf.sui.grpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())

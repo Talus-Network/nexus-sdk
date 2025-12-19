@@ -5710,6 +5710,7 @@ dependencies = [
  "argon2",
  "assert_fs",
  "assert_matches",
+ "base64 0.21.7",
  "bincode",
  "chrono",
  "clap",

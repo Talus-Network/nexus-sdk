@@ -1,5 +1,6 @@
 use {
     crate::{loading, prelude::*},
+    base64::{prelude::BASE64_STANDARD, Engine},
     nexus_sdk::{nexus::client::NexusClient, sui},
 };
 
@@ -45,45 +46,33 @@ pub(crate) async fn get_signing_key(
     let key_handle = loading!("Retrieving Sui signing key...");
 
     // Try to get the `SUI_PK` from the environment, otherwise use the
-    // configuration.
-    let pk_str = match std::env::var("SUI_PK") {
-        Ok(s) => s,
-        Err(_) => {
-            let Some(pk_path) = conf.sui.pk.as_ref() else {
-                key_handle.error();
+    // configuration. This value is a base64 encoded string of the private key
+    // bytes.
+    let Some(pk_encoded) = std::env::var("SUI_PK").ok().or_else(|| conf.sui.pk.clone()) else {
+        key_handle.error();
 
-                return Err(NexusCliError::Any(anyhow!(
-                    "{message}\n\n{command}",
-                    message = "The Sui private key path is not configured. Please set it via environment or the CLI configuration.",
-                    command = "$ nexus conf --sui.pk <path.pem>".to_string().bold(),
-                )));
-            };
-
-            match tokio::fs::read_to_string(&pk_path).await {
-                Ok(s) => s,
-                Err(e) => {
-                    key_handle.error();
-
-                    return Err(NexusCliError::Io(e));
-                }
-            }
-        }
+        return Err(NexusCliError::Any(anyhow!(
+            "{message}\n\n{command}",
+            message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
+            command = "$ nexus conf --sui.pk <base64_encoded_key>".to_string().bold(),
+        )));
     };
 
-    match sui::crypto::Ed25519PrivateKey::from_pem(&pk_str) {
-        Ok(pk) => {
-            key_handle.success();
-
-            Ok(pk)
-        }
+    let pk_bytes = match BASE64_STANDARD.decode(&pk_encoded) {
+        Ok(bytes) => bytes,
         Err(e) => {
             key_handle.error();
 
-            Err(NexusCliError::Any(anyhow!(
-                "Failed to parse Sui private key: {e}",
-            )))
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to decode Sui private key from base64: {e}",
+            )));
         }
-    }
+    };
+
+    let mut bytes = [0; 32];
+    bytes.copy_from_slice(&pk_bytes);
+
+    Ok(sui::crypto::Ed25519PrivateKey::new(bytes))
 }
 
 /// Fetch all coins owned by the provided address.
