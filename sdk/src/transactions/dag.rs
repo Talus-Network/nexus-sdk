@@ -552,9 +552,9 @@ pub fn execute(
             dag,
             gas_service,
             network,
+            priority_fee_per_gas_unit,
             entry_group,
             with_vertex_inputs,
-            priority_fee_per_gas_unit,
             clock,
         ],
     ))
