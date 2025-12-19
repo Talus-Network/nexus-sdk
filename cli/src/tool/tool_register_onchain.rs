@@ -27,7 +27,7 @@ pub(crate) async fn register_onchain_tool(
     fqn: ToolFqn,
     description: String,
     witness_id: sui::types::Address,
-    collateral_coin: sui::types::Address,
+    collateral_coin: Option<sui::types::Address>,
     no_save: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -39,7 +39,7 @@ pub(crate) async fn register_onchain_tool(
         module = module
     );
 
-    if Some(collateral_coin) == sui_gas_coin {
+    if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
         return Err(NexusCliError::Any(anyhow!(
             "The coin used for collateral cannot be the same as the gas coin."
         )));
@@ -50,19 +50,10 @@ pub(crate) async fn register_onchain_tool(
     let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
-    let crawler = nexus_client.crawler();
     let conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
 
-    let collateral_coin = crawler
-        .get_object_metadata(collateral_coin)
-        .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to fetch coin object metadata for '{collateral_coin}': {e}"
-            ))
-        })?;
+    let collateral_coin = fetch_coin(client.clone(), address, collateral_coin, 1).await?;
 
     // Generate and customize schemas.
     let (input_schema, output_schema) =

@@ -185,10 +185,11 @@ async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
 /// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
 /// can use the faucet to get the coin. On Mainnet, this fails if the coin is
 /// not present.
-pub(crate) async fn fetch_gas_coin(
+pub(crate) async fn fetch_coin(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
-    sui_gas_coin: Option<sui::types::Address>,
+    specific: Option<sui::types::Address>,
+    nth: usize,
 ) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
     let mut coins = fetch_coins_for_address(client, owner).await?;
 
@@ -200,7 +201,7 @@ pub(crate) async fn fetch_gas_coin(
 
     // If object gas coing object ID was specified, use it. If it was specified
     // and could not be found, return error.
-    match sui_gas_coin {
+    match specific {
         Some(id) => {
             let coin = coins
                 .into_iter()
@@ -209,7 +210,15 @@ pub(crate) async fn fetch_gas_coin(
 
             Ok(coin)
         }
-        None => Ok(coins.remove(0)),
+        None => {
+            if nth >= coins.len() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "The wallet does not have enough coins to select coin #{nth}"
+                )));
+            }
+
+            Ok(coins.swap_remove(nth))
+        }
     }
 }
 
@@ -223,7 +232,7 @@ pub(crate) async fn get_nexus_client(
     let client = build_sui_grpc_client(&conf).await?;
     let pk = get_signing_key(&conf).await?;
     let owner = pk.public_key().derive_address();
-    let gas_coin = fetch_gas_coin(client.clone(), owner, sui_gas_coin).await?;
+    let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
     let nexus_objects = get_nexus_objects(&mut conf).await?;
     let grpc_url = client.lock().await.uri().to_string();
 
