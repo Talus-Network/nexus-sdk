@@ -22,7 +22,7 @@ pub struct DagExecutionConfig {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     pub entry_group: SchedulerEntryGroup,
     pub inputs: Map<String, NexusData>,
     pub invoker: sui::types::Address,
@@ -286,7 +286,7 @@ mod tests {
         let expected = DagExecutionConfig {
             dag: dag_id,
             network: network_id,
-            gas_price: 1000,
+            priority_fee_per_gas_unit: 1000,
             entry_group: SchedulerEntryGroup {
                 name: "default".to_string(),
             },
@@ -299,7 +299,10 @@ mod tests {
 
         assert_eq!(parsed.dag, expected.dag);
         assert_eq!(parsed.network, expected.network);
-        assert_eq!(parsed.gas_price, expected.gas_price);
+        assert_eq!(
+            parsed.priority_fee_per_gas_unit,
+            expected.priority_fee_per_gas_unit
+        );
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
         assert_eq!(parsed.invoker, expected.invoker);

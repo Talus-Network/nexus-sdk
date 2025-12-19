@@ -401,7 +401,7 @@ pub fn execute(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -428,9 +428,6 @@ pub fn execute(
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-
-    // `gas_price: u64`
-    let gas_price_arg = tx.input(pure_arg(&gas_price)?);
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -539,6 +536,9 @@ pub fn execute(
         false,
     ));
 
+    // `priority_fee_per_gas_unit: u64`
+    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+
     // `workflow::default_tap::begin_dag_execution()`
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -552,9 +552,9 @@ pub fn execute(
             dag,
             gas_service,
             network,
-            gas_price_arg,
             entry_group,
             with_vertex_inputs,
+            priority_fee_per_gas_unit,
             clock,
         ],
     ))
@@ -811,12 +811,12 @@ mod tests {
         );
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let gas_price = 0;
+        let priority_fee_per_gas_unit = 0;
         execute(
             &mut tx,
             &nexus_objects,
             &dag,
-            gas_price,
+            priority_fee_per_gas_unit,
             entry_group,
             &input_data,
         )
