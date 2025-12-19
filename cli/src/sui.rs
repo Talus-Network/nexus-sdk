@@ -44,22 +44,29 @@ pub(crate) async fn get_signing_key(
 ) -> AnyResult<sui::crypto::Ed25519PrivateKey, NexusCliError> {
     let key_handle = loading!("Retrieving Sui signing key...");
 
-    let Some(pk_path) = conf.sui.pk.as_ref() else {
-        key_handle.error();
-
-        return Err(NexusCliError::Any(anyhow!(
-            "{message}\n\n{command}",
-            message = "The Sui private key path is not configured. Please set it via the CLI configuration.",
-            command = "$ nexus conf --sui.pk <path.pem>".to_string().bold(),
-        )));
-    };
-
-    let pk_str = match tokio::fs::read_to_string(&pk_path).await {
+    // Try to get the `SUI_PK` from the environment, otherwise use the
+    // configuration.
+    let pk_str = match std::env::var("SUI_PK") {
         Ok(s) => s,
-        Err(e) => {
-            key_handle.error();
+        Err(_) => {
+            let Some(pk_path) = conf.sui.pk.as_ref() else {
+                key_handle.error();
 
-            return Err(NexusCliError::Io(e));
+                return Err(NexusCliError::Any(anyhow!(
+                    "{message}\n\n{command}",
+                    message = "The Sui private key path is not configured. Please set it via environment or the CLI configuration.",
+                    command = "$ nexus conf --sui.pk <path.pem>".to_string().bold(),
+                )));
+            };
+
+            match tokio::fs::read_to_string(&pk_path).await {
+                Ok(s) => s,
+                Err(e) => {
+                    key_handle.error();
+
+                    return Err(NexusCliError::Io(e));
+                }
+            }
         }
     };
 
@@ -73,9 +80,7 @@ pub(crate) async fn get_signing_key(
             key_handle.error();
 
             Err(NexusCliError::Any(anyhow!(
-                "Failed to parse Sui private key from {}: {}",
-                pk_path.display(),
-                e
+                "Failed to parse Sui private key: {e}",
             )))
         }
     }
@@ -233,11 +238,16 @@ pub(crate) async fn get_nexus_client(
     let nexus_objects = get_nexus_objects(&mut conf).await?;
     let grpc_url = client.lock().await.uri().to_string();
 
-    let Some(gql_url) = conf.sui.gql_url else {
+    // Try to get the `SUI_GQL_URL` from the environment, otherwise use
+    // the configuration.
+    let Some(gql_url) = std::env::var("SUI_GQL_URL")
+        .ok()
+        .or_else(|| conf.sui.gql_url.as_ref().map(|u| u.to_string()))
+    else {
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
             message =
-                "The Sui GraphQL URL is not configured. Please set it via the CLI configuration.",
+                "The Sui GraphQL URL is not configured. Please set it via environment or the CLI configuration.",
             command = "$ nexus conf --sui.gql-url <url>".to_string().bold(),
         )));
     };
@@ -248,7 +258,7 @@ pub(crate) async fn get_nexus_client(
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![gas_coin], sui_gas_budget)
         .with_grpc_url(&grpc_url)
-        .with_gql_url(gql_url.as_str())
+        .with_gql_url(&gql_url)
         .build()
         .await
         .map_err(NexusCliError::Nexus)?;

@@ -31,17 +31,15 @@ pub(crate) async fn set_nexus_conf(
     if let Some(objects_path) = nexus_objects_path {
         let content = std::fs::read_to_string(&objects_path).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to read objects file {}: {}",
+                "Failed to read objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
         let objects: NexusObjects = toml::from_str(&content).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to parse objects file {}: {}",
+                "Failed to parse objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
