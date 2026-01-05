@@ -176,7 +176,17 @@ fn execute_summary_command(package_path: &Path) -> AnyResult<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("'sui move summary' failed: {}", stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Combine stdout and stderr for better error reporting.
+        let error_output = match (stdout.is_empty(), stderr.is_empty()) {
+            (false, false) => format!("{}\n{}", stdout, stderr),
+            (false, true) => stdout.to_string(),
+            (true, false) => stderr.to_string(),
+            (true, true) => "Command failed with no output".to_string(),
+        };
+
+        bail!("'sui move summary' failed:\n{}", error_output);
     }
 
     Ok(())
