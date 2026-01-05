@@ -62,6 +62,15 @@ pub(crate) enum RegisterCommand {
     #[command(about = "Register an onchain tool")]
     Onchain {
         #[arg(
+            long = "package-path",
+            short = 'p',
+            help = "Path to the onchain tool package folder containing Move.toml.",
+            value_name = "PATH",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        package_path: PathBuf,
+
+        #[arg(
             long = "module-path",
             short = 'm',
             help = "The module path in the format 'package_address::module_name'.",
@@ -291,6 +300,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 .await
             }
             RegisterCommand::Onchain {
+                package_path,
                 module_path,
                 tool_fqn,
                 description,
@@ -300,6 +310,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 gas,
             } => {
                 register_onchain_tool(
+                    package_path,
                     module_path,
                     tool_fqn,
                     description,

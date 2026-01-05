@@ -1,14 +1,11 @@
 //! Schema generation utilities for Move onchain tools.
 //!
-//! Provides introspection of Move modules to automatically generate
-//! input/output schemas for tool registration.
+//! Generates input/output schemas by parsing the JSON output of `sui move summary`,
+//! eliminating the need for RPC calls to introspect published packages.
 
-mod input;
-mod output;
-mod types;
+mod summary;
 
-pub use {
-    input::generate_input_schema,
-    output::generate_output_schema,
-    types::{convert_move_type_to_schema, is_tx_context_param},
+pub use summary::{
+    generate_input_schema_from_summary, generate_output_schema_from_summary, run_summary_command,
+    ModuleSummary,
 };
