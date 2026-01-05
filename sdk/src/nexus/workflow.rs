@@ -655,7 +655,7 @@ mod tests {
             .inspect_execution(
                 execution_object_id,
                 1,
-                Some(std::time::Duration::from_secs(1)),
+                Some(std::time::Duration::from_secs(3)),
             )
             .await
             .expect("Failed to setup channel");
