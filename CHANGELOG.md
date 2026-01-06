@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus tool register` now has two subcommands for both types of tools
 - wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
 - onchain tools now use default execute parameter names
+- use `sui move summary` to generate input and output schemas for onchain tools
 
 ## [`0.3.0`] - 2025-11-10
 
