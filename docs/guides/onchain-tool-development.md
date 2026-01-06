@@ -270,6 +270,7 @@ Use the Nexus CLI to register your tool with automatic schema generation:
 
 ```bash
 nexus tool register onchain \
+  --package-path <PATH TO MOVE PACKAGE>
   --module-path "$PACKAGE_ID::my_onchain_tool" \
   --tool-fqn "xyz.mydomain.my_onchain_tool@1" \
   --description "My custom onchain tool that processes values" \
@@ -278,9 +279,9 @@ nexus tool register onchain \
 
 The CLI will:
 
-1. **Analyze your `execute` function** to generate input schema
-1. **Generate output schema** from your `Output` enum
-1. **Prompt for parameter descriptions** (interactive customization)
+1. **Run sui move summary** on your move package
+1. **Generate input schema** from the `execute` function
+1. **Generate output schema** from the `Output` enum
 1. **Register the tool** in the Nexus tool registry
 
 ### Step 4: Verify Registration
@@ -303,7 +304,7 @@ An example JSON DAG using the onchain tool is as follows:
   "default_values": [
     {
       "vertex": "just_execute_first",
-      "input_port": "2",
+      "input_port": "clock",
       "value": {
         "storage": "inline",
         "data": "0x6"
@@ -311,7 +312,7 @@ An example JSON DAG using the onchain tool is as follows:
     },
     {
       "vertex": "just_execute_second",
-      "input_port": "2",
+      "input_port": "clock",
       "value": {
         "storage": "inline",
         "data": "0x6"
@@ -327,11 +328,11 @@ An example JSON DAG using the onchain tool is as follows:
       "name": "just_execute_first",
       "entry_ports": [
         {
-          "name": "0",
+          "name": "state",
           "encrypted": false
         },
         {
-          "name": "1",
+          "name": "input_value",
           "encrypted": false
         }
       ]
@@ -344,7 +345,7 @@ An example JSON DAG using the onchain tool is as follows:
       "name": "just_execute_second",
       "entry_ports": [
         {
-          "name": "0",
+          "name": "state",
           "encrypted": false
         }
       ]
@@ -359,7 +360,7 @@ An example JSON DAG using the onchain tool is as follows:
       },
       "to": {
         "vertex": "just_execute_second",
-        "input_port": "1"
+        "input_port": "input_value"
       }
     }
   ]

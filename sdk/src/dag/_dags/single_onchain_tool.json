@@ -3,16 +3,16 @@
     {
       "kind": {
         "variant": "on_chain",
-        "tool_fqn": "xyz.taluslabs.example@1"
+        "tool_fqn": "xyz.mydomain.my_onchain_tool@10"
       },
       "name": "counter_increment",
       "entry_ports": [
         {
-          "name": "0",
+          "name": "state",
           "encrypted": false
         },
         {
-          "name": "1",
+          "name": "increase_with",
           "encrypted": false
         }
       ]
