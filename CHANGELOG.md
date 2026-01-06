@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crypto auth` now uses the new handshake algorithm
 - `nexus tool register` now has two subcommands for both types of tools
 - wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
+- onchain tools now use default execute parameter names
 
 ## [`0.3.0`] - 2025-11-10
 
