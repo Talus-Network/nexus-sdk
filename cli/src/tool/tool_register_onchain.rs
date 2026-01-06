@@ -1,11 +1,18 @@
 use {
     crate::{
-        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
-        sui::*, tool::tool_register_offchain,
+        command_title,
+        display::json_output,
+        loading,
+        notify_error,
+        notify_success,
+        prelude::*,
+        sui::*,
+        tool::tool_register_offchain,
     },
     nexus_sdk::{
         idents::{primitives, workflow},
-        onchain_schema_gen, sui,
+        onchain_schema_gen,
+        sui,
         transactions::tool,
     },
     serde_json::json,
