@@ -286,8 +286,12 @@ fn build_input_schema_map(parameters: &[Parameter]) -> AnyResult<Map<String, Val
             continue;
         }
 
-        let param_schema = convert_type_to_schema(&param.type_)?;
-        schema_map.insert(param_index.to_string(), param_schema);
+        let mut param_schema = convert_type_to_schema(&param.type_)?;
+        // Add index field to preserve parameter ordering for PTB construction.
+        if let Value::Object(ref mut obj) = param_schema {
+            obj.insert("index".to_string(), Value::Number(param_index.into()));
+        }
+        schema_map.insert(param.name.clone(), param_schema);
         param_index += 1;
     }
 

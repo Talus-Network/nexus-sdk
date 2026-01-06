@@ -46,7 +46,7 @@
       "name": "counter_increment",
       "entry_ports": [
         {
-          "name": "0",
+          "name": "state",
           "encrypted": false
         }
       ]
@@ -72,7 +72,7 @@
       },
       "to": {
         "vertex": "counter_increment",
-        "input_port": "1"
+        "input_port": "state"
       }
     }
   ]

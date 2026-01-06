@@ -8,15 +8,11 @@
       "name": "counter_increment_first",
       "entry_ports": [
         {
-          "name": "0",
+          "name": "state",
           "encrypted": false
         },
         {
-          "name": "1",
-          "encrypted": false
-        },
-        {
-          "name": "2",
+          "name": "increase_with",
           "encrypted": false
         }
       ]
@@ -29,11 +25,7 @@
       "name": "counter_increment_second",
       "entry_ports": [
         {
-          "name": "0",
-          "encrypted": false
-        },
-        {
-          "name": "2",
+          "name": "state",
           "encrypted": false
         }
       ]
@@ -48,7 +40,7 @@
       },
       "to": {
         "vertex": "counter_increment_second",
-        "input_port": "1"
+        "input_port": "increase_with"
       }
     }
   ]
