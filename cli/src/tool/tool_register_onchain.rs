@@ -184,30 +184,10 @@ async fn generate_and_customize_schemas(
     };
 
     // Allow user to customize parameter descriptions.
-    let input_handle = loading!("Customizing input parameter descriptions...");
-    let input_schema = match customize_parameter_descriptions(base_input_schema) {
-        Ok(schema) => {
-            input_handle.success();
-            schema
-        }
-        Err(e) => {
-            input_handle.error();
-            return Err(e);
-        }
-    };
+    let input_schema = customize_parameter_descriptions(base_input_schema)?;
 
     // Allow user to customize output variant and field descriptions.
-    let output_handle = loading!("Customizing output variant and field descriptions...");
-    let output_schema = match customize_output_variant_and_field_descriptions(base_output_schema) {
-        Ok(schema) => {
-            output_handle.success();
-            schema
-        }
-        Err(e) => {
-            output_handle.error();
-            return Err(e);
-        }
-    };
+    let output_schema = customize_output_variant_and_field_descriptions(base_output_schema)?;
 
     Ok((input_schema, output_schema))
 }
