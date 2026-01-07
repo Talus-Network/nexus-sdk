@@ -1,5 +1,5 @@
 //! This module wraps a Sui GQL endpoint to provide the functionality to fetch
-//! events. These are sent over a channel to the consumer. ALl events are parsed
+//! events. These are sent over a channel to the consumer. All events are parsed
 //! to [`NexusEvent`]. Those that cannot be parsed are ignored.
 //!
 //! Note that the polling will stop whenever the receiver side of the channel is
@@ -113,9 +113,7 @@ impl EventFetcher {
                     let response = match client.post(&url).json(&query).send().await {
                         Ok(resp) => resp,
                         Err(_) => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -126,9 +124,7 @@ impl EventFetcher {
                     {
                         Ok(data) => data,
                         Err(_) => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -142,9 +138,7 @@ impl EventFetcher {
                     {
                         Some((events, page_info)) => (events, page_info),
                         None => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -152,9 +146,7 @@ impl EventFetcher {
 
                     // If there are no events, backoff.
                     if events.is_empty() {
-                        tokio::time::sleep(poll_interval).await;
-
-                        poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                        Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                         continue;
                     }
@@ -205,6 +197,15 @@ impl EventFetcher {
         };
 
         (poller, next_page)
+    }
+
+    async fn sleep_and_backoff(
+        current_interval: &mut tokio::time::Duration,
+        max_interval: tokio::time::Duration,
+    ) {
+        tokio::time::sleep(*current_interval).await;
+
+        *current_interval = std::cmp::min(*current_interval * 2, max_interval);
     }
 }
 
