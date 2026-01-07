@@ -84,7 +84,10 @@ pub(crate) async fn get_signing_key(
     // Try to get the `SUI_PK` from the environment, otherwise use the
     // configuration. This value is a base64 encoded string of the private key
     // bytes.
-    let Some(pk_encoded) = std::env::var("SUI_PK").ok().or_else(|| conf.sui.pk.clone()) else {
+    let Some(pk_encoded) = std::env::var("SUI_PK")
+        .ok()
+        .or_else(|| conf.sui.pk.clone().map(|pk| pk.peek().to_string()))
+    else {
         key_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(

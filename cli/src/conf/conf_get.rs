@@ -38,7 +38,7 @@ mod tests {
         };
 
         let sui_conf = SuiConf {
-            pk: Some("123".to_string()),
+            pk: Some("123".to_string().into()),
             rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             gql_url: Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
         };
