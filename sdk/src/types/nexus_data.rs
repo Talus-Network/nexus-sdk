@@ -376,8 +376,7 @@ impl Storable for WalrusStorage {
 
         if store_for_epochs > WALRUS_MAX_EPOCHS {
             return Err(anyhow::anyhow!(
-                "Walrus save for epochs exceeds maximum allowed ({})",
-                WALRUS_MAX_EPOCHS
+                "Walrus save for epochs exceeds maximum allowed ({WALRUS_MAX_EPOCHS})"
             ));
         }
 

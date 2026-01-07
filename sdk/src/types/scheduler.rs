@@ -2,12 +2,7 @@
 //! It provides a way to serialize and deserialize the task and any helper structures.
 use {
     super::{
-        serde_parsers::{
-            deserialize_sui_address,
-            deserialize_sui_u64,
-            serialize_sui_address,
-            serialize_sui_u64,
-        },
+        serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         TypeName,
     },
     crate::sui,
@@ -16,11 +11,14 @@ use {
     std::borrow::Cow,
 };
 
+// TODO: @david - these types can be simplified with the new object crawler grpc
+// implementation. Probably can drop the custom deserialization logic.
+
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
 #[derive(Clone, Debug, Serialize)]
 pub struct DagExecutionConfig {
-    pub dag: sui::ObjectID,
-    pub network: sui::ObjectID,
+    pub dag: sui::types::Address,
+    pub network: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -30,22 +28,14 @@ pub struct DagExecutionConfig {
     pub entry_group: Value,
     #[serde(default)]
     pub inputs: Value,
-    #[serde(
-        deserialize_with = "deserialize_sui_address",
-        serialize_with = "serialize_sui_address"
-    )]
-    pub invoker: sui::Address,
+    pub invoker: sui::types::Address,
 }
 
 /// Representation of `nexus_workflow::scheduler::Task`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
-    pub id: sui::UID,
-    #[serde(
-        deserialize_with = "deserialize_sui_address",
-        serialize_with = "serialize_sui_address"
-    )]
-    pub owner: sui::Address,
+    pub id: sui::types::Address,
+    pub owner: sui::types::Address,
     #[serde(default)]
     pub metadata: Value,
     #[serde(default)]
@@ -60,7 +50,7 @@ pub struct Task {
 /// Minimal representation of `nexus_primitives::policy::Policy`.
 #[derive(Clone, Debug, Serialize)]
 pub struct Policy {
-    pub id: sui::UID,
+    pub id: sui::types::Address,
     pub dfa: ConfiguredAutomaton,
     #[serde(default)]
     pub alphabet_index: Value,
@@ -76,7 +66,7 @@ pub struct Policy {
 /// Minimal representation of `nexus_primitives::automaton::ConfiguredAutomaton`.
 #[derive(Clone, Debug, Serialize)]
 pub struct ConfiguredAutomaton {
-    pub id: sui::UID,
+    pub id: sui::types::Address,
     #[serde(default)]
     pub dfa: Value,
 }
@@ -85,7 +75,7 @@ pub struct ConfiguredAutomaton {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PolicySymbol {
     Witness(MoveTypeName),
-    Uid(sui::ObjectID),
+    Uid(sui::types::Address),
 }
 
 impl Serialize for PolicySymbol {
@@ -126,7 +116,7 @@ impl<'de> Deserialize<'de> for PolicySymbol {
             #[serde(default)]
             witness: Option<MoveTypeName>,
             #[serde(default)]
-            uid: Option<sui::ObjectID>,
+            uid: Option<sui::types::Address>,
         }
 
         #[derive(Deserialize)]
@@ -172,7 +162,7 @@ impl PolicySymbol {
         }
     }
 
-    pub fn as_uid(&self) -> Option<&sui::ObjectID> {
+    pub fn as_uid(&self) -> Option<&sui::types::Address> {
         match self {
             PolicySymbol::Uid(uid) => Some(uid),
             PolicySymbol::Witness(_) => None,
@@ -274,7 +264,7 @@ impl<'de> Deserialize<'de> for Policy {
     {
         #[derive(Deserialize)]
         struct Inner {
-            id: sui::UID,
+            id: sui::types::Address,
             dfa: ConfiguredAutomaton,
             #[serde(default)]
             alphabet_index: Value,
@@ -306,7 +296,7 @@ impl<'de> Deserialize<'de> for ConfiguredAutomaton {
     {
         #[derive(Deserialize)]
         struct Inner {
-            id: sui::UID,
+            id: sui::types::Address,
             #[serde(default)]
             dfa: Value,
         }
@@ -327,8 +317,8 @@ impl<'de> Deserialize<'de> for DagExecutionConfig {
     {
         #[derive(Deserialize)]
         struct Inner {
-            dag: sui::ObjectID,
-            network: sui::ObjectID,
+            dag: sui::types::Address,
+            network: sui::types::Address,
             #[serde(
                 deserialize_with = "deserialize_sui_u64",
                 serialize_with = "serialize_sui_u64"
@@ -338,11 +328,7 @@ impl<'de> Deserialize<'de> for DagExecutionConfig {
             entry_group: Value,
             #[serde(default)]
             inputs: Value,
-            #[serde(
-                deserialize_with = "deserialize_sui_address",
-                serialize_with = "serialize_sui_address"
-            )]
-            invoker: sui::Address,
+            invoker: sui::types::Address,
         }
 
         let inner: Inner = deserialize_move_struct(deserializer)?;
@@ -464,28 +450,24 @@ fn is_value_wrapper_key(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        serde_json::json,
-        sui::{move_ident_str, MoveStructTag, MoveTypeTag, ObjectID},
-    };
+    use {super::*, crate::idents::sui_framework, serde_json::json};
 
     #[test]
     fn policy_deserializes_from_wrapped_move_struct() {
-        let policy_id = ObjectID::from_hex_literal("0x2").expect("valid object id");
-        let dfa_id = ObjectID::from_hex_literal("0x3").expect("valid object id");
+        let policy_id = sui::types::Address::from_static("0x2");
+        let dfa_id = sui::types::Address::from_static("0x3");
 
         let expected = Policy {
-            id: sui::UID::new(policy_id),
+            id: policy_id,
             dfa: ConfiguredAutomaton {
-                id: sui::UID::new(dfa_id),
+                id: dfa_id,
                 dfa: json!({
-                    "type": MoveStructTag {
-                        address: *sui::FRAMEWORK_PACKAGE_ID,
-                        module: move_ident_str!("dummy").into(),
-                        name: move_ident_str!("Config").into(),
-                        type_params: vec![MoveTypeTag::Address],
-                    }
+                    "type": sui::types::StructTag::new(
+                        sui_framework::PACKAGE_ID,
+                        sui::types::Identifier::from_static("dummy"),
+                        sui::types::Identifier::from_static("Config"),
+                        vec![sui::types::TypeTag::Address],
+                    ),
                 }),
             },
             alphabet_index: Value::Null,
@@ -507,9 +489,10 @@ mod tests {
 
     #[test]
     fn dag_execution_config_deserializes_from_wrapped_move_struct() {
-        let dag_id = ObjectID::from_hex_literal("0xabc").expect("valid object id");
-        let network_id = ObjectID::from_hex_literal("0xdef").expect("valid object id");
-        let invoker = sui::Address::random_for_testing_only();
+        let mut rng = rand::thread_rng();
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let network_id = sui::types::Address::generate(&mut rng);
+        let invoker = sui::types::Address::generate(&mut rng);
 
         let expected = DagExecutionConfig {
             dag: dag_id,
