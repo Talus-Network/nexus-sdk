@@ -1,7 +1,7 @@
 use {
     crate::{command_title, display::json_output, loading, prelude::*},
     nexus_sdk::{
-        types::StorageKind,
+        types::{SecretValue, StorageKind},
         walrus::{WALRUS_AGGREGATOR_URL, WALRUS_PUBLISHER_URL},
     },
 };
@@ -46,7 +46,7 @@ pub(crate) async fn set_nexus_conf(
         conf.nexus = Some(objects);
     }
 
-    conf.sui.pk = sui_pk.or(conf.sui.pk);
+    conf.sui.pk = sui_pk.map(SecretValue::from).or(conf.sui.pk);
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
     conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
@@ -129,7 +129,7 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some("123".to_string()),
+            Some("123".to_string().into()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
             Some(objects_path),
@@ -148,7 +148,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some("123".to_string()));
+        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
@@ -192,7 +192,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some("123".to_string()));
+        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
