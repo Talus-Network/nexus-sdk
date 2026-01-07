@@ -71,13 +71,10 @@ mod tests {
         // Isolate the filesystem & environment so the test is self-contained.
         let tmp = TempDir::new().expect("temp dir");
 
-        // SAFETY: tests
-        unsafe {
-            env::set_var("XDG_CONFIG_HOME", tmp.path());
+        env::set_var("XDG_CONFIG_HOME", tmp.path());
 
-            // Supply the master-key via environment variable.
-            env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
-        }
+        // Supply the master-key via environment variable.
+        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
 
         // Sanity-check that the master key can now be derived.
         crate::utils::secrets::master_key::get_master_key()
@@ -110,10 +107,7 @@ mod tests {
         // Basic sanity: session IDs match.
         assert_eq!(saved_session.lock().await.id(), &session_id);
 
-        // SAFETY: tests
-        unsafe {
-            // Clean-up env so other tests are unaffected.
-            env::remove_var("XDG_CONFIG_HOME");
-        }
+        // Clean-up env so other tests are unaffected.
+        env::remove_var("XDG_CONFIG_HOME");
     }
 }

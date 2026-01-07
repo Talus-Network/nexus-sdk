@@ -117,20 +117,14 @@ mod tests {
         let temp_home = tempfile::tempdir().expect("temp home directory");
         let temp_home_path = temp_home.path().to_path_buf();
 
-        // SAFETY: tests.
-        unsafe {
-            std::env::set_var("HOME", &temp_home_path);
-        }
+        std::env::set_var("HOME", &temp_home_path);
 
         let expanded = expand_tilde("~/test").unwrap();
         assert_eq!(expanded, temp_home_path.join("test"));
 
-        // SAFETY: tests.
-        unsafe {
-            match original_home {
-                Some(value) => std::env::set_var("HOME", value),
-                None => std::env::remove_var("HOME"),
-            }
+        match original_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
         }
     }
 
