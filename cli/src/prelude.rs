@@ -30,8 +30,12 @@ pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";
 
 /// objects.toml locations for each network.
-pub(crate) const DEVNET_OBJECTS_TOML: &str =
-    "https://storage.googleapis.com/production-talus-sui-objects/v0.4.0/objects.devnet.toml";
+pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
+    "https://storage.googleapis.com/production-talus-sui-objects/v",
+    env!("CARGO_PKG_VERSION"),
+    "/objects.devnet.toml"
+);
+
 pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 

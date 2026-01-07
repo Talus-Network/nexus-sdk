@@ -38,8 +38,8 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
-    #[command(subcommand, about = "Manage scheduler tasks and occurrences")]
-    Scheduler(scheduler::SchedulerCommand),
+    // #[command(subcommand, about = "Manage scheduler tasks and occurrences")]
+    // Scheduler(scheduler::SchedulerCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Manage Nexus networks and leader caps")]
@@ -86,7 +86,7 @@ async fn main() {
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Network(network) => network::handle(network).await,
         Command::Gas(gas) => gas::handle(gas).await,
-        Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
+        // Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
         Command::Crypto(crypto) => crypto::handle(crypto).await,
         Command::Completion(completion) => completion::handle(completion),
     };
