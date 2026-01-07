@@ -16,7 +16,7 @@ use {
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
 
-    let nexus_client = get_nexus_client(None, 100_000_000).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
 
     let objects_handle = loading!("Fetching task object...");

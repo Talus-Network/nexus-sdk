@@ -45,6 +45,10 @@ async fn main() -> anyhow::Result<()> {
 
 ## 🔑 Signer
 
+### Signing Mechanism
+
+The `Signer` struct accepts a [`sui::crypto::Ed25519PrivateKey`] and is responsible for signing and executing transactions on behalf of the active wallet address.
+
 ### Key Public Behaviors
 
 - Automatically signs and executes transactions.

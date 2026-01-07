@@ -21,9 +21,8 @@ pub struct ExecutedTransaction {
     pub checkpoint: u64,
 }
 
-/// We want to provide flexibility when it comes to signing transactions. We
-/// accept both - a [`sui::WalletContext`] and a tuple of a [`sui::Client`] and
-/// a secret mnemonic string.
+/// The Signer struct capable of signing and executing transactions based on the
+/// provided [`sui::crypto::Ed25519PrivateKey`].
 #[derive(Clone)]
 pub struct Signer {
     pub(super) client: Arc<Mutex<sui::grpc::Client>>,

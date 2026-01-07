@@ -14,7 +14,7 @@ use {
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Neuxs tools");
 
-    let nexus_client = get_nexus_client(None, 100_000_000).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
 

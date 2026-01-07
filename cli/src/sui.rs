@@ -14,14 +14,14 @@ pub(crate) async fn build_sui_grpc_client(
     // the configuration.
     let Some(url) = std::env::var("SUI_RPC_URL")
         .ok()
-        .or_else(|| conf.sui.grpc_url.as_ref().map(|u| u.to_string()))
+        .or_else(|| conf.sui.rpc_url.as_ref().map(|u| u.to_string()))
     else {
         client_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
-            message = "The Sui GRPC URL is not configured. Please set it via the environment variable or the CLI configuration.",
-            command = "$ nexus conf --sui.grpc-url <url>".to_string().bold(),
+            message = "The Sui RPC URL is not configured. Please set it via the environment variable or the CLI configuration.",
+            command = "$ nexus conf --sui.rpc-url <url>".to_string().bold(),
         )));
     };
 
@@ -39,6 +39,42 @@ pub(crate) async fn build_sui_grpc_client(
     }
 }
 
+/// Parses an Ed25519 private key from base64.
+///
+/// Tries formats in order (like Sui's keytool import):
+/// 1. Base64 33 bytes (flag + key) - Sui format, flag must be 0x00 (ed25519)
+/// 2. Base64 32 bytes (raw key) - assumes Ed25519
+fn parse_ed25519_private_key(
+    pk_encoded: &str,
+) -> AnyResult<sui::crypto::Ed25519PrivateKey, String> {
+    let pk_bytes = BASE64_STANDARD
+        .decode(pk_encoded)
+        .map_err(|e| format!("Failed to decode Sui private key from base64: {e}"))?;
+
+    // Try Sui format: 33 bytes (flag + key)
+    if let Ok(bytes) = <[u8; 33]>::try_from(pk_bytes.as_slice()) {
+        const ED25519_FLAG: u8 = 0x00;
+        return match bytes[0] {
+            ED25519_FLAG => Ok(sui::crypto::Ed25519PrivateKey::new(
+                bytes[1..].try_into().unwrap(),
+            )),
+            flag => Err(format!(
+                "unsupported key scheme flag 0x{flag:02x}, only ed25519 (0x00) is supported"
+            )),
+        };
+    }
+
+    // Try raw Ed25519: 32 bytes
+    if let Ok(bytes) = <[u8; 32]>::try_from(pk_bytes.as_slice()) {
+        return Ok(sui::crypto::Ed25519PrivateKey::new(bytes));
+    }
+
+    Err(format!(
+        "invalid private key length {}, expected 32 (raw ed25519) or 33 (sui format with flag)",
+        pk_bytes.len()
+    ))
+}
+
 /// Create a wallet context from the provided path.
 pub(crate) async fn get_signing_key(
     conf: &CliConf,
@@ -48,7 +84,10 @@ pub(crate) async fn get_signing_key(
     // Try to get the `SUI_PK` from the environment, otherwise use the
     // configuration. This value is a base64 encoded string of the private key
     // bytes.
-    let Some(pk_encoded) = std::env::var("SUI_PK").ok().or_else(|| conf.sui.pk.clone()) else {
+    let Some(pk_encoded) = std::env::var("SUI_PK")
+        .ok()
+        .or_else(|| conf.sui.pk.clone().map(|pk| pk.peek().to_string()))
+    else {
         key_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
@@ -58,21 +97,16 @@ pub(crate) async fn get_signing_key(
         )));
     };
 
-    let pk_bytes = match BASE64_STANDARD.decode(&pk_encoded) {
-        Ok(bytes) => bytes,
+    match parse_ed25519_private_key(&pk_encoded) {
+        Ok(key) => {
+            key_handle.success();
+            Ok(key)
+        }
         Err(e) => {
             key_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(
-                "Failed to decode Sui private key from base64: {e}",
-            )));
+            Err(NexusCliError::Any(anyhow!("{e}")))
         }
-    };
-
-    let mut bytes = [0; 32];
-    bytes.copy_from_slice(&pk_bytes);
-
-    Ok(sui::crypto::Ed25519PrivateKey::new(bytes))
+    }
 }
 
 /// Fetch all coins owned by the provided address.
@@ -139,7 +173,7 @@ pub(crate) async fn get_nexus_objects(
     }
 
     // For some networks, we attempt to load the objects from public endpoints.
-    let response = match conf.sui.grpc_url.as_ref() {
+    let response = match conf.sui.rpc_url.as_ref() {
         Some(url) if url.as_str() == DEVNET_NEXUS_RPC_URL => {
             fetch_objects_from_url(DEVNET_OBJECTS_TOML).await
         }
@@ -182,14 +216,16 @@ async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
     Ok(objects)
 }
 
-/// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
-/// can use the faucet to get the coin. On Mainnet, this fails if the coin is
-/// not present.
+/// Fetch a coin from the Sui client.
+///
+/// `by_address`: If specified, fetch the coin with this object ID.
+/// `by_order`: If `by_address` is not specified, fetch the coin by its order in
+/// the list of owned coins (0-based).
 pub(crate) async fn fetch_coin(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
-    specific: Option<sui::types::Address>,
-    nth: usize,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
 ) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
     let mut coins = fetch_coins_for_address(client, owner).await?;
 
@@ -201,7 +237,7 @@ pub(crate) async fn fetch_coin(
 
     // If object gas coing object ID was specified, use it. If it was specified
     // and could not be found, return error.
-    match specific {
+    match by_address {
         Some(id) => {
             let coin = coins
                 .into_iter()
@@ -211,13 +247,13 @@ pub(crate) async fn fetch_coin(
             Ok(coin)
         }
         None => {
-            if nth >= coins.len() {
+            if by_order >= coins.len() {
                 return Err(NexusCliError::Any(anyhow!(
-                    "The wallet does not have enough coins to select coin #{nth}"
+                    "The wallet does not have enough coins to select coin #{by_order}"
                 )));
             }
 
-            Ok(coins.swap_remove(nth))
+            Ok(coins.swap_remove(by_order))
         }
     }
 }
@@ -234,7 +270,7 @@ pub(crate) async fn get_nexus_client(
     let owner = pk.public_key().derive_address();
     let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
     let nexus_objects = get_nexus_objects(&mut conf).await?;
-    let grpc_url = client.lock().await.uri().to_string();
+    let rpc_url = client.lock().await.uri().to_string();
 
     // Try to get the `SUI_GQL_URL` from the environment, otherwise use
     // the configuration.
@@ -255,7 +291,7 @@ pub(crate) async fn get_nexus_client(
         .with_private_key(pk)
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![gas_coin], sui_gas_budget)
-        .with_grpc_url(&grpc_url)
+        .with_rpc_url(&rpc_url)
         .with_gql_url(&gql_url)
         .build()
         .await
@@ -364,5 +400,75 @@ mod tests {
         );
 
         mock.assert_async().await;
+    }
+
+    mod parse_ed25519_private_key_tests {
+        use super::*;
+
+        // Test key generated with: sui keytool generate ed25519
+        // mnemonic: "nut garden prefer climb giggle armed snap sibling layer extra obvious fade"
+        const TEST_KEY_BASE64_WITH_FLAG: &str = "ADvFIUMRieVEkqG05MLT8h8QVd1xZuS6xF9KA2EumjLd";
+        const TEST_KEY_BASE64_WITHOUT_FLAG: &str = "O8UhQxGJ5USSobTkwtPyHxBV3XFm5LrEX0oDYS6aMt0=";
+        const TEST_KEY_ADDRESS: &str =
+            "0x79d85606d67f3d046098d93d51b5de4c4606743267713fa0338846ec1729dce1";
+
+        #[test]
+        fn test_33_bytes_sui_format_with_ed25519_flag() {
+            // Sui format: 0x00 (ed25519 flag) + 32 byte key
+            let result = parse_ed25519_private_key(TEST_KEY_BASE64_WITH_FLAG);
+            assert!(result.is_ok(), "Expected Ok, got: {result:?}");
+
+            let pk = result.unwrap();
+            assert_eq!(
+                pk.public_key().derive_address().to_string(),
+                TEST_KEY_ADDRESS
+            );
+        }
+
+        #[test]
+        fn test_32_bytes_raw_ed25519_key() {
+            // Raw 32-byte key without flag (leader format)
+            let result = parse_ed25519_private_key(TEST_KEY_BASE64_WITHOUT_FLAG);
+            assert!(result.is_ok(), "Expected Ok, got: {result:?}");
+
+            let pk = result.unwrap();
+            // Same address as above - same key, just different encoding
+            assert_eq!(
+                pk.public_key().derive_address().to_string(),
+                TEST_KEY_ADDRESS
+            );
+        }
+
+        #[test]
+        fn test_33_bytes_with_unsupported_flag_fails() {
+            // 0x01 is secp256k1 flag - not supported
+            let mut bytes = vec![0x01]; // secp256k1 flag
+            bytes.extend_from_slice(&[0u8; 32]); // dummy key
+            let input = BASE64_STANDARD.encode(&bytes);
+
+            let result = parse_ed25519_private_key(&input);
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains("unsupported key scheme flag 0x01"),
+                "Expected unsupported flag error"
+            );
+        }
+
+        #[test]
+        fn test_invalid_length_fails() {
+            // 31 bytes - neither 32 nor 33
+            let bytes = [0u8; 31];
+            let input = BASE64_STANDARD.encode(bytes);
+
+            let result = parse_ed25519_private_key(&input);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("invalid private key length 31"),
+                "Expected length error, got: {err}"
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 use {
     crate::prelude::*,
-    nexus_sdk::types::{StorageConf, StorageKind},
+    nexus_sdk::types::{SecretValue, StorageConf, StorageKind},
     std::sync::Arc,
     tokio::sync::Mutex,
 };
@@ -50,9 +50,9 @@ impl CliConf {
 pub(crate) struct SuiConf {
     /// Sui private key base64 encoded bytes.
     #[serde(default)]
-    pub(crate) pk: Option<String>,
+    pub(crate) pk: Option<SecretValue>,
     #[serde(default)]
-    pub(crate) grpc_url: Option<reqwest::Url>,
+    pub(crate) rpc_url: Option<reqwest::Url>,
     #[serde(default)]
     pub(crate) gql_url: Option<reqwest::Url>,
 }
