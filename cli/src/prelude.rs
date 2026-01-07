@@ -13,20 +13,34 @@ pub(crate) use {
     serde_json::json,
     std::{
         collections::HashMap,
-        path::{Path, PathBuf},
-        sync::atomic::{AtomicBool, Ordering},
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
     },
+    tokio::sync::Mutex,
 };
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 
+/// Various Nexus RPC URLs.
+pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";
+
 /// objects.toml locations for each network.
-pub(crate) const DEVNET_OBJECTS_TOML: &str =
-    "https://storage.googleapis.com/production-talus-sui-packages/objects.devnet.toml";
+pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
+    "https://storage.googleapis.com/production-talus-sui-objects/v",
+    env!("CARGO_PKG_VERSION"),
+    "/objects.devnet.toml"
+);
+
 pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
+
+/// What is the default gas budget to use? (0.1 SUI)
+pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
@@ -50,8 +64,8 @@ impl std::fmt::Display for SuiNet {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
-    pub(crate) over_tool: sui::ObjectID,
-    pub(crate) over_gas: Option<sui::ObjectID>,
+    pub(crate) over_tool: sui::types::Address,
+    pub(crate) over_gas: Option<sui::types::Address>,
 }
 
 /// Reusable Sui gas command args.
@@ -63,13 +77,13 @@ pub(crate) struct GasArgs {
         help = "The gas coin object ID. First coin object is chosen if not present.",
         value_name = "OBJECT_ID"
     )]
-    pub(crate) sui_gas_coin: Option<sui::ObjectID>,
+    pub(crate) sui_gas_coin: Option<sui::types::Address>,
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
         help = "The gas budget for the transaction.",
         value_name = "AMOUNT",
-        default_value_t = sui::MIST_PER_SUI / 10
+        default_value_t = DEFAULT_GAS_BUDGET
     )]
     pub(crate) sui_gas_budget: u64,
 }

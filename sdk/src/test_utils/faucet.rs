@@ -8,7 +8,7 @@ use {
 };
 
 /// Request tokens from the Sui faucet for the given address.
-pub async fn request_tokens(url: &str, addr: sui::Address) -> anyhow::Result<()> {
+pub async fn request_tokens(url: &str, addr: sui::types::Address) -> anyhow::Result<()> {
     #[derive(Debug, Deserialize)]
     struct FaucetResponse {
         error: Option<String>,
