@@ -27,25 +27,24 @@ pub(crate) enum ConfCommand {
     #[command(about = "Update the Nexus CLI configuration")]
     Set {
         #[arg(
-            long = "sui.net",
-            help = "Set the Sui network",
-            value_enum,
-            value_name = "NET"
-        )]
-        sui_net: Option<SuiNet>,
-        #[arg(
-            long = "sui.wallet-path",
-            help = "Set the Sui wallet path",
+            long = "sui.pk",
+            help = "Set the Sui private key path",
             value_name = "PATH",
             value_parser = ValueParser::from(expand_tilde)
         )]
-        sui_wallet_path: Option<PathBuf>,
+        sui_pk: Option<PathBuf>,
         #[arg(
-            long = "sui.rpc-url",
-            help = "Set a custom RPC URL for the Sui node",
+            long = "sui.grpc-url",
+            help = "Set a Sui node GRPC URL",
             value_name = "URL"
         )]
-        sui_rpc_url: Option<reqwest::Url>,
+        sui_grpc_url: Option<reqwest::Url>,
+        #[arg(
+            long = "sui.gql-url",
+            help = "Set a Sui indexer GraphQL URL",
+            value_name = "URL"
+        )]
+        sui_gql_url: Option<reqwest::Url>,
         #[arg(
             long = "nexus.objects",
             help = "Path to a TOML file containing Nexus objects",
@@ -108,7 +107,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
 
             if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
                 let conf = toml::to_string_pretty(&conf).map_err(|e| {
-                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
+                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {e}"))
                 })?;
 
                 println!("{conf}");
@@ -117,9 +116,9 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             Ok(())
         }
         ConfCommand::Set {
-            sui_net,
-            sui_wallet_path,
-            sui_rpc_url,
+            sui_pk,
+            sui_grpc_url,
+            sui_gql_url,
             nexus_objects_path,
             data_storage_walrus_aggregator_url,
             data_storage_walrus_publisher_url,
@@ -129,9 +128,9 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             conf_path,
         } => {
             set_nexus_conf(
-                sui_net,
-                sui_wallet_path,
-                sui_rpc_url,
+                sui_pk,
+                sui_grpc_url,
+                sui_gql_url,
                 nexus_objects_path,
                 data_storage_walrus_aggregator_url,
                 data_storage_walrus_publisher_url,

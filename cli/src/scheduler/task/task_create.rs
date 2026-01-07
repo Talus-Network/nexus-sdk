@@ -20,7 +20,7 @@ use {
 /// Create a scheduler task and optionally enqueue the initial occurrence.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_task(
-    dag_id: sui::ObjectID,
+    dag_id: sui::types::Address,
     entry_group: String,
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
@@ -41,14 +41,15 @@ pub(crate) async fn create_task(
     // Load CLI configuration.
     let conf = CliConf::load().await.unwrap_or_default();
 
-    let (nexus_client, sui) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     // Parse metadata arguments and prepare the DAG input payload.
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
     let input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
 
     // Fetch encrypted entry ports.
-    let encrypt_handles = helpers::fetch_encryption_targets(&sui, &dag_id, &entry_group).await?;
+    let encrypt_handles =
+        helpers::fetch_encryption_targets(nexus_client.crawler(), &dag_id, &entry_group).await?;
 
     // Build the remote storage configuration.
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
@@ -95,7 +96,7 @@ pub(crate) async fn create_task(
 
     CryptoConf::release_session(session, None)
         .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
+        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {e}")))?;
 
     let schedule_requested = schedule_start_ms.is_some()
         || schedule_start_offset_ms.is_some()
@@ -178,7 +179,8 @@ pub(crate) async fn create_task(
 
 fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
-        NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
+        // TODO: @david to re-implement or to simplify by removing generic.
+        // NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
             e.task,

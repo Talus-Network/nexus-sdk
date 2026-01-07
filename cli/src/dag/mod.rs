@@ -53,7 +53,7 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAG",
             value_name = "OBJECT_ID"
         )]
-        dag_id: sui::ObjectID,
+        dag_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
             long = "entry-group",
@@ -111,15 +111,14 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAGExecution object.",
             value_name = "OBJECT_ID"
         )]
-        dag_execution_id: sui::ObjectID,
+        dag_execution_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
-            long = "execution-digest",
-            short = 'd',
-            help = "The transaction digest of the execution.",
-            value_name = "DIGEST"
+            long = "execution-checkpoint",
+            short = 'c',
+            help = "The checkpoint of the transaction that triggered the execution."
         )]
-        execution_digest: sui::TransactionDigest,
+        execution_checkpoint: u64,
     },
 }
 
@@ -164,7 +163,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         // == `$ nexus dag inspect-execution` ==
         DagCommand::InspectExecution {
             dag_execution_id,
-            execution_digest,
-        } => inspect_dag_execution(dag_execution_id, execution_digest).await,
+            execution_checkpoint,
+        } => inspect_dag_execution(dag_execution_id, execution_checkpoint).await,
     }
 }

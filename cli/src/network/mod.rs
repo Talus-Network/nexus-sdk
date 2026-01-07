@@ -16,7 +16,7 @@ pub(crate) enum NetworkCommand {
             num_args = 0..,
             value_name = "ADDRESSES"
         )]
-        addresses: Vec<sui::ObjectID>,
+        addresses: Vec<sui::types::Address>,
         /// How many leader caps to assign to each address
         #[arg(
             long = "count-leader-caps",

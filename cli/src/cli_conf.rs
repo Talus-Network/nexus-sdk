@@ -47,24 +47,16 @@ impl CliConf {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub(crate) struct SuiConf {
     #[serde(default)]
-    pub(crate) net: SuiNet,
-    #[serde(default = "default_sui_wallet_path")]
-    pub(crate) wallet_path: PathBuf,
+    pub(crate) pk: Option<PathBuf>,
     #[serde(default)]
-    pub(crate) rpc_url: Option<reqwest::Url>,
+    pub(crate) grpc_url: Option<reqwest::Url>,
+    #[serde(default)]
+    pub(crate) gql_url: Option<reqwest::Url>,
 }
 
-impl Default for SuiConf {
-    fn default() -> Self {
-        Self {
-            net: SuiNet::Localnet,
-            wallet_path: default_sui_wallet_path(),
-            rpc_url: None,
-        }
-    }
-}
 
 /// Remote data storage configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,42 +212,42 @@ impl CryptoConf {
     }
 }
 
-// == Used by serde ==
-
-fn default_sui_wallet_path() -> PathBuf {
-    let config_dir = sui::config_dir().expect("Unable to determine SUI config directory");
-    config_dir.join(sui::CLIENT_CONFIG)
-}
-
 #[cfg(test)]
 #[allow(clippy::single_component_path_imports)]
 mod tests {
     use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs};
 
     fn setup_env() -> tempfile::TempDir {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
-        let secret_home = tempfile::tempdir().unwrap();
+        // TODO: @david - could you look to cleaning up the unsafe calls?
+        // SAFETY: tests
+        unsafe {
+            std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+            let secret_home = tempfile::tempdir().unwrap();
 
-        // Use dedicated sub-directories to avoid interfering with the caller's real home.
-        let home_dir = secret_home.path().join("home");
-        let xdg_config_dir = secret_home.path().join("xdg_config");
-        let xdg_data_dir = secret_home.path().join("xdg_data");
+            // Use dedicated sub-directories to avoid interfering with the caller's real home.
+            let home_dir = secret_home.path().join("home");
+            let xdg_config_dir = secret_home.path().join("xdg_config");
+            let xdg_data_dir = secret_home.path().join("xdg_data");
 
-        fs::create_dir_all(&home_dir).unwrap();
-        fs::create_dir_all(&xdg_config_dir).unwrap();
-        fs::create_dir_all(&xdg_data_dir).unwrap();
+            fs::create_dir_all(&home_dir).unwrap();
+            fs::create_dir_all(&xdg_config_dir).unwrap();
+            fs::create_dir_all(&xdg_data_dir).unwrap();
 
-        std::env::set_var("HOME", &home_dir);
-        std::env::set_var("XDG_CONFIG_HOME", &xdg_config_dir);
-        std::env::set_var("XDG_DATA_HOME", &xdg_data_dir);
-        secret_home
+            std::env::set_var("HOME", &home_dir);
+            std::env::set_var("XDG_CONFIG_HOME", &xdg_config_dir);
+            std::env::set_var("XDG_DATA_HOME", &xdg_data_dir);
+            secret_home
+        }
     }
 
     fn cleanup_env() {
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
-        std::env::remove_var("HOME");
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
+        // SAFETY: tests
+        unsafe {
+            std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
+            std::env::remove_var("HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("XDG_DATA_HOME");
+        }
     }
 
     fn create_test_session() -> Session {

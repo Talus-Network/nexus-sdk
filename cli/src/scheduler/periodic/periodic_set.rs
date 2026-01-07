@@ -12,7 +12,7 @@ use {
 
 /// Configure or update the periodic schedule for a scheduler task.
 pub(crate) async fn set_periodic_task(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     first_start_ms: u64,
     period_ms: u64,
     deadline_offset_ms: Option<u64>,
@@ -25,7 +25,7 @@ pub(crate) async fn set_periodic_task(
         task_id = task_id
     );
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()
