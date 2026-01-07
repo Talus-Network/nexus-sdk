@@ -216,14 +216,16 @@ async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
     Ok(objects)
 }
 
-/// Fetch the gas coin from the Sui client. On Localnet, Devnet and Testnet, we
-/// can use the faucet to get the coin. On Mainnet, this fails if the coin is
-/// not present.
+/// Fetch a coin from the Sui client.
+///
+/// `by_address`: If specified, fetch the coin with this object ID.
+/// `by_order`: If `by_address` is not specified, fetch the coin by its order in
+/// the list of owned coins (0-based).
 pub(crate) async fn fetch_coin(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
-    specific: Option<sui::types::Address>,
-    nth: usize,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
 ) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
     let mut coins = fetch_coins_for_address(client, owner).await?;
 
@@ -235,7 +237,7 @@ pub(crate) async fn fetch_coin(
 
     // If object gas coing object ID was specified, use it. If it was specified
     // and could not be found, return error.
-    match specific {
+    match by_address {
         Some(id) => {
             let coin = coins
                 .into_iter()
@@ -245,13 +247,13 @@ pub(crate) async fn fetch_coin(
             Ok(coin)
         }
         None => {
-            if nth >= coins.len() {
+            if by_order >= coins.len() {
                 return Err(NexusCliError::Any(anyhow!(
-                    "The wallet does not have enough coins to select coin #{nth}"
+                    "The wallet does not have enough coins to select coin #{by_order}"
                 )));
             }
 
-            Ok(coins.swap_remove(nth))
+            Ok(coins.swap_remove(by_order))
         }
     }
 }
