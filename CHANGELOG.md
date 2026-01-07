@@ -15,10 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
-- `--gas-price` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `--priority-fee-per-gas-unit` flag on `nexus dag execute` to forward a priority fee with DAG executions
 - `nexus tool register onchain` command to register onchain tools
 - onchain tool development guide
 - `nexus tool new` onchain tool move template
+
+#### Changed
+
+- CLI now uses GRPC behind the scenes to communicate with the Sui blockchain
+- CLI now uses the `EventFetcher` to fetche evens where necessary from Sui GraphQL
 
 ### `nexus-sdk`
 
@@ -26,12 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - support for `scheduler` transactions and events
 - onchain schema generation
+- `EventFetcher` under `nexus` module to fetch events from Sui GraphQL
 
 #### Changed
 
 - `crypto auth` now uses the new handshake algorithm
 - `nexus tool register` now has two subcommands for both types of tools
 - wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
+- all identifiers and transaction templates now use new `sui-rust-sdk` types
+- `NexusClient` uses GRPC client under the hood
+- `ObjectCrawler` moved under `nexus` module and uses GRPC
+- `onchain_schema_gen` module now uses GRPC
+- all types in the SDK changed to use `sui-rust-sdk` types instead of `sui-sdk`
+
+#### Removed
+
+- dependency on `sui-sdk` crate in favour of `sui-rust-sdk`
 
 ## [`0.3.0`] - 2025-11-10
 

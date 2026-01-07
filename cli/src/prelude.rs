@@ -30,13 +30,17 @@ pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";
 
 /// objects.toml locations for each network.
-pub(crate) const DEVNET_OBJECTS_TOML: &str =
-    "https://storage.googleapis.com/production-talus-sui-packages/objects.devnet.toml";
+pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
+    "https://storage.googleapis.com/production-talus-sui-objects/v",
+    env!("CARGO_PKG_VERSION"),
+    "/objects.devnet.toml"
+);
+
 pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
-/// What is the default gas budget to use?
-pub(crate) const DEFAULT_GAS_BUDGET: u64 = 100_000_000;
+/// What is the default gas budget to use? (0.1 SUI)
+pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
@@ -117,20 +121,14 @@ mod tests {
         let temp_home = tempfile::tempdir().expect("temp home directory");
         let temp_home_path = temp_home.path().to_path_buf();
 
-        // SAFETY: tests.
-        unsafe {
-            std::env::set_var("HOME", &temp_home_path);
-        }
+        std::env::set_var("HOME", &temp_home_path);
 
         let expanded = expand_tilde("~/test").unwrap();
         assert_eq!(expanded, temp_home_path.join("test"));
 
-        // SAFETY: tests.
-        unsafe {
-            match original_home {
-                Some(value) => std::env::set_var("HOME", value),
-                None => std::env::remove_var("HOME"),
-            }
+        match original_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
         }
     }
 

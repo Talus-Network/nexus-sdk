@@ -1071,6 +1071,13 @@ impl PreKeyVault {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::types::Identifier::from_static("fulfill_pre_key_for_user"),
     };
+    /// OverCrypto owner cap generic.
+    ///
+    /// `nexus_workflow::pre_key_vault::OverCrypto`
+    pub const OVER_CRYPTO: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRE_KEY_VAULT_MODULE,
+        name: sui::types::Identifier::from_static("OverCrypto"),
+    };
     /// PreKeyVault type for lookups.
     ///
     /// `nexus_workflow::pre_key_vault::PreKeyVault`

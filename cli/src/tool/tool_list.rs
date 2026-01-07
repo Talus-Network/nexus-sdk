@@ -3,7 +3,7 @@ use {
     nexus_sdk::{
         nexus::crawler::DynamicObjectMap,
         types::{
-            deserialize_bytes_to_lossy_utf8,
+            deserialize_bytes_to_string,
             deserialize_bytes_to_url,
             deserialize_string_to_datetime,
         },
@@ -14,7 +14,7 @@ use {
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Neuxs tools");
 
-    let nexus_client = get_nexus_client(None, 100_000_000).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
 
@@ -115,7 +115,7 @@ enum ToolVariant {
 struct OffChainTool {
     #[serde(deserialize_with = "deserialize_bytes_to_url")]
     url: reqwest::Url,
-    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
     description: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,
@@ -126,9 +126,9 @@ struct OnChainTool {
     package_address: String,
     module_name: String,
     witness_id: String,
-    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
     description: String,
-    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
     input_schema: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,

@@ -57,7 +57,7 @@ portpicker = "0.1.1"
 prost-types = "0.14.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }
 regex = "1.11.1"
-reqwest = "0.12.14"
+reqwest = { version = "0.12.14", features = ["json", "stream"] }
 rpassword = "7.4.0"
 rstest = "0.25.0"
 # Keep an eye for the full release here. We need v1 for draft2020-12 schema.

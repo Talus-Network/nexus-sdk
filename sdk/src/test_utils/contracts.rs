@@ -5,21 +5,30 @@ use {
         sui,
         test_utils::sui_mocks,
     },
-    move_package::lock_file::{self, LockFile},
     std::{fs::OpenOptions, path::PathBuf, sync::Arc},
-    sui_move_build::implicit_deps,
-    sui_package_management::system_package_versions::latest_system_packages,
     tokio::sync::Mutex,
 };
 
-/// Publishes a Move package to Sui.
-///
-/// `path_str` is the path relative to the project `Cargo.toml` directory.
+/// Publishes a Move package to Sui with no package ID overrides.
 pub async fn publish_move_package(
     pk: &sui::crypto::Ed25519PrivateKey,
     rpc_url: &str,
     path_str: &str,
     gas_coin: sui::types::ObjectReference,
+) -> ExecutedTransaction {
+    publish_move_package_with_overrides(pk, rpc_url, path_str, gas_coin, &[]).await
+}
+
+/// Publishes a Move package to Sui. Optionally providing overrides for package
+/// IDs.
+///
+/// `path_str` is the path relative to the project `Cargo.toml` directory.
+pub async fn publish_move_package_with_overrides(
+    pk: &sui::crypto::Ed25519PrivateKey,
+    rpc_url: &str,
+    path_str: &str,
+    gas_coin: sui::types::ObjectReference,
+    overrides: &[(&str, sui::types::Address)],
 ) -> ExecutedTransaction {
     let install_dir = PathBuf::from(path_str);
     let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
@@ -52,9 +61,16 @@ pub async fn publish_move_package(
     };
 
     // Compile the package.
-    let mut build_config = sui_move_build::BuildConfig::new_for_testing();
+    let mut build_config = sui_move_build::BuildConfig::new_for_testing_replace_addresses(
+        overrides
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string().parse().unwrap()))
+            .collect::<Vec<_>>(),
+    );
+
     build_config.chain_id = Some(chain_id.clone());
-    build_config.config.implicit_dependencies = implicit_deps(latest_system_packages());
+    build_config.config.implicit_dependencies =
+        sui::build::implicit_deps(sui::build::latest_system_packages());
     let package = build_config
         .build(&install_dir)
         .expect("Failed to build package.");
@@ -114,13 +130,13 @@ pub async fn publish_move_package(
         .open(&lock_file)
         .expect("Failed to create lock file.");
 
-    let mut lock =
-        LockFile::from(install_dir.clone(), &lock_file).expect("Failed to read lock file.");
+    let mut lock = sui::build::LockFile::from(install_dir.clone(), &lock_file)
+        .expect("Failed to read lock file.");
 
-    lock_file::schema::update_managed_address(
+    sui::build::update_managed_address(
         &mut lock,
         "localnet",
-        lock_file::schema::ManagedAddressUpdate::Published {
+        sui::build::ManagedAddressUpdate::Published {
             chain_id,
             original_id: pkg_id.to_string(),
         },

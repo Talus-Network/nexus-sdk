@@ -32,7 +32,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: sui::types::Address,
+        collateral_coin: Option<sui::types::Address>,
 
         #[arg(
             long = "invocation-cost",
@@ -102,7 +102,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: sui::types::Address,
+        collateral_coin: Option<sui::types::Address>,
 
         #[arg(
             long = "no-save",

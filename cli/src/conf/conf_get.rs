@@ -4,9 +4,8 @@ use crate::{command_title, prelude::*};
 pub(crate) async fn get_nexus_conf(conf_path: PathBuf) -> AnyResult<CliConf, NexusCliError> {
     let conf = CliConf::load_from_path(&conf_path).await.map_err(|e| {
         NexusCliError::Any(anyhow!(
-            "Failed to load Nexus CLI configuration from {}: {}",
+            "Failed to load Nexus CLI configuration from {}: {e}",
             conf_path.display(),
-            e
         ))
     })?;
 
@@ -39,8 +38,8 @@ mod tests {
         };
 
         let sui_conf = SuiConf {
-            pk: Some(tempdir.join("pk.pem")),
-            grpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            pk: Some("123".to_string().into()),
+            rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             gql_url: Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
         };
 

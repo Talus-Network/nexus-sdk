@@ -23,3 +23,18 @@ pub mod grpc {
 pub mod traits {
     pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil, sui_sdk_types::bcs::ToBcs};
 }
+
+pub const MIST_PER_SUI: u64 = 1_000_000_000;
+
+/// Move build and package management re-exported for testing.
+#[cfg(feature = "test_utils")]
+pub mod build {
+    pub use {
+        move_package::lock_file::{
+            schema::{update_managed_address, ManagedAddressUpdate},
+            LockFile,
+        },
+        sui_move_build::{implicit_deps, BuildConfig},
+        sui_package_management::system_package_versions::latest_system_packages,
+    };
+}

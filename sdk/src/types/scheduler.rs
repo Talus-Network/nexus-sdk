@@ -5,17 +5,16 @@ use {
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         TypeName,
     },
-    crate::sui,
-    serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
-    serde_json::{Map as JsonMap, Value},
-    std::borrow::Cow,
+    crate::{
+        nexus::crawler::{Bag, Map, ObjectBag},
+        sui,
+        types::NexusData,
+    },
+    serde::{Deserialize, Deserializer, Serialize},
 };
 
-// TODO: @david - these types can be simplified with the new object crawler grpc
-// implementation. Probably can drop the custom deserialization logic.
-
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DagExecutionConfig {
     pub dag: sui::types::Address,
     pub network: sui::types::Address,
@@ -23,79 +22,60 @@ pub struct DagExecutionConfig {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
-    #[serde(default)]
-    pub entry_group: Value,
-    #[serde(default)]
-    pub inputs: Value,
+    pub priority_fee_per_gas_unit: u64,
+    pub entry_group: SchedulerEntryGroup,
+    pub inputs: Map<String, NexusData>,
     pub invoker: sui::types::Address,
 }
 
 /// Representation of `nexus_workflow::scheduler::Task`.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Task {
     pub id: sui::types::Address,
     pub owner: sui::types::Address,
-    #[serde(default)]
-    pub metadata: Value,
-    #[serde(default)]
-    pub constraints: Value,
-    pub execution: Policy,
-    #[serde(default)]
-    pub data: Value,
-    #[serde(default)]
-    pub objects: Value,
+    pub metadata: Metadata,
+    pub constraints: Policy<ConstraintsData>,
+    pub execution: Policy<ExecutionData>,
+    pub state: TaskState,
+    pub data: Bag,
+    pub objects: ObjectBag,
 }
 
 /// Minimal representation of `nexus_primitives::policy::Policy`.
-#[derive(Clone, Debug, Serialize)]
-pub struct Policy {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Policy<T> {
     pub id: sui::types::Address,
     pub dfa: ConfiguredAutomaton,
-    #[serde(default)]
-    pub alphabet_index: Value,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub state_index: u64,
-    #[serde(default)]
-    pub data: Value,
+    pub data: T,
 }
 
 /// Minimal representation of `nexus_primitives::automaton::ConfiguredAutomaton`.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ConfiguredAutomaton {
     pub id: sui::types::Address,
-    #[serde(default)]
-    pub dfa: Value,
+    pub dfa: DeterministicAutomaton,
+}
+
+/// Deterministic automaton backing a policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DeterministicAutomaton {
+    pub states: Vec<u64>,
+    pub alphabet: Vec<PolicySymbol>,
+    pub transition: Vec<Vec<u64>>,
+    pub accepting: Vec<bool>,
+    pub start: u64,
 }
 
 /// Representation of `nexus_primitives::policy::Symbol`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PolicySymbol {
-    Witness(MoveTypeName),
+    Witness(TypeName),
     Uid(sui::types::Address),
-}
-
-impl Serialize for PolicySymbol {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            PolicySymbol::Witness(name) => EnumSymbolSer {
-                variant: "Witness",
-                fields: EnumSymbolFieldsSer { pos0: name },
-            }
-            .serialize(serializer),
-            PolicySymbol::Uid(uid) => EnumSymbolSer {
-                variant: "Uid",
-                fields: EnumSymbolFieldsSer { pos0: uid },
-            }
-            .serialize(serializer),
-        }
-    }
 }
 
 impl<'de> Deserialize<'de> for PolicySymbol {
@@ -103,59 +83,101 @@ impl<'de> Deserialize<'de> for PolicySymbol {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum SymbolRepr {
-            Legacy(LegacySymbol),
-            Enum(EnumSymbol),
+        // Non-human readable formats (BCS) use the standard enum layout.
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            enum Standard {
+                Witness(TypeName),
+                Uid(sui::types::Address),
+            }
+
+            return match Standard::deserialize(deserializer)? {
+                Standard::Witness(name) => Ok(PolicySymbol::Witness(name)),
+                Standard::Uid(uid) => Ok(PolicySymbol::Uid(uid)),
+            };
         }
 
+        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Deserialize)]
-        struct LegacySymbol {
-            kind: u8,
-            #[serde(default)]
-            witness: Option<MoveTypeName>,
-            #[serde(default)]
-            uid: Option<sui::types::Address>,
-        }
-
-        #[derive(Deserialize)]
-        struct EnumSymbol {
+        struct Tagged {
             variant: String,
-            fields: EnumSymbolFields,
+            fields: serde_json::Value,
         }
 
         #[derive(Deserialize)]
-        struct EnumSymbolFields {
+        struct Fields<T> {
             #[serde(rename = "pos0")]
-            pos0: Value,
+            pos0: T,
         }
 
-        match SymbolRepr::deserialize(deserializer)? {
-            SymbolRepr::Legacy(symbol) => match (symbol.kind, symbol.witness, symbol.uid) {
-                (0, Some(name), _) => Ok(PolicySymbol::Witness(name)),
-                (1, _, Some(uid)) => Ok(PolicySymbol::Uid(uid)),
-                _ => Err(serde::de::Error::custom(
-                    "Invalid legacy policy symbol representation",
-                )),
-            },
-            SymbolRepr::Enum(symbol) => match symbol.variant.as_str() {
-                "Witness" => serde_json::from_value(symbol.fields.pos0)
-                    .map(PolicySymbol::Witness)
-                    .map_err(serde::de::Error::custom),
-                "Uid" => serde_json::from_value(symbol.fields.pos0)
-                    .map(PolicySymbol::Uid)
-                    .map_err(serde::de::Error::custom),
-                other => Err(serde::de::Error::custom(format!(
-                    "Unknown policy symbol variant: {other}"
-                ))),
-            },
+        let tagged = Tagged::deserialize(deserializer)?;
+        match tagged.variant.as_str() {
+            "Witness" => {
+                let fields: Fields<TypeName> =
+                    serde_json::from_value(tagged.fields).map_err(serde::de::Error::custom)?;
+                Ok(PolicySymbol::Witness(fields.pos0))
+            }
+            "Uid" => {
+                let fields: Fields<sui::types::Address> =
+                    serde_json::from_value(tagged.fields).map_err(serde::de::Error::custom)?;
+                Ok(PolicySymbol::Uid(fields.pos0))
+            }
+            other => Err(serde::de::Error::custom(format!(
+                "Unknown policy symbol variant: {other}"
+            ))),
+        }
+    }
+}
+
+impl Serialize for PolicySymbol {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Non-human readable formats (BCS) use the standard enum layout.
+        if !serializer.is_human_readable() {
+            #[derive(Serialize)]
+            enum Standard<'a> {
+                Witness(&'a TypeName),
+                Uid(sui::types::Address),
+            }
+
+            return match self {
+                PolicySymbol::Witness(name) => Standard::Witness(name).serialize(serializer),
+                PolicySymbol::Uid(uid) => Standard::Uid(*uid).serialize(serializer),
+            };
+        }
+
+        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
+        #[derive(Serialize)]
+        struct Fields<'a, T> {
+            #[serde(rename = "pos0")]
+            pos0: &'a T,
+        }
+
+        #[derive(Serialize)]
+        struct Tagged<'a, T> {
+            variant: &'a str,
+            fields: Fields<'a, T>,
+        }
+
+        match self {
+            PolicySymbol::Witness(name) => Tagged {
+                variant: "Witness",
+                fields: Fields { pos0: name },
+            }
+            .serialize(serializer),
+            PolicySymbol::Uid(uid) => Tagged {
+                variant: "Uid",
+                fields: Fields { pos0: uid },
+            }
+            .serialize(serializer),
         }
     }
 }
 
 impl PolicySymbol {
-    pub fn as_witness(&self) -> Option<&MoveTypeName> {
+    pub fn as_witness(&self) -> Option<&TypeName> {
         match self {
             PolicySymbol::Witness(name) => Some(name),
             PolicySymbol::Uid(_) => None,
@@ -177,70 +199,32 @@ impl PolicySymbol {
     }
 }
 
-#[derive(Serialize)]
-struct EnumSymbolSer<'a, T>
-where
-    T: Serialize,
-{
-    variant: &'static str,
-    fields: EnumSymbolFieldsSer<'a, T>,
+/// Scheduler task state.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskState {
+    Active,
+    Paused,
+    Canceled,
 }
 
-#[derive(Serialize)]
-struct EnumSymbolFieldsSer<'a, T>
-where
-    T: Serialize,
-{
-    #[serde(rename = "pos0")]
-    pos0: &'a T,
+/// Marker data stored in the constraints policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ConstraintsData {}
+
+/// Marker data stored in the execution policy.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExecutionData {}
+
+/// Task metadata wrapper (Map<String, String>).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Metadata {
+    pub values: Map<String, String>,
 }
 
-/// TypeName that can deserialize from Move struct wrappers
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct MoveTypeName {
+/// Representation of `nexus_workflow::dag::EntryGroup`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchedulerEntryGroup {
     pub name: String,
-}
-
-impl MoveTypeName {
-    fn normalize(name: &str) -> Cow<'_, str> {
-        let trimmed = name.trim_start_matches("0x");
-        if trimmed.len() == name.len() {
-            Cow::Borrowed(name)
-        } else {
-            Cow::Owned(trimmed.to_string())
-        }
-    }
-
-    /// Returns true when two fully-qualified Move type names represent the same symbol.
-    pub fn matches_qualified_name(&self, expected: &str) -> bool {
-        Self::normalize(&self.name).eq_ignore_ascii_case(&Self::normalize(expected))
-    }
-}
-
-impl<'de> Deserialize<'de> for MoveTypeName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            name: String,
-        }
-
-        let value = Value::deserialize(deserializer)?;
-        let unwrapped = unwrap_move_value(value);
-        serde_json::from_value::<Inner>(unwrapped)
-            .map(|inner| Self { name: inner.name })
-            .map_err(serde::de::Error::custom)
-    }
-}
-
-impl From<MoveTypeName> for TypeName {
-    fn from(move_name: MoveTypeName) -> Self {
-        TypeName {
-            name: move_name.name,
-        }
-    }
 }
 
 /// Representation of `nexus_primitives::automaton::TransitionKey`.
@@ -257,203 +241,12 @@ pub struct TransitionConfigKey<State, Symbol> {
     pub config: TypeName,
 }
 
-impl<'de> Deserialize<'de> for Policy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            id: sui::types::Address,
-            dfa: ConfiguredAutomaton,
-            #[serde(default)]
-            alphabet_index: Value,
-            #[serde(
-                deserialize_with = "deserialize_sui_u64",
-                serialize_with = "serialize_sui_u64"
-            )]
-            state_index: u64,
-            #[serde(default)]
-            data: Value,
-        }
-
-        let inner: Inner = deserialize_move_struct(deserializer)?;
-
-        Ok(Self {
-            id: inner.id,
-            dfa: inner.dfa,
-            alphabet_index: inner.alphabet_index,
-            state_index: inner.state_index,
-            data: inner.data,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for ConfiguredAutomaton {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            id: sui::types::Address,
-            #[serde(default)]
-            dfa: Value,
-        }
-
-        let inner: Inner = deserialize_move_struct(deserializer)?;
-
-        Ok(Self {
-            id: inner.id,
-            dfa: inner.dfa,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for DagExecutionConfig {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Inner {
-            dag: sui::types::Address,
-            network: sui::types::Address,
-            #[serde(
-                deserialize_with = "deserialize_sui_u64",
-                serialize_with = "serialize_sui_u64"
-            )]
-            gas_price: u64,
-            #[serde(default)]
-            entry_group: Value,
-            #[serde(default)]
-            inputs: Value,
-            invoker: sui::types::Address,
-        }
-
-        let inner: Inner = deserialize_move_struct(deserializer)?;
-
-        Ok(Self {
-            dag: inner.dag,
-            network: inner.network,
-            gas_price: inner.gas_price,
-            entry_group: inner.entry_group,
-            inputs: inner.inputs,
-            invoker: inner.invoker,
-        })
-    }
-}
-
-pub(crate) fn deserialize_move_struct<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: DeserializeOwned,
-{
-    let value = Value::deserialize(deserializer)?;
-    let unwrapped = unwrap_move_value(value);
-    serde_json::from_value(unwrapped).map_err(serde::de::Error::custom)
-}
-
-fn unwrap_move_value(value: Value) -> Value {
-    match value {
-        Value::Object(map) => unwrap_move_object(map),
-        Value::Array(values) => Value::Array(values.into_iter().map(unwrap_move_value).collect()),
-        other => other,
-    }
-}
-
-fn unwrap_move_object(mut map: JsonMap<String, Value>) -> Value {
-    if map.len() == 1 {
-        if let Some(value) = map.remove("data") {
-            return unwrap_move_value(value);
-        }
-
-        if let Some(value) = map.remove("value") {
-            return unwrap_move_value(value);
-        }
-
-        if let Some(value) = map.remove("contents") {
-            return unwrap_move_value(value);
-        }
-    }
-
-    let mut recursively_unwrapped = JsonMap::new();
-    for (key, value) in map.into_iter() {
-        recursively_unwrapped.insert(key, unwrap_move_value(value));
-    }
-
-    if let Some(Value::Object(fields)) = recursively_unwrapped.remove("fields") {
-        let mut merged = JsonMap::new();
-
-        for (key, value) in fields.into_iter() {
-            merged.insert(key, value);
-        }
-
-        for (key, value) in recursively_unwrapped.into_iter() {
-            if !is_metadata_key(&key) {
-                merged.insert(key, value);
-            }
-        }
-
-        return unwrap_move_object(merged);
-    }
-
-    if let Some(unwrapped_value) = extract_wrapped_value(&recursively_unwrapped) {
-        return unwrap_move_value(unwrapped_value);
-    }
-
-    Value::Object(recursively_unwrapped)
-}
-
-fn extract_wrapped_value(map: &JsonMap<String, Value>) -> Option<Value> {
-    let value = map.get("value")?;
-
-    if map
-        .keys()
-        .filter(|key| key.as_str() != "value")
-        .all(|key| is_value_wrapper_key(key))
-    {
-        return Some(value.clone());
-    }
-
-    None
-}
-
-fn is_metadata_key(key: &str) -> bool {
-    matches!(
-        key,
-        "type"
-            | "has_public_transfer"
-            | "hasPublicTransfer"
-            | "dataType"
-            | "data_type"
-            | "objectType"
-            | "bcs"
-    )
-}
-
-fn is_value_wrapper_key(key: &str) -> bool {
-    matches!(
-        key,
-        "name"
-            | "key"
-            | "type"
-            | "objectType"
-            | "object_type"
-            | "has_public_transfer"
-            | "hasPublicTransfer"
-            | "dataType"
-            | "data_type"
-            | "bcs"
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::idents::sui_framework, serde_json::json};
+    use {super::*, rand::thread_rng, serde_json::json};
 
     #[test]
-    fn policy_deserializes_from_wrapped_move_struct() {
+    fn policy_deserializes_from_json() {
         let policy_id = sui::types::Address::from_static("0x2");
         let dfa_id = sui::types::Address::from_static("0x3");
 
@@ -461,34 +254,30 @@ mod tests {
             id: policy_id,
             dfa: ConfiguredAutomaton {
                 id: dfa_id,
-                dfa: json!({
-                    "type": sui::types::StructTag::new(
-                        sui_framework::PACKAGE_ID,
-                        sui::types::Identifier::from_static("dummy"),
-                        sui::types::Identifier::from_static("Config"),
-                        vec![sui::types::TypeTag::Address],
-                    ),
-                }),
+                dfa: DeterministicAutomaton {
+                    states: vec![0],
+                    alphabet: vec![PolicySymbol::Witness(TypeName::new("0x1::module::Type"))],
+                    transition: vec![vec![0]],
+                    accepting: vec![true],
+                    start: 0,
+                },
             },
-            alphabet_index: Value::Null,
             state_index: 5,
-            data: json!({ "extra": "payload" }),
+            data: ConstraintsData::default(),
         };
 
-        let wrapped = wrap_move_value(serde_json::to_value(&expected).expect("serialize policy"));
-
-        let parsed: Policy = serde_json::from_value(wrapped).expect("deserialize wrapped policy");
+        let parsed: Policy<ConstraintsData> =
+            serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
         assert_eq!(parsed.id, expected.id);
         assert_eq!(parsed.dfa.id, expected.dfa.id);
         assert_eq!(parsed.dfa.dfa, expected.dfa.dfa);
-        assert_eq!(parsed.alphabet_index, expected.alphabet_index);
         assert_eq!(parsed.state_index, expected.state_index);
         assert_eq!(parsed.data, expected.data);
     }
 
     #[test]
-    fn dag_execution_config_deserializes_from_wrapped_move_struct() {
+    fn dag_execution_config_deserializes_from_json() {
         let mut rng = rand::thread_rng();
         let dag_id = sui::types::Address::generate(&mut rng);
         let network_id = sui::types::Address::generate(&mut rng);
@@ -497,60 +286,68 @@ mod tests {
         let expected = DagExecutionConfig {
             dag: dag_id,
             network: network_id,
-            gas_price: 1000,
-            entry_group: json!({"name": "default"}),
-            inputs: json!({}),
+            priority_fee_per_gas_unit: 1000,
+            entry_group: SchedulerEntryGroup {
+                name: "default".to_string(),
+            },
+            inputs: Map::default(),
             invoker,
         };
 
-        let wrapped = wrap_move_value(serde_json::to_value(&expected).expect("serialize config"));
-
         let parsed: DagExecutionConfig =
-            serde_json::from_value(wrapped).expect("deserialize wrapped config");
+            serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
         assert_eq!(parsed.dag, expected.dag);
         assert_eq!(parsed.network, expected.network);
-        assert_eq!(parsed.gas_price, expected.gas_price);
+        assert_eq!(
+            parsed.priority_fee_per_gas_unit,
+            expected.priority_fee_per_gas_unit
+        );
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
         assert_eq!(parsed.invoker, expected.invoker);
     }
 
-    fn wrap_move_value(value: Value) -> Value {
-        match value {
-            Value::Object(map) => {
-                let wrapped_fields = map
-                    .into_iter()
-                    .map(|(k, v)| (k, wrap_move_value(v)))
-                    .collect::<JsonMap<String, Value>>();
+    #[test]
+    fn policy_symbol_deserializes_enum_witness() {
+        let json = json!({
+            "variant": "Witness",
+            "fields": { "pos0": { "name": "0x1::module::Type" } }
+        });
 
-                let mut struct_map = JsonMap::new();
-                struct_map.insert("type".into(), Value::String("0x1::dummy::Struct".into()));
-                struct_map.insert("dataType".into(), Value::String("moveObject".into()));
-                struct_map.insert("has_public_transfer".into(), Value::Bool(false));
-                struct_map.insert("fields".into(), Value::Object(wrapped_fields));
+        let sym: PolicySymbol = serde_json::from_value(json).unwrap();
+        assert!(matches!(sym, PolicySymbol::Witness(name) if name.name == "0x1::module::Type"));
+    }
 
-                let mut data_fields = JsonMap::new();
-                data_fields.insert("fields".into(), Value::Object(struct_map));
+    #[test]
+    fn policy_symbol_deserializes_enum_uid() {
+        let mut rng = thread_rng();
+        let addr = sui::types::Address::generate(&mut rng);
+        let json = json!({
+            "variant": "Uid",
+            "fields": { "pos0": addr }
+        });
 
-                let mut field_wrapper = JsonMap::new();
-                field_wrapper.insert("data".into(), Value::Object(data_fields));
+        let sym: PolicySymbol = serde_json::from_value(json).unwrap();
+        assert!(matches!(sym, PolicySymbol::Uid(uid) if uid == addr));
+    }
 
-                let mut dynamic_field = JsonMap::new();
-                dynamic_field.insert("name".into(), Value::String("dummy_name".into()));
-                dynamic_field.insert("value".into(), Value::Object(field_wrapper));
+    #[test]
+    fn policy_symbol_deserializes_bcs_witness() {
+        let witness = TypeName::new("0x1::module::Type");
+        let bytes = bcs::to_bytes(&PolicySymbol::Witness(witness.clone())).unwrap();
 
-                Value::Object(dynamic_field)
-            }
-            Value::Array(items) => {
-                let wrapped_items = items.into_iter().map(wrap_move_value).collect::<Vec<_>>();
-                let mut contents = JsonMap::new();
-                contents.insert("contents".into(), Value::Array(wrapped_items));
-                let mut map = JsonMap::new();
-                map.insert("value".into(), Value::Object(contents));
-                Value::Object(map)
-            }
-            other => other,
-        }
+        let parsed: PolicySymbol = bcs::from_bytes(&bytes).unwrap();
+        assert!(matches!(parsed, PolicySymbol::Witness(name) if name == witness));
+    }
+
+    #[test]
+    fn policy_symbol_deserializes_bcs_uid() {
+        let mut rng = thread_rng();
+        let addr = sui::types::Address::generate(&mut rng);
+        let bytes = bcs::to_bytes(&PolicySymbol::Uid(addr)).unwrap();
+
+        let parsed: PolicySymbol = bcs::from_bytes(&bytes).unwrap();
+        assert!(matches!(parsed, PolicySymbol::Uid(uid) if uid == addr));
     }
 }

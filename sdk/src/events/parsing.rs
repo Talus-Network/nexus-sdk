@@ -73,12 +73,12 @@ impl FromSuiGrpcEvent for NexusEvent {
             bail!("EventWrapper does not have a valid event type parameter");
         };
 
-        let event_name = event_type.name().as_str();
+        let event_name = normalize_event_name(event_type)?;
 
         Ok(NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
-            data: parse_bcs(event_name, &event.contents)?,
+            data: parse_bcs(&event_name, &event.contents)?,
         })
     }
 }
@@ -124,7 +124,7 @@ impl FromSuiGqlEvent for NexusEvent {
             bail!("EventWrapper does not have a valid event type parameter");
         };
 
-        let event_name = event_type.name().as_str();
+        let event_name = normalize_event_name(event_type)?;
 
         let Some(json) = event
             .json
@@ -148,6 +148,30 @@ impl FromSuiGqlEvent for NexusEvent {
     }
 }
 
+fn normalize_event_name(event_type: &sui::types::StructTag) -> anyhow::Result<String> {
+    let name = event_type.name().as_str();
+
+    if name != "RequestScheduledExecution" {
+        return Ok(name.to_string());
+    }
+
+    let Some(type_tag) = event_type.type_params().first() else {
+        bail!("RequestScheduledExecution is missing a type parameter");
+    };
+
+    let sui::types::TypeTag::Struct(struct_tag) = type_tag else {
+        bail!("RequestScheduledExecution expects a struct type parameter");
+    };
+
+    let normalized = match struct_tag.name().as_str() {
+        "OccurrenceScheduledEvent" => "RequestScheduledOccurrenceEvent",
+        "RequestWalkExecutionEvent" => "RequestScheduledWalkEvent",
+        other => bail!("Unsupported RequestScheduledExecution payload: {other}"),
+    };
+
+    Ok(normalized.to_string())
+}
+
 /// Helper function to determine whether the given address is one of the Nexus
 /// package addresses.
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
@@ -164,19 +188,51 @@ fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool
         && *tag.name() == primitives::Event::EVENT_WRAPPER.name
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test_utils"))]
 mod tests {
     use {
         super::*,
         crate::{
             events::{
                 events_query::events_query::EventsQueryEventsNodesContentsType,
+                AnnounceInterfacePackageEvent,
                 DAGCreatedEvent,
+                EndStateReachedEvent,
+                ExecutionFinishedEvent,
+                FoundingLeaderCapCreatedEvent,
+                GasSettlementUpdateEvent,
+                MissedOccurrenceEvent,
+                NexusEventKind,
+                OccurrenceConsumedEvent,
+                OccurrenceScheduledEvent,
+                OffChainToolRegisteredEvent,
+                OnChainToolRegisteredEvent,
+                PeriodicScheduleConfiguredEvent,
+                PreKeyAssociatedEvent,
+                PreKeyFulfilledEvent,
+                PreKeyRequestedEvent,
+                PreKeyVaultCreatedEvent,
+                RequestScheduledOccurrenceEvent,
+                RequestScheduledWalkEvent,
+                RequestWalkExecutionEvent,
+                RuntimeVertex,
+                TaskCanceledEvent,
+                TaskCreatedEvent,
+                TaskPausedEvent,
+                TaskResumedEvent,
+                ToolUnregisteredEvent,
+                TypeName,
+                WalkAdvancedEvent,
+                WalkFailedEvent,
             },
+            fqn,
             idents::primitives,
             test_utils::sui_mocks,
+            types::{NexusData, PolicySymbol, PortsData},
+            ToolFqn,
         },
         serde::{Deserialize, Serialize},
+        std::sync::Arc,
     };
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -331,6 +387,162 @@ mod tests {
         assert!(matches!(
             nexus_event.data,
             crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
+        ));
+    }
+
+    #[test]
+    fn test_parse_from_gql_request_scheduled_occurrence_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let inner_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("scheduler").unwrap(),
+            sui::types::Identifier::new("OccurrenceScheduledEvent").unwrap(),
+            vec![],
+        );
+
+        let scheduled_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("scheduler").unwrap(),
+            sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner_type))],
+        );
+
+        let wrapper_type = sui::types::StructTag::new(
+            objects.primitives_pkg_id,
+            primitives::Event::EVENT_WRAPPER.module,
+            primitives::Event::EVENT_WRAPPER.name,
+            vec![sui::types::TypeTag::Struct(Box::new(scheduled_type))],
+        );
+
+        let generator_uid = sui::types::Address::generate(&mut rng);
+        let occurrence = OccurrenceScheduledEvent {
+            task: sui::types::Address::generate(&mut rng),
+            generator: crate::types::PolicySymbol::Uid(generator_uid),
+        };
+
+        let scheduled = RequestScheduledOccurrenceEvent {
+            request: occurrence.clone(),
+            priority: 5,
+            request_ms: 10,
+            start_ms: 20,
+            deadline_ms: 30,
+        };
+
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(serde_json::json!({
+                "event": {
+                    "request": {
+                        "task": scheduled.request.task,
+                        "generator": {
+                            "variant": "Uid",
+                            "fields": { "pos0": generator_uid }
+                        }
+                    },
+                    "priority": scheduled.priority.to_string(),
+                    "request_ms": scheduled.request_ms.to_string(),
+                    "start_ms": scheduled.start_ms.to_string(),
+                    "deadline_ms": scheduled.deadline_ms.to_string(),
+                }
+            })),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: wrapper_type.to_string(),
+            }),
+        };
+
+        let result = NexusEvent::from_sui_gql_event(
+            index,
+            digest,
+            objects.primitives_pkg_id,
+            &gql_event,
+            &objects,
+        )
+        .expect("Should parse scheduled occurrence event");
+
+        assert!(matches!(
+            result.data,
+            NexusEventKind::RequestScheduledOccurrence(env)
+                if env.request.task == scheduled.request.task
+                    && env.priority == scheduled.priority
+                    && env.start_ms == scheduled.start_ms
+        ));
+    }
+
+    #[test]
+    fn test_parse_from_gql_request_scheduled_walk_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let inner_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("scheduler").unwrap(),
+            sui::types::Identifier::new("RequestWalkExecutionEvent").unwrap(),
+            vec![],
+        );
+
+        let scheduled_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("scheduler").unwrap(),
+            sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner_type))],
+        );
+
+        let wrapper_type = sui::types::StructTag::new(
+            objects.primitives_pkg_id,
+            primitives::Event::EVENT_WRAPPER.module,
+            primitives::Event::EVENT_WRAPPER.name,
+            vec![sui::types::TypeTag::Struct(Box::new(scheduled_type))],
+        );
+
+        let walk = RequestWalkExecutionEvent {
+            dag: sui::types::Address::generate(&mut rng),
+            execution: sui::types::Address::generate(&mut rng),
+            walk_index: 1,
+            next_vertex: RuntimeVertex::plain("v"),
+            evaluations: sui::types::Address::generate(&mut rng),
+            worksheet_from_type: TypeName::new("worksheet"),
+        };
+
+        let scheduled = RequestScheduledWalkEvent {
+            request: walk.clone(),
+            priority: 1,
+            request_ms: 2,
+            start_ms: 3,
+            deadline_ms: 4,
+        };
+
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(
+                serde_json::to_value(&Wrapper {
+                    event: scheduled.clone(),
+                })
+                .unwrap(),
+            ),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: wrapper_type.to_string(),
+            }),
+        };
+
+        let result = NexusEvent::from_sui_gql_event(
+            index,
+            digest,
+            objects.primitives_pkg_id,
+            &gql_event,
+            &objects,
+        )
+        .expect("Should parse scheduled walk event");
+
+        assert!(matches!(
+            result.data,
+            NexusEventKind::RequestScheduledWalk(env)
+                if env.request.dag == scheduled.request.dag
+                    && env.start_ms == scheduled.start_ms
+                    && env.deadline_ms == scheduled.deadline_ms
         ));
     }
 
@@ -527,5 +739,217 @@ mod tests {
             nexus_event.data,
             crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
         ));
+    }
+
+    #[tokio::test]
+    async fn test_parse_from_gql_all_events_roundtrip() {
+        let mut server = mockito::Server::new_async().await;
+        let objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let primitives_pkg_id = objects.primitives_pkg_id;
+
+        let events = sample_events();
+
+        let mock = sui_mocks::gql::mock_event_query(
+            &mut server,
+            primitives_pkg_id,
+            events.clone(),
+            None,
+            Some("cursor"),
+        );
+
+        let fetcher = crate::events::EventFetcher::new(
+            &format!("{}/graphql", &server.url()),
+            objects.clone(),
+        );
+
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+        let page = receiver
+            .recv()
+            .await
+            .expect("fetcher should yield a page of events");
+
+        assert_eq!(page.events.len(), events.len());
+
+        for (expected, parsed) in events.iter().zip(page.events.iter()) {
+            assert_eq!(expected.name(), parsed.data.name());
+        }
+
+        mock.assert_async().await;
+    }
+
+    fn sample_events() -> Vec<NexusEventKind> {
+        let mut idx: u8 = 1;
+        let mut addr = || {
+            let hex = format!("0x{:02x}", idx);
+            idx = idx.wrapping_add(1);
+            hex.parse::<sui::types::Address>().unwrap()
+        };
+        let fqn: ToolFqn = fqn!("xyz.taluslabs.example@1");
+        let vertex = RuntimeVertex::plain("v");
+        let ports = PortsData::from_map(
+            std::iter::once((
+                "p".to_string(),
+                NexusData::new_inline(serde_json::json!({ "k": 1 })),
+            ))
+            .collect(),
+        );
+
+        vec![
+            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent {
+                    task: addr(),
+                    generator: PolicySymbol::Uid(addr()),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            }),
+            NexusEventKind::RequestScheduledWalk(RequestScheduledWalkEvent {
+                request: RequestWalkExecutionEvent {
+                    dag: addr(),
+                    execution: addr(),
+                    walk_index: 1,
+                    next_vertex: vertex.clone(),
+                    evaluations: addr(),
+                    worksheet_from_type: TypeName::new("worksheet"),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            }),
+            NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
+                task: addr(),
+                generator: PolicySymbol::Uid(addr()),
+            }),
+            NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
+                dag: addr(),
+                execution: addr(),
+                walk_index: 7,
+                next_vertex: vertex.clone(),
+                evaluations: addr(),
+                worksheet_from_type: TypeName::new("worksheet"),
+            }),
+            NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
+                shared_objects: vec![addr()],
+            }),
+            NexusEventKind::OffChainToolRegistered(OffChainToolRegisteredEvent {
+                registry: addr(),
+                tool: addr(),
+                fqn: fqn.clone(),
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+                input_schema: serde_json::json!({"in": 1}),
+                output_schema: serde_json::json!({"out": 1}),
+            }),
+            NexusEventKind::OnChainToolRegistered(OnChainToolRegisteredEvent {
+                registry: addr(),
+                tool: addr(),
+                registered_at_ms: 10,
+                fqn: fqn.clone(),
+                package_address: addr(),
+                module_name: "module".to_string(),
+                witness_id: addr(),
+                input_schema: serde_json::json!({"in": 1}),
+                output_schema: serde_json::json!({"out": 1}),
+                description: "desc".to_string(),
+            }),
+            NexusEventKind::ToolUnregistered(ToolUnregisteredEvent {
+                tool: addr(),
+                fqn: fqn.clone(),
+            }),
+            NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+                dag: addr(),
+                execution: addr(),
+                walk_index: 1,
+                vertex: vertex.clone(),
+                variant: TypeName::new("var"),
+                variant_ports_to_data: ports.clone(),
+            }),
+            NexusEventKind::WalkFailed(WalkFailedEvent {
+                dag: addr(),
+                execution: addr(),
+                walk_index: 2,
+                vertex: vertex.clone(),
+                reason: "fail".to_string(),
+            }),
+            NexusEventKind::EndStateReached(EndStateReachedEvent {
+                dag: addr(),
+                execution: addr(),
+                walk_index: 3,
+                vertex: vertex.clone(),
+                variant: TypeName::new("end"),
+                variant_ports_to_data: ports.clone(),
+            }),
+            NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
+                dag: addr(),
+                execution: addr(),
+                has_any_walk_failed: true,
+                has_any_walk_succeeded: true,
+            }),
+            NexusEventKind::MissedOccurrence(MissedOccurrenceEvent {
+                task: addr(),
+                start_time_ms: 1,
+                deadline_ms: Some(2),
+                pruned_at: 3,
+                gas_price: 4,
+                generator: PolicySymbol::Uid(addr()),
+            }),
+            NexusEventKind::TaskCreated(TaskCreatedEvent {
+                task: addr(),
+                owner: addr(),
+            }),
+            NexusEventKind::TaskPaused(TaskPausedEvent { task: addr() }),
+            NexusEventKind::TaskResumed(TaskResumedEvent { task: addr() }),
+            NexusEventKind::TaskCanceled(TaskCanceledEvent {
+                task: addr(),
+                cleared_occurrences: 1,
+                had_periodic: true,
+            }),
+            NexusEventKind::OccurrenceConsumed(OccurrenceConsumedEvent {
+                task: addr(),
+                start_time_ms: 1,
+                deadline_ms: Some(2),
+                gas_price: 3,
+                generator: PolicySymbol::Uid(addr()),
+                executed_at: 4,
+            }),
+            NexusEventKind::PeriodicScheduleConfigured(PeriodicScheduleConfiguredEvent {
+                task: addr(),
+                period_ms: Some(1),
+                deadline_offset_ms: Some(2),
+                max_iterations: Some(3),
+                generated: Some(4),
+                gas_price: Some(5),
+                last_generated_start_ms: Some(6),
+            }),
+            NexusEventKind::FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent {
+                leader_cap: addr(),
+                network: addr(),
+            }),
+            NexusEventKind::GasSettlementUpdate(GasSettlementUpdateEvent {
+                execution: addr(),
+                tool_fqn: fqn.clone(),
+                vertex: vertex.clone(),
+                was_settled: true,
+            }),
+            NexusEventKind::PreKeyVaultCreated(PreKeyVaultCreatedEvent {
+                vault: addr(),
+                crypto_cap: addr(),
+            }),
+            NexusEventKind::PreKeyRequested(PreKeyRequestedEvent {
+                requested_by: addr(),
+            }),
+            NexusEventKind::PreKeyFulfilled(PreKeyFulfilledEvent {
+                requested_by: addr(),
+                pre_key_bytes: vec![1, 2, 3],
+            }),
+            NexusEventKind::PreKeyAssociated(PreKeyAssociatedEvent {
+                claimed_by: addr(),
+                pre_key: vec![4, 5],
+                initial_message: vec![6, 7],
+            }),
+            NexusEventKind::DAGCreated(DAGCreatedEvent { dag: addr() }),
+        ]
     }
 }
