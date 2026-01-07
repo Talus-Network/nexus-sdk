@@ -109,13 +109,13 @@ mod tests {
             vec![],
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         let result = client
             .gas()

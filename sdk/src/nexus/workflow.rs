@@ -382,13 +382,13 @@ mod tests {
             vec![],
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         let dag = Dag {
             vertices: vec![],
@@ -469,13 +469,13 @@ mod tests {
             Some(1000),
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
@@ -522,7 +522,7 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
@@ -582,7 +582,7 @@ mod tests {
 
         let client = nexus_mocks::mock_nexus_client(
             &nexus_objects,
-            &grpc_url,
+            &rpc_url,
             Some(&format!("{}/graphql", server.url())),
         )
         .await;
@@ -628,7 +628,7 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
@@ -645,7 +645,7 @@ mod tests {
 
         let client = nexus_mocks::mock_nexus_client(
             &nexus_objects,
-            &grpc_url,
+            &rpc_url,
             Some(&format!("{}/graphql", server.url())),
         )
         .await;

@@ -14,14 +14,14 @@ pub(crate) async fn build_sui_grpc_client(
     // the configuration.
     let Some(url) = std::env::var("SUI_RPC_URL")
         .ok()
-        .or_else(|| conf.sui.grpc_url.as_ref().map(|u| u.to_string()))
+        .or_else(|| conf.sui.rpc_url.as_ref().map(|u| u.to_string()))
     else {
         client_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
-            message = "The Sui GRPC URL is not configured. Please set it via the environment variable or the CLI configuration.",
-            command = "$ nexus conf --sui.grpc-url <url>".to_string().bold(),
+            message = "The Sui RPC URL is not configured. Please set it via the environment variable or the CLI configuration.",
+            command = "$ nexus conf --sui.rpc-url <url>".to_string().bold(),
         )));
     };
 
@@ -170,7 +170,7 @@ pub(crate) async fn get_nexus_objects(
     }
 
     // For some networks, we attempt to load the objects from public endpoints.
-    let response = match conf.sui.grpc_url.as_ref() {
+    let response = match conf.sui.rpc_url.as_ref() {
         Some(url) if url.as_str() == DEVNET_NEXUS_RPC_URL => {
             fetch_objects_from_url(DEVNET_OBJECTS_TOML).await
         }
@@ -265,7 +265,7 @@ pub(crate) async fn get_nexus_client(
     let owner = pk.public_key().derive_address();
     let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
     let nexus_objects = get_nexus_objects(&mut conf).await?;
-    let grpc_url = client.lock().await.uri().to_string();
+    let rpc_url = client.lock().await.uri().to_string();
 
     // Try to get the `SUI_GQL_URL` from the environment, otherwise use
     // the configuration.
@@ -286,7 +286,7 @@ pub(crate) async fn get_nexus_client(
         .with_private_key(pk)
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![gas_coin], sui_gas_budget)
-        .with_grpc_url(&grpc_url)
+        .with_rpc_url(&rpc_url)
         .with_gql_url(&gql_url)
         .build()
         .await

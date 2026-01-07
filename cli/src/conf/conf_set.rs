@@ -10,7 +10,7 @@ use {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
     sui_pk: Option<String>,
-    sui_grpc_url: Option<reqwest::Url>,
+    sui_rpc_url: Option<reqwest::Url>,
     sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
@@ -47,7 +47,7 @@ pub(crate) async fn set_nexus_conf(
     }
 
     conf.sui.pk = sui_pk.or(conf.sui.pk);
-    conf.sui.grpc_url = sui_grpc_url.or(conf.sui.grpc_url);
+    conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
     conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
     // Preferred remote storage cannot be inline.
@@ -150,7 +150,7 @@ mod tests {
 
         assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
-            conf.sui.grpc_url,
+            conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
         );
         assert_eq!(
@@ -194,7 +194,7 @@ mod tests {
 
         assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
-            conf.sui.grpc_url,
+            conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
         );
         assert_eq!(

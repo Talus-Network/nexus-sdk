@@ -24,6 +24,8 @@ pub mod traits {
     pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil, sui_sdk_types::bcs::ToBcs};
 }
 
+pub const MIST_PER_SUI: u64 = 1_000_000_000;
+
 /// Move build and package management re-exported for testing.
 #[cfg(feature = "test_utils")]
 pub mod build {

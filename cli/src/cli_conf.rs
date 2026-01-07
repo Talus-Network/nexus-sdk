@@ -52,7 +52,7 @@ pub(crate) struct SuiConf {
     #[serde(default)]
     pub(crate) pk: Option<String>,
     #[serde(default)]
-    pub(crate) grpc_url: Option<reqwest::Url>,
+    pub(crate) rpc_url: Option<reqwest::Url>,
     #[serde(default)]
     pub(crate) gql_url: Option<reqwest::Url>,
 }

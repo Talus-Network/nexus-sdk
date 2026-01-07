@@ -35,8 +35,8 @@ pub(crate) const DEVNET_OBJECTS_TOML: &str =
 pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
-/// What is the default gas budget to use?
-pub(crate) const DEFAULT_GAS_BUDGET: u64 = 100_000_000;
+/// What is the default gas budget to use? (0.1 SUI)
+pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {

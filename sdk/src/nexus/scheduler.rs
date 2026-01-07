@@ -815,15 +815,15 @@ mod tests {
         subscription_service_mock: sui_mocks::grpc::MockSubscriptionService,
         nexus_objects: NexusObjects,
     ) -> (String, NexusClient) {
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(execution_service_mock),
             subscription_service_mock: Some(subscription_service_mock),
         });
 
-        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
-        (grpc_url, nexus_client)
+        (rpc_url, nexus_client)
     }
 
     #[tokio::test]
