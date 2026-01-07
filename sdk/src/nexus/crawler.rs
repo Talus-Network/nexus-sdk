@@ -235,20 +235,44 @@ impl Crawler {
             .fetch_dynamic_fields::<u64>(parent.id(), expected_size)
             .await?;
 
-        let field_ids = names_and_ids
-            .iter()
-            .filter_map(|(_, _, id)| *id)
-            .collect::<Vec<_>>();
+        let mut index_by_field_id = HashMap::with_capacity(names_and_ids.len());
+        let mut field_ids = Vec::with_capacity(names_and_ids.len());
 
-        let field_objects = self.get_objects::<DynamicPair<u64, T>>(&field_ids).await?;
+        for (name, _child_id, field_id) in names_and_ids {
+            let Some(field_id) = field_id else {
+                bail!("Dynamic field ID missing for TableVec");
+            };
+
+            let index = usize::try_from(name).unwrap_or(usize::MAX);
+            if index >= expected_size {
+                bail!("TableVec index out of bounds: {index} >= {expected_size}");
+            }
+
+            if index_by_field_id.insert(field_id, index).is_some() {
+                bail!("Duplicate dynamic field ID '{field_id}' for TableVec");
+            }
+
+            field_ids.push(field_id);
+        }
+
+        let field_objects = self.get_objects::<DynamicValue<T>>(&field_ids).await?;
 
         let mut values_by_index: Vec<Option<T>> = std::iter::repeat_with(|| None)
             .take(expected_size)
             .collect();
         for obj in field_objects {
-            let index = usize::try_from(obj.data.name).unwrap_or(usize::MAX);
-            if index >= expected_size {
-                bail!("TableVec index out of bounds: {index} >= {expected_size}");
+            let index = index_by_field_id
+                .get(&obj.object_id)
+                .copied()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Unexpected dynamic field ID '{}' for TableVec",
+                        obj.object_id
+                    )
+                })?;
+
+            if values_by_index[index].is_some() {
+                bail!("Duplicate TableVec element at index {index}");
             }
 
             values_by_index[index] = Some(obj.data.value.into_inner());
@@ -846,6 +870,11 @@ impl<V> ValueOrWrapper<V> {
             ValueOrWrapper::Wrapper { value } => value,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DynamicValue<V> {
+    value: ValueOrWrapper<V>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -2,13 +2,24 @@
 
 use {
     nexus_sdk::{
-        nexus::crawler::{Crawler, DynamicMap, DynamicObjectMap, Map, Set},
+        nexus::crawler::{
+            Bag,
+            Crawler,
+            DynamicMap,
+            DynamicObjectMap,
+            Map,
+            ObjectBag,
+            Set,
+            Table,
+            TableVec,
+        },
         sui,
         test_utils,
         types::deserialize_encoded_bytes,
     },
     serde::{Deserialize, Serialize},
-    std::{str::FromStr, sync::Arc},
+    serde_json::json,
+    std::{collections::HashMap, str::FromStr, sync::Arc},
     tokio::sync::Mutex,
 };
 
@@ -27,6 +38,7 @@ struct Guy {
     bag: DynamicMap<Name, PlainValue>,
     heterogeneous: DynamicMap<Name, HeterogeneousValue>,
     linked_table: DynamicMap<Name, Name>,
+    sequence: TableVec<Name>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -328,4 +340,57 @@ async fn test_object_crawler() {
         .unwrap();
 
     assert_eq!(linked_item.name, "Value 1");
+
+    // Fetch TableVec.
+    assert_eq!(guy.sequence.size(), 3);
+    assert_eq!(guy.sequence.size_u64(), 3);
+    let sequence_id = guy.sequence.id();
+    assert_ne!(sequence_id, sui::types::Address::from_static("0x0"));
+
+    let sequence = crawler.get_table_vec(&guy.sequence).await.unwrap();
+    assert_eq!(sequence.len(), 3);
+    assert_eq!(sequence[0].name, "First");
+    assert_eq!(sequence[1].name, "Second");
+    assert_eq!(sequence[2].name, "Third");
+}
+
+#[test]
+fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
+    let id = nexus_sdk::sui::types::Address::from_static("0x123");
+
+    let bag = Bag::new(id, 2);
+    assert_eq!(bag.id(), id);
+    assert_eq!(bag.size_u64(), 2);
+    assert_eq!(bag.size(), 2);
+
+    let object_bag = ObjectBag::new(id, 3);
+    assert_eq!(object_bag.id(), id);
+    assert_eq!(object_bag.size_u64(), 3);
+    assert_eq!(object_bag.size(), 3);
+
+    let table: Table<String, u64> = Table::new(id, 4);
+    assert_eq!(table.id(), id);
+    assert_eq!(table.size_u64(), 4);
+    assert_eq!(table.size(), 4);
+
+    let table_vec: TableVec<u64> = TableVec::new(id, 5);
+    assert_eq!(table_vec.id(), id);
+    assert_eq!(table_vec.size_u64(), 5);
+    assert_eq!(table_vec.size(), 5);
+}
+
+#[test]
+fn map_deserializes_from_object_contents_variant() {
+    let value = json!({
+        "contents": {
+            "a": 1,
+            "b": 2,
+        }
+    });
+
+    let parsed: Map<String, u64> = serde_json::from_value(value).expect("deserialize Map");
+    assert_eq!(
+        parsed.into_map(),
+        HashMap::from([("a".to_string(), 1), ("b".to_string(), 2)])
+    );
 }

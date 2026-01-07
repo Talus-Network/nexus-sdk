@@ -1,7 +1,7 @@
 [env]
 
 [env.localnet]
-chain-id = "Hvu2ZoF5NLAZoGzKBsRR1WHZXeVa6ZSz4csvS8d27Mqw"
-original-published-id = "0xdfa73a0a1300809b0627412b269198ba71c9b53fde48058c8a616949ccf7e6fe"
-latest-published-id = "0xdfa73a0a1300809b0627412b269198ba71c9b53fde48058c8a616949ccf7e6fe"
+chain-id = "AKHmRRmcAqfbpuEoa7WKrkRK2LanSn6G57ByRLWWa2fT"
+original-published-id = "0xd1450e3e0862549c2a6e165d5b99aec992907e815f6a5ed33dab0a26b4887275"
+latest-published-id = "0xd1450e3e0862549c2a6e165d5b99aec992907e815f6a5ed33dab0a26b4887275"
 published-version = "1"
