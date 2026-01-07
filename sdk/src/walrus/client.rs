@@ -172,9 +172,9 @@ impl WalrusClient {
                 })?;
 
         // Construct API URL with query parameters
-        let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
+        let mut url = format!("{}/v1/blobs?epochs={epochs}", self.publisher_url);
         if let Some(address) = send_to {
-            url.push_str(&format!("&send_object_to={}", address));
+            url.push_str(&format!("&send_object_to={address}"));
         }
 
         // Send PUT request
@@ -231,7 +231,7 @@ impl WalrusClient {
         // Construct API URL with query parameters
         let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
         if let Some(address) = send_to {
-            url.push_str(&format!("&send_object_to={}", address));
+            url.push_str(&format!("&send_object_to={address}"));
         }
 
         // Send PUT request with JSON content
