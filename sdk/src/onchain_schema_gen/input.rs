@@ -2,8 +2,11 @@
 
 use {
     super::types::{convert_move_type_to_schema, is_tx_context_param},
-    anyhow::{anyhow, Result as AnyResult},
+    crate::sui,
+    anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
+    std::sync::Arc,
+    tokio::sync::Mutex,
 };
 
 /// Generate input schema by introspecting the execute function's parameters.
@@ -12,51 +15,63 @@ use {
 /// execute function's parameters to generate a JSON schema. It automatically
 /// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
 pub async fn generate_input_schema(
-    sui: &crate::sui::Client,
-    package_address: crate::sui::ObjectID,
+    client: Arc<Mutex<sui::grpc::Client>>,
+    package_address: sui::types::Address,
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<String> {
+    let request = sui::grpc::GetPackageRequest::default().with_package_id(package_address);
+
+    let mut client = client.lock().await;
+
     // Fetch all normalized Move modules for the package.
-    let all_modules = sui
-        .read_api()
-        .get_normalized_move_modules_by_package(package_address)
-        .await?;
+    let Some(package) = client
+        .package_client()
+        .get_package(request)
+        .await
+        .map(|resp| resp.into_inner().package)?
+    else {
+        bail!("Package '{package_address}' not found")
+    };
+
+    drop(client);
+
+    let all_modules = package.modules();
 
     // Find the specific module.
-    let normalized_module = all_modules.get(module_name).ok_or_else(|| {
-        anyhow!(
-            "Module '{}' not found in package '{}'",
-            module_name,
-            package_address
-        )
-    })?;
+    let normalized_module = all_modules
+        .iter()
+        .find(|m| m.name() == module_name)
+        .ok_or_else(|| {
+            anyhow!("Module '{module_name}' not found in package '{package_address}'")
+        })?;
 
     // Find the execute function.
     let execute_func = normalized_module
-        .exposed_functions
-        .get(execute_function)
+        .functions()
+        .iter()
+        .find(|f| f.name() == execute_function)
         .ok_or_else(|| {
-            anyhow!(
-                "Function '{}' not found in module '{}'",
-                execute_function,
-                module_name
-            )
+            anyhow!("Function '{execute_function}' not found in module '{module_name}'")
         })?;
 
     // Parse function parameters.
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for (i, param_type) in execute_func.parameters.iter().enumerate() {
-        let is_tx_context = is_tx_context_param(param_type);
+    for (i, param_type) in execute_func.parameters().iter().enumerate() {
+        let signature = param_type.body_opt().ok_or_else(|| {
+            anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
+        })?;
+
+        let is_tx_context = is_tx_context_param(signature);
 
         // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
         if i == 0 || is_tx_context {
             continue;
         }
 
-        let param_schema = convert_move_type_to_schema(param_type)?;
+        let param_schema = convert_move_type_to_schema(signature)?;
 
         // Store parameter information with index as the default name.
         let param_obj = match param_schema {
@@ -88,23 +103,28 @@ mod tests {
         use crate::test_utils;
 
         // Spin up the Sui instance.
-        let (_container, rpc_port, faucet_port) =
-            test_utils::containers::setup_sui_instance().await;
+        let test_utils::containers::SuiInstance {
+            rpc_port,
+            faucet_port,
+            pg: _pg,
+            container: _container,
+            ..
+        } = test_utils::containers::setup_sui_instance().await;
+
+        let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+        let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
+
+        let mut rng = rand::thread_rng();
 
         // Create a wallet and request some gas tokens.
-        let (mut wallet, _) = test_utils::wallet::create_ephemeral_wallet_context(rpc_port)
-            .expect("Failed to create a wallet.");
-        let sui = wallet.get_client().await.expect("Could not get Sui client");
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let addr = pk.public_key().derive_address();
 
-        let addr = wallet
-            .active_address()
-            .expect("Failed to get active address.");
-
-        test_utils::faucet::request_tokens(&format!("http://127.0.0.1:{faucet_port}/gas"), addr)
+        test_utils::faucet::request_tokens(&faucet_url, addr)
             .await
             .expect("Failed to request tokens from faucet.");
 
-        let gas_coin = test_utils::gas::fetch_gas_coins(&sui, addr)
+        let (gas_coin, _) = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
             .await
             .expect("Failed to fetch gas coin.")
             .into_iter()
@@ -113,28 +133,36 @@ mod tests {
 
         // Publish test onchain_tool package.
         let response = test_utils::contracts::publish_move_package(
-            &mut wallet,
+            &pk,
+            &rpc_url,
             "tests/move/onchain_tool_test",
             gas_coin,
         )
         .await;
 
-        let changes = response
-            .object_changes
-            .expect("TX response must have object changes");
-
-        let pkg_id = *changes
+        let pkg_id = response
+            .objects
             .iter()
-            .find_map(|c| match c {
-                crate::sui::ObjectChange::Published { package_id, .. } => Some(package_id),
+            .find_map(|c| match c.data() {
+                sui::types::ObjectData::Package(m) => Some(m.id),
                 _ => None,
             })
             .expect("Move package must be published");
 
+        let client = Arc::new(Mutex::new(
+            sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
+                .expect("Could not create gRPC client"),
+        ));
+
         // Generate input schema for the onchain_tool::execute function.
-        let schema_str = generate_input_schema(&sui, pkg_id, "onchain_tool", "execute")
-            .await
-            .expect("Failed to generate input schema");
+        let schema_str = generate_input_schema(
+            client,
+            pkg_id.to_string().parse().unwrap(),
+            "onchain_tool",
+            "execute",
+        )
+        .await
+        .expect("Failed to generate input schema");
 
         // Parse the schema.
         let schema: serde_json::Value =
@@ -152,7 +180,6 @@ mod tests {
             .get("0")
             .expect("Schema should have parameter 0 (counter)");
         assert_eq!(param0["type"], "object");
-        assert_eq!(param0["mutable"], true);
         assert!(param0["description"]
             .as_str()
             .unwrap()

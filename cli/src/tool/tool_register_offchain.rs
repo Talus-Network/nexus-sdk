@@ -11,6 +11,7 @@ use {
     },
     nexus_sdk::{
         idents::{primitives, workflow},
+        nexus::error::NexusError,
         transactions::tool,
     },
 };
@@ -18,11 +19,11 @@ use {
 /// Validate and then register a new offchain Tool.
 pub(crate) async fn register_off_chain_tool(
     url: reqwest::Url,
-    collateral_coin: Option<sui::ObjectID>,
+    collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
     batch: bool,
     no_save: bool,
-    sui_gas_coin: Option<sui::ObjectID>,
+    sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     // Validate either a single tool or a batch of tools if the `batch` flag is
@@ -48,6 +49,17 @@ pub(crate) async fn register_off_chain_tool(
 
     let mut registration_results = Vec::with_capacity(urls.len());
 
+    if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
+        return Err(NexusCliError::Any(anyhow!(
+            "The coin used for collateral cannot be the same as the gas coin."
+        )));
+    }
+
+    let conf = CliConf::load().await.unwrap_or_default();
+    let client = build_sui_grpc_client(&conf).await?;
+    let pk = get_signing_key(&conf).await?;
+    let owner = pk.public_key().derive_address();
+
     for tool_url in urls {
         let meta = validate_off_chain_tool(tool_url).await?;
 
@@ -57,40 +69,23 @@ pub(crate) async fn register_off_chain_tool(
             url = meta.url
         );
 
-        // Load CLI configuration.
-        let mut conf = CliConf::load().await.unwrap_or_default();
-
-        // Nexus objects must be present in the configuration.
-        let objects = &get_nexus_objects(&mut conf).await?;
-
-        // Create wallet context, Sui client and find the active address.
-        let mut wallet = create_wallet_context(&conf.sui.wallet_path, conf.sui.net).await?;
-        let sui = build_sui_client(&conf.sui).await?;
-        let address = wallet.active_address().map_err(NexusCliError::Any)?;
-
-        // Fetch gas and collateral coin objects.
-        let (gas_coin, collateral_coin) =
-            fetch_gas_and_collateral_coins(&sui, address, sui_gas_coin, collateral_coin).await?;
-
-        if gas_coin.coin_object_id == collateral_coin.coin_object_id {
-            return Err(NexusCliError::Any(anyhow!(
-                "Gas and collateral coins must be different."
-            )));
-        }
-
-        // Fetch reference gas price.
-        let reference_gas_price = fetch_reference_gas_price(&sui).await?;
+        let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+        let signer = nexus_client.signer();
+        let gas_config = nexus_client.gas_config();
+        let address = signer.get_active_address();
+        let nexus_objects = &*nexus_client.get_nexus_objects();
+        let collateral_coin = fetch_coin(client.clone(), owner, collateral_coin, 1).await?;
 
         // Craft a TX to register the tool.
         let tx_handle = loading!("Crafting transaction...");
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = tool::register_off_chain_for_self(
             &mut tx,
-            objects,
+            nexus_objects,
             &meta,
-            address.into(),
+            address,
             &collateral_coin,
             invocation_cost,
         ) {
@@ -101,20 +96,34 @@ pub(crate) async fn register_off_chain_tool(
 
         tx_handle.success();
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.object_ref()],
-            tx.finish(),
-            sui_gas_budget,
-            reference_gas_price,
-        );
+        let mut gas_coin = gas_config.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(gas_config.get_budget());
+        tx.set_gas_price(nexus_client.get_reference_gas_price());
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx.finish().map_err(|e| NexusCliError::Any(e.into()))?;
+
+        let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
 
         // Sign and submit the TX.
-        let response = match sign_and_execute_transaction(&sui, &wallet, tx_data).await {
-            Ok(response) => response,
+        let response = match signer.execute_tx(tx, signature, &mut gas_coin).await {
+            Ok(response) => {
+                gas_config.release_gas_coin(gas_coin).await;
+
+                response
+            }
             // If the tool is already registered, we don't want to fail the
             // command.
-            Err(NexusCliError::Any(e)) if e.to_string().contains("register_off_chain_tool_") => {
+            Err(NexusError::Wallet(e)) if e.to_string().contains("register_off_chain_tool_") => {
+                gas_config.release_gas_coin(gas_coin).await;
+
                 notify_error!(
                     "Tool '{fqn}' is already registered.",
                     fqn = meta.fqn.to_string().truecolor(100, 100, 100)
@@ -130,6 +139,8 @@ pub(crate) async fn register_off_chain_tool(
             // Any other error fails the tool registration but continues the
             // loop.
             Err(e) => {
+                gas_config.release_gas_coin(gas_coin).await;
+
                 notify_error!(
                     "Failed to register tool '{fqn}': {error}",
                     fqn = meta.fqn.to_string().truecolor(100, 100, 100),
@@ -147,32 +158,30 @@ pub(crate) async fn register_off_chain_tool(
 
         // Parse the owner cap object IDs from the response.
         let owner_caps = response
-            .object_changes
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|change| match change {
-                sui::ObjectChange::Created {
-                    object_type,
-                    object_id,
-                    ..
-                } if object_type.address == *objects.primitives_pkg_id
-                    && object_type.module
-                        == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module.into()
-                    && object_type.name
-                        == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name.into() =>
+            .objects
+            .iter()
+            .filter_map(|obj| {
+                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+                    return None;
+                };
+
+                if *object_type.address() == nexus_objects.primitives_pkg_id
+                    && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
+                    && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
                 {
-                    Some((object_id, object_type))
+                    Some((obj.object_id(), object_type))
+                } else {
+                    None
                 }
-                _ => None,
             })
             .collect::<Vec<_>>();
 
         // Find `CloneableOwnerCap<OverTool>` object ID.
         let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
-            match object_type.type_params.first() {
-                Some(sui::MoveTypeTag::Struct(what_for))
-                    if what_for.module == workflow::ToolRegistry::OVER_TOOL.module.into()
-                        && what_for.name == workflow::ToolRegistry::OVER_TOOL.name.into() =>
+            match object_type.type_params().first() {
+                Some(sui::types::TypeTag::Struct(what_for))
+                    if *what_for.module() == workflow::ToolRegistry::OVER_TOOL.module
+                        && *what_for.name() == workflow::ToolRegistry::OVER_TOOL.name =>
                 {
                     Some(object_id)
                 }
@@ -188,10 +197,10 @@ pub(crate) async fn register_off_chain_tool(
 
         // Find `CloneableOwnerCap<OverGas>` object ID.
         let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
-            match object_type.type_params.first() {
-                Some(sui::MoveTypeTag::Struct(what_for))
-                    if what_for.module == workflow::Gas::OVER_GAS.module.into()
-                        && what_for.name == workflow::Gas::OVER_GAS.name.into() =>
+            match object_type.type_params().first() {
+                Some(sui::types::TypeTag::Struct(what_for))
+                    if *what_for.module() == workflow::Gas::OVER_GAS.module
+                        && *what_for.name() == workflow::Gas::OVER_GAS.name =>
                 {
                     Some(object_id)
                 }
@@ -250,44 +259,4 @@ pub(crate) async fn register_off_chain_tool(
     json_output(&registration_results)?;
 
     Ok(())
-}
-
-/// Fetch the gas and collateral coins from the Sui client. On Localnet, Devnet
-/// and Testnet, we can use the faucet to get the coins. On Mainnet, this fails
-/// if the coins are not present.
-pub(super) async fn fetch_gas_and_collateral_coins(
-    sui: &sui::Client,
-    addr: sui::Address,
-    sui_gas_coin: Option<sui::ObjectID>,
-    sui_collateral_coin: Option<sui::ObjectID>,
-) -> AnyResult<(sui::Coin, sui::Coin), NexusCliError> {
-    let mut coins = fetch_all_coins_for_address(sui, addr).await?;
-
-    if coins.len() < 2 {
-        return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough coins to register the tool"
-        )));
-    }
-
-    // If object IDs were specified, use them. If any of the specified coins is
-    // not found, return error.
-    let gas_coin = match sui_gas_coin {
-        Some(id) => coins
-            .iter()
-            .find(|coin| coin.coin_object_id == id)
-            .cloned()
-            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
-        None => coins.remove(0),
-    };
-
-    let collateral_coin = match sui_collateral_coin {
-        Some(id) => coins
-            .iter()
-            .find(|coin| coin.coin_object_id == id)
-            .cloned()
-            .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?,
-        None => coins.remove(0),
-    };
-
-    Ok((gas_coin, collateral_coin))
 }

@@ -75,13 +75,13 @@ impl ToolTemplate {
                         Some(move_toml_template.render(context! { name_snake_case })?),
                     ),
                     (
-                        format!("sources/{}.move", name_snake_case),
+                        format!("sources/{name_snake_case}.move"),
                         Some(tool_move_template.render(
                             context! { name_snake_case, name_pascal_case, name_uppercase },
                         )?),
                     ),
                     (
-                        format!("tests/{}_tests.move", name_snake_case),
+                        format!("tests/{name_snake_case}_tests.move"),
                         Some(tests_move_template.render(context! { name_snake_case })?),
                     ),
                     (
@@ -178,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_tool() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
 
         let result = create_new_tool("test".to_string(), ToolTemplate::Rust, tempdir.clone()).await;
 
@@ -205,7 +205,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_move_tool() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
 
         let result =
             create_new_tool("test_tool".to_string(), ToolTemplate::Move, tempdir.clone()).await;

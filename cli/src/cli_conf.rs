@@ -1,6 +1,6 @@
 use {
     crate::prelude::*,
-    nexus_sdk::types::{StorageConf, StorageKind},
+    nexus_sdk::types::{SecretValue, StorageConf, StorageKind},
     std::sync::Arc,
     tokio::sync::Mutex,
 };
@@ -46,24 +46,15 @@ impl CliConf {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) struct SuiConf {
+    /// Sui private key base64 encoded bytes.
     #[serde(default)]
-    pub(crate) net: SuiNet,
-    #[serde(default = "default_sui_wallet_path")]
-    pub(crate) wallet_path: PathBuf,
+    pub(crate) pk: Option<SecretValue>,
     #[serde(default)]
     pub(crate) rpc_url: Option<reqwest::Url>,
-}
-
-impl Default for SuiConf {
-    fn default() -> Self {
-        Self {
-            net: SuiNet::Localnet,
-            wallet_path: default_sui_wallet_path(),
-            rpc_url: None,
-        }
-    }
+    #[serde(default)]
+    pub(crate) gql_url: Option<reqwest::Url>,
 }
 
 /// Remote data storage configuration.
@@ -218,13 +209,6 @@ impl CryptoConf {
 
         Ok(())
     }
-}
-
-// == Used by serde ==
-
-fn default_sui_wallet_path() -> PathBuf {
-    let config_dir = sui::config_dir().expect("Unable to determine SUI config directory");
-    config_dir.join(sui::CLIENT_CONFIG)
 }
 
 #[cfg(test)]

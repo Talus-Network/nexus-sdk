@@ -28,6 +28,7 @@ aes-siv = "0.7"
 anyhow = "1.0.97"
 argon2 = "0.5"
 base64 = "0.21"
+bcs = "0.1.6"
 bip32 = "0.4.0"
 bincode = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -39,6 +40,7 @@ directories = "5"
 enum_dispatch = "0.3.13"
 env_logger = "0.11.7"
 futures = "0.3.31"
+graphql_client = "0.14"
 hex = "0.4"
 home = "0.5.11"
 indicatif = "0.17.11"
@@ -47,33 +49,34 @@ keyring = "3.6"
 lazy-regex = "3.4.1"
 log = "^0.4.26"
 minijinja = "2.8.0"
+mockall = "0.14.0"
 mockito = "1.7.0"
 openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
+prost-types = "0.14.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }
 regex = "1.11.1"
-reqwest = "0.12.14"
+reqwest = { version = "0.12.14", features = ["json", "stream"] }
 rpassword = "7.4.0"
 rstest = "0.25.0"
 # Keep an eye for the full release here. We need v1 for draft2020-12 schema.
 schemars = "1.0.0-alpha.17"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde-big-array = "0.5.1"
-serde_json = "1.0.140"
+serde_json = "1.0"
 serde_path_to_error = "0.1.17"
 serial_test = "3.2.0"
 strum = "0.27"
 strum_macros = "0.27"
 tempfile = "3.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.48.0", features = ["full"] }
 tokio-retry = "0.3.0"
 toml = "0.8.20"
+tonic = "0.14"
 warp = "0.3.7"
 zeroize = "1.7"
-sui_move_build = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-move-build" }
-sui_package_management = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.45.3", package = "sui-package-management" }
 
 # === Nexus deps ===
 nexus-toolkit = { path = "toolkit-rust" }

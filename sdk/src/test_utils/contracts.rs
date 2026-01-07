@@ -1,96 +1,126 @@
 use {
-    crate::sui::{self, traits::*},
-    std::{fs::OpenOptions, path::PathBuf},
-    sui_move_build::implicit_deps,
-    sui_package_management::system_package_versions::latest_system_packages,
+    crate::{
+        idents::sui_framework,
+        nexus::signer::{ExecutedTransaction, Signer},
+        sui,
+        test_utils::sui_mocks,
+    },
+    std::{fs::OpenOptions, path::PathBuf, sync::Arc},
+    tokio::sync::Mutex,
 };
 
-/// Publishes a Move package to Sui.
+/// Publishes a Move package to Sui with no package ID overrides.
+pub async fn publish_move_package(
+    pk: &sui::crypto::Ed25519PrivateKey,
+    rpc_url: &str,
+    path_str: &str,
+    gas_coin: sui::types::ObjectReference,
+) -> ExecutedTransaction {
+    publish_move_package_with_overrides(pk, rpc_url, path_str, gas_coin, &[]).await
+}
+
+/// Publishes a Move package to Sui. Optionally providing overrides for package
+/// IDs.
 ///
 /// `path_str` is the path relative to the project `Cargo.toml` directory.
-pub async fn publish_move_package(
-    wallet: &mut sui::WalletContext,
+pub async fn publish_move_package_with_overrides(
+    pk: &sui::crypto::Ed25519PrivateKey,
+    rpc_url: &str,
     path_str: &str,
-    gas_coin: sui::Coin,
-) -> sui::TransactionBlockResponse {
+    gas_coin: sui::types::ObjectReference,
+    overrides: &[(&str, sui::types::Address)],
+) -> ExecutedTransaction {
     let install_dir = PathBuf::from(path_str);
     let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
 
-    let sui = wallet
-        .get_client()
-        .await
-        .expect("Failed to get Sui client.");
+    let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
+    let addr = pk.public_key().derive_address();
+    let signer = Signer::new(
+        Arc::new(Mutex::new(client.clone())),
+        pk.clone(),
+        std::time::Duration::from_secs(30),
+        Arc::new(sui_mocks::mock_nexus_objects()),
+    );
 
-    let addr = wallet
-        .active_address()
-        .expect("Failed to get active address.");
-
-    let chain_id = sui
-        .read_api()
-        .get_chain_identifier()
+    let reference_gas_price = client
+        .get_reference_gas_price()
         .await
-        .expect("Failed to get chain identifier.");
+        .expect("Failed to get reference gas price.");
+
+    let chain_id = {
+        let response = client
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .expect("Failed to get service info.");
+
+        response
+            .into_inner()
+            .chain_id
+            .expect("Chain ID missing in service info.")
+    };
 
     // Compile the package.
-    let mut build_config = sui_move_build::BuildConfig::new_for_testing();
-    build_config.chain_id = Some(chain_id);
-    build_config.config.implicit_dependencies = implicit_deps(latest_system_packages());
+    let mut build_config = sui_move_build::BuildConfig::new_for_testing_replace_addresses(
+        overrides
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string().parse().unwrap()))
+            .collect::<Vec<_>>(),
+    );
+
+    build_config.chain_id = Some(chain_id.clone());
+    build_config.config.implicit_dependencies =
+        sui::build::implicit_deps(sui::build::latest_system_packages());
     let package = build_config
         .build(&install_dir)
         .expect("Failed to build package.");
 
-    let reference_gas_price = sui
-        .read_api()
-        .get_reference_gas_price()
-        .await
-        .expect("Failed to fetch reference gas price.");
-
     let with_unpublished_deps = false;
 
-    let tx = sui
-        .transaction_builder()
-        .publish_tx_kind(
-            addr,
-            package.get_package_bytes(with_unpublished_deps),
-            package.get_dependency_storage_package_ids(),
-        )
+    let mut tx = sui::tx::TransactionBuilder::new();
+
+    let upgrade_cap = tx.publish(
+        package.get_package_bytes(with_unpublished_deps),
+        package
+            .get_dependency_storage_package_ids()
+            .iter()
+            .map(|id| id.to_string().parse().unwrap())
+            .collect(),
+    );
+    let address =
+        sui_framework::Address::address_from_type(&mut tx, addr).expect("Failed to get address.");
+
+    tx.transfer_objects(vec![upgrade_cap], address);
+
+    tx.set_sender(addr);
+    tx.set_gas_budget(1_000_000_000);
+    tx.set_gas_price(reference_gas_price);
+    tx.add_gas_objects(vec![sui::tx::Input::owned(
+        *gas_coin.object_id(),
+        gas_coin.version(),
+        *gas_coin.digest(),
+    )]);
+
+    let tx = tx.finish().expect("Failed to finish transaction.");
+
+    let signature = signer
+        .sign_tx(&tx)
         .await
-        .expect("Failed to build transaction.");
+        .expect("Failed to sign transaction.");
 
-    let tx_data = sui
-        .transaction_builder()
-        .tx_data(
-            addr,
-            tx,
-            sui::MIST_PER_SUI,
-            reference_gas_price,
-            vec![gas_coin.coin_object_id],
-            None,
-        )
-        .await
-        .expect("Failed to build transaction data.");
-
-    // Prepare some options for the transaction. Object changes and events are
-    // used to parse useful IDs from.
-    let envelope = wallet.sign_transaction(&tx_data);
-    let resp_options = sui::TransactionBlockResponseOptions::new()
-        .with_events()
-        .with_effects()
-        .with_object_changes();
-    let resp_finality = sui::ExecuteTransactionRequestType::WaitForLocalExecution;
-
-    // Execute the transaction.
-    let response = sui
-        .quorum_driver_api()
-        .execute_transaction_block(envelope, resp_options, Some(resp_finality))
+    let response = signer
+        .execute_tx(tx, signature, &mut gas_coin.clone())
         .await
         .expect("Failed to execute transaction.");
 
-    if let Some(effects) = response.effects.clone() {
-        if effects.clone().into_status().is_err() {
-            panic!("Transaction has erroneous effects: {path_str} {effects}");
-        }
-    }
+    let pkg_id = response
+        .objects
+        .iter()
+        .find_map(|c| match c.data() {
+            sui::types::ObjectData::Package(m) => Some(m.id),
+            _ => None,
+        })
+        .expect("Move package must be published");
 
     // Create the lock file if not exists.
     OpenOptions::new()
@@ -100,15 +130,20 @@ pub async fn publish_move_package(
         .open(&lock_file)
         .expect("Failed to create lock file.");
 
-    sui_package_management::update_lock_file(
-        wallet,
-        sui_package_management::LockCommand::Publish,
-        Some(install_dir),
-        Some(lock_file),
-        &response,
+    let mut lock = sui::build::LockFile::from(install_dir.clone(), &lock_file)
+        .expect("Failed to read lock file.");
+
+    sui::build::update_managed_address(
+        &mut lock,
+        "localnet",
+        sui::build::ManagedAddressUpdate::Published {
+            chain_id,
+            original_id: pkg_id.to_string(),
+        },
     )
-    .await
     .expect("Failed to update lock file.");
+
+    lock.commit(lock_file).expect("Failed to update lock file.");
 
     response
 }

@@ -13,7 +13,7 @@ use {
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(tag = "variant", content = "fields")]
+#[serde(tag = "@variant")]
 pub enum RuntimeVertex {
     Plain {
         vertex: TypeName,
@@ -80,19 +80,14 @@ mod tests {
 
         let json = serde_json::to_string(&vertex).unwrap();
 
-        assert_eq!(
-            json,
-            r#"{"variant":"Plain","fields":{"vertex":{"name":"vertex_a"}}}"#,
-        );
+        assert_eq!(json, r#"{"@variant":"Plain","vertex":{"name":"vertex_a"}}"#,);
     }
 
     #[test]
     fn test_deserialize_plain() {
         let json = r#"{
-            "variant": "Plain",
-            "fields": {
-                "vertex": { "name": "vertex_b" }
-            }
+            "@variant": "Plain",
+            "vertex": { "name": "vertex_b" }
         }"#;
 
         let vertex: RuntimeVertex = serde_json::from_str(json).unwrap();
@@ -123,19 +118,17 @@ mod tests {
 
         assert_eq!(
             json,
-            r#"{"variant":"WithIterator","fields":{"vertex":{"name":"vertex_c"},"iteration":"5","out_of":"10"}}"#
+            r#"{"@variant":"WithIterator","vertex":{"name":"vertex_c"},"iteration":"5","out_of":"10"}"#
         );
     }
 
     #[test]
     fn test_deserialize_with_iterator() {
         let json = r#"{
-            "variant": "WithIterator",
-            "fields": {
-                "vertex": { "name": "vertex_d" },
-                "iteration": "7",
-                "out_of": "15"
-            }
+            "@variant": "WithIterator",
+            "vertex": { "name": "vertex_d" },
+            "iteration": "7",
+            "out_of": "15"
         }"#;
 
         let vertex: RuntimeVertex = serde_json::from_str(json).unwrap();
