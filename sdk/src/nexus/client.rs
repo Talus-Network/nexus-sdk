@@ -3,162 +3,37 @@
 
 use {
     crate::{
+        events::EventFetcher,
         nexus::{
+            crawler::Crawler,
             crypto::CryptoActions,
             error::NexusError,
             gas::GasActions,
             scheduler::SchedulerActions,
+            signer::Signer,
             workflow::WorkflowActions,
         },
-        sui::{self, traits::*},
+        sui,
         types::NexusObjects,
     },
     std::sync::Arc,
-    sui_keys::keystore::AccountKeystore,
-    tokio::sync::{Mutex, Notify},
+    tokio::{
+        sync::{Mutex, Notify},
+        time::Duration,
+    },
 };
-
-/// We want to provide flexibility when it comes to signing transactions. We
-/// accept both - a [`sui::WalletContext`] and a tuple of a [`sui::Client`] and
-/// a secret mnemonic string.
-#[derive(Clone)]
-pub enum Signer {
-    Wallet(Arc<Mutex<sui::WalletContext>>),
-    Mnemonic(Arc<sui::Client>, Arc<Mutex<sui::Keystore>>),
-}
-
-impl Signer {
-    /// Get a reference to the Sui client.
-    pub(super) async fn get_client(&self) -> Result<Arc<sui::Client>, NexusError> {
-        match self {
-            Signer::Wallet(ctx) => {
-                let wallet = ctx.lock().await;
-                let client = wallet.get_client().await.map_err(NexusError::Wallet)?;
-
-                Ok(Arc::new(client))
-            }
-            Signer::Mnemonic(client, _) => Ok(Arc::clone(client)),
-        }
-    }
-
-    /// Get the active address from the signer.
-    pub(super) async fn get_active_address(&self) -> Result<sui::Address, NexusError> {
-        match self {
-            Signer::Wallet(ctx) => {
-                let mut wallet = ctx.lock().await;
-                let address = wallet
-                    .active_address()
-                    .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
-
-                Ok(address)
-            }
-            Signer::Mnemonic(_, keystore) => {
-                let keystore = keystore.lock().await;
-                let addresses = keystore.addresses();
-                let address = addresses.first().ok_or_else(|| {
-                    NexusError::Wallet(anyhow::anyhow!("No address found in keystore"))
-                })?;
-
-                Ok(*address)
-            }
-        }
-    }
-
-    /// Sign a transaction block using the signer.
-    pub(super) async fn sign_tx(
-        &self,
-        tx: sui::TransactionData,
-    ) -> Result<sui::Transaction, NexusError> {
-        match self {
-            Signer::Wallet(ctx) => {
-                let wallet = ctx.lock().await;
-
-                Ok(wallet.sign_transaction(&tx))
-            }
-            Signer::Mnemonic(_, keystore) => {
-                let keystore = keystore.lock().await;
-
-                let addresses = keystore.addresses();
-                let addr = addresses.first().ok_or_else(|| {
-                    NexusError::Wallet(anyhow::anyhow!("No address found in keystore"))
-                })?;
-
-                let signature = keystore
-                    .sign_secure(addr, &tx, sui::Intent::sui_transaction())
-                    .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
-
-                Ok(sui::Transaction::from_data(tx, vec![signature]))
-            }
-        }
-    }
-
-    /// Execute a transaction block and return the response.
-    pub(super) async fn execute_tx(
-        &self,
-        tx: sui::Transaction,
-        gas_coin: &mut sui::ObjectRef,
-    ) -> Result<sui::TransactionBlockResponse, NexusError> {
-        let client = self.get_client().await?;
-
-        let resp_options = sui::TransactionBlockResponseOptions::new()
-            .with_events()
-            .with_effects()
-            .with_object_changes()
-            .with_balance_changes();
-
-        let resp_finality = sui::ExecuteTransactionRequestType::WaitForLocalExecution;
-
-        let response = client
-            .quorum_driver_api()
-            .execute_transaction_block(tx, resp_options, Some(resp_finality))
-            .await
-            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
-
-        if !response.errors.is_empty() {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transaction execution failed: {:?}",
-                response.errors
-            )));
-        }
-
-        let Some(sui::TransactionBlockEffects::V1(effects)) = response.effects.clone() else {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transactions has no effects."
-            )));
-        };
-
-        // Check if any effects failed in the TX.
-        if effects.clone().into_status().is_err() {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transaction has erroneous effects: {effects:?}"
-            )));
-        }
-
-        // Update the gas coin reference after execution.
-        for o in effects.mutated {
-            match o.reference.object_id {
-                id if id == gas_coin.object_id => {
-                    *gas_coin = o.reference;
-                }
-                _ => {}
-            }
-        }
-
-        Ok(response)
-    }
-}
 
 /// [`Gas`] struct handles distributing gas coins for Nexus operations.
 #[derive(Clone)]
 pub struct Gas {
-    coins: Arc<Mutex<Vec<sui::ObjectRef>>>,
+    coins: Arc<Mutex<Vec<sui::types::ObjectReference>>>,
     notify: Arc<Notify>,
     budget: u64,
 }
 
 impl Gas {
     /// Acquire a gas coin from the pool.
-    pub(super) async fn acquire_gas_coin(&self) -> sui::ObjectRef {
+    pub async fn acquire_gas_coin(&self) -> sui::types::ObjectReference {
         loop {
             // Try to grab one
             if let Some(coin) = self.coins.lock().await.pop() {
@@ -171,88 +46,58 @@ impl Gas {
     }
 
     /// Release a gas coin back to the pool.
-    pub(super) async fn release_gas_coin(&self, coin: sui::ObjectRef) {
+    pub async fn release_gas_coin(&self, coin: sui::types::ObjectReference) {
         self.coins.lock().await.push(coin);
         self.notify.notify_one();
     }
 
     /// Get the gas budget.
-    pub(super) fn get_budget(&self) -> u64 {
+    pub fn get_budget(&self) -> u64 {
         self.budget
     }
 }
 
 /// Builder for [`NexusClient`].
+#[derive(Default)]
 pub struct NexusClientBuilder {
-    signer: Option<Signer>,
-    gas: Option<Gas>,
+    pk: Option<sui::crypto::Ed25519PrivateKey>,
+    grpc_url: Option<String>,
+    gql_url: Option<String>,
+    gas_coins: Vec<sui::types::ObjectReference>,
+    gas_budget: Option<u64>,
     nexus_objects: Option<NexusObjects>,
-}
-
-impl Default for NexusClientBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
+    transaction_timeout: Option<Duration>,
 }
 
 impl NexusClientBuilder {
     /// Create a new builder instance.
     pub fn new() -> Self {
-        Self {
-            signer: None,
-            gas: None,
-            nexus_objects: None,
-        }
+        Self::default()
     }
 
-    /// Create a new Nexus instance with a wallet context.
-    pub fn with_wallet_context(mut self, wallet_context: sui::WalletContext) -> Self {
-        let signer = Signer::Wallet(Arc::new(Mutex::new(wallet_context)));
-
-        self.signer = Some(signer);
+    /// Add a private key to the builder.
+    pub fn with_private_key(mut self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
+        self.pk = Some(pk);
         self
     }
 
-    /// Create a new Nexus instance with a Sui client and a keystore from a
-    /// mnemonic.
-    pub fn with_mnemonic(
-        mut self,
-        client: sui::Client,
-        mnemonic: &str,
-        sig_scheme: sui::SignatureScheme,
-    ) -> Result<Self, NexusError> {
-        let mut keystore = sui::Keystore::InMem(Default::default());
+    /// Which GRPC to connect to.
+    pub fn with_grpc_url(mut self, grpc_url: &str) -> Self {
+        self.grpc_url = Some(grpc_url.to_string());
+        self
+    }
 
-        let derivation_path = None;
-        let alias = None;
-
-        keystore
-            .import_from_mnemonic(mnemonic, sig_scheme, derivation_path, alias)
-            .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))?;
-
-        let signer = Signer::Mnemonic(Arc::new(client), Arc::new(Mutex::new(keystore)));
-
-        self.signer = Some(signer);
-        Ok(self)
+    /// Which GraphQL to connect to.
+    pub fn with_gql_url(mut self, gql_url: &str) -> Self {
+        self.gql_url = Some(gql_url.to_string());
+        self
     }
 
     /// Add gas coins and budget to the builder.
-    pub fn with_gas(mut self, coins: Vec<&sui::Coin>, budget: u64) -> Result<Self, NexusError> {
-        // Need at least one gas coin.
-        if coins.is_empty() {
-            return Err(NexusError::Configuration(
-                "At least one gas coin is required".into(),
-            ));
-        }
-
-        let coins = coins.into_iter().map(|c| c.object_ref().into()).collect();
-
-        self.gas = Some(Gas {
-            coins: Arc::new(Mutex::new(coins)),
-            notify: Arc::new(Notify::new()),
-            budget,
-        });
-        Ok(self)
+    pub fn with_gas(mut self, coins: Vec<sui::types::ObjectReference>, budget: u64) -> Self {
+        self.gas_coins = coins;
+        self.gas_budget = Some(budget);
+        self
     }
 
     /// Set Nexus objects to use.
@@ -261,33 +106,74 @@ impl NexusClientBuilder {
         self
     }
 
+    /// Set transaction timeout duration.
+    pub fn with_transaction_timeout(mut self, timeout: Duration) -> Self {
+        self.transaction_timeout = Some(timeout);
+        self
+    }
+
     /// Build the [`NexusClient`].
     pub async fn build(self) -> Result<NexusClient, NexusError> {
-        let signer = self
-            .signer
-            .ok_or_else(|| NexusError::Configuration("Signer is required".into()))?;
+        let pk = self
+            .pk
+            .ok_or_else(|| NexusError::Configuration("User's private key is required".into()))?;
 
-        let gas = self
-            .gas
-            .ok_or_else(|| NexusError::Configuration("Gas configuration is required".into()))?;
+        let grpc_url = self
+            .grpc_url
+            .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
-        let nexus_objects = self
-            .nexus_objects
-            .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
+        // Need at least one gas coin.
+        if self.gas_coins.is_empty() {
+            return Err(NexusError::Configuration(
+                "At least one gas coin is required".into(),
+            ));
+        }
 
-        let client = signer.get_client().await?;
+        let gas_budget = self
+            .gas_budget
+            .ok_or_else(|| NexusError::Configuration("Gas budget is required".into()))?;
+
+        let nexus_objects = Arc::new(
+            self.nexus_objects
+                .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?,
+        );
+
+        let client = Arc::new(Mutex::new(
+            sui_rpc::Client::new(&grpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
+        ));
 
         let reference_gas_price = client
-            .read_api()
+            .lock()
+            .await
             .get_reference_gas_price()
             .await
             .map_err(|e| NexusError::Rpc(e.into()))?;
 
+        let signer = Signer::new(
+            client.clone(),
+            pk,
+            self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+            Arc::clone(&nexus_objects),
+        );
+
+        let gas = Gas {
+            coins: Arc::new(Mutex::new(self.gas_coins)),
+            notify: Arc::new(Notify::new()),
+            budget: gas_budget,
+        };
+
         Ok(NexusClient {
             signer,
             gas,
-            nexus_objects: Arc::new(nexus_objects),
+            nexus_objects: Arc::clone(&nexus_objects),
             reference_gas_price,
+            crawler: Crawler::new(client),
+            event_fetcher: EventFetcher::new(
+                &self
+                    .gql_url
+                    .unwrap_or_else(|| format!("{}/graphql", &grpc_url)),
+                Arc::clone(&nexus_objects),
+            ),
         })
     }
 }
@@ -303,17 +189,16 @@ pub struct NexusClient {
     pub(super) nexus_objects: Arc<NexusObjects>,
     /// Save reference gas price to avoid fetching it multiple times.
     pub(super) reference_gas_price: u64,
+    /// Provide access to an instantiated object crawler.
+    pub(super) crawler: Crawler,
+    /// Provide access to an instantiated event fetcher.
+    pub(super) event_fetcher: EventFetcher,
 }
 
 impl NexusClient {
     /// Return a [`NexusClientBuilder`] instance for building a Nexus client.
     pub fn builder() -> NexusClientBuilder {
         NexusClientBuilder::new()
-    }
-
-    /// Return a [`sui::Client`] instance for interacting with the Sui network.
-    pub async fn get_sui_client(&self) -> Result<Arc<sui::Client>, NexusError> {
-        self.signer.get_client().await
     }
 
     /// Return a [`GasActions`] instance for performing gas-related operations.
@@ -343,6 +228,36 @@ impl NexusClient {
             client: self.clone(),
         }
     }
+
+    /// Return a [`Crawler`] instance for object crawling operations.
+    pub fn crawler(&self) -> &Crawler {
+        &self.crawler
+    }
+
+    /// Return a [`Signer`] instance for signing transactions.
+    pub fn signer(&self) -> &Signer {
+        &self.signer
+    }
+
+    /// Return an [`EventFetcher`] instance for fetching Nexus events.
+    pub fn event_fetcher(&self) -> &EventFetcher {
+        &self.event_fetcher
+    }
+
+    /// Return a reference to the [`Gas`] instance.
+    pub fn gas_config(&self) -> Gas {
+        self.gas.clone()
+    }
+
+    /// Get the reference gas price.
+    pub fn get_reference_gas_price(&self) -> u64 {
+        self.reference_gas_price
+    }
+
+    /// Get the Nexus objects.
+    pub fn get_nexus_objects(&self) -> Arc<NexusObjects> {
+        Arc::clone(&self.nexus_objects)
+    }
 }
 
 #[cfg(test)]
@@ -351,21 +266,14 @@ mod tests {
         super::*,
         crate::test_utils::{
             nexus_mocks,
-            sui_mocks::{
-                self,
-                mock_nexus_objects,
-                mock_sui_coin,
-                mock_sui_mnemonic,
-                mock_sui_object_ref,
-            },
-            wallet::create_ephemeral_wallet_context_testnet,
+            sui_mocks::{self},
         },
     };
 
     #[tokio::test]
     async fn test_acquire_and_release_gas_coin() {
-        let coin1 = mock_sui_object_ref();
-        let coin2 = mock_sui_object_ref();
+        let coin1 = sui_mocks::mock_sui_object_ref();
+        let coin2 = sui_mocks::mock_sui_object_ref();
 
         let gas = Gas {
             coins: Arc::new(Mutex::new(vec![coin1.clone(), coin2.clone()])),
@@ -401,7 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_gas_coin_waits_for_release() {
-        let coin = mock_sui_object_ref();
+        let coin = sui_mocks::mock_sui_object_ref();
         let gas = Gas {
             coins: Arc::new(Mutex::new(vec![])),
             notify: Arc::new(Notify::new()),
@@ -423,58 +331,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_builder_with_wallet_context() {
-        let (wallet_context, _) =
-            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
-        let coin = mock_sui_coin(100);
-        let objects = mock_nexus_objects();
-        let coins = vec![&coin];
+    async fn test_builder_with_private_key() {
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let coin = sui_mocks::mock_sui_object_ref();
+        let objects = sui_mocks::mock_nexus_objects();
+        let coins = vec![coin];
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
-            .with_wallet_context(wallet_context)
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
-            .with_gas(coins, budget)
-            .unwrap();
+            .with_gas(coins, budget);
 
         let client = builder.build().await.unwrap();
         assert_eq!(client.gas.get_budget(), budget);
+        assert_eq!(client.signer.transaction_timeout, Duration::from_secs(5));
     }
 
     #[tokio::test]
-    async fn test_builder_with_mnemonic() {
-        let (_, mnemonic) = mock_sui_mnemonic();
-        let client = sui::ClientBuilder::default()
-            .build_testnet()
-            .await
-            .expect("Failed to build sui client");
-        let coin = mock_sui_coin(100);
-        let objects = mock_nexus_objects();
-        let coins = vec![&coin];
+    async fn test_builder_missing_pk() {
+        let coin = sui_mocks::mock_sui_object_ref();
+        let coins = vec![coin];
+        let objects = sui_mocks::mock_nexus_objects();
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
-            .with_mnemonic(client, &mnemonic, sui::SignatureScheme::ED25519)
-            .unwrap()
-            .with_gas(coins, budget)
-            .unwrap();
+            .with_gas(coins, budget);
 
-        let nexus_client = builder.build().await.unwrap();
-        assert_eq!(nexus_client.gas.get_budget(), budget);
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 
     #[tokio::test]
-    async fn test_builder_missing_signer() {
-        let coin = mock_sui_coin(100);
-        let coins = vec![&coin];
-        let objects = mock_nexus_objects();
+    async fn test_builder_missing_rpc_url() {
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let coin = sui_mocks::mock_sui_object_ref();
+        let coins = vec![coin];
+        let objects = sui_mocks::mock_nexus_objects();
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
+            .with_private_key(pk)
             .with_nexus_objects(objects)
-            .with_gas(coins, budget)
-            .unwrap();
+            .with_gas(coins, budget);
 
         let result = builder.build().await;
         assert!(matches!(result, Err(NexusError::Configuration(_))));
@@ -482,12 +386,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_missing_gas() {
-        let objects = mock_nexus_objects();
-        let (wallet_context, _) =
-            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
 
         let builder = NexusClientBuilder::new()
-            .with_wallet_context(wallet_context)
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_nexus_objects(objects);
+
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_missing_budget() {
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let builder = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
@@ -496,88 +416,117 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_gas_empty_coins() {
-        let builder = NexusClientBuilder::new();
-        let result = builder.with_gas(vec![], 1000);
-        assert!(matches!(result, Err(NexusError::Configuration(_))));
-    }
-
-    #[tokio::test]
-    async fn test_builder_missing_nexus_objects() {
-        let (wallet_context, _) =
-            create_ephemeral_wallet_context_testnet().expect("Failed to create wallet context.");
-        let coin = mock_sui_coin(100);
-        let coins = vec![&coin];
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let coins = vec![];
+        let objects = sui_mocks::mock_nexus_objects();
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
-            .with_wallet_context(wallet_context)
-            .with_gas(coins, budget)
-            .unwrap();
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_nexus_objects(objects)
+            .with_gas(coins, budget);
 
         let result = builder.build().await;
         assert!(matches!(result, Err(NexusError::Configuration(_))));
     }
 
     #[tokio::test]
+    async fn test_builder_missing_nexus_objects() {
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let coin = sui_mocks::mock_sui_object_ref();
+        let coins = vec![coin];
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_gas(coins, budget);
+
+        let result = builder.build().await;
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
+    }
+
+    #[tokio::test]
+    async fn test_builder_tx_timeout() {
+        let mut rng = rand::thread_rng();
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let coin = sui_mocks::mock_sui_object_ref();
+        let objects = sui_mocks::mock_nexus_objects();
+        let coins = vec![coin];
+        let budget = 1000;
+
+        let builder = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_nexus_objects(objects)
+            .with_gas(coins, budget)
+            .with_transaction_timeout(Duration::from_secs(10));
+
+        let client = builder.build().await.unwrap();
+        assert_eq!(client.gas.get_budget(), budget);
+        assert_eq!(client.signer.transaction_timeout, Duration::from_secs(10));
+    }
+
+    #[tokio::test]
     async fn test_execute_tx_mutates_gas_coin() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
 
-        let tx = sui::ProgrammableTransactionBuilder::new();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let mut gas_coin = nexus_client.gas.acquire_gas_coin().await;
-        let gas_coin_initial = gas_coin.clone();
-        let gas_coin_mutated = sui::ObjectRef {
-            object_id: gas_coin.object_id,
-            version: sui::SequenceNumber::from_u64(gas_coin.version.value() + 1),
-            digest: sui::ObjectDigest::random(),
-        };
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let tx_data = sui::TransactionData::new_programmable(
-            nexus_client
-                .signer
-                .get_active_address()
-                .await
-                .expect("Failed to get address"),
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            nexus_client.gas.get_budget(),
-            nexus_client.reference_gas_price,
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            digest,
+            gas_coin_digest,
+            vec![],
+            vec![],
+            vec![],
         );
 
-        let envelope = nexus_client
+        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+
+        assert_eq!(client.reference_gas_price, 1000);
+
+        let mut gas_coin = client.gas.acquire_gas_coin().await;
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        tx.set_sender(client.signer.get_active_address());
+        tx.set_gas_budget(1000);
+        tx.set_gas_price(1000);
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx.finish().unwrap();
+        let signature = client.signer.sign_tx(&tx).await.unwrap();
+
+        let response = client
             .signer
-            .sign_tx(tx_data)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await
-            .expect("Failed to sign tx");
+            .unwrap();
 
-        let (execute_mock, confirm_mock) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                sui::TransactionDigest::random(),
-                Some(sui_mocks::mock_sui_transaction_block_effects(
-                    None,
-                    Some(vec![sui::OwnedObjectRef {
-                        owner: sui::Owner::AddressOwner(sui::ObjectID::random().into()),
-                        reference: gas_coin_mutated.clone(),
-                    }]),
-                    None,
-                    None,
-                )),
-                None,
-                None,
-                None,
-            );
+        assert_eq!(response.digest, digest);
 
-        let _response = nexus_client
-            .signer
-            .execute_tx(envelope, &mut gas_coin)
-            .await
-            .expect("Failed to execute tx");
-
-        assert_ne!(gas_coin, gas_coin_initial);
-        assert_eq!(gas_coin, gas_coin_mutated);
-
-        execute_mock.assert_async().await;
-        confirm_mock.assert_async().await;
+        assert_eq!(gas_coin.version(), 2);
+        assert_eq!(gas_coin.digest(), &gas_coin_digest);
     }
 }
