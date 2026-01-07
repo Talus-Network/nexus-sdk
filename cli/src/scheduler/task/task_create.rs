@@ -25,11 +25,11 @@ pub(crate) async fn create_task(
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
     metadata: Vec<String>,
-    execution_gas_price: u64,
+    execution_priority_fee_per_gas_unit: u64,
     schedule_start_ms: Option<u64>,
     schedule_start_offset_ms: Option<u64>,
     schedule_deadline_offset_ms: Option<u64>,
-    schedule_gas_price: u64,
+    schedule_priority_fee_per_gas_unit: u64,
     generator: GeneratorKind,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
@@ -109,7 +109,7 @@ pub(crate) async fn create_task(
                 None,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_gas_price,
+                schedule_priority_fee_per_gas_unit,
                 true,
             )
             .map_err(NexusCliError::Nexus)?,
@@ -133,7 +133,7 @@ pub(crate) async fn create_task(
             entry_group: entry_group.clone(),
             input_data,
             metadata: metadata_pairs,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             initial_schedule,
             generator,
         })
@@ -179,8 +179,17 @@ pub(crate) async fn create_task(
 
 fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
-        // TODO: @david to re-implement or to simplify by removing generic.
-        // NexusEventKind::Scheduled(envelope) => Some(format!("start_ms={}", envelope.start_ms)),
+        NexusEventKind::RequestScheduledOccurrence(env) => Some(format!(
+            "task={} start_ms={} (generator={}, priority={})",
+            env.request.task,
+            env.start_ms,
+            describe_generator(&env.request.generator),
+            env.priority
+        )),
+        NexusEventKind::RequestScheduledWalk(env) => Some(format!(
+            "walk for dag execution start_ms={} (priority={})",
+            env.start_ms, env.priority
+        )),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
             e.task,

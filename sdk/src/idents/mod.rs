@@ -9,7 +9,7 @@
 //! use nexus_sdk::idents::workflow;
 //!
 //! let mut tx = sui::tx::TransactionBuilder::new();
-//! let workflow_pkg_id = sui::types::Address::random();
+//! let workflow_pkg_id = sui::types::Address::generate(&mut rand::thread_rng());
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
 //!
 //! assert!(matches!(vertex, Ok(sui::types::Argument::Result(_))));

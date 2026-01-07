@@ -19,7 +19,7 @@ use {
 /// Validate and then register a new offchain Tool.
 pub(crate) async fn register_off_chain_tool(
     url: reqwest::Url,
-    collateral_coin: sui::types::Address,
+    collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
     batch: bool,
     no_save: bool,
@@ -49,11 +49,16 @@ pub(crate) async fn register_off_chain_tool(
 
     let mut registration_results = Vec::with_capacity(urls.len());
 
-    if Some(collateral_coin) == sui_gas_coin {
+    if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
         return Err(NexusCliError::Any(anyhow!(
             "The coin used for collateral cannot be the same as the gas coin."
         )));
     }
+
+    let conf = CliConf::load().await.unwrap_or_default();
+    let client = build_sui_grpc_client(&conf).await?;
+    let pk = get_signing_key(&conf).await?;
+    let owner = pk.public_key().derive_address();
 
     for tool_url in urls {
         let meta = validate_off_chain_tool(tool_url).await?;
@@ -69,17 +74,7 @@ pub(crate) async fn register_off_chain_tool(
         let gas_config = nexus_client.gas_config();
         let address = signer.get_active_address();
         let nexus_objects = &*nexus_client.get_nexus_objects();
-        let crawler = nexus_client.crawler();
-
-        let collateral_coin = crawler
-            .get_object_metadata(collateral_coin)
-            .await
-            .map(|resp| resp.object_ref())
-            .map_err(|e| {
-                NexusCliError::Any(anyhow!(
-                    "Failed to fetch coin object metadata for '{collateral_coin}': {e}"
-                ))
-            })?;
+        let collateral_coin = fetch_coin(client.clone(), owner, collateral_coin, 1).await?;
 
         // Craft a TX to register the tool.
         let tx_handle = loading!("Crafting transaction...");

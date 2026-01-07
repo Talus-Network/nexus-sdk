@@ -132,15 +132,15 @@ impl WorkflowActions {
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
-    /// `gas_price` is the per-transaction priority fee to pass down to the DAG
-    /// execution.
+    /// `priority_fee_per_gas_unit` is the per-transaction priority fee to pass
+    /// down to the DAG execution.
     ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
     pub async fn execute(
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, PortsData>,
-        gas_price: u64,
+        priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         session: Arc<Mutex<Session>>,
@@ -177,7 +177,7 @@ impl WorkflowActions {
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
-            gas_price,
+            priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
         ) {
@@ -341,7 +341,7 @@ mod tests {
     async fn test_workflow_actions_publish() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
 
@@ -374,20 +374,21 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![dag_created],
             vec![],
             vec![],
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         let dag = Dag {
             vertices: vec![],
@@ -411,7 +412,7 @@ mod tests {
     async fn test_workflow_actions_execute() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
@@ -447,25 +448,34 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(dag_object_id, 0, tx_digest),
             sui::types::Owner::Shared(0),
+            None,
         );
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             tx_digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![execution_created],
             vec![],
             vec![],
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            gas_coin_ref.clone(),
+            sui::types::Owner::Immutable,
+            Some(1000),
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
@@ -512,7 +522,7 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
@@ -572,7 +582,7 @@ mod tests {
 
         let client = nexus_mocks::mock_nexus_client(
             &nexus_objects,
-            &grpc_url,
+            &rpc_url,
             Some(&format!("{}/graphql", server.url())),
         )
         .await;
@@ -618,7 +628,7 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
@@ -629,11 +639,13 @@ mod tests {
             vec![],
             None,
             None,
-        );
+        )
+        .expect_at_least(1)
+        .expect_at_most(10);
 
         let client = nexus_mocks::mock_nexus_client(
             &nexus_objects,
-            &grpc_url,
+            &rpc_url,
             Some(&format!("{}/graphql", server.url())),
         )
         .await;
@@ -643,7 +655,7 @@ mod tests {
             .inspect_execution(
                 execution_object_id,
                 1,
-                Some(std::time::Duration::from_millis(100)),
+                Some(std::time::Duration::from_secs(1)),
             )
             .await
             .expect("Failed to setup channel");

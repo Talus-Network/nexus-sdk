@@ -19,6 +19,13 @@ pub fn mock_sui_event_id() -> (sui::types::Digest, u64) {
 }
 
 /// Create a new [`sui::EventID`] with random values.
+pub fn mock_sui_address() -> sui::types::Address {
+    let mut rng = rand::thread_rng();
+
+    sui::types::Address::generate(&mut rng)
+}
+
+/// Create a new [`sui::EventID`] with random values.
 pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
@@ -211,12 +218,10 @@ pub mod grpc {
         let addr = format!("127.0.0.1:{}", port);
         let thread_addr = addr.clone();
 
-        let ledger_service = mocks
-            .ledger_service_mock
-            .map(|m| LedgerServiceServer::new(m));
+        let ledger_service = mocks.ledger_service_mock.map(LedgerServiceServer::new);
         let execution_service = mocks
             .execution_service_mock
-            .map(|m| TransactionExecutionServiceServer::new(m));
+            .map(TransactionExecutionServiceServer::new);
         let subscription_service = mocks.subscription_service_mock.map(|m| {
             SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
         });
@@ -237,8 +242,9 @@ pub mod grpc {
     pub fn mock_execute_transaction_and_wait_for_checkpoint(
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
         digest: sui::types::Digest,
-        gas_coin_digest: sui::types::Digest,
+        gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
@@ -247,7 +253,7 @@ pub mod grpc {
             object_id: sui::types::Address::from_static("0x1"),
             input_state: sui::types::ObjectIn::NotExist,
             output_state: sui::types::ObjectOut::ObjectWrite {
-                digest: gas_coin_digest,
+                digest: *gas_coin_ref.digest(),
                 owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
             },
             id_operation: sui::types::IdOperation::None,
@@ -269,7 +275,7 @@ pub mod grpc {
                 response.set_checkpoint(checkpoint);
 
                 let output = vec![Ok(response)];
-                let stream = futures::stream::iter(output.into_iter());
+                let stream = futures::stream::iter(output);
 
                 Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
@@ -282,13 +288,7 @@ pub mod grpc {
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
                 let mut tx_objects = sui::grpc::ObjectSet::default();
-                tx_objects.set_objects(
-                    objects
-                        .clone()
-                        .into_iter()
-                        .filter_map(|o| o.try_into().ok())
-                        .collect(),
-                );
+                tx_objects.set_objects(objects.clone().into_iter().map(Into::into).collect());
                 tx.set_objects(tx_objects);
 
                 let mut effects = sui::grpc::TransactionEffects::default();
@@ -316,13 +316,7 @@ pub mod grpc {
                 tx.set_effects(effects);
 
                 let mut tx_events = sui::grpc::TransactionEvents::default();
-                tx_events.set_events(
-                    events
-                        .clone()
-                        .into_iter()
-                        .filter_map(|e| e.try_into().ok())
-                        .collect(),
-                );
+                tx_events.set_events(events.clone().into_iter().map(Into::into).collect());
                 tx.set_events(tx_events);
                 tx.set_digest(digest);
                 tx.set_checkpoint(1);
@@ -331,6 +325,13 @@ pub mod grpc {
 
                 Ok(tonic::Response::new(response))
             });
+
+        mock_get_object_metadata(
+            ledger_service,
+            gas_coin_ref,
+            sui::types::Owner::Immutable,
+            Some(1000),
+        );
     }
 
     pub fn mock_reference_gas_price(
@@ -353,6 +354,56 @@ pub mod grpc {
         ledger_service: &mut MockLedgerService,
         object_ref: sui::types::ObjectReference,
         owner: sui::types::Owner,
+        balance: Option<u64>,
+    ) {
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_balance(balance.unwrap_or(0));
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_objects_metadata(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(sui::types::ObjectReference, sui::types::Owner, Option<u64>)>,
+    ) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+                for (object_ref, owner, balance) in objects.clone() {
+                    let mut parent_object = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_object_id(*object_ref.object_id());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_balance(balance.unwrap_or(0));
+                    parent_object.set_object(grpc_object);
+                    objs.push(parent_object);
+                }
+                response.set_objects(objs);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    /// Expect a `get_object` call and return an object populated with metadata
+    /// and a JSON payload (converted into `prost_types::Value`).
+    pub fn mock_get_object_json(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        json_value: serde_json::Value,
     ) {
         ledger_service
             .expect_get_object()
@@ -363,9 +414,33 @@ pub mod grpc {
                 grpc_object.set_owner(sui::grpc::Owner::from(owner.clone()));
                 grpc_object.set_digest(*object_ref.digest());
                 grpc_object.set_version(object_ref.version());
+                grpc_object.set_object_id(object_ref.object_id().to_string());
+                grpc_object.json = Some(Box::new(json_to_prost_value(&json_value)));
                 response.set_object(grpc_object);
                 Ok(tonic::Response::new(response))
             });
+    }
+
+    fn json_to_prost_value(value: &serde_json::Value) -> prost_types::Value {
+        use prost_types::value::Kind;
+
+        let kind = match value {
+            serde_json::Value::Null => Kind::NullValue(0),
+            serde_json::Value::Bool(b) => Kind::BoolValue(*b),
+            serde_json::Value::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or_default()),
+            serde_json::Value::String(s) => Kind::StringValue(s.clone()),
+            serde_json::Value::Array(arr) => Kind::ListValue(prost_types::ListValue {
+                values: arr.iter().map(json_to_prost_value).collect(),
+            }),
+            serde_json::Value::Object(map) => Kind::StructValue(prost_types::Struct {
+                fields: map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), json_to_prost_value(v)))
+                    .collect(),
+            }),
+        };
+
+        prost_types::Value { kind: Some(kind) }
     }
 }
 
@@ -401,7 +476,7 @@ pub mod gql {
                         }
                     },
                     "contents": {
-                        "json": serde_json::to_value(&event).unwrap(),
+                        "json": serde_json::to_value(event).unwrap(),
                         "type": {
                             "repr": sui::types::StructTag::new(
                                 primitives_pkg_id,

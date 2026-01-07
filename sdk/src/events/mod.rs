@@ -73,42 +73,11 @@ macro_rules! events {
     };
 }
 
-// TODO: @david to re-implement or to simplify by removing generic.
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// pub struct RequestScheduledExecution<T>
-// where
-//     T: Clone + Serialize + DeserializeOwned,
-// {
-//     pub request: T,
-//     #[serde(
-//         deserialize_with = "deserialize_sui_u64",
-//         serialize_with = "serialize_sui_u64"
-//     )]
-//     pub priority: u64,
-//     #[serde(
-//         deserialize_with = "deserialize_sui_u64",
-//         serialize_with = "serialize_sui_u64"
-//     )]
-//     pub request_ms: u64,
-//     #[serde(
-//         deserialize_with = "deserialize_sui_u64",
-//         serialize_with = "serialize_sui_u64"
-//     )]
-//     pub start_ms: u64,
-//     #[serde(
-//         deserialize_with = "deserialize_sui_u64",
-//         serialize_with = "serialize_sui_u64"
-//     )]
-//     pub deadline_ms: u64,
-// }
-
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
 events! {
-
-    // TODO: @david to re-implement or to simplify by removing generic.
-    // RequestScheduledExecution => Scheduled, "RequestScheduledExecution",
-
+    RequestScheduledOccurrenceEvent => RequestScheduledOccurrence, "RequestScheduledOccurrenceEvent",
+    RequestScheduledWalkEvent => RequestScheduledWalk, "RequestScheduledWalkEvent",
     OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
     RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
     AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
@@ -317,7 +286,60 @@ pub struct ExecutionFinishedEvent {
     pub has_any_walk_succeeded: bool,
 }
 
-/// Fired when a scheduler occurrence is enqueued (wrapped in `RequestScheduledExecution`).
+/// Request wrapper emitted when scheduling an occurrence.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RequestScheduledOccurrenceEvent {
+    pub request: OccurrenceScheduledEvent,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub priority: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub request_ms: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub start_ms: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub deadline_ms: u64,
+}
+
+/// Request wrapper emitted when scheduling a walk execution.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RequestScheduledWalkEvent {
+    pub request: RequestWalkExecutionEvent,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub priority: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub request_ms: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub start_ms: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub deadline_ms: u64,
+}
+
+/// Fired when a scheduler occurrence is enqueued; used as the payload of
+/// `RequestScheduledOccurrenceEvent`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceScheduledEvent {
     pub task: sui::types::Address,
@@ -497,6 +519,10 @@ pub struct PreKeyFulfilledEvent {
     /// The address of the user that requested the pre key.
     pub requested_by: sui::types::Address,
     /// Bytes of the fulfilled pre key.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub pre_key_bytes: Vec<u8>,
 }
 
@@ -506,8 +532,16 @@ pub struct PreKeyAssociatedEvent {
     /// The address of the user the pre key is associated with.
     pub claimed_by: sui::types::Address,
     /// Bytes of the pre key.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub pre_key: Vec<u8>,
     /// Bytes of the initial message.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     pub initial_message: Vec<u8>,
 }
 

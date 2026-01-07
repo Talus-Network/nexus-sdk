@@ -4,7 +4,7 @@ use crate::{sui, sui::traits::*};
 pub async fn fetch_gas_coins(
     rpc_url: &str,
     owner: sui::types::Address,
-) -> anyhow::Result<Vec<sui::types::ObjectReference>> {
+) -> anyhow::Result<Vec<(sui::types::ObjectReference, u64)>> {
     let mut client = sui::grpc::Client::new(rpc_url)?;
 
     let request = sui::grpc::ListOwnedObjectsRequest::default()
@@ -15,6 +15,7 @@ pub async fn fetch_gas_coins(
             "object_id",
             "version",
             "digest",
+            "balance",
         ]));
 
     let response = client
@@ -27,10 +28,13 @@ pub async fn fetch_gas_coins(
         .objects()
         .iter()
         .filter_map(|object| {
-            Some(sui::types::ObjectReference::new(
-                object.object_id_opt()?.parse().ok()?,
-                object.version_opt()?,
-                object.digest_opt()?.parse().ok()?,
+            Some((
+                sui::types::ObjectReference::new(
+                    object.object_id_opt()?.parse().ok()?,
+                    object.version_opt()?,
+                    object.digest_opt()?.parse().ok()?,
+                ),
+                object.balance(),
             ))
         })
         .collect())

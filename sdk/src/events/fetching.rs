@@ -1,5 +1,5 @@
 //! This module wraps a Sui GQL endpoint to provide the functionality to fetch
-//! events. These are sent over a channel to the consumer. ALl events are parsed
+//! events. These are sent over a channel to the consumer. All events are parsed
 //! to [`NexusEvent`]. Those that cannot be parsed are ignored.
 //!
 //! Note that the polling will stop whenever the receiver side of the channel is
@@ -13,6 +13,7 @@ use {
             NexusEvent,
         },
         idents::primitives,
+        sui,
         types::NexusObjects,
     },
     graphql_client::{GraphQLQuery, Response},
@@ -76,7 +77,7 @@ impl EventFetcher {
             let nexus_objects = self.nexus_objects.clone();
             let url = self.url.clone();
             let mut cursor = from_cursor;
-            let mut at_checkpoint = from_checkpoint;
+            let after_checkpoint = from_checkpoint;
 
             // Polling intervals.
             let mut poll_interval = tokio::time::Duration::from_millis(100);
@@ -85,21 +86,20 @@ impl EventFetcher {
             // NOTE: that the poller process is infallible. RPC errors result
             // in backoff and retry. Events that cannot be parsed are ignored.
             tokio::spawn(async move {
-                let event_wrapper = format!(
-                    "{package}::{module}::{name}",
-                    package = nexus_objects.primitives_pkg_id,
-                    module = primitives::Event::EVENT_WRAPPER.module.as_str(),
-                    name = primitives::Event::EVENT_WRAPPER.name.as_str(),
+                let event_wrapper = sui::types::StructTag::new(
+                    nexus_objects.primitives_pkg_id,
+                    primitives::Event::EVENT_WRAPPER.module,
+                    primitives::Event::EVENT_WRAPPER.name,
+                    vec![],
                 );
 
                 loop {
                     let request = events_query::Variables {
                         after: cursor.clone(),
-                        at_checkpoint,
                         filter: events_query::EventFilter {
-                            type_: Some(event_wrapper.clone()),
+                            type_: Some(event_wrapper.to_string()),
                             sender: None,
-                            after_checkpoint: None,
+                            after_checkpoint,
                             at_checkpoint: None,
                             before_checkpoint: None,
                             module: None,
@@ -113,9 +113,7 @@ impl EventFetcher {
                     let response = match client.post(&url).json(&query).send().await {
                         Ok(resp) => resp,
                         Err(_) => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -126,9 +124,7 @@ impl EventFetcher {
                     {
                         Ok(data) => data,
                         Err(_) => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -142,9 +138,7 @@ impl EventFetcher {
                     {
                         Some((events, page_info)) => (events, page_info),
                         None => {
-                            tokio::time::sleep(poll_interval).await;
-
-                            poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                            Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
                         }
@@ -152,14 +146,13 @@ impl EventFetcher {
 
                     // If there are no events, backoff.
                     if events.is_empty() {
-                        tokio::time::sleep(poll_interval).await;
-
-                        poll_interval = std::cmp::min(poll_interval * 2, max_poll_interval);
+                        Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                         continue;
                     }
 
-                    // `page_info.end_cursor` should always exist.
+                    // Cursor is only empty when there are no events. Meaning
+                    // this should never be reached.
                     let Some(next_cursor) = page_info.end_cursor.clone() else {
                         continue;
                     };
@@ -181,7 +174,6 @@ impl EventFetcher {
                     });
 
                     cursor = Some(next_cursor.clone());
-                    at_checkpoint = None;
 
                     match notify_about_events
                         .send(EventPage {
@@ -205,6 +197,15 @@ impl EventFetcher {
         };
 
         (poller, next_page)
+    }
+
+    async fn sleep_and_backoff(
+        current_interval: &mut tokio::time::Duration,
+        max_interval: tokio::time::Duration,
+    ) {
+        tokio::time::sleep(*current_interval).await;
+
+        *current_interval = std::cmp::min(*current_interval * 2, max_interval);
     }
 }
 

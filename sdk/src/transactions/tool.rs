@@ -28,13 +28,13 @@ pub fn register_off_chain_for_self(
     let url = tx.input(pure_arg(&meta.url.to_string())?);
 
     // `description: vector<u8>`
-    let description = tx.input(pure_arg(&meta.description)?);
+    let description = tx.input(pure_arg(&meta.description.as_bytes())?);
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(pure_arg(&meta.input_schema)?);
+    let input_schema = tx.input(pure_arg(&serde_json::to_vec(&meta.input_schema)?)?);
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(pure_arg(&meta.output_schema)?);
+    let output_schema = tx.input(pure_arg(&serde_json::to_vec(&meta.output_schema)?)?);
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -192,16 +192,16 @@ pub fn register_on_chain_for_self(
     let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(pure_arg(&input_schema)?);
+    let input_schema = tx.input(pure_arg(&input_schema.as_bytes().to_vec())?);
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(pure_arg(&output_schema)?);
+    let output_schema = tx.input(pure_arg(&output_schema.as_bytes().to_vec())?);
 
     // `fqn: AsciiString`
     let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
     // `description: vector<u8>`
-    let description = tx.input(pure_arg(&description)?);
+    let description = tx.input(pure_arg(&description.as_bytes().to_vec())?);
 
     // `witness_id: ID`
     let witness_id = sui_framework::Address::address_from_type(tx, witness_id)?;

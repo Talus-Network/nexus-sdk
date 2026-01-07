@@ -16,7 +16,7 @@ use {
 /// Create a mock [`NexusClient`] that is connected to a mock RPC using [`mockito`].
 pub async fn mock_nexus_client(
     nexus_objects: &NexusObjects,
-    grpc_url: &str,
+    rpc_url: &str,
     gql_url: Option<&str>,
 ) -> NexusClient {
     let mut rng = rand::thread_rng();
@@ -32,7 +32,7 @@ pub async fn mock_nexus_client(
 
     builder
         .with_private_key(pk)
-        .with_grpc_url(grpc_url)
+        .with_rpc_url(rpc_url)
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![coin], 1000)
         .build()

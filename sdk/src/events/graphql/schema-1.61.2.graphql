@@ -575,17 +575,17 @@ input CheckpointFilter {
   atEpoch: UInt53
 
   """
-  Limit query results to checkpoints that occured strictly after the given checkpoint.
+  Limit query results to checkpoints that occurred strictly after the given checkpoint.
   """
   afterCheckpoint: UInt53
 
   """
-  Limit query results to checkpoints that occured at the given checkpoint.
+  Limit query results to checkpoints that occurred at the given checkpoint.
   """
   atCheckpoint: UInt53
 
   """
-  Limit query results to checkpoints that occured strictly before the given checkpoint.
+  Limit query results to checkpoints that occurred strictly before the given checkpoint.
   """
   beforeCheckpoint: UInt53
 }
@@ -683,7 +683,7 @@ type CoinMetadata implements IAddressable & IMoveObject & IObject {
   dynamicObjectField(name: DynamicFieldName!): DynamicField
 
   """
-  Whether this object can be transfered using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
+  Whether this object can be transferred using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
 
   Both these operations require the object to have both the `key` and `store` abilities.
   """
@@ -913,7 +913,7 @@ type CommandResult {
 }
 
 """
-Object is exclusively owned by a single adderss and sequenced via consensus.
+Object is exclusively owned by a single address and sequenced via consensus.
 """
 type ConsensusAddressOwner {
   """
@@ -1131,7 +1131,7 @@ type DynamicField implements IAddressable & IMoveObject & IObject {
   dynamicObjectField(name: DynamicFieldName!): DynamicField
 
   """
-  Whether this object can be transfered using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
+  Whether this object can be transferred using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
 
   Both these operations require the object to have both the `key` and `store` abilities.
   """
@@ -1626,7 +1626,7 @@ type EventEdge {
 
 input EventFilter {
   """
-  Limit to events that occured strictly after the given checkpoint.
+  Limit to events that occurred strictly after the given checkpoint.
   """
   afterCheckpoint: UInt53
 
@@ -1636,7 +1636,7 @@ input EventFilter {
   atCheckpoint: UInt53
 
   """
-  Limit to event that occured strictly before the given checkpoint.
+  Limit to event that occurred strictly before the given checkpoint.
   """
   beforeCheckpoint: UInt53
 
@@ -1957,7 +1957,7 @@ interface IMoveObject {
   dynamicObjectField(name: DynamicFieldName!): DynamicField
 
   """
-  Whether this object can be transfered using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
+  Whether this object can be transferred using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
 
   Both these operations require the object to have both the `key` and `store` abilities.
   """
@@ -2573,7 +2573,7 @@ type MoveModuleEdge {
 }
 
 """
-A MoveObject is a kind of Object that reprsents data stored on-chain.
+A MoveObject is a kind of Object that represents data stored on-chain.
 """
 type MoveObject implements IAddressable & IMoveObject & IObject {
   """
@@ -2655,7 +2655,7 @@ type MoveObject implements IAddressable & IMoveObject & IObject {
   dynamicObjectField(name: DynamicFieldName!): DynamicField
 
   """
-  Whether this object can be transfered using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
+  Whether this object can be transferred using the `TransferObjects` Programmable Transaction Command or `sui::transfer::public_transfer`.
 
   Both these operations require the object to have both the `key` and `store` abilities.
   """

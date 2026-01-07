@@ -61,7 +61,7 @@ impl Gas {
 #[derive(Default)]
 pub struct NexusClientBuilder {
     pk: Option<sui::crypto::Ed25519PrivateKey>,
-    grpc_url: Option<String>,
+    rpc_url: Option<String>,
     gql_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
@@ -81,9 +81,9 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Which GRPC to connect to.
-    pub fn with_grpc_url(mut self, grpc_url: &str) -> Self {
-        self.grpc_url = Some(grpc_url.to_string());
+    /// Which RPC to connect to.
+    pub fn with_rpc_url(mut self, rpc_url: &str) -> Self {
+        self.rpc_url = Some(rpc_url.to_string());
         self
     }
 
@@ -118,8 +118,8 @@ impl NexusClientBuilder {
             .pk
             .ok_or_else(|| NexusError::Configuration("User's private key is required".into()))?;
 
-        let grpc_url = self
-            .grpc_url
+        let rpc_url = self
+            .rpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
         // Need at least one gas coin.
@@ -139,7 +139,7 @@ impl NexusClientBuilder {
         );
 
         let client = Arc::new(Mutex::new(
-            sui_rpc::Client::new(&grpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
+            sui_rpc::Client::new(&rpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
         ));
 
         let reference_gas_price = client
@@ -171,7 +171,7 @@ impl NexusClientBuilder {
             event_fetcher: EventFetcher::new(
                 &self
                     .gql_url
-                    .unwrap_or_else(|| format!("{}/graphql", &grpc_url)),
+                    .unwrap_or_else(|| format!("{}/graphql", &rpc_url)),
                 Arc::clone(&nexus_objects),
             ),
         })
@@ -341,7 +341,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -358,7 +358,7 @@ mod tests {
         let budget = 1000;
 
         let builder = NexusClientBuilder::new()
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -392,7 +392,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
@@ -407,7 +407,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects);
 
         let result = builder.build().await;
@@ -424,7 +424,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -442,7 +442,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_gas(coins, budget);
 
         let result = builder.build().await;
@@ -460,7 +460,7 @@ mod tests {
 
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_grpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url("https://fullnode.testnet.sui.io:443")
             .with_nexus_objects(objects)
             .with_gas(coins, budget)
             .with_transaction_timeout(Duration::from_secs(10));
@@ -474,7 +474,7 @@ mod tests {
     async fn test_execute_tx_mutates_gas_coin() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -486,20 +486,21 @@ mod tests {
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
+            &mut ledger_service_mock,
             digest,
-            gas_coin_digest,
+            gas_coin_ref.clone(),
             vec![],
             vec![],
             vec![],
         );
 
-        let grpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &grpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
         assert_eq!(client.reference_gas_price, 1000);
 
@@ -526,7 +527,7 @@ mod tests {
 
         assert_eq!(response.digest, digest);
 
-        assert_eq!(gas_coin.version(), 2);
-        assert_eq!(gas_coin.digest(), &gas_coin_digest);
+        assert_eq!(gas_coin.version(), gas_coin_ref.version());
+        assert_eq!(gas_coin.digest(), gas_coin_ref.digest());
     }
 }

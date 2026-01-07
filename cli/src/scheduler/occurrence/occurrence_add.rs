@@ -16,7 +16,7 @@ pub(crate) async fn add_occurrence_to_task(
     start_ms: Option<u64>,
     start_offset_ms: Option<u64>,
     deadline_offset_ms: Option<u64>,
-    gas_price: u64,
+    priority_fee_per_gas_unit: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
@@ -29,7 +29,7 @@ pub(crate) async fn add_occurrence_to_task(
         None,
         start_offset_ms,
         deadline_offset_ms,
-        gas_price,
+        priority_fee_per_gas_unit,
         true,
     )
     .map_err(NexusCliError::Nexus)?;
@@ -50,7 +50,7 @@ pub(crate) async fn add_occurrence_to_task(
         "start_ms": start_ms,
         "start_offset_ms": start_offset_ms,
         "deadline_offset_ms": deadline_offset_ms,
-        "gas_price": gas_price,
+        "priority_fee_per_gas_unit": priority_fee_per_gas_unit,
     }))?;
 
     Ok(())

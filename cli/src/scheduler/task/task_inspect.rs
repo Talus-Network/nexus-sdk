@@ -16,7 +16,7 @@ use {
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
 
-    let nexus_client = get_nexus_client(None, 100_000_000).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
 
     let objects_handle = loading!("Fetching task object...");
@@ -37,33 +37,21 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
         owner = task_data.owner.to_string().truecolor(100, 100, 100)
     );
 
-    if let Some(metadata) = task_data.metadata.as_object() {
-        item!("Metadata entries: {count}", count = metadata.len());
-        for (key, value) in metadata.iter().take(10) {
-            item!(
-                "  {key}: {value}",
-                key = key.truecolor(100, 100, 100),
-                value = value
-            );
-        }
-        if metadata.len() > 10 {
-            item!(
-                "  ... ({remain} more entries)",
-                remain = metadata.len() - 10
-            );
-        }
-    } else {
-        item!("Metadata entries: 0");
+    let metadata = task_data.metadata.values.inner();
+    item!("Metadata entries: {count}", count = metadata.len());
+    for (key, value) in metadata.iter().take(10) {
+        item!(
+            "  {key}: {value}",
+            key = key.truecolor(100, 100, 100),
+            value = value
+        );
     }
-
-    item!(
-        "Constraints payload bytes: {bytes}",
-        bytes = task_data.constraints.to_string().len()
-    );
-    item!(
-        "Execution payload bytes: {bytes}",
-        bytes = task_data.execution.data.to_string().len()
-    );
+    if metadata.len() > 10 {
+        item!(
+            "  ... ({remain} more entries)",
+            remain = metadata.len() - 10
+        );
+    }
 
     json_output(&json!({
         "task_ref": {

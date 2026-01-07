@@ -9,8 +9,8 @@ use {
 /// Set the Nexus CLI configuration from the provided arguments.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
-    sui_pk: Option<PathBuf>,
-    sui_grpc_url: Option<reqwest::Url>,
+    sui_pk: Option<String>,
+    sui_rpc_url: Option<reqwest::Url>,
     sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
@@ -31,17 +31,15 @@ pub(crate) async fn set_nexus_conf(
     if let Some(objects_path) = nexus_objects_path {
         let content = std::fs::read_to_string(&objects_path).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to read objects file {}: {}",
+                "Failed to read objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
         let objects: NexusObjects = toml::from_str(&content).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to parse objects file {}: {}",
+                "Failed to parse objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
@@ -49,7 +47,7 @@ pub(crate) async fn set_nexus_conf(
     }
 
     conf.sui.pk = sui_pk.or(conf.sui.pk);
-    conf.sui.grpc_url = sui_grpc_url.or(conf.sui.grpc_url);
+    conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
     conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
     // Preferred remote storage cannot be inline.
@@ -105,7 +103,6 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
-        let pk_path = tempdir.join("pk.pem");
         let mut rng = rand::thread_rng();
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
@@ -132,7 +129,7 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some(pk_path.clone()),
+            Some("123".to_string()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
             Some(objects_path),
@@ -151,9 +148,9 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
+        assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
-            conf.sui.grpc_url,
+            conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
         );
         assert_eq!(
@@ -195,9 +192,9 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some(pk_path.clone()));
+        assert_eq!(conf.sui.pk, Some("123".to_string()));
         assert_eq!(
-            conf.sui.grpc_url,
+            conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
         );
         assert_eq!(
