@@ -24,7 +24,17 @@ const NEXUS_DATA_INLINE_STORAGE_TAG: &[u8] = b"inline";
 const NEXUS_DATA_WALRUS_STORAGE_TAG: &[u8] = b"walrus";
 
 use {
-    crate::types::{DataStorage, EncryptionMode, InlineStorage, NexusData, WalrusStorage},
+    crate::types::{
+        deserialize_encoded_bytes,
+        deserialize_encoded_bytes_vec,
+        serialize_encoded_bytes,
+        serialize_encoded_bytes_vec,
+        DataStorage,
+        EncryptionMode,
+        InlineStorage,
+        NexusData,
+        WalrusStorage,
+    },
     serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
@@ -32,8 +42,20 @@ use {
 struct NexusDataAsStruct {
     /// Either identifies some remote storage or is equal to [NEXUS_DATA_INLINE_STORAGE_TAG]
     /// if the data can be parsed as is.
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     storage: Vec<u8>,
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes",
+        serialize_with = "serialize_encoded_bytes"
+    )]
     one: Vec<u8>,
+    #[serde(
+        deserialize_with = "deserialize_encoded_bytes_vec",
+        serialize_with = "serialize_encoded_bytes_vec"
+    )]
     many: Vec<Vec<u8>>,
     encryption_mode: u8,
 }
@@ -54,8 +76,8 @@ impl NexusDataAsStruct {
 /// Check if a string represents a large number (u128/u256 range).
 /// Handles both positive and negative integers.
 fn is_large_number(s: &str) -> bool {
-    if s.starts_with('-') {
-        s[1..].chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    if let Some(stripped) = s.strip_prefix('-') {
+        stripped.chars().all(|c| c.is_ascii_digit()) && s.len() > 21
     } else {
         s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
     }
@@ -64,8 +86,9 @@ fn is_large_number(s: &str) -> bool {
 /// Wrap large numbers as JSON strings to preserve precision for u128/u256.
 fn wrap_large_numbers_as_string(value: &str) -> String {
     let trimmed = value.trim();
+
     if is_large_number(trimmed) {
-        format!(r#""{}""#, trimmed)
+        format!(r#""{trimmed}""#)
     } else {
         trimmed.to_string()
     }
@@ -215,10 +238,10 @@ mod tests {
         );
 
         // The byte representation of the JSON object
-        // {"key":"value"} is [123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]
+        // {"key":"value"} is "eyJrZXkiOiJ2YWx1ZSJ9"
         assert_eq!(
             serialized,
-            r#"{"storage":[105,110,108,105,110,101],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encryption_mode":0}"#
+            r#"{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[],"encryption_mode":0}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -248,7 +271,7 @@ mod tests {
 
         assert_eq!(
             serialized,
-            r#"{"storage":[105,110,108,105,110,101],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encryption_mode":1}"#
+            r#"{"storage":"aW5saW5l","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"],"encryption_mode":1}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -282,7 +305,7 @@ mod tests {
         // {"key":"value"} is [123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]
         assert_eq!(
             serialized,
-            r#"{"storage":[119,97,108,114,117,115],"one":[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],"many":[],"encryption_mode":0}"#
+            r#"{"storage":"d2FscnVz","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[],"encryption_mode":0}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -312,7 +335,7 @@ mod tests {
 
         assert_eq!(
             serialized,
-            r#"{"storage":[119,97,108,114,117,115],"one":[],"many":[[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125],[123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]],"encryption_mode":1}"#
+            r#"{"storage":"d2FscnVz","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"],"encryption_mode":1}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();

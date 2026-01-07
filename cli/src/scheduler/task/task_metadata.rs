@@ -12,7 +12,7 @@ use {
 
 /// Update all metadata entries for a scheduler task.
 pub(crate) async fn update_task_metadata(
-    task_id: sui::ObjectID,
+    task_id: sui::types::Address,
     metadata: Vec<String>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
@@ -23,7 +23,7 @@ pub(crate) async fn update_task_metadata(
 
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     let result = nexus_client
         .scheduler()

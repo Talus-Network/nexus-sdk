@@ -140,7 +140,7 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         value: b"Bag Data",
     });
-    heterogeneous.add(AnotherName { another_name: b"Another Bag Item".to_ascii_string() }, AnotherPlainValue {
+    heterogeneous.add(Name { name: b"Another Bag Item".to_ascii_string() }, AnotherPlainValue {
         id: object::new(ctx),
         another_value: b"Another Bag Data",
     });

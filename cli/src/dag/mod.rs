@@ -53,7 +53,7 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAG",
             value_name = "OBJECT_ID"
         )]
-        dag_id: sui::ObjectID,
+        dag_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
             long = "entry-group",
@@ -88,14 +88,14 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
-        /// Optional gas price paid as priority fee for the DAG execution.
+        /// Priority fee per gas unit for the DAG execution.
         #[arg(
-            long = "gas-price",
-            help = "The gas price priority fee to pass to the DAG execution. Defaults to 0 when omitted.",
+            long = "priority-fee-per-gas-unit",
+            help = "Priority fee per gas unit to pass to the DAG execution. Defaults to 0 when omitted.",
             value_name = "AMOUNT",
             default_value_t = 0u64
         )]
-        price_priority_fee: u64,
+        priority_fee_per_gas_unit: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -111,15 +111,14 @@ pub(crate) enum DagCommand {
             help = "The object ID of the Nexus DAGExecution object.",
             value_name = "OBJECT_ID"
         )]
-        dag_execution_id: sui::ObjectID,
+        dag_execution_id: sui::types::Address,
         /// The entry group to invoke.
         #[arg(
-            long = "execution-digest",
-            short = 'd',
-            help = "The transaction digest of the execution.",
-            value_name = "DIGEST"
+            long = "execution-checkpoint",
+            short = 'c',
+            help = "The checkpoint of the transaction that triggered the execution."
         )]
-        execution_digest: sui::TransactionDigest,
+        execution_checkpoint: u64,
     },
 }
 
@@ -142,7 +141,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             input_json,
             remote,
             inspect,
-            price_priority_fee,
+            priority_fee_per_gas_unit,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -154,7 +153,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 input_json,
                 remote,
                 inspect,
-                price_priority_fee,
+                priority_fee_per_gas_unit,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -164,7 +163,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         // == `$ nexus dag inspect-execution` ==
         DagCommand::InspectExecution {
             dag_execution_id,
-            execution_digest,
-        } => inspect_dag_execution(dag_execution_id, execution_digest).await,
+            execution_checkpoint,
+        } => inspect_dag_execution(dag_execution_id, execution_checkpoint).await,
     }
 }

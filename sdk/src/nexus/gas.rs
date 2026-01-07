@@ -4,13 +4,12 @@
 
 use crate::{
     nexus::{client::NexusClient, error::NexusError},
-    object_crawler::fetch_one,
     sui,
     transactions::gas,
 };
 
 pub struct AddBudgetResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
 }
 
 pub struct GasActions {
@@ -18,41 +17,49 @@ pub struct GasActions {
 }
 
 impl GasActions {
-    /// Add a Coin [`sui::ObjectRef`] as gas budget for Nexus workflows.
+    /// Add a Coin [`sui::types::ObjectReference`] as gas budget for Nexus workflows.
     pub async fn add_budget(
         &self,
-        coin_object_id: sui::ObjectID,
+        coin_object_id: sui::types::Address,
     ) -> Result<AddBudgetResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
+        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let sui_client = &self.client.signer.get_client().await?;
-        let coin = fetch_one::<serde_json::Value>(sui_client, coin_object_id)
+
+        let coin = self
+            .client
+            .crawler()
+            .get_object_metadata(coin_object_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address.into(), &coin.object_ref())
-        {
+        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address, &coin.object_ref()) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -65,57 +72,56 @@ impl GasActions {
 
 #[cfg(test)]
 mod tests {
-    use {
-        crate::{
-            sui,
-            test_utils::{nexus_mocks, sui_mocks},
-        },
-        std::collections::BTreeMap,
+    use crate::{
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
     };
 
     #[tokio::test]
     async fn test_gas_actions_add_budget() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let coin_object_id = sui::types::Address::generate(&mut rng);
 
-        let coin_object_id = sui::ObjectID::random();
-        let coin_object = sui::ParsedMoveObject {
-            type_: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: sui::move_ident_str!("coin").into(),
-                name: sui::move_ident_str!("Coin").into(),
-                type_params: vec![],
-            },
-            has_public_transfer: false,
-            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
-                "test".into(),
-                sui::MoveValue::Number(1),
-            )])),
-        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let get_object_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, coin_object_id, coin_object);
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let tx_digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                tx_digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
 
-        let result = nexus_client
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+
+        let result = client
             .gas()
             .add_budget(coin_object_id)
             .await
             .expect("Failed to add budget");
-
-        get_object_call.assert_async().await;
-
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
 
         assert_eq!(result.tx_digest, tx_digest);
     }

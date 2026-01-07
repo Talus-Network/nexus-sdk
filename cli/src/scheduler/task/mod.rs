@@ -49,7 +49,7 @@ pub(crate) enum TaskCommand {
     Create {
         /// DAG object ID providing the execution definition.
         #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
-        dag_id: sui::ObjectID,
+        dag_id: sui::types::Address,
         /// Entry group to invoke when executing the DAG.
         #[arg(
             long = "entry-group",
@@ -78,24 +78,24 @@ pub(crate) enum TaskCommand {
         /// Metadata entries to attach to the task as key=value pairs.
         #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
         metadata: Vec<String>,
-        /// Gas price paid as priority fee for the DAG execution.
+        /// Priority fee per gas unit for DAG executions launched by the task.
         #[arg(
-            long = "execution-gas-price",
+            long = "execution-priority-fee-per-gas-unit",
             value_name = "AMOUNT",
             default_value_t = 0u64
         )]
-        execution_gas_price: u64,
+        execution_priority_fee_per_gas_unit: u64,
         #[command(flatten)]
         schedule_start: ScheduleStartOptions,
         #[command(flatten)]
         schedule_deadline: ScheduleDeadlineOptions,
-        /// Gas price paid as priority fee associated with this occurrence.
+        /// Priority fee per gas unit for the initial occurrence.
         #[arg(
-            long = "schedule-gas-price",
+            long = "schedule-priority-fee-per-gas-unit",
             value_name = "AMOUNT",
             default_value_t = 0u64
         )]
-        schedule_gas_price: u64,
+        schedule_priority_fee_per_gas_unit: u64,
         /// Generator responsible for producing future occurrences for this task.
         #[arg(
             long = "generator",
@@ -111,13 +111,13 @@ pub(crate) enum TaskCommand {
     Inspect {
         /// Task object ID to inspect.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
     },
     #[command(about = "Update scheduler task metadata")]
     Metadata {
         /// Task object ID to update.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         /// Metadata entries to write as key=value pairs.
         #[arg(
             long = "metadata",
@@ -133,7 +133,7 @@ pub(crate) enum TaskCommand {
     Pause {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -141,7 +141,7 @@ pub(crate) enum TaskCommand {
     Resume {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -149,7 +149,7 @@ pub(crate) enum TaskCommand {
     Cancel {
         /// Task object ID to mutate.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -163,10 +163,10 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             input_json,
             remote,
             metadata,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             schedule_start,
             schedule_deadline,
-            schedule_gas_price,
+            schedule_priority_fee_per_gas_unit,
             generator,
             gas,
         } => {
@@ -184,11 +184,11 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 input_json,
                 remote,
                 metadata,
-                execution_gas_price,
+                execution_priority_fee_per_gas_unit,
                 schedule_start_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_gas_price,
+                schedule_priority_fee_per_gas_unit,
                 generator.into(),
                 gas,
             )
