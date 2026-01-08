@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - support for `scheduler` transactions and events
 - onchain schema generation
+- `ToolLocation` to combine offchain url and onchain movemoduleid
 
 #### Changed
 
