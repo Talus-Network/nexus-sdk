@@ -6,11 +6,11 @@ use {
         TypeName,
     },
     crate::{
-        nexus::crawler::{Bag, Map, ObjectBag},
+        nexus::crawler::{Bag, Map, ObjectBag, TableVec},
         sui,
         types::NexusData,
     },
-    serde::{Deserialize, Deserializer, Serialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
 /// Representation of `nexus_workflow::dag::DagExecutionConfig`.
@@ -18,14 +18,21 @@ use {
 pub struct DagExecutionConfig {
     pub dag: sui::types::Address,
     pub network: sui::types::Address,
+    pub entry_group: SchedulerEntryGroup,
+    pub inputs: Map<TypeName, Map<InputPort, NexusData>>,
+    pub invoker: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub priority_fee_per_gas_unit: u64,
-    pub entry_group: SchedulerEntryGroup,
-    pub inputs: Map<String, NexusData>,
-    pub invoker: sui::types::Address,
+}
+
+/// Representation of `nexus_workflow::dag::InputPort`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct InputPort {
+    pub name: String,
+    pub encrypted: bool,
 }
 
 /// Representation of `nexus_workflow::scheduler::Task`.
@@ -64,10 +71,14 @@ pub struct ConfiguredAutomaton {
 /// Deterministic automaton backing a policy.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DeterministicAutomaton {
-    pub states: Vec<u64>,
-    pub alphabet: Vec<PolicySymbol>,
-    pub transition: Vec<Vec<u64>>,
-    pub accepting: Vec<bool>,
+    pub states: TableVec<u64>,
+    pub alphabet: TableVec<PolicySymbol>,
+    pub transition: TableVec<TableVec<u64>>,
+    pub accepting: TableVec<bool>,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
     pub start: u64,
 }
 
@@ -78,6 +89,7 @@ pub enum PolicySymbol {
     Uid(sui::types::Address),
 }
 
+// TODO: BCS and JSON standardization
 impl<'de> Deserialize<'de> for PolicySymbol {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -99,27 +111,44 @@ impl<'de> Deserialize<'de> for PolicySymbol {
 
         // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Deserialize)]
-        struct Tagged {
-            variant: String,
-            fields: serde_json::Value,
-        }
-
-        #[derive(Deserialize)]
         struct Fields<T> {
             #[serde(rename = "pos0")]
             pos0: T,
         }
 
-        let tagged = Tagged::deserialize(deserializer)?;
-        match tagged.variant.as_str() {
+        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| serde::de::Error::custom("PolicySymbol must be an object"))?;
+
+        let variant = object
+            .get("variant")
+            .or_else(|| object.get("@variant"))
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| serde::de::Error::custom("PolicySymbol missing variant tag"))?;
+
+        let fields = object
+            .get("fields")
+            .or_else(|| object.get("@fields"))
+            .cloned()
+            .or_else(|| {
+                object.get("pos0").cloned().map(|pos0| {
+                    let mut map = serde_json::Map::new();
+                    map.insert("pos0".to_string(), pos0);
+                    serde_json::Value::Object(map)
+                })
+            })
+            .ok_or_else(|| serde::de::Error::custom("PolicySymbol missing fields payload"))?;
+
+        match variant {
             "Witness" => {
                 let fields: Fields<TypeName> =
-                    serde_json::from_value(tagged.fields).map_err(serde::de::Error::custom)?;
+                    serde_json::from_value(fields).map_err(serde::de::Error::custom)?;
                 Ok(PolicySymbol::Witness(fields.pos0))
             }
             "Uid" => {
                 let fields: Fields<sui::types::Address> =
-                    serde_json::from_value(tagged.fields).map_err(serde::de::Error::custom)?;
+                    serde_json::from_value(fields).map_err(serde::de::Error::custom)?;
                 Ok(PolicySymbol::Uid(fields.pos0))
             }
             other => Err(serde::de::Error::custom(format!(
@@ -200,11 +229,91 @@ impl PolicySymbol {
 }
 
 /// Scheduler task state.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TaskState {
     Active,
     Paused,
     Canceled,
+}
+
+impl<'de> Deserialize<'de> for TaskState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        enum Standard {
+            Active,
+            Paused,
+            Canceled,
+        }
+
+        if !deserializer.is_human_readable() {
+            return match Standard::deserialize(deserializer)? {
+                Standard::Active => Ok(TaskState::Active),
+                Standard::Paused => Ok(TaskState::Paused),
+                Standard::Canceled => Ok(TaskState::Canceled),
+            };
+        }
+
+        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+
+        let variant = match value {
+            serde_json::Value::String(variant) => variant,
+            serde_json::Value::Object(object) => object
+                .get("variant")
+                .or_else(|| object.get("@variant"))
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| serde::de::Error::custom("TaskState missing variant tag"))?
+                .to_string(),
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "unexpected value for TaskState: {other}"
+                )))
+            }
+        };
+
+        match variant.as_str() {
+            "Active" => Ok(TaskState::Active),
+            "Paused" => Ok(TaskState::Paused),
+            "Canceled" => Ok(TaskState::Canceled),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["Active", "Paused", "Canceled"],
+            )),
+        }
+    }
+}
+
+impl Serialize for TaskState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        enum Standard<'a> {
+            Active,
+            Paused,
+            Canceled,
+            #[allow(dead_code)]
+            #[serde(skip)]
+            _Marker(&'a ()),
+        }
+
+        if !serializer.is_human_readable() {
+            return match self {
+                TaskState::Active => Standard::Active.serialize(serializer),
+                TaskState::Paused => Standard::Paused.serialize(serializer),
+                TaskState::Canceled => Standard::Canceled.serialize(serializer),
+            };
+        }
+
+        match self {
+            TaskState::Active => "Active".serialize(serializer),
+            TaskState::Paused => "Paused".serialize(serializer),
+            TaskState::Canceled => "Canceled".serialize(serializer),
+        }
+    }
 }
 
 /// Marker data stored in the constraints policy.
@@ -255,10 +364,10 @@ mod tests {
             dfa: ConfiguredAutomaton {
                 id: dfa_id,
                 dfa: DeterministicAutomaton {
-                    states: vec![0],
-                    alphabet: vec![PolicySymbol::Witness(TypeName::new("0x1::module::Type"))],
-                    transition: vec![vec![0]],
-                    accepting: vec![true],
+                    states: TableVec::new(sui::types::Address::from_static("0x10"), 1),
+                    alphabet: TableVec::new(sui::types::Address::from_static("0x11"), 1),
+                    transition: TableVec::new(sui::types::Address::from_static("0x12"), 1),
+                    accepting: TableVec::new(sui::types::Address::from_static("0x13"), 1),
                     start: 0,
                 },
             },

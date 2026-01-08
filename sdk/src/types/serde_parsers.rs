@@ -61,8 +61,22 @@ pub fn deserialize_sui_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let value: String = Deserialize::deserialize(deserializer)?;
-    let value = value.parse::<u64>().map_err(serde::de::Error::custom)?;
+    if !deserializer.is_human_readable() {
+        return u64::deserialize(deserializer);
+    }
+
+    let value: Value = Deserialize::deserialize(deserializer)?;
+    let value = match value {
+        Value::String(value) => value.parse::<u64>().map_err(serde::de::Error::custom)?,
+        Value::Number(num) => num
+            .as_u64()
+            .ok_or_else(|| serde::de::Error::custom("expected unsigned number"))?,
+        other => {
+            return Err(serde::de::Error::custom(format!(
+                "unexpected value for u64: {other}"
+            )))
+        }
+    };
 
     Ok(value)
 }
@@ -72,7 +86,11 @@ pub fn serialize_sui_u64<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Erro
 where
     S: Serializer,
 {
-    value.to_string().serialize(serializer)
+    if serializer.is_human_readable() {
+        value.to_string().serialize(serializer)
+    } else {
+        value.serialize(serializer)
+    }
 }
 
 /// Deserialize an optional Sui `u64` value.
@@ -80,6 +98,10 @@ pub fn deserialize_sui_option_u64<'de, D>(deserializer: D) -> Result<Option<u64>
 where
     D: Deserializer<'de>,
 {
+    if !deserializer.is_human_readable() {
+        return Option::<u64>::deserialize(deserializer);
+    }
+
     fn parse_value(value: Value) -> Result<Option<u64>, String> {
         match value {
             Value::Null => Ok(None),
