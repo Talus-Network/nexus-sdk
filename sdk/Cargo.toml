@@ -19,6 +19,10 @@ default = ["tool_fqn"]
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
 
+# Tool Location feature enables the use of the `ToolLocation` enum for unified
+# tool location representation (HTTP URL or Sui module ID).
+tool_location = ["sui_types", "reqwest"]
+
 # Crypto feature enables cryptographic primitives
 crypto = [
     "aead", "serde-big-array", "chacha20poly1305", "hkdf", "rand", "rand_core",
@@ -87,6 +91,7 @@ test_utils = [
 # Enable all features apart from `test_utils`.
 full = [
     "tool_fqn",
+    "tool_location",
     "crypto",
     "secret_core",
     "sui_types",

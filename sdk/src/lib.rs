@@ -8,6 +8,13 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
+/// The ToolLocation type represents the location of a tool, either as an HTTP
+/// URL for offchain tools or as a Sui module identifier for onchain tools.
+#[cfg(feature = "tool_location")]
+mod tool_location;
+#[cfg(feature = "tool_location")]
+pub use tool_location::*;
+
 /// Ubiquitously used resource identifiers for on-chain types and functions.
 /// This includes workflow, primitives and interface Nexus modules but also
 /// some Sui framework and Sui move std modules that we use.
