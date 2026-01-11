@@ -24,6 +24,7 @@ clap.workspace = true
 clap_complete.workspace = true
 colored.workspace = true
 convert_case.workspace = true
+env_logger.workspace = true
 home.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true

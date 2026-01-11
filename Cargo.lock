@@ -5718,6 +5718,7 @@ dependencies = [
  "colored 3.0.0",
  "convert_case 0.7.1",
  "directories",
+ "env_logger",
  "hex",
  "home",
  "indicatif",

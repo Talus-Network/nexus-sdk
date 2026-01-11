@@ -26,6 +26,7 @@ struct Cli {
         help = "Change the output format to JSON"
     )]
     json: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -52,6 +53,8 @@ enum Command {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     // Customize parsing error handling.
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
