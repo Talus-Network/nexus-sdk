@@ -585,7 +585,7 @@ impl<T> Response<T> {
 
     // Get a Sui object ref.
     pub fn object_ref(&self) -> sui::types::ObjectReference {
-        sui::types::ObjectReference::new(self.object_id, self.version, self.digest)
+        sui::types::ObjectReference::new(self.object_id, self.get_initial_version(), self.digest)
     }
 }
 
@@ -750,55 +750,28 @@ where
     }
 }
 
-/// Wrapper around `sui::table::Table<K, V>`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Table<K, V> {
-    #[serde(flatten)]
-    inner: IdSize,
-    #[serde(skip)]
-    _marker: PhantomData<(K, V)>,
-}
-
-impl<K, V> Table<K, V> {
-    pub fn new(id: sui::types::Address, size: u64) -> Self {
-        Self {
-            inner: IdSize { id, size },
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn id(&self) -> sui::types::Address {
-        self.inner.id
-    }
-
-    pub fn size_u64(&self) -> u64 {
-        self.inner.size
-    }
-
-    pub fn size(&self) -> usize {
-        self.inner.size()
-    }
-}
-
 /// Wrapper around `sui::table_vec::TableVec<T>`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TableVec<T> {
-    contents: Table<u64, T>,
+    contents: IdSize,
+    #[serde(skip)]
+    _marker: PhantomData<T>,
 }
 
 impl<T> TableVec<T> {
     pub fn new(id: sui::types::Address, size: u64) -> Self {
         Self {
-            contents: Table::new(id, size),
+            contents: IdSize { id, size },
+            _marker: PhantomData,
         }
     }
 
     pub fn id(&self) -> sui::types::Address {
-        self.contents.id()
+        self.contents.id
     }
 
     pub fn size_u64(&self) -> u64 {
-        self.contents.size_u64()
+        self.contents.size
     }
 
     pub fn size(&self) -> usize {

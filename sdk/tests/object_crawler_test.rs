@@ -10,7 +10,6 @@ use {
             Map,
             ObjectBag,
             Set,
-            Table,
             TableVec,
         },
         sui,
@@ -32,7 +31,6 @@ struct Guy {
     age: u8,
     hobbies: Set<String>,
     groups: Map<Name, Vec<Name>>,
-    chair: DynamicMap<Name, Name>,
     timetable: DynamicObjectMap<Name, Value>,
     friends: DynamicObjectMap<Name, PlainValue>,
     bag: DynamicMap<Name, PlainValue>,
@@ -233,29 +231,6 @@ async fn test_object_crawler() {
     assert_eq!(key.name, "Pouch Code");
     assert_eq!(value.data.value, b"MOREDATA15");
 
-    // Fetch chair which is a Table. Weirdly.
-    assert_eq!(guy.chair.size(), 2);
-    let chair = crawler.get_dynamic_fields(&guy.chair).await.unwrap();
-    assert_eq!(chair.len(), 2);
-
-    // Fetch chairman.
-    let chairman = chair
-        .get(&Name {
-            name: "Chairman".to_string(),
-        })
-        .unwrap();
-
-    assert_eq!(chairman.name, "John Doe");
-
-    // Fetch vice chairman.
-    let vice_chairman = chair
-        .get(&Name {
-            name: "Vice Chairman".to_string(),
-        })
-        .unwrap();
-
-    assert_eq!(vice_chairman.name, "Alice");
-
     // Fetch friends which is an ObjectBag.
     assert_eq!(guy.friends.size(), 2);
     let friends = crawler
@@ -367,11 +342,6 @@ fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
     assert_eq!(object_bag.id(), id);
     assert_eq!(object_bag.size_u64(), 3);
     assert_eq!(object_bag.size(), 3);
-
-    let table: Table<String, u64> = Table::new(id, 4);
-    assert_eq!(table.id(), id);
-    assert_eq!(table.size_u64(), 4);
-    assert_eq!(table.size(), 4);
 
     let table_vec: TableVec<u64> = TableVec::new(id, 5);
     assert_eq!(table_vec.id(), id);

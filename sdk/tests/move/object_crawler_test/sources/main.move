@@ -7,7 +7,6 @@ use std::ascii::String as AsciiString;
 
 use sui::object_bag::{Self, ObjectBag};
 use sui::object_table::{Self, ObjectTable};
-use sui::table::{Self, Table};
 use sui::table_vec::{Self, TableVec};
 use sui::linked_table::{Self, LinkedTable};
 use sui::vec_map::{Self, VecMap};
@@ -24,7 +23,6 @@ public struct Guy has key, store {
     hobbies: VecSet<AsciiString>,
     groups: VecMap<Name, vector<Name>>,
 
-    chair: Table<Name, Name>,
     timetable: ObjectTable<Name, Value>,
     friends: ObjectBag,
     bag: Bag,
@@ -35,10 +33,6 @@ public struct Guy has key, store {
 
 public struct Name has copy, drop, store {
     name: AsciiString,
-}
-
-public struct AnotherName has copy, drop, store {
-    another_name: AsciiString,
 }
 
 public struct Value has key, store {
@@ -81,10 +75,6 @@ fun init(ctx: &mut TxContext) {
 
     groups.insert(group_1_name, group_1_members);
     groups.insert(group_2_name, group_2_members);
-
-    let mut chair = table::new(ctx);
-    chair.add(Name { name: b"Chairman".to_ascii_string() }, Name { name: b"John Doe".to_ascii_string() });
-    chair.add(Name { name: b"Vice Chairman".to_ascii_string() }, Name { name: b"Alice".to_ascii_string() });
 
     let mut timetable = object_table::new(ctx);
 
@@ -161,7 +151,6 @@ fun init(ctx: &mut TxContext) {
         age,
         hobbies,
         groups,
-        chair,
         timetable,
         friends,
         bag,

@@ -258,7 +258,7 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
-        let task_ref = shared_object_ref(&task);
+        let task_ref = task.object_ref();
 
         let metadata_arg =
             scheduler_tx::new_metadata(&mut tx, objects, metadata.clone().into_iter())
@@ -310,7 +310,7 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
-        let task_ref = shared_object_ref(&task);
+        let task_ref = task.object_ref();
 
         match request {
             TaskStateAction::Pause => {
@@ -379,7 +379,7 @@ impl SchedulerActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
-        let task_ref = shared_object_ref(&task);
+        let task_ref = task.object_ref();
 
         scheduler_tx::new_or_modify_periodic_for_task(
             &mut tx,
@@ -435,7 +435,7 @@ impl SchedulerActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
-        let task_ref = shared_object_ref(&task);
+        let task_ref = task.object_ref();
 
         scheduler_tx::disable_periodic_for_task(&mut tx, objects, &task_ref)
             .map_err(NexusError::TransactionBuilding)?;
@@ -479,7 +479,7 @@ impl SchedulerActions {
     ) -> Result<ScheduleExecutionResult, NexusError> {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
-        let task_ref = shared_object_ref(task);
+        let task_ref = task.object_ref();
 
         if let Some(start_ms) = request.start_ms {
             let deadline_offset = request
@@ -564,14 +564,6 @@ fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEvent
         NexusEventKind::OccurrenceScheduled(_) => Some(event.data.clone()),
         _ => None,
     })
-}
-
-fn shared_object_ref<T>(response: &Response<T>) -> sui::types::ObjectReference {
-    sui::types::ObjectReference::new(
-        response.object_id,
-        response.get_initial_version(),
-        response.digest,
-    )
 }
 
 fn validate_schedule_options(
