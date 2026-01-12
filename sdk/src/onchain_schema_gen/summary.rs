@@ -5,9 +5,11 @@
 
 use {
     anyhow::{anyhow, bail, Context, Result as AnyResult},
+    move_cli::base::summary::{Summary, SummaryOutputFormat},
+    move_package::BuildConfig,
     serde::Deserialize,
     serde_json::{json, Map, Value},
-    std::{collections::HashMap, path::Path, process::Command},
+    std::{collections::HashMap, path::Path},
 };
 
 // ============================================================================
@@ -166,28 +168,24 @@ fn validate_package_path(package_path: &Path) -> AnyResult<()> {
     Ok(())
 }
 
-/// Execute the `sui move summary` command.
+/// Execute the summary generation using the move-cli library directly.
 fn execute_summary_command(package_path: &Path) -> AnyResult<()> {
-    let output = Command::new("sui")
-        .args(["move", "summary"])
-        .current_dir(package_path)
-        .output()
-        .context("Failed to execute 'sui move summary'")?;
+    let summary = Summary {
+        output_format: SummaryOutputFormat::Json,
+        output_directory: "package_summaries".to_string(),
+        bytecode: false,
+    };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    let config = BuildConfig::default();
 
-        // Combine stdout and stderr for better error reporting.
-        let error_output = match (stdout.is_empty(), stderr.is_empty()) {
-            (false, false) => format!("{}\n{}", stdout, stderr),
-            (false, true) => stdout.to_string(),
-            (true, false) => stderr.to_string(),
-            (true, true) => "Command failed with no output".to_string(),
-        };
-
-        bail!("'sui move summary' failed:\n{}", error_output);
-    }
+    summary
+        .execute(
+            Some(package_path),
+            config,
+            None::<&()>,
+            None::<fn(&mut _) -> anyhow::Result<()>>,
+        )
+        .context("Failed to execute summary generation")?;
 
     Ok(())
 }
