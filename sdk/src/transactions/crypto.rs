@@ -346,7 +346,10 @@ mod tests {
             move_calls[1].function,
             sui_framework::Coin::FROM_BALANCE.name
         );
-        assert_eq!(move_calls[2].function, sui_framework::Coin::JOIN.name);
+        assert_eq!(
+            move_calls[2].function,
+            sui_framework::Transfer::PUBLIC_TRANSFER.name
+        );
         assert_eq!(
             move_calls[3].function,
             workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER.name
