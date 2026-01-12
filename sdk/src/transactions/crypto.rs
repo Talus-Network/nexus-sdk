@@ -49,7 +49,7 @@ pub fn claim_pre_key_for_self(
 pub fn fulfill_pre_key_for_user(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    owner_cap: &sui::types::ObjectReference,
+    crypto_cap: &sui::types::ObjectReference,
     requested_by: sui::types::Address,
     pre_key: &PreKeyBundle,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -61,10 +61,10 @@ pub fn fulfill_pre_key_for_user(
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverCrypto>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
-        *owner_cap.object_id(),
-        owner_cap.version(),
-        *owner_cap.digest(),
+    let crypto_cap = tx.input(sui::tx::Input::shared(
+        *crypto_cap.object_id(),
+        crypto_cap.version(),
+        false,
     ));
 
     // `requested_by: address`
@@ -81,7 +81,7 @@ pub fn fulfill_pre_key_for_user(
             workflow::PreKeyVault::FULFILL_PRE_KEY_FOR_USER.name,
             vec![],
         ),
-        vec![pre_key_vault, owner_cap, requested_by, pre_key_bytes],
+        vec![pre_key_vault, crypto_cap, requested_by, pre_key_bytes],
     ))
 }
 
@@ -92,9 +92,9 @@ pub fn fulfill_pre_key_for_user(
 pub fn claim_and_fulfill_pre_key_for_user(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    crypto_owner_cap: &sui::types::ObjectReference,
+    crypto_cap: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
-    leader_claim_coin: &sui::types::ObjectReference,
+    leader_address: sui::types::Address,
     requested_by: sui::types::Address,
     pre_key: &PreKeyBundle,
     mist_gas_budget_to_claim: u64,
@@ -113,10 +113,10 @@ pub fn claim_and_fulfill_pre_key_for_user(
     let requested_by_arg = sui_framework::Address::address_from_type(tx, requested_by)?;
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap_obj = tx.input(sui::tx::Input::owned(
+    let leader_cap_obj = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
+        false,
     ));
 
     // Claim gas from the requester into a temporary balance.
@@ -131,35 +131,36 @@ pub fn claim_and_fulfill_pre_key_for_user(
     );
 
     // Convert the balance into a Coin<SUI>.
-    let sui_tag = sui_framework::into_type_tag(sui_framework::Sui::SUI);
+    let sui = sui_framework::into_type_tag(sui_framework::Sui::SUI);
     let coin = tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
             sui_framework::Coin::FROM_BALANCE.module,
             sui_framework::Coin::FROM_BALANCE.name,
-            vec![sui_tag.clone()],
+            vec![sui],
         ),
         vec![balance],
     );
 
-    // Merge the claimed coin into the leader's claim coin.
-    let claim_coin = tx.input(sui::tx::Input::owned(
-        *leader_claim_coin.object_id(),
-        leader_claim_coin.version(),
-        *leader_claim_coin.digest(),
-    ));
+    // `address`
+    let address = sui_framework::Address::address_from_type(tx, leader_address)?;
 
+    // `Coin<SUI>`
+    let coin_sui = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::gas_coin()));
+
+    // Transfer the claimed gas back to the leader's wallet.
+    // `sui::transfer::public_transfer()`
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
-            sui_framework::Coin::JOIN.module,
-            sui_framework::Coin::JOIN.name,
-            vec![sui_tag],
+            sui_framework::Transfer::PUBLIC_TRANSFER.module,
+            sui_framework::Transfer::PUBLIC_TRANSFER.name,
+            vec![coin_sui],
         ),
-        vec![claim_coin, coin],
+        vec![coin, address],
     );
 
-    fulfill_pre_key_for_user(tx, objects, crypto_owner_cap, requested_by, pre_key)
+    fulfill_pre_key_for_user(tx, objects, crypto_cap, requested_by, pre_key)
 }
 
 /// PTB template to associate a claimed pre key with the sender address while
@@ -287,9 +288,9 @@ mod tests {
     fn test_claim_and_fulfill_pre_key_for_user() {
         let rng = &mut rand::thread_rng();
         let objects = sui_mocks::mock_nexus_objects();
-        let crypto_owner_cap = sui_mocks::mock_sui_object_ref();
+        let crypto_cap = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let leader_claim_coin = sui_mocks::mock_sui_object_ref();
+        let leader_address = sui_mocks::mock_sui_address();
         let identity = crate::crypto::x3dh::IdentityKey::generate();
         let spk_secret = x25519_dalek::StaticSecret::from([1; 32]);
         let pre_key = PreKeyBundle::new(&identity, 1, &spk_secret, None, None);
@@ -299,9 +300,9 @@ mod tests {
         claim_and_fulfill_pre_key_for_user(
             &mut tx,
             &objects,
-            &crypto_owner_cap,
+            &crypto_cap,
             &leader_cap,
-            &leader_claim_coin,
+            leader_address,
             requested_by,
             &pre_key,
             1,

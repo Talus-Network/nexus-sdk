@@ -889,10 +889,10 @@ pub fn dag_begin_execution_from_scheduler(
     ));
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.input(sui::tx::Input::owned(
+    let leader_cap = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
+        false,
     ));
 
     // `claim_coin: Coin<SUI>`
