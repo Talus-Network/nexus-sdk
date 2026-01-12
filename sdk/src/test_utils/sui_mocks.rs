@@ -75,7 +75,6 @@ pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::type
     tx.finish().expect("Transaction should build")
 }
 
-#[cfg(test)]
 pub mod grpc {
     use {
         super::*,
