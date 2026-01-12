@@ -60,7 +60,7 @@ dag = ["petgraph"]
 
 # Schema generation feature enables automatic schema generation from Move modules.
 # Used for onchain tool registration.
-schema_gen = ["sui_types", "serde_json", "move_cli", "move_package"]
+schema_gen = ["sui_types", "serde_json", "move_cli", "move_package", "sui_move_build", "sui_package_management"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
 nexus = ["transactions", "events", "dag", "bcs", "prost-types"]

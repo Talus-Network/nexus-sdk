@@ -10,6 +10,8 @@ use {
     serde::Deserialize,
     serde_json::{json, Map, Value},
     std::{collections::HashMap, path::Path},
+    sui_move_build::{implicit_deps, set_sui_flavor, SuiPackageHooks},
+    sui_package_management::system_package_versions::latest_system_packages,
 };
 
 // ============================================================================
@@ -176,7 +178,18 @@ fn execute_summary_command(package_path: &Path) -> AnyResult<()> {
         bytecode: false,
     };
 
-    let config = BuildConfig::default();
+    // Register Sui package hooks.
+    move_package::package_hooks::register_package_hooks(Box::new(SuiPackageHooks));
+
+    let mut config = BuildConfig::default();
+
+    // Set the Sui flavor.
+    if let Some(err_msg) = set_sui_flavor(&mut config) {
+        bail!(err_msg);
+    }
+
+    // Configure Sui framework dependencies (0x1 std, 0x2 sui framework).
+    config.implicit_dependencies = implicit_deps(latest_system_packages());
 
     summary
         .execute(
