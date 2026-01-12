@@ -60,7 +60,7 @@ dag = ["petgraph"]
 
 # Schema generation feature enables automatic schema generation from Move modules.
 # Used for onchain tool registration.
-schema_gen = ["sui_types", "serde_json", "move_cli", "move_package", "sui_move_build", "sui_package_management"]
+schema_gen = ["sui_types", "serde_json", "move_cli", "move_package", "sui_move_build", "sui_package_management", "move_model_2", "move_symbol_pool", "indexmap"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
 nexus = ["transactions", "events", "dag", "bcs", "prost-types"]
@@ -117,6 +117,10 @@ optional = true
 
 [dependencies.futures]
 workspace = true
+optional = true
+
+[dependencies.indexmap]
+version = "2"
 optional = true
 
 # === Crypto deps ===
@@ -339,6 +343,18 @@ optional = true
 git = "https://github.com/MystenLabs/sui"
 tag = "mainnet-v1.61.2"
 package = "move-cli"
+optional = true
+
+[dependencies.move_model_2]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.61.2"
+package = "move-model-2"
+optional = true
+
+[dependencies.move_symbol_pool]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.61.2"
+package = "move-symbol-pool"
 optional = true
 
 [dependencies.testcontainers-modules]

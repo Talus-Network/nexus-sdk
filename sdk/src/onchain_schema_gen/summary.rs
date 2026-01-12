@@ -3,150 +3,27 @@
 //! Generates input/output schemas by parsing the JSON output of `sui move summary`,
 //! eliminating the need for RPC calls to introspect published packages.
 
+#[cfg(test)]
+use move_model_2::summary::ModuleId;
 use {
     anyhow::{anyhow, bail, Context, Result as AnyResult},
+    indexmap::IndexMap,
     move_cli::base::summary::{Summary, SummaryOutputFormat},
+    move_model_2::summary::{Datatype, Fields, Module, Parameter, Type, Variant},
     move_package::BuildConfig,
-    serde::Deserialize,
+    move_symbol_pool::Symbol,
     serde_json::{json, Map, Value},
-    std::{collections::HashMap, path::Path},
+    std::path::Path,
     sui_move_build::{implicit_deps, set_sui_flavor, SuiPackageHooks},
     sui_package_management::system_package_versions::latest_system_packages,
 };
-
-// ============================================================================
-// Summary Type Definitions
-// ============================================================================
-
-/// Module identifier from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct ModuleId {
-    pub address: String,
-    pub name: String,
-}
-
-/// Function parameter from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct Parameter {
-    pub name: String,
-    #[serde(rename = "type_")]
-    pub type_: SummaryType,
-}
-
-/// Function definition from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct FunctionSummary {
-    #[serde(default)]
-    pub doc: Option<String>,
-    pub visibility: String,
-    pub parameters: Vec<Parameter>,
-    #[serde(rename = "return_")]
-    pub return_: Vec<SummaryType>,
-}
-
-/// Enum variant field from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct VariantField {
-    pub index: u32,
-    #[serde(default)]
-    pub doc: Option<String>,
-    #[serde(rename = "type_")]
-    pub type_: SummaryType,
-}
-
-/// Fields container for variants.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct VariantFields {
-    pub positional_fields: bool,
-    pub fields: HashMap<String, VariantField>,
-}
-
-/// Enum variant from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct EnumVariant {
-    pub index: u32,
-    #[serde(default)]
-    pub doc: Option<String>,
-    pub fields: VariantFields,
-}
-
-/// Enum definition from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct EnumSummary {
-    pub index: u32,
-    #[serde(default)]
-    pub doc: Option<String>,
-    pub variants: HashMap<String, EnumVariant>,
-}
-
-/// Datatype module reference.
-#[derive(Debug, Deserialize)]
-pub struct DatatypeModule {
-    pub address: String,
-    pub name: String,
-}
-
-/// Datatype definition.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct Datatype {
-    pub module: DatatypeModule,
-    pub name: String,
-    #[serde(default)]
-    pub type_arguments: Vec<SummaryType>,
-}
-
-/// Type representation in the summary JSON.
-/// Can be a primitive string or a complex type object.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum SummaryType {
-    /// Primitive types like "u64", "bool", "address".
-    Primitive(String),
-    /// Complex types with structure.
-    Complex(SummaryTypeComplex),
-}
-
-/// Complex type variants from the summary.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub enum SummaryTypeComplex {
-    /// Reference type: [is_mutable, inner_type].
-    Reference(bool, Box<SummaryType>),
-    /// Datatype (struct/enum).
-    Datatype(Datatype),
-    /// Vector type (lowercase in JSON).
-    #[serde(rename = "vector")]
-    Vector(Box<SummaryType>),
-    /// Type parameter.
-    TypeParameter(u32),
-}
-
-/// Full module summary from `sui move summary`.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct ModuleSummary {
-    pub id: ModuleId,
-    #[serde(default)]
-    pub doc: Option<String>,
-    pub functions: HashMap<String, FunctionSummary>,
-    #[serde(default)]
-    pub enums: HashMap<String, EnumSummary>,
-}
 
 // ============================================================================
 // Command Execution and Summary Parsing
 // ============================================================================
 
 /// Run `sui move summary` command and parse output for the specified module.
-pub fn run_summary_command(package_path: &Path, module_name: &str) -> AnyResult<ModuleSummary> {
+pub fn run_summary_command(package_path: &Path, module_name: &str) -> AnyResult<Module> {
     validate_package_path(package_path)?;
     execute_summary_command(package_path)?;
     let summary_json = read_summary_file(package_path, module_name)?;
@@ -231,7 +108,7 @@ fn read_summary_file(package_path: &Path, module_name: &str) -> AnyResult<Value>
 }
 
 /// Find a specific module in the summary JSON output.
-fn find_module_in_summary(summary: &Value, module_name: &str) -> AnyResult<ModuleSummary> {
+fn find_module_in_summary(summary: &Value, module_name: &str) -> AnyResult<Module> {
     let Some(obj) = summary.as_object() else {
         // If not an object, try as array.
         if let Some(arr) = summary.as_array() {
@@ -242,9 +119,9 @@ fn find_module_in_summary(summary: &Value, module_name: &str) -> AnyResult<Modul
 
     // Check if this is a single module summary with an "id" field.
     if obj.contains_key("id") {
-        let module: ModuleSummary =
+        let module: Module =
             serde_json::from_value(summary.clone()).context("Failed to parse module summary")?;
-        if module.id.name == module_name {
+        if module.id.name.as_ref() == module_name {
             return Ok(module);
         }
     }
@@ -259,10 +136,10 @@ fn find_module_in_summary(summary: &Value, module_name: &str) -> AnyResult<Modul
 }
 
 /// Find a module in an array of module summaries.
-fn find_module_in_array(modules: &[Value], module_name: &str) -> AnyResult<ModuleSummary> {
+fn find_module_in_array(modules: &[Value], module_name: &str) -> AnyResult<Module> {
     for module_value in modules {
-        if let Ok(module) = serde_json::from_value::<ModuleSummary>(module_value.clone()) {
-            if module.id.name == module_name {
+        if let Ok(module) = serde_json::from_value::<Module>(module_value.clone()) {
+            if module.id.name.as_ref() == module_name {
                 return Ok(module);
             }
         }
@@ -275,10 +152,11 @@ fn find_module_in_array(modules: &[Value], module_name: &str) -> AnyResult<Modul
 // ============================================================================
 
 /// Generate input schema from the execute function parameters.
-pub fn generate_input_schema_from_summary(module: &ModuleSummary) -> AnyResult<String> {
+pub fn generate_input_schema_from_summary(module: &Module) -> AnyResult<String> {
+    let execute_symbol = Symbol::from("execute");
     let execute_fn = module
         .functions
-        .get("execute")
+        .get(&execute_symbol)
         .ok_or_else(|| anyhow!("Function 'execute' not found in module"))?;
 
     let schema_map = build_input_schema_map(&execute_fn.parameters)?;
@@ -302,7 +180,15 @@ fn build_input_schema_map(parameters: &[Parameter]) -> AnyResult<Map<String, Val
         if let Value::Object(ref mut obj) = param_schema {
             obj.insert("index".to_string(), Value::Number(param_index.into()));
         }
-        schema_map.insert(param.name.clone(), param_schema);
+
+        // Handle optional parameter name (FromSource).
+        let param_name = param
+            .name
+            .as_ref()
+            .map(|s| s.as_ref().to_string())
+            .unwrap_or_else(|| format!("param_{}", i));
+
+        schema_map.insert(param_name, param_schema);
         param_index += 1;
     }
 
@@ -310,10 +196,11 @@ fn build_input_schema_map(parameters: &[Parameter]) -> AnyResult<Map<String, Val
 }
 
 /// Generate output schema from the Output enum.
-pub fn generate_output_schema_from_summary(module: &ModuleSummary) -> AnyResult<String> {
+pub fn generate_output_schema_from_summary(module: &Module) -> AnyResult<String> {
+    let output_symbol = Symbol::from("Output");
     let output_enum = module
         .enums
-        .get("Output")
+        .get(&output_symbol)
         .ok_or_else(|| anyhow!("Enum 'Output' not found in module"))?;
 
     let schema_map = build_output_schema_map(&output_enum.variants)?;
@@ -322,35 +209,31 @@ pub fn generate_output_schema_from_summary(module: &ModuleSummary) -> AnyResult<
 }
 
 /// Build the schema map from enum variants.
-fn build_output_schema_map(
-    variants: &HashMap<String, EnumVariant>,
-) -> AnyResult<Map<String, Value>> {
+fn build_output_schema_map(variants: &IndexMap<Symbol, Variant>) -> AnyResult<Map<String, Value>> {
     let mut schema_map = Map::new();
 
     for (variant_name, variant) in variants {
         let fields_schema = build_variant_fields_schema(&variant.fields)?;
+        let variant_name_str = variant_name.as_ref();
         let variant_schema = json!({
             "type": "variant",
-            "description": format!("{} variant", variant_name),
+            "description": format!("{} variant", variant_name_str),
             "fields": fields_schema
         });
-        schema_map.insert(variant_name.to_lowercase(), variant_schema);
+        schema_map.insert(variant_name_str.to_lowercase(), variant_schema);
     }
 
     Ok(schema_map)
 }
 
 /// Build schema map for variant fields, sorted by field index.
-fn build_variant_fields_schema(variant_fields: &VariantFields) -> AnyResult<Map<String, Value>> {
+fn build_variant_fields_schema(variant_fields: &Fields) -> AnyResult<Map<String, Value>> {
     let mut fields_schema = Map::new();
 
-    // Sort fields by index to maintain consistent ordering.
-    let mut sorted_fields: Vec<_> = variant_fields.fields.iter().collect();
-    sorted_fields.sort_by_key(|(_, field)| field.index);
-
-    for (field_name, field) in sorted_fields {
+    // IndexMap preserves insertion order, and fields are already sorted by index.
+    for (field_name, field) in &variant_fields.fields {
         let field_schema = convert_type_to_schema(&field.type_)?;
-        fields_schema.insert(field_name.clone(), field_schema);
+        fields_schema.insert(field_name.as_ref().to_string(), field_schema);
     }
 
     Ok(fields_schema)
@@ -361,12 +244,11 @@ fn build_variant_fields_schema(variant_fields: &VariantFields) -> AnyResult<Map<
 // ============================================================================
 
 /// Check if a type is TxContext (should be excluded from input schema).
-fn is_tx_context_type(type_: &SummaryType) -> bool {
+fn is_tx_context_type(type_: &Type) -> bool {
     match type_ {
-        SummaryType::Primitive(_) => false,
-        SummaryType::Complex(SummaryTypeComplex::Datatype(datatype)) => is_tx_context(datatype),
-        SummaryType::Complex(SummaryTypeComplex::Reference(_, inner)) => is_tx_context_type(inner),
-        SummaryType::Complex(_) => false,
+        Type::Datatype(datatype) => is_tx_context(datatype),
+        Type::Reference(_, inner) => is_tx_context_type(inner),
+        _ => false,
     }
 }
 
@@ -374,48 +256,52 @@ fn is_tx_context_type(type_: &SummaryType) -> bool {
 fn is_tx_context(datatype: &Datatype) -> bool {
     matches!(
         (
-            datatype.module.address.as_str(),
-            datatype.module.name.as_str(),
-            datatype.name.as_str()
+            datatype.module.address.as_ref(),
+            datatype.module.name.as_ref(),
+            datatype.name.as_ref()
         ),
         ("sui" | "0x2", "tx_context", "TxContext")
     )
 }
 
 /// Check if an address represents the standard library (0x1 or "std").
-fn is_std_address(address: &str) -> bool {
-    matches!(address, "0x1" | "std")
+fn is_std_address(address: &Symbol) -> bool {
+    matches!(address.as_ref(), "0x1" | "std")
 }
 
 /// Check if an address represents the Sui framework (0x2 or "sui").
-fn is_sui_address(address: &str) -> bool {
-    matches!(address, "0x2" | "sui")
+fn is_sui_address(address: &Symbol) -> bool {
+    matches!(address.as_ref(), "0x2" | "sui")
 }
 
 /// Convert a summary type to a JSON schema representation.
-fn convert_type_to_schema(type_: &SummaryType) -> AnyResult<Value> {
+fn convert_type_to_schema(type_: &Type) -> AnyResult<Value> {
     match type_ {
-        SummaryType::Primitive(primitive_type) => convert_primitive_to_schema(primitive_type),
-        SummaryType::Complex(complex_type) => convert_complex_to_schema(complex_type),
+        Type::Bool => Ok(create_schema("bool", "Boolean value")),
+        Type::U8 => Ok(create_schema("u8", "8-bit unsigned integer")),
+        Type::U16 => Ok(create_schema("u16", "16-bit unsigned integer")),
+        Type::U32 => Ok(create_schema("u32", "32-bit unsigned integer")),
+        Type::U64 => Ok(create_schema("u64", "64-bit unsigned integer")),
+        Type::U128 => Ok(create_schema("u128", "128-bit unsigned integer")),
+        Type::U256 => Ok(create_schema("u256", "256-bit unsigned integer")),
+        Type::Address => Ok(create_schema("address", "Sui address")),
+        Type::Signer => Ok(create_schema("signer", "Transaction signer")),
+        Type::Datatype(datatype) => convert_datatype_to_schema(datatype),
+        Type::Vector(element_type) => convert_vector_to_schema(element_type),
+        Type::Reference(is_mutable, inner) => convert_reference_to_schema(*is_mutable, inner),
+        Type::TypeParameter(_) | Type::NamedTypeParameter(_) => {
+            Ok(create_schema("generic", "Generic type parameter"))
+        }
+        Type::Tuple(types) => {
+            if types.is_empty() {
+                Ok(create_schema("unit", "Unit type"))
+            } else {
+                Ok(create_schema("tuple", "Tuple type"))
+            }
+        }
+        Type::Fun(_, _) => Ok(create_schema("function", "Function type")),
+        Type::Any => Ok(create_schema("any", "Any type")),
     }
-}
-
-/// Convert a primitive type string to schema.
-fn convert_primitive_to_schema(primitive_type: &str) -> AnyResult<Value> {
-    let (type_name, description) = match primitive_type {
-        "bool" => ("bool", "Boolean value"),
-        "u8" => ("u8", "8-bit unsigned integer"),
-        "u16" => ("u16", "16-bit unsigned integer"),
-        "u32" => ("u32", "32-bit unsigned integer"),
-        "u64" => ("u64", "64-bit unsigned integer"),
-        "u128" => ("u128", "128-bit unsigned integer"),
-        "u256" => ("u256", "256-bit unsigned integer"),
-        "address" => ("address", "Sui address"),
-        "signer" => ("signer", "Transaction signer"),
-        _ => bail!("Unknown primitive type: {}", primitive_type),
-    };
-
-    Ok(create_schema(type_name, description))
 }
 
 /// Helper to create a schema object with type and description.
@@ -426,22 +312,8 @@ fn create_schema(type_name: &str, description: &str) -> Value {
     })
 }
 
-/// Convert a complex type to schema.
-fn convert_complex_to_schema(complex_type: &SummaryTypeComplex) -> AnyResult<Value> {
-    match complex_type {
-        SummaryTypeComplex::Reference(is_mutable, inner) => {
-            convert_reference_to_schema(*is_mutable, inner)
-        }
-        SummaryTypeComplex::Datatype(datatype) => convert_datatype_to_schema(datatype),
-        SummaryTypeComplex::Vector(element_type) => convert_vector_to_schema(element_type),
-        SummaryTypeComplex::TypeParameter(_) => {
-            Ok(create_schema("generic", "Generic type parameter"))
-        }
-    }
-}
-
 /// Convert a reference type to schema, adding mutability flag.
-fn convert_reference_to_schema(is_mutable: bool, inner: &SummaryType) -> AnyResult<Value> {
+fn convert_reference_to_schema(is_mutable: bool, inner: &Type) -> AnyResult<Value> {
     let mut inner_schema = convert_type_to_schema(inner)?;
     if let Value::Object(ref mut obj) = inner_schema {
         obj.insert("mutable".to_string(), Value::Bool(is_mutable));
@@ -450,7 +322,7 @@ fn convert_reference_to_schema(is_mutable: bool, inner: &SummaryType) -> AnyResu
 }
 
 /// Convert a vector type to schema.
-fn convert_vector_to_schema(element_type: &SummaryType) -> AnyResult<Value> {
+fn convert_vector_to_schema(element_type: &Type) -> AnyResult<Value> {
     let element_schema = convert_type_to_schema(element_type)?;
     Ok(json!({
         "type": "vector",
@@ -478,25 +350,30 @@ fn convert_datatype_to_schema(datatype: &Datatype) -> AnyResult<Value> {
     // Custom package types.
     Ok(create_schema(
         "object",
-        &format!("{}::{}::{}", address, module_name, type_name),
+        &format!(
+            "{}::{}::{}",
+            address.as_ref(),
+            module_name.as_ref(),
+            type_name.as_ref()
+        ),
     ))
 }
 
 /// Convert standard library (0x1) types to schema.
-fn convert_std_type_to_schema(module_name: &str, type_name: &str) -> AnyResult<Value> {
-    match (module_name, type_name) {
+fn convert_std_type_to_schema(module_name: &Symbol, type_name: &Symbol) -> AnyResult<Value> {
+    match (module_name.as_ref(), type_name.as_ref()) {
         ("string", "String") => Ok(create_schema("string", "0x1::string::String")),
         ("ascii", "String") => Ok(create_schema("string", "0x1::ascii::String")),
         _ => Ok(create_schema(
             "object",
-            &format!("0x1::{}::{}", module_name, type_name),
+            &format!("0x1::{}::{}", module_name.as_ref(), type_name.as_ref()),
         )),
     }
 }
 
 /// Convert Sui framework (0x2) types to schema.
-fn convert_sui_type_to_schema(module_name: &str, type_name: &str) -> AnyResult<Value> {
-    match (module_name, type_name) {
+fn convert_sui_type_to_schema(module_name: &Symbol, type_name: &Symbol) -> AnyResult<Value> {
+    match (module_name.as_ref(), type_name.as_ref()) {
         ("object", "ID") => Ok(create_schema("object_id", "Sui object ID")),
         ("tx_context", "TxContext") => Ok(create_schema(
             "tx_context",
@@ -504,7 +381,7 @@ fn convert_sui_type_to_schema(module_name: &str, type_name: &str) -> AnyResult<V
         )),
         _ => Ok(create_schema(
             "object",
-            &format!("0x2::{}::{}", module_name, type_name),
+            &format!("0x2::{}::{}", module_name.as_ref(), type_name.as_ref()),
         )),
     }
 }
@@ -519,34 +396,28 @@ mod tests {
 
     #[test]
     fn test_convert_primitive_types() {
-        let schema = convert_primitive_to_schema("u64").unwrap();
+        let schema = convert_type_to_schema(&Type::U64).unwrap();
         assert_eq!(schema["type"], "u64");
         assert_eq!(schema["description"], "64-bit unsigned integer");
 
-        let schema = convert_primitive_to_schema("bool").unwrap();
+        let schema = convert_type_to_schema(&Type::Bool).unwrap();
         assert_eq!(schema["type"], "bool");
         assert_eq!(schema["description"], "Boolean value");
 
-        let schema = convert_primitive_to_schema("address").unwrap();
+        let schema = convert_type_to_schema(&Type::Address).unwrap();
         assert_eq!(schema["type"], "address");
         assert_eq!(schema["description"], "Sui address");
-    }
-
-    #[test]
-    fn test_convert_unknown_primitive() {
-        let result = convert_primitive_to_schema("unknown_type");
-        assert!(result.is_err());
     }
 
     #[test]
     fn test_convert_string_types() {
         // Test std::ascii::String.
         let datatype = Datatype {
-            module: DatatypeModule {
-                address: "std".to_string(),
-                name: "ascii".to_string(),
+            module: ModuleId {
+                address: Symbol::from("std"),
+                name: Symbol::from("ascii"),
             },
-            name: "String".to_string(),
+            name: Symbol::from("String"),
             type_arguments: vec![],
         };
         let schema = convert_datatype_to_schema(&datatype).unwrap();
@@ -555,11 +426,11 @@ mod tests {
 
         // Test std::string::String.
         let datatype = Datatype {
-            module: DatatypeModule {
-                address: "std".to_string(),
-                name: "string".to_string(),
+            module: ModuleId {
+                address: Symbol::from("std"),
+                name: Symbol::from("string"),
             },
-            name: "String".to_string(),
+            name: Symbol::from("String"),
             type_arguments: vec![],
         };
         let schema = convert_datatype_to_schema(&datatype).unwrap();
@@ -570,11 +441,11 @@ mod tests {
     #[test]
     fn test_convert_sui_object_id() {
         let datatype = Datatype {
-            module: DatatypeModule {
-                address: "sui".to_string(),
-                name: "object".to_string(),
+            module: ModuleId {
+                address: Symbol::from("sui"),
+                name: Symbol::from("object"),
             },
-            name: "ID".to_string(),
+            name: Symbol::from("ID"),
             type_arguments: vec![],
         };
         let schema = convert_datatype_to_schema(&datatype).unwrap();
@@ -585,11 +456,11 @@ mod tests {
     #[test]
     fn test_convert_custom_type() {
         let datatype = Datatype {
-            module: DatatypeModule {
-                address: "my_package".to_string(),
-                name: "my_module".to_string(),
+            module: ModuleId {
+                address: Symbol::from("my_package"),
+                name: Symbol::from("my_module"),
             },
-            name: "MyStruct".to_string(),
+            name: Symbol::from("MyStruct"),
             type_arguments: vec![],
         };
         let schema = convert_datatype_to_schema(&datatype).unwrap();
@@ -599,9 +470,8 @@ mod tests {
 
     #[test]
     fn test_convert_vector_type() {
-        let element_type = SummaryType::Primitive("u64".to_string());
-        let complex_type = SummaryTypeComplex::Vector(Box::new(element_type));
-        let schema = convert_complex_to_schema(&complex_type).unwrap();
+        let vector_type = Type::Vector(Box::new(Type::U64));
+        let schema = convert_type_to_schema(&vector_type).unwrap();
         assert_eq!(schema["type"], "vector");
         assert_eq!(schema["element_type"]["type"], "u64");
     }
@@ -609,16 +479,14 @@ mod tests {
     #[test]
     fn test_convert_reference_type() {
         // Mutable reference.
-        let inner_type = SummaryType::Primitive("u64".to_string());
-        let mutable_ref = SummaryTypeComplex::Reference(true, Box::new(inner_type));
-        let schema = convert_complex_to_schema(&mutable_ref).unwrap();
+        let mutable_ref = Type::Reference(true, Box::new(Type::U64));
+        let schema = convert_type_to_schema(&mutable_ref).unwrap();
         assert_eq!(schema["type"], "u64");
         assert_eq!(schema["mutable"], true);
 
         // Immutable reference.
-        let inner_type = SummaryType::Primitive("u64".to_string());
-        let immutable_ref = SummaryTypeComplex::Reference(false, Box::new(inner_type));
-        let schema = convert_complex_to_schema(&immutable_ref).unwrap();
+        let immutable_ref = Type::Reference(false, Box::new(Type::U64));
+        let schema = convert_type_to_schema(&immutable_ref).unwrap();
         assert_eq!(schema["type"], "u64");
         assert_eq!(schema["mutable"], false);
     }
@@ -626,67 +494,66 @@ mod tests {
     #[test]
     fn test_is_tx_context_type() {
         // Direct TxContext.
-        let tx_ctx = SummaryType::Complex(SummaryTypeComplex::Datatype(Datatype {
-            module: DatatypeModule {
-                address: "sui".to_string(),
-                name: "tx_context".to_string(),
+        let tx_ctx = Type::Datatype(Box::new(Datatype {
+            module: ModuleId {
+                address: Symbol::from("sui"),
+                name: Symbol::from("tx_context"),
             },
-            name: "TxContext".to_string(),
+            name: Symbol::from("TxContext"),
             type_arguments: vec![],
         }));
         assert!(is_tx_context_type(&tx_ctx));
 
         // Reference to TxContext.
-        let ref_tx_ctx =
-            SummaryType::Complex(SummaryTypeComplex::Reference(true, Box::new(tx_ctx)));
+        let ref_tx_ctx = Type::Reference(true, Box::new(tx_ctx));
         assert!(is_tx_context_type(&ref_tx_ctx));
 
         // Non-TxContext type.
-        let other = SummaryType::Primitive("u64".to_string());
+        let other = Type::U64;
         assert!(!is_tx_context_type(&other));
     }
 
     #[test]
     fn test_address_helpers() {
-        assert!(is_std_address("0x1"));
-        assert!(is_std_address("std"));
-        assert!(!is_std_address("sui"));
+        assert!(is_std_address(&Symbol::from("0x1")));
+        assert!(is_std_address(&Symbol::from("std")));
+        assert!(!is_std_address(&Symbol::from("sui")));
 
-        assert!(is_sui_address("0x2"));
-        assert!(is_sui_address("sui"));
-        assert!(!is_sui_address("std"));
+        assert!(is_sui_address(&Symbol::from("0x2")));
+        assert!(is_sui_address(&Symbol::from("sui")));
+        assert!(!is_sui_address(&Symbol::from("std")));
     }
 
     #[test]
     fn test_is_tx_context_datatype() {
         let tx_ctx_datatype = Datatype {
-            module: DatatypeModule {
-                address: "sui".to_string(),
-                name: "tx_context".to_string(),
+            module: ModuleId {
+                address: Symbol::from("sui"),
+                name: Symbol::from("tx_context"),
             },
-            name: "TxContext".to_string(),
+            name: Symbol::from("TxContext"),
             type_arguments: vec![],
         };
         assert!(is_tx_context(&tx_ctx_datatype));
 
         // With 0x2 address.
         let tx_ctx_datatype_hex = Datatype {
-            module: DatatypeModule {
-                address: "0x2".to_string(),
-                name: "tx_context".to_string(),
+            module: ModuleId {
+                address: Symbol::from("0x2"),
+                name: Symbol::from("tx_context"),
             },
-            name: "TxContext".to_string(),
+            name: Symbol::from("TxContext"),
             type_arguments: vec![],
         };
         assert!(is_tx_context(&tx_ctx_datatype_hex));
 
         // Non-TxContext.
         let other_datatype = Datatype {
-            module: DatatypeModule {
-                address: "sui".to_string(),
-                name: "object".to_string(),
+            module: ModuleId {
+                address: Symbol::from("sui"),
+                name: Symbol::from("object"),
             },
-            name: "ID".to_string(),
+            name: Symbol::from("ID"),
             type_arguments: vec![],
         };
         assert!(!is_tx_context(&other_datatype));

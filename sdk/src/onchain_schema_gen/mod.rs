@@ -9,5 +9,4 @@ pub use summary::{
     generate_input_schema_from_summary,
     generate_output_schema_from_summary,
     run_summary_command,
-    ModuleSummary,
 };
