@@ -90,6 +90,7 @@ pub enum PolicySymbol {
 }
 
 // TODO: BCS and JSON standardization
+// https://github.com/Talus-Network/nexus-sdk/issues/364
 impl<'de> Deserialize<'de> for PolicySymbol {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
