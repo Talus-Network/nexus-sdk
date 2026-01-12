@@ -29,11 +29,6 @@ pub mod types;
 #[cfg(feature = "events")]
 pub mod events;
 
-/// Object crawler attempts to improve the Sui SDK object fetching by allowing
-/// direct parsing into structs.
-#[cfg(feature = "object_crawler")]
-pub mod object_crawler;
-
 /// Transactions module contains builders for PTBs that are submitted to Sui
 /// and perform various operations on the Nexus ecosystem.
 #[cfg(feature = "transactions")]
@@ -68,9 +63,3 @@ pub mod onchain_schema_gen;
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]
 pub mod nexus;
-
-/// Re-export Sui Move tooling utilities when test helpers are enabled.
-#[cfg(feature = "test_utils")]
-pub use sui_move_build;
-#[cfg(feature = "test_utils")]
-pub use sui_package_management;

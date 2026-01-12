@@ -32,7 +32,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: Option<sui::ObjectID>,
+        collateral_coin: Option<sui::types::Address>,
 
         #[arg(
             long = "invocation-cost",
@@ -71,12 +71,15 @@ pub(crate) enum RegisterCommand {
         package_path: PathBuf,
 
         #[arg(
-            long = "module-path",
-            short = 'm',
-            help = "The module path in the format 'package_address::module_name'.",
-            value_name = "MODULE_PATH"
+            long = "package-address",
+            short = 'a',
+            help = "The onchain tool package address",
+            value_name = "ADDRESS"
         )]
-        module_path: sui::MoveModuleId,
+        package: sui::types::Address,
+
+        #[arg(long = "module", short = 'm', help = "The onchain tool module name")]
+        module: sui::types::Identifier,
 
         #[arg(
             long = "tool-fqn",
@@ -100,7 +103,7 @@ pub(crate) enum RegisterCommand {
             help = "The witness object ID that proves the tool's identity.",
             value_name = "OBJECT_ID"
         )]
-        witness_id: sui::ObjectID,
+        witness_id: sui::types::Address,
 
         #[arg(
             long = "collateral-coin",
@@ -108,7 +111,7 @@ pub(crate) enum RegisterCommand {
             help = "The collateral coin object ID. Second coin object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
-        collateral_coin: Option<sui::ObjectID>,
+        collateral_coin: Option<sui::types::Address>,
 
         #[arg(
             long = "no-save",
@@ -199,7 +202,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         /// Whether to skip the confirmation prompt.
         #[arg(long = "yes", short = 'y', help = "Skip the confirmation prompt")]
         skip_confirmation: bool,
@@ -222,7 +225,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -242,7 +245,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[arg(
             long = "invocation-cost",
             short = 'i',
@@ -301,7 +304,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             }
             RegisterCommand::Onchain {
                 package_path,
-                module_path,
+                package_address,
+                module_name,
                 tool_fqn,
                 description,
                 witness_id,
@@ -311,7 +315,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             } => {
                 register_onchain_tool(
                     package_path,
-                    module_path,
+                    module_name,
+                    package_address,
                     tool_fqn,
                     description,
                     witness_id,
