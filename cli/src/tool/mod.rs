@@ -78,7 +78,11 @@ pub(crate) enum RegisterCommand {
         )]
         package_address: sui::types::Address,
 
-        #[arg(long = "module-name", short = 'm', help = "The onchain tool module name")]
+        #[arg(
+            long = "module-name",
+            short = 'm',
+            help = "The onchain tool module name"
+        )]
         module_name: sui::types::Identifier,
 
         #[arg(
