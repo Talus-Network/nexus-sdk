@@ -76,10 +76,10 @@ pub(crate) enum RegisterCommand {
             help = "The onchain tool package address",
             value_name = "ADDRESS"
         )]
-        package: sui::types::Address,
+        package_address: sui::types::Address,
 
-        #[arg(long = "module", short = 'm', help = "The onchain tool module name")]
-        module: sui::types::Identifier,
+        #[arg(long = "module-name", short = 'm', help = "The onchain tool module name")]
+        module_name: sui::types::Identifier,
 
         #[arg(
             long = "tool-fqn",
@@ -315,8 +315,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             } => {
                 register_onchain_tool(
                     package_path,
-                    module_name,
                     package_address,
+                    module_name,
                     tool_fqn,
                     description,
                     witness_id,
