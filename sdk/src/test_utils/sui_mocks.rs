@@ -79,6 +79,7 @@ pub mod grpc {
     use {
         super::*,
         mockall::mock,
+        std::time::SystemTime,
         sui_rpc::proto::sui::rpc::v2::{
             ledger_service_server::{LedgerService, LedgerServiceServer},
             subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
@@ -417,6 +418,20 @@ pub mod grpc {
                 grpc_object.set_object_id(object_ref.object_id().to_string());
                 grpc_object.json = Some(Box::new(json_to_prost_value(&json_value)));
                 response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    /// Expect a `get_epoch` call and return the end timestamp.
+    pub fn mock_get_epoch_end(ledger_service: &mut MockLedgerService, epoch_end: SystemTime) {
+        ledger_service
+            .expect_get_epoch()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetEpochResponse::default();
+                let mut epoch = sui::grpc::Epoch::default();
+                epoch.set_end(epoch_end);
+                response.set_epoch(epoch);
                 Ok(tonic::Response::new(response))
             });
     }

@@ -889,10 +889,10 @@ pub fn dag_begin_execution_from_scheduler(
     ));
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.input(sui::tx::Input::owned(
+    let leader_cap = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
+        false,
     ));
 
     // `claim_coin: Coin<SUI>`
@@ -1553,7 +1553,6 @@ mod tests {
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let claim_coin = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = leader_cap.clone().into_parts();
         let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -1595,7 +1594,7 @@ mod tests {
         assert!(!*mutable);
 
         inspector.expect_shared_object(&call.arguments[3], &objects.gas_service, true);
-        inspector.expect_owned_object(&call.arguments[4], &leader_cap_tuple);
+        inspector.expect_shared_object(&call.arguments[4], &leader_cap, false);
         inspector.expect_owned_object(&call.arguments[5], &claim_coin_tuple);
         inspector.expect_u64(&call.arguments[6], amount_execution);
         inspector.expect_u64(&call.arguments[7], amount_priority);
@@ -1609,7 +1608,6 @@ mod tests {
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let claim_coin = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = leader_cap.clone().into_parts();
         let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -1669,7 +1667,7 @@ mod tests {
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.gas_service, true);
-        inspector.expect_owned_object(&tap_call.arguments[4], &leader_cap_tuple);
+        inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
         inspector.expect_owned_object(&tap_call.arguments[5], &claim_coin_tuple);
         inspector.expect_u64(&tap_call.arguments[6], 100);
         inspector.expect_u64(&tap_call.arguments[7], 200);
