@@ -423,7 +423,7 @@ pub mod grpc {
     }
 
     /// Expect a `get_epoch` call and return the end timestamp.
-    pub fn mock_get_epoch(ledger_service: &mut MockLedgerService, epoch_end: SystemTime) {
+    pub fn mock_get_epoch_end(ledger_service: &mut MockLedgerService, epoch_end: SystemTime) {
         ledger_service
             .expect_get_epoch()
             .times(1)
