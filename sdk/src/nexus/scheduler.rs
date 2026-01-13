@@ -2,15 +2,20 @@
 
 use {
     crate::{
-        events::{NexusEvent, NexusEventKind},
-        nexus::{client::NexusClient, error::NexusError},
-        object_crawler::{fetch_one, Response, Structure},
-        sui::{self, move_ident_str},
+        events::NexusEventKind,
+        idents::sui_framework,
+        nexus::{
+            client::NexusClient,
+            crawler::Response,
+            error::NexusError,
+            signer::ExecutedTransaction,
+        },
+        sui,
         transactions::scheduler as scheduler_tx,
         types::{DataStorage, Task},
     },
     anyhow::anyhow,
-    std::{collections::HashMap, convert::TryInto},
+    std::collections::HashMap,
 };
 
 /// High-level interface for scheduler operations.
@@ -37,25 +42,25 @@ impl From<GeneratorKind> for scheduler_tx::OccurrenceGenerator {
 
 /// Parameters required to create a scheduler task.
 pub struct CreateTaskParams {
-    pub dag_id: sui::ObjectID,
+    pub dag_id: sui::types::Address,
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, DataStorage>>,
     pub metadata: Vec<(String, String)>,
-    pub execution_gas_price: u64,
+    pub execution_priority_fee_per_gas_unit: u64,
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
 }
 
 /// Result returned after creating a scheduler task.
 pub struct CreateTaskResult {
-    pub tx_digest: sui::TransactionDigest,
-    pub task_id: sui::ObjectID,
+    pub tx_digest: sui::types::Digest,
+    pub task_id: sui::types::Address,
     pub initial_schedule: Option<ScheduleExecutionResult>,
 }
 
 /// Result returned after enqueuing an occurrence.
 pub struct ScheduleExecutionResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
     pub event: Option<NexusEventKind>,
 }
 
@@ -66,7 +71,7 @@ pub struct OccurrenceRequest {
     pub deadline_ms: Option<u64>,
     pub start_offset_ms: Option<u64>,
     pub deadline_offset_ms: Option<u64>,
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
 }
 
 impl OccurrenceRequest {
@@ -75,7 +80,7 @@ impl OccurrenceRequest {
         deadline_ms: Option<u64>,
         start_offset_ms: Option<u64>,
         deadline_offset_ms: Option<u64>,
-        gas_price: u64,
+        priority_fee_per_gas_unit: u64,
         require_start: bool,
     ) -> Result<Self, NexusError> {
         validate_schedule_options(
@@ -91,7 +96,7 @@ impl OccurrenceRequest {
             deadline_ms,
             start_offset_ms,
             deadline_offset_ms,
-            gas_price,
+            priority_fee_per_gas_unit,
         })
     }
 }
@@ -110,24 +115,24 @@ pub struct PeriodicScheduleConfig {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
 }
 
 pub struct PeriodicScheduleResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
 }
 
 pub struct DisablePeriodicResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
 }
 
 pub struct UpdateMetadataResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
     pub entries: usize,
 }
 
 pub struct TaskStateResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
     pub state: TaskStateAction,
 }
 
@@ -142,14 +147,14 @@ impl SchedulerActions {
             entry_group,
             input_data,
             metadata,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             initial_schedule: initial_schedule_request,
             generator,
         } = params;
-        let address = self.client.signer.get_active_address().await?;
+        let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
             .map_err(NexusError::TransactionBuilding)?;
@@ -162,7 +167,7 @@ impl SchedulerActions {
             &mut tx,
             objects,
             dag_id,
-            execution_gas_price,
+            execution_priority_fee_per_gas_unit,
             entry_group.as_str(),
             &input_data,
         )
@@ -182,28 +187,38 @@ impl SchedulerActions {
             crate::idents::workflow::Scheduler::TASK,
         );
 
-        tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            move_ident_str!("transfer").into(),
-            move_ident_str!("public_share_object").into(),
-            vec![task_type],
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+                vec![task_type],
+            ),
             vec![task],
         );
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -235,11 +250,11 @@ impl SchedulerActions {
     /// Update metadata entries associated with a task.
     pub async fn update_metadata(
         &self,
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         metadata: Vec<(String, String)>,
     ) -> Result<UpdateMetadataResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let address = self.client.signer.get_active_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -253,19 +268,26 @@ impl SchedulerActions {
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -279,11 +301,11 @@ impl SchedulerActions {
     /// Set the scheduler state for a task (pause/resume/cancel).
     pub async fn set_task_state(
         &self,
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         request: TaskStateAction,
     ) -> Result<TaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let address = self.client.signer.get_active_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -302,19 +324,27 @@ impl SchedulerActions {
         .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -328,10 +358,10 @@ impl SchedulerActions {
     /// Add a sporadic occurrence for an existing task.
     pub async fn add_occurrence(
         &self,
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         request: OccurrenceRequest,
     ) -> Result<ScheduleExecutionResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
+        let address = self.client.signer.get_active_address();
         let task = self.fetch_task(task_id).await?;
 
         self.enqueue_occurrence(&task, request, address).await
@@ -340,11 +370,11 @@ impl SchedulerActions {
     /// Configure or update periodic scheduling for a task.
     pub async fn configure_periodic(
         &self,
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
         config: PeriodicScheduleConfig,
     ) -> Result<PeriodicScheduleResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let address = self.client.signer.get_active_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
 
@@ -357,25 +387,33 @@ impl SchedulerActions {
                 period_ms: config.period_ms,
                 deadline_offset_ms: config.deadline_offset_ms,
                 max_iterations: config.max_iterations,
-                gas_price: config.gas_price,
+                priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
             },
         )
         .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -388,10 +426,10 @@ impl SchedulerActions {
     /// Disable periodic scheduling for a task.
     pub async fn disable_periodic(
         &self,
-        task_id: sui::ObjectID,
+        task_id: sui::types::Address,
     ) -> Result<DisablePeriodicResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let address = self.client.signer.get_active_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
 
@@ -399,19 +437,27 @@ impl SchedulerActions {
             .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -423,11 +469,11 @@ impl SchedulerActions {
 
     async fn enqueue_occurrence(
         &self,
-        task: &Response<Structure<Task>>,
+        task: &Response<Task>,
         request: OccurrenceRequest,
-        address: sui::Address,
+        address: sui::types::Address,
     ) -> Result<ScheduleExecutionResult, NexusError> {
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
         if let Some(start_ms) = request.start_ms {
@@ -441,7 +487,7 @@ impl SchedulerActions {
                 &task.object_ref(),
                 start_ms,
                 deadline_offset,
-                request.gas_price,
+                request.priority_fee_per_gas_unit,
             )
         } else {
             scheduler_tx::add_occurrence_relative_for_task(
@@ -450,25 +496,33 @@ impl SchedulerActions {
                 &task.object_ref(),
                 request.start_offset_ms.expect("validated start offset"),
                 request.deadline_offset_ms,
-                request.gas_price,
+                request.priority_fee_per_gas_unit,
             )
         }
         .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -479,62 +533,32 @@ impl SchedulerActions {
         })
     }
 
-    async fn fetch_task(
-        &self,
-        task_id: sui::ObjectID,
-    ) -> Result<Response<Structure<Task>>, NexusError> {
-        let sui = self.client.signer.get_client().await?;
-        fetch_one::<Structure<Task>>(sui.as_ref(), task_id)
+    async fn fetch_task(&self, task_id: sui::types::Address) -> Result<Response<Task>, NexusError> {
+        self.client
+            .crawler()
+            .get_object::<Task>(task_id)
             .await
             .map_err(NexusError::Rpc)
     }
 }
 
-fn extract_task_id(response: &sui::TransactionBlockResponse) -> Result<sui::ObjectID, NexusError> {
-    let events = response
+fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
+    response
         .events
-        .as_ref()
-        .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreatedEvent not found in response")))?;
-
-    for raw_event in &events.data {
-        let Ok(event): anyhow::Result<NexusEvent> = raw_event.clone().try_into() else {
-            continue;
-        };
-        if let NexusEventKind::TaskCreated(created) = event.data {
-            return Ok(created.task);
-        }
-    }
-
-    Err(NexusError::Parsing(anyhow!(
-        "TaskCreatedEvent not found in response"
-    )))
+        .iter()
+        .find_map(|event| match &event.data {
+            NexusEventKind::TaskCreated(e) => Some(e.task),
+            _ => None,
+        })
+        .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreatedEvent not found in response")))
 }
 
-fn extract_occurrence_event(response: &sui::TransactionBlockResponse) -> Option<NexusEventKind> {
-    let events = response.events.as_ref()?;
-
-    for raw_event in &events.data {
-        let Ok(event): anyhow::Result<NexusEvent> = raw_event.clone().try_into() else {
-            continue;
-        };
-
-        match &event.data {
-            NexusEventKind::Scheduled(envelope)
-                if matches!(
-                    envelope.request.as_ref(),
-                    NexusEventKind::OccurrenceScheduled(_)
-                ) =>
-            {
-                return Some(event.data);
-            }
-            NexusEventKind::OccurrenceScheduled(_) => {
-                return Some(event.data);
-            }
-            _ => continue,
-        }
-    }
-
-    None
+fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEventKind> {
+    response.events.iter().find_map(|event| match &event.data {
+        NexusEventKind::RequestScheduledOccurrence(_) => Some(event.data.clone()),
+        NexusEventKind::OccurrenceScheduled(_) => Some(event.data.clone()),
+        _ => None,
+    })
 }
 
 fn validate_schedule_options(
@@ -608,29 +632,63 @@ mod tests {
         super::*,
         crate::{
             events::{
+                NexusEvent,
                 NexusEventKind,
                 OccurrenceScheduledEvent,
-                RequestScheduledExecution,
+                RequestScheduledOccurrenceEvent,
                 TaskCreatedEvent,
             },
-            idents::{primitives, workflow, ModuleAndNameIdent},
-            nexus::error::NexusError,
+            nexus::{
+                client::NexusClient,
+                crawler::{Bag, Map, ObjectBag},
+                error::NexusError,
+                signer::ExecutedTransaction,
+            },
             sui,
             test_utils::{nexus_mocks, sui_mocks},
             types::{
                 ConfiguredAutomaton,
+                ConstraintsData,
                 DataStorage,
-                MoveTypeName,
+                DeterministicAutomaton,
+                ExecutionData,
+                Metadata,
                 NexusData,
+                NexusObjects,
                 Policy,
                 PolicySymbol,
-                Task,
+                TaskState,
+                TypeName,
             },
         },
+        rand::thread_rng,
+        serde::Serialize,
         serde_json::json,
-        std::collections::HashMap,
     };
 
+    fn dummy_executed_transaction(events: Vec<NexusEvent>) -> ExecutedTransaction {
+        let mut rng = thread_rng();
+
+        ExecutedTransaction {
+            effects: sui::types::TransactionEffectsV2 {
+                status: sui::types::ExecutionStatus::Success,
+                epoch: 0,
+                gas_used: sui::types::GasCostSummary::new(0, 0, 0, 0),
+                transaction_digest: sui::types::Digest::generate(&mut rng),
+                gas_object_index: None,
+                events_digest: None,
+                dependencies: vec![],
+                lamport_version: 0,
+                changed_objects: vec![],
+                unchanged_consensus_objects: vec![],
+                auxiliary_data_digest: None,
+            },
+            events,
+            objects: vec![],
+            digest: sui::types::Digest::generate(&mut rng),
+            checkpoint: 0,
+        }
+    }
     fn sample_input_data() -> HashMap<String, HashMap<String, DataStorage>> {
         HashMap::from([(
             "entry_vertex".to_string(),
@@ -642,206 +700,183 @@ mod tests {
     }
 
     fn mock_task_object(
-        workflow_pkg_id: sui::ObjectID,
-        task_id: sui::ObjectID,
-        owner: sui::Address,
-    ) -> sui::ParsedMoveObject {
-        let execution_policy = Policy {
-            id: sui::UID::new(sui::ObjectID::random()),
+        task_id: sui::types::Address,
+        owner: sui::types::Address,
+    ) -> serde_json::Value {
+        let metadata = Metadata {
+            values: Map::from_iter([("initial".to_string(), "value".to_string())]),
+        };
+
+        let dfa = DeterministicAutomaton {
+            states: vec![0],
+            alphabet: vec![],
+            transition: vec![vec![]],
+            accepting: vec![true],
+            start: 0,
+        };
+
+        let constraints = Policy {
+            id: sui::types::Address::from_static("0x400"),
             dfa: ConfiguredAutomaton {
-                id: sui::UID::new(sui::ObjectID::random()),
-                dfa: json!({}),
+                id: sui::types::Address::from_static("0x401"),
+                dfa: dfa.clone(),
             },
-            alphabet_index: json!({}),
             state_index: 0,
-            data: json!({}),
+            data: ConstraintsData::default(),
+        };
+
+        let execution = Policy {
+            id: sui::types::Address::from_static("0x500"),
+            dfa: ConfiguredAutomaton {
+                id: sui::types::Address::from_static("0x600"),
+                dfa,
+            },
+            state_index: 0,
+            data: ExecutionData::default(),
         };
 
         let task = Task {
-            id: sui::UID::new(task_id),
+            id: task_id,
             owner,
-            metadata: json!({"initial": "value"}),
-            constraints: json!({}),
-            execution: execution_policy,
-            data: json!({}),
-            objects: json!({}),
+            metadata,
+            constraints,
+            execution,
+            state: TaskState::Active,
+            data: Bag {
+                id: sui::types::Address::from_static("0x700"),
+                size: 0,
+            },
+            objects: ObjectBag {
+                id: sui::types::Address::from_static("0x701"),
+                size: 0,
+            },
         };
 
-        let task_value = serde_json::to_value(task).expect("serialize task");
-        let move_struct: sui::MoveStruct =
-            serde_json::from_value(task_value).expect("task into move struct");
-
-        sui::ParsedMoveObject {
-            type_: sui::MoveStructTag {
-                address: workflow_pkg_id.into(),
-                module: sui::move_ident_str!("scheduler").into(),
-                name: sui::move_ident_str!("Task").into(),
-                type_params: vec![],
-            },
-            has_public_transfer: false,
-            fields: move_struct,
-        }
+        serde_json::to_value(task).expect("serialize task")
     }
 
-    fn generator_symbol(
-        workflow_pkg_id: sui::ObjectID,
-        ident: &ModuleAndNameIdent,
-    ) -> PolicySymbol {
-        PolicySymbol::Witness(MoveTypeName {
-            name: format!("{}::{}::{}", workflow_pkg_id, ident.module, ident.name),
-        })
+    fn generator_symbol(workflow_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
+        PolicySymbol::Witness(TypeName::new(&format!(
+            "{workflow_pkg_id}::scheduler::{name}"
+        )))
     }
 
-    fn queue_generator_symbol(workflow_pkg_id: sui::ObjectID) -> PolicySymbol {
-        generator_symbol(
-            workflow_pkg_id,
-            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS,
-        )
+    fn queue_generator_symbol(workflow_pkg_id: sui::types::Address) -> PolicySymbol {
+        generator_symbol(workflow_pkg_id, "QueueGeneratorWitness")
     }
 
-    fn periodic_generator_symbol(workflow_pkg_id: sui::ObjectID) -> PolicySymbol {
-        generator_symbol(
-            workflow_pkg_id,
-            &workflow::Scheduler::PERIODIC_GENERATOR_WITNESS,
-        )
-    }
-
-    fn scheduler_move_tag(
-        workflow_pkg_id: sui::ObjectID,
-        name: &str,
-        type_params: Vec<sui::MoveTypeTag>,
-    ) -> sui::MoveTypeTag {
-        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: workflow_pkg_id.into(),
-            module: sui::move_ident_str!("scheduler").into(),
-            name: sui::Identifier::new(name.to_string()).expect("valid identifier"),
-            type_params,
-        }))
-    }
-
-    fn event_move_tag(workflow_pkg_id: sui::ObjectID, kind: &NexusEventKind) -> sui::MoveTypeTag {
-        match kind {
-            NexusEventKind::Scheduled(request) => scheduler_move_tag(
-                workflow_pkg_id,
-                "RequestScheduledExecution",
-                vec![event_move_tag(workflow_pkg_id, request.request.as_ref())],
-            ),
-            _ => scheduler_move_tag(workflow_pkg_id, &kind.name(), vec![]),
-        }
-    }
-
-    fn type_params_for_event(
-        workflow_pkg_id: sui::ObjectID,
-        kind: &NexusEventKind,
-    ) -> Vec<sui::MoveTypeTag> {
-        vec![event_move_tag(workflow_pkg_id, kind)]
-    }
-
-    fn move_event_payload(kind: &NexusEventKind) -> serde_json::Value {
-        fn to_string_id(id: sui::ObjectID) -> String {
-            id.to_string()
+    fn event_bcs(
+        primitives_pkg: sui::types::Address,
+        workflow_pkg: sui::types::Address,
+        kind: NexusEventKind,
+    ) -> sui::types::Event {
+        #[derive(Serialize)]
+        struct Wrapper<'a, T: Serialize + ?Sized> {
+            event: &'a T,
         }
 
-        fn request_fields(kind: &NexusEventKind) -> serde_json::Value {
-            match kind {
-                NexusEventKind::TaskCreated(ev) => json!({
-                    "task": to_string_id(ev.task),
-                    "owner": ev.owner.to_string(),
-                }),
-                NexusEventKind::OccurrenceScheduled(ev) => json!({
-                    "task": to_string_id(ev.task),
-                    "generator": serde_json::to_value(&ev.generator)
-                        .unwrap_or_else(|_| serde_json::Value::Null),
-                }),
-                NexusEventKind::Scheduled(env) => json!({
-                    "request": request_fields(&env.request),
-                    "priority": env.priority.to_string(),
-                    "request_ms": env.request_ms.to_string(),
-                    "start_ms": env.start_ms.to_string(),
-                    "deadline_ms": env.deadline_ms.to_string(),
-                }),
-                _ => {
-                    let value =
-                        serde_json::to_value(kind).unwrap_or_else(|_| serde_json::Value::Null);
-                    if let serde_json::Value::Object(mut map) = value {
-                        map.remove("_nexus_event_type");
-                        serde_json::Value::Object(map)
-                    } else {
-                        value
-                    }
-                }
+        let event_type = sui::types::StructTag::new(
+            workflow_pkg,
+            sui::types::Identifier::from_static("scheduler"),
+            sui::types::Identifier::new(kind.name()).unwrap(),
+            vec![],
+        );
+
+        let wrapper_tag = sui::types::StructTag::new(
+            primitives_pkg,
+            crate::idents::primitives::Event::EVENT_WRAPPER.module,
+            crate::idents::primitives::Event::EVENT_WRAPPER.name,
+            vec![sui::types::TypeTag::Struct(Box::new(event_type))],
+        );
+
+        let bcs = match &kind {
+            NexusEventKind::RequestScheduledOccurrence(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
             }
-        }
+            NexusEventKind::RequestScheduledWalk(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
+            NexusEventKind::OccurrenceScheduled(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
+            NexusEventKind::TaskCreated(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
+            NexusEventKind::TaskPaused(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
+            NexusEventKind::TaskResumed(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
+            NexusEventKind::TaskCanceled(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
+            _ => bcs::to_bytes(&Wrapper { event: &kind }).unwrap(),
+        };
 
-        json!({ "event": request_fields(kind) })
+        sui_mocks::mock_sui_event(primitives_pkg, wrapper_tag, bcs)
     }
 
-    fn make_nexus_event(workflow_pkg_id: sui::ObjectID, kind: NexusEventKind) -> sui::Event {
-        let parsed_json = move_event_payload(&kind);
-        sui::Event {
-            id: sui_mocks::mock_sui_event_id(),
-            package_id: workflow_pkg_id,
-            transaction_module: primitives::Event::EVENT_WRAPPER.module.into(),
-            sender: sui::ObjectID::random().into(),
-            type_: sui::MoveStructTag {
-                address: workflow_pkg_id.into(),
-                module: primitives::Event::EVENT_WRAPPER.module.into(),
-                name: primitives::Event::EVENT_WRAPPER.name.into(),
-                type_params: type_params_for_event(workflow_pkg_id, &kind),
-            },
-            parsed_json,
-            bcs: sui::BcsEvent::Base64 { bcs: vec![] },
-            timestamp_ms: None,
-        }
-    }
+    async fn mock_nexus_client_with_server(
+        ledger_service_mock: sui_mocks::grpc::MockLedgerService,
+        execution_service_mock: sui_mocks::grpc::MockTransactionExecutionService,
+        subscription_service_mock: sui_mocks::grpc::MockSubscriptionService,
+        nexus_objects: NexusObjects,
+    ) -> (String, NexusClient) {
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(execution_service_mock),
+            subscription_service_mock: Some(subscription_service_mock),
+        });
 
-    fn block_events(
-        workflow_pkg_id: sui::ObjectID,
-        kinds: Vec<NexusEventKind>,
-    ) -> sui::TransactionBlockEvents {
-        sui::TransactionBlockEvents {
-            data: kinds
-                .into_iter()
-                .map(|event| make_nexus_event(workflow_pkg_id, event))
-                .collect(),
-        }
+        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+
+        (rpc_url, nexus_client)
     }
 
     #[tokio::test]
     async fn test_scheduler_create_task_without_initial_schedule() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let dag_id = sui::ObjectID::random();
-        let task_id = sui::ObjectID::random();
-        let owner = nexus_client
-            .signer
-            .get_active_address()
-            .await
-            .expect("address");
-        let tx_digest = sui::TransactionDigest::random();
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                tx_digest,
-                None,
-                Some(block_events(
-                    workflow_pkg,
-                    vec![NexusEventKind::TaskCreated(TaskCreatedEvent {
-                        task: task_id,
-                        owner,
-                    })],
-                )),
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let owner = sui::types::Address::generate(&mut rng);
+        let task_id = sui::types::Address::generate(&mut rng);
+        let dag_id = sui::types::Address::generate(&mut rng);
+
+        let events = vec![event_bcs(
+            nexus_objects.primitives_pkg_id,
+            nexus_objects.workflow_pkg_id,
+            NexusEventKind::TaskCreated(TaskCreatedEvent {
+                task: task_id,
+                owner,
+            }),
+        )];
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            events,
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let params = CreateTaskParams {
             dag_id,
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![("team".into(), "sdk".into())],
-            execution_gas_price: 1,
+            execution_priority_fee_per_gas_unit: 1,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
         };
@@ -852,71 +887,97 @@ mod tests {
             .await
             .expect("task created");
 
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.task_id, task_id);
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, digest);
         assert!(result.initial_schedule.is_none());
     }
 
     #[tokio::test]
     async fn test_scheduler_create_task_with_initial_schedule() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let dag_id = sui::ObjectID::random();
-        let task_id = sui::ObjectID::random();
-        let owner = nexus_client
-            .signer
-            .get_active_address()
-            .await
-            .expect("address");
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let creation_digest = sui::TransactionDigest::random();
-        let (create_exec, create_confirm) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                creation_digest,
-                None,
-                Some(block_events(
-                    workflow_pkg,
-                    vec![NexusEventKind::TaskCreated(TaskCreatedEvent {
-                        task: task_id,
-                        owner,
-                    })],
-                )),
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
 
-        let queue_generator = queue_generator_symbol(workflow_pkg);
-        let scheduled_event = NexusEventKind::Scheduled(RequestScheduledExecution {
-            request: Box::new(NexusEventKind::OccurrenceScheduled(
-                OccurrenceScheduledEvent {
+        let creation_digest = sui::types::Digest::generate(&mut rng);
+        let schedule_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let owner = sui::types::Address::generate(&mut rng);
+        let task_id = sui::types::Address::generate(&mut rng);
+        let dag_id = sui::types::Address::generate(&mut rng);
+
+        let creation_events = vec![event_bcs(
+            nexus_objects.primitives_pkg_id,
+            nexus_objects.workflow_pkg_id,
+            NexusEventKind::TaskCreated(TaskCreatedEvent {
+                task: task_id,
+                owner,
+            }),
+        )];
+
+        // Creation TX
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            creation_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            creation_events,
+        );
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        // Scheduled occurrence event
+        let queue_generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let scheduled_event =
+            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent {
                     task: task_id,
                     generator: queue_generator.clone(),
                 },
-            )),
-            priority: 10,
-            request_ms: 100,
-            start_ms: 200,
-            deadline_ms: 300,
-        });
+                priority: 10,
+                request_ms: 100,
+                start_ms: 200,
+                deadline_ms: 300,
+            });
 
-        let schedule_digest = sui::TransactionDigest::random();
-        let (occ_exec, occ_confirm) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                schedule_digest,
-                None,
-                Some(block_events(workflow_pkg, vec![scheduled_event.clone()])),
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            schedule_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![event_bcs(
+                nexus_objects.primitives_pkg_id,
+                nexus_objects.workflow_pkg_id,
+                scheduled_event.clone(),
+            )],
+        );
 
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let initial_schedule =
             OccurrenceRequest::new(Some(1_000), Some(2_000), None, None, 5, true)
@@ -927,7 +988,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![],
-            execution_gas_price: 5,
+            execution_priority_fee_per_gas_unit: 5,
             initial_schedule: Some(initial_schedule),
             generator: GeneratorKind::Queue,
         };
@@ -938,48 +999,61 @@ mod tests {
             .await
             .expect("task created");
 
-        create_exec.assert_async().await;
-        create_confirm.assert_async().await;
-        occ_exec.assert_async().await;
-        occ_confirm.assert_async().await;
-        get_task_call.assert_async().await;
-
+        assert_eq!(result.task_id, task_id);
         let schedule = result.initial_schedule.expect("schedule created");
         assert_eq!(schedule.tx_digest, schedule_digest);
-        match schedule.event.expect("event present") {
-            NexusEventKind::Scheduled(envelope) => {
-                assert_eq!(envelope.priority, 10);
-                assert_eq!(envelope.start_ms, 200);
-                assert!(matches!(
-                    *envelope.request,
-                    NexusEventKind::OccurrenceScheduled(ev)
-                        if ev.task == task_id && ev.generator == queue_generator
-                ));
-            }
-            other => panic!("unexpected event {other:?}"),
-        }
+        assert!(matches!(
+            schedule.event,
+            Some(NexusEventKind::RequestScheduledOccurrence(env))
+                if env.request.task == task_id && env.priority == 10 && env.start_ms == 200
+        ));
     }
 
     #[tokio::test]
     async fn test_scheduler_update_metadata() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let metadata = vec![
             ("region".into(), "us".into()),
@@ -991,34 +1065,55 @@ mod tests {
             .await
             .expect("metadata updated");
 
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.tx_digest, digest);
         assert_eq!(result.entries, metadata.len());
     }
 
     #[tokio::test]
     async fn test_scheduler_set_task_state_pause() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let result = nexus_client
             .scheduler()
@@ -1026,48 +1121,65 @@ mod tests {
             .await
             .expect("state updated");
 
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.tx_digest, digest);
         assert!(matches!(result.state, TaskStateAction::Pause));
     }
 
     #[tokio::test]
     async fn test_scheduler_add_occurrence_absolute() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let generator = queue_generator_symbol(workflow_pkg);
-        let scheduled_event = NexusEventKind::Scheduled(RequestScheduledExecution {
-            request: Box::new(NexusEventKind::OccurrenceScheduled(
-                OccurrenceScheduledEvent {
-                    task: task_id,
-                    generator,
-                },
-            )),
-            priority: 1,
-            request_ms: 11,
-            start_ms: 22,
-            deadline_ms: 33,
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        let generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
+            task: task_id,
+            generator: generator.clone(),
         });
 
-        let digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                Some(block_events(workflow_pkg, vec![scheduled_event.clone()])),
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![event_bcs(
+                nexus_objects.primitives_pkg_id,
+                nexus_objects.workflow_pkg_id,
+                scheduled_event.clone(),
+            )],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let request =
             OccurrenceRequest::new(Some(2_000), Some(2_500), None, None, 7, true).unwrap();
@@ -1078,43 +1190,68 @@ mod tests {
             .await
             .expect("occurrence enqueued");
 
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.tx_digest, digest);
-        assert!(matches!(result.event, Some(NexusEventKind::Scheduled(_))));
+        assert!(matches!(
+            result.event,
+            Some(NexusEventKind::OccurrenceScheduled(_))
+        ));
     }
 
     #[tokio::test]
     async fn test_scheduler_add_occurrence_with_offsets() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let digest = sui::TransactionDigest::random();
-        let generator = queue_generator_symbol(workflow_pkg);
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                Some(block_events(
-                    workflow_pkg,
-                    vec![NexusEventKind::OccurrenceScheduled(
-                        OccurrenceScheduledEvent {
-                            task: task_id,
-                            generator,
-                        },
-                    )],
-                )),
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        let generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
+            task: task_id,
+            generator: generator.clone(),
+        });
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![event_bcs(
+                nexus_objects.primitives_pkg_id,
+                nexus_objects.workflow_pkg_id,
+                scheduled_event.clone(),
+            )],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let request =
             OccurrenceRequest::new(None, None, Some(500), Some(900), 4, true).expect("valid");
@@ -1125,10 +1262,6 @@ mod tests {
             .await
             .expect("occurrence enqueued");
 
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert!(matches!(
             result.event,
             Some(NexusEventKind::OccurrenceScheduled(_))
@@ -1137,31 +1270,56 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheduler_configure_periodic() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let config = PeriodicScheduleConfig {
             first_start_ms: 10_000,
             period_ms: 5_000,
             deadline_offset_ms: Some(1_000),
             max_iterations: Some(5),
-            gas_price: 20,
+            priority_fee_per_gas_unit: 20,
         };
 
         let result = nexus_client
@@ -1170,43 +1328,60 @@ mod tests {
             .await
             .expect("periodic configured");
 
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.tx_digest, digest);
     }
 
     #[tokio::test]
     async fn test_scheduler_disable_periodic() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let workflow_pkg = nexus_client.nexus_objects.workflow_pkg_id;
-        let task_id = sui::ObjectID::random();
-        let owner = sui::Address::random_for_testing_only();
-        let task_object = mock_task_object(workflow_pkg, task_id, owner);
-        let get_task_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, task_id, task_object);
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Address::generate(&mut rng);
+
+        // Task fetch
+        let task_object_json = mock_task_object(task_id, owner);
+        let task_ref =
+            sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            task_object_json,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
 
         let result = nexus_client
             .scheduler()
             .disable_periodic(task_id)
             .await
             .expect("periodic disabled");
-
-        get_task_call.assert_async().await;
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
 
         assert_eq!(result.tx_digest, digest);
     }
@@ -1228,18 +1403,16 @@ mod tests {
 
     #[test]
     fn test_extract_task_id_errors_without_event() {
-        let workflow_pkg = sui::ObjectID::random();
-        let mut response = sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
-        let generator = queue_generator_symbol(workflow_pkg);
-        response.events = Some(block_events(
-            workflow_pkg,
-            vec![NexusEventKind::OccurrenceScheduled(
-                OccurrenceScheduledEvent {
-                    task: sui::ObjectID::random(),
-                    generator,
-                },
-            )],
-        ));
+        let mut rng = thread_rng();
+        let workflow_pkg = sui::types::Address::generate(&mut rng);
+        let response = dummy_executed_transaction(vec![NexusEvent {
+            id: (sui::types::Digest::generate(&mut rng), 0),
+            generics: vec![],
+            data: NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
+                task: sui::types::Address::generate(&mut rng),
+                generator: PolicySymbol::Uid(workflow_pkg),
+            }),
+        }]);
 
         let err = extract_task_id(&response).expect_err("missing event");
         assert!(matches!(err, NexusError::Parsing(_)));
@@ -1247,47 +1420,46 @@ mod tests {
 
     #[test]
     fn test_extract_occurrence_event_variants() {
-        let workflow_pkg = sui::ObjectID::random();
-        let task_id = sui::ObjectID::random();
-        let periodic_generator = periodic_generator_symbol(workflow_pkg);
-        let scheduled = NexusEventKind::Scheduled(RequestScheduledExecution {
-            request: Box::new(NexusEventKind::OccurrenceScheduled(
-                OccurrenceScheduledEvent {
-                    task: task_id,
-                    generator: periodic_generator.clone(),
-                },
-            )),
-            priority: 1,
-            request_ms: 10,
-            start_ms: 11,
-            deadline_ms: 12,
-        });
+        let mut rng = thread_rng();
+        let workflow_pkg = sui::types::Address::generate(&mut rng);
+        let task_id = sui::types::Address::generate(&mut rng);
 
-        let mut response = sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
-        response.events = Some(block_events(workflow_pkg, vec![scheduled]));
+        let scheduled =
+            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent {
+                    task: task_id,
+                    generator: PolicySymbol::Uid(workflow_pkg),
+                },
+                priority: 1,
+                request_ms: 10,
+                start_ms: 11,
+                deadline_ms: 12,
+            });
+
+        let response = dummy_executed_transaction(vec![NexusEvent {
+            id: (sui::types::Digest::generate(&mut rng), 0),
+            generics: vec![],
+            data: scheduled.clone(),
+        }]);
         assert!(matches!(
             extract_occurrence_event(&response),
-            Some(NexusEventKind::Scheduled(_))
+            Some(NexusEventKind::RequestScheduledOccurrence(_))
         ));
 
-        let mut response_direct =
-            sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
-        let queue_generator = queue_generator_symbol(workflow_pkg);
-        response_direct.events = Some(block_events(
-            workflow_pkg,
-            vec![NexusEventKind::OccurrenceScheduled(
-                OccurrenceScheduledEvent {
-                    task: task_id,
-                    generator: queue_generator,
-                },
-            )],
-        ));
+        let direct = dummy_executed_transaction(vec![NexusEvent {
+            id: (sui::types::Digest::generate(&mut rng), 0),
+            generics: vec![],
+            data: NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
+                task: task_id,
+                generator: PolicySymbol::Uid(workflow_pkg),
+            }),
+        }]);
         assert!(matches!(
-            extract_occurrence_event(&response_direct),
+            extract_occurrence_event(&direct),
             Some(NexusEventKind::OccurrenceScheduled(_))
         ));
 
-        let empty_response = sui::TransactionBlockResponse::new(sui::TransactionDigest::random());
-        assert!(extract_occurrence_event(&empty_response).is_none());
+        let empty = dummy_executed_transaction(vec![]);
+        assert!(extract_occurrence_event(&empty).is_none());
     }
 }
