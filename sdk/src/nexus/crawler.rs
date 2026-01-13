@@ -790,6 +790,14 @@ pub struct DynamicMap<K, V> {
 }
 
 impl<K, V> DynamicMap<K, V> {
+    pub fn new(id: sui::types::Address, size: u64) -> Self {
+        Self {
+            id,
+            size: size.to_string(),
+            _marker: PhantomData,
+        }
+    }
+
     pub fn id(&self) -> sui::types::Address {
         self.id
     }
