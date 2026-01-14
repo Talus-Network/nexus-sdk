@@ -113,10 +113,10 @@ pub fn claim_and_fulfill_pre_key_for_user(
     let requested_by_arg = sui_framework::Address::address_from_type(tx, requested_by)?;
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap_obj = tx.input(sui::tx::Input::owned(
+    let leader_cap_obj = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
+        false,
     ));
 
     // Claim gas from the requester into a temporary balance.

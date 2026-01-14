@@ -68,10 +68,10 @@ impl EventFetcher {
         from_checkpoint: Option<u64>,
     ) -> (
         tokio::task::JoinHandle<()>,
-        tokio::sync::mpsc::Receiver<EventPage>,
+        tokio::sync::mpsc::Receiver<anyhow::Result<EventPage>>,
     ) {
         let (notify_about_events, next_page) =
-            tokio::sync::mpsc::channel::<EventPage>(self.channel_capacity);
+            tokio::sync::mpsc::channel::<anyhow::Result<EventPage>>(self.channel_capacity);
 
         let poller = {
             let nexus_objects = self.nexus_objects.clone();
@@ -112,7 +112,15 @@ impl EventFetcher {
                     // Send the GQL request.
                     let response = match client.post(&url).json(&query).send().await {
                         Ok(resp) => resp,
-                        Err(_) => {
+                        Err(e) => {
+                            if let Err(_) = notify_about_events
+                                .send(Err(anyhow::anyhow!("Failed to send GQL request: {e}")))
+                                .await
+                            {
+                                // Receiver dropped, exit the poller process.
+                                break;
+                            }
+
                             Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
@@ -123,7 +131,15 @@ impl EventFetcher {
                     let response: Response<events_query::ResponseData> = match response.json().await
                     {
                         Ok(data) => data,
-                        Err(_) => {
+                        Err(e) => {
+                            if let Err(_) = notify_about_events
+                                .send(Err(anyhow::anyhow!("Failed to send GQL request: {e}")))
+                                .await
+                            {
+                                // Receiver dropped, exit the poller process.
+                                break;
+                            }
+
                             Self::sleep_and_backoff(&mut poll_interval, max_poll_interval).await;
 
                             continue;
@@ -176,10 +192,10 @@ impl EventFetcher {
                     cursor = Some(next_cursor.clone());
 
                     match notify_about_events
-                        .send(EventPage {
+                        .send(Ok(EventPage {
                             events: nexus_events.collect(),
                             next_cursor,
-                        })
+                        }))
                         .await
                     {
                         Ok(()) => {
@@ -250,7 +266,7 @@ mod tests {
 
         let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
 
-        if let Some(page) = receiver.recv().await {
+        if let Some(Ok(page)) = receiver.recv().await {
             assert_eq!(page.next_cursor, "12345".to_string());
             assert_eq!(page.events.len(), 3);
 
@@ -279,5 +295,22 @@ mod tests {
         }
 
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_event_fetcher_wrong_url() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let fetcher = EventFetcher::new("http://invalid.url", Arc::new(objects));
+
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+
+        if let Some(result) = receiver.recv().await {
+            assert!(result.is_err());
+            assert!(
+                matches!(result, Err(e) if e.to_string().contains("Failed to send GQL request"))
+            );
+        } else {
+            panic!("Did not receive any events from the fetcher.");
+        }
     }
 }
