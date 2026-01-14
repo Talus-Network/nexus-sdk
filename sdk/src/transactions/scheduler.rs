@@ -1615,8 +1615,8 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let claim_coin = sui_mocks::mock_sui_object_ref();
         let leader_cap_tuple = leader_cap.clone().into_parts();
+        let claim_coin = sui_mocks::mock_sui_object_ref();
         let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -1671,8 +1671,8 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let claim_coin = sui_mocks::mock_sui_object_ref();
         let leader_cap_tuple = leader_cap.clone().into_parts();
+        let claim_coin = sui_mocks::mock_sui_object_ref();
         let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 

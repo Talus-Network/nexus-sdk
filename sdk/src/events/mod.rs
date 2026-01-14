@@ -102,6 +102,7 @@ events! {
     PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
     PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
+    ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
     // These events are unused for now.
     // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
@@ -550,6 +551,15 @@ pub struct PreKeyAssociatedEvent {
 pub struct DAGCreatedEvent {
     /// Address of the created DAG.
     pub dag: sui::types::Address,
+}
+
+/// Fired by the Nexus Workflow when a new ToolRegistry is created.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolRegistryCreatedEvent {
+    /// Address of the created ToolRegistry.
+    pub registry: sui::types::Address,
+    /// Address of the relevant slashing cap.
+    pub slashing_cap: sui::types::Address,
 }
 
 #[cfg(test)]

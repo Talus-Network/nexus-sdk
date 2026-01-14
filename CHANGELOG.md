@@ -16,7 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
 
-## [`0.4.0`] - 2025-01-07
+### `nexus-sdk`
+
+#### Changed
+
+- leader and crypto caps in PTB templates are now party objects
+- added `ToolRegistryCreated` as tracked event
+
+## [`0.4.0`] - 2026-01-07
 
 ### `nexus-cli`
 
