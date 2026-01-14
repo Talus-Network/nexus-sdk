@@ -13,3 +13,5 @@ sdk/tests/move/onchain_tool_test/Move.lock
 
 # macOS
 .DS_Store
+
+**/Move.lock

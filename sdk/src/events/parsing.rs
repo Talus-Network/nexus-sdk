@@ -892,7 +892,7 @@ mod tests {
                 start_time_ms: 1,
                 deadline_ms: Some(2),
                 pruned_at: 3,
-                gas_price: 4,
+                priority_fee_per_gas_unit: 4,
                 generator: PolicySymbol::Uid(addr()),
             }),
             NexusEventKind::TaskCreated(TaskCreatedEvent {
@@ -910,7 +910,7 @@ mod tests {
                 task: addr(),
                 start_time_ms: 1,
                 deadline_ms: Some(2),
-                gas_price: 3,
+                priority_fee_per_gas_unit: 3,
                 generator: PolicySymbol::Uid(addr()),
                 executed_at: 4,
             }),
@@ -920,7 +920,7 @@ mod tests {
                 deadline_offset_ms: Some(2),
                 max_iterations: Some(3),
                 generated: Some(4),
-                gas_price: Some(5),
+                priority_fee_per_gas_unit: Some(5),
                 last_generated_start_ms: Some(6),
             }),
             NexusEventKind::FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent {

@@ -258,12 +258,13 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
+        let task_ref = task.object_ref();
 
         let metadata_arg =
             scheduler_tx::new_metadata(&mut tx, objects, metadata.clone().into_iter())
                 .map_err(NexusError::TransactionBuilding)?;
 
-        scheduler_tx::update_metadata(&mut tx, objects, &task.object_ref(), metadata_arg)
+        scheduler_tx::update_metadata(&mut tx, objects, &task_ref, metadata_arg)
             .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
@@ -309,16 +310,17 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
+        let task_ref = task.object_ref();
 
         match request {
             TaskStateAction::Pause => {
-                scheduler_tx::pause_time_constraint_for_task(&mut tx, objects, &task.object_ref())
+                scheduler_tx::pause_time_constraint_for_task(&mut tx, objects, &task_ref)
             }
             TaskStateAction::Resume => {
-                scheduler_tx::resume_time_constraint_for_task(&mut tx, objects, &task.object_ref())
+                scheduler_tx::resume_time_constraint_for_task(&mut tx, objects, &task_ref)
             }
             TaskStateAction::Cancel => {
-                scheduler_tx::cancel_time_constraint_for_task(&mut tx, objects, &task.object_ref())
+                scheduler_tx::cancel_time_constraint_for_task(&mut tx, objects, &task_ref)
             }
         }
         .map_err(NexusError::TransactionBuilding)?;
@@ -377,11 +379,12 @@ impl SchedulerActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
+        let task_ref = task.object_ref();
 
         scheduler_tx::new_or_modify_periodic_for_task(
             &mut tx,
             objects,
-            &task.object_ref(),
+            &task_ref,
             scheduler_tx::PeriodicScheduleInputs {
                 first_start_ms: config.first_start_ms,
                 period_ms: config.period_ms,
@@ -432,8 +435,9 @@ impl SchedulerActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
+        let task_ref = task.object_ref();
 
-        scheduler_tx::disable_periodic_for_task(&mut tx, objects, &task.object_ref())
+        scheduler_tx::disable_periodic_for_task(&mut tx, objects, &task_ref)
             .map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
@@ -475,6 +479,7 @@ impl SchedulerActions {
     ) -> Result<ScheduleExecutionResult, NexusError> {
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
+        let task_ref = task.object_ref();
 
         if let Some(start_ms) = request.start_ms {
             let deadline_offset = request
@@ -484,7 +489,7 @@ impl SchedulerActions {
             scheduler_tx::add_occurrence_absolute_for_task(
                 &mut tx,
                 objects,
-                &task.object_ref(),
+                &task_ref,
                 start_ms,
                 deadline_offset,
                 request.priority_fee_per_gas_unit,
@@ -493,7 +498,7 @@ impl SchedulerActions {
             scheduler_tx::add_occurrence_relative_for_task(
                 &mut tx,
                 objects,
-                &task.object_ref(),
+                &task_ref,
                 request.start_offset_ms.expect("validated start offset"),
                 request.deadline_offset_ms,
                 request.priority_fee_per_gas_unit,
@@ -640,7 +645,7 @@ mod tests {
             },
             nexus::{
                 client::NexusClient,
-                crawler::{Bag, Map, ObjectBag},
+                crawler::{Bag, Map, ObjectBag, TableVec},
                 error::NexusError,
                 signer::ExecutedTransaction,
             },
@@ -708,10 +713,10 @@ mod tests {
         };
 
         let dfa = DeterministicAutomaton {
-            states: vec![0],
-            alphabet: vec![],
-            transition: vec![vec![]],
-            accepting: vec![true],
+            states: TableVec::new(sui::types::Address::from_static("0x100"), 1),
+            alphabet: TableVec::new(sui::types::Address::from_static("0x101"), 0),
+            transition: TableVec::new(sui::types::Address::from_static("0x102"), 1),
+            accepting: TableVec::new(sui::types::Address::from_static("0x103"), 1),
             start: 0,
         };
 
@@ -742,14 +747,8 @@ mod tests {
             constraints,
             execution,
             state: TaskState::Active,
-            data: Bag {
-                id: sui::types::Address::from_static("0x700"),
-                size: 0,
-            },
-            objects: ObjectBag {
-                id: sui::types::Address::from_static("0x701"),
-                size: 0,
-            },
+            data: Bag::new(sui::types::Address::from_static("0x700"), 0),
+            objects: ObjectBag::new(sui::types::Address::from_static("0x701"), 0),
         };
 
         serde_json::to_value(task).expect("serialize task")
