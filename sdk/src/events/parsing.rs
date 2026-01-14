@@ -766,7 +766,8 @@ mod tests {
         let page = receiver
             .recv()
             .await
-            .expect("fetcher should yield a page of events");
+            .expect("fetcher should yield a page of events")
+            .expect("result should be Ok");
 
         assert_eq!(page.events.len(), events.len());
 
