@@ -835,7 +835,6 @@ pub fn dag_begin_execution_from_scheduler(
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
-    claim_coin: &sui::types::ObjectReference,
     amount_execution: u64,
     amount_priority: u64,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -877,17 +876,10 @@ pub fn dag_begin_execution_from_scheduler(
     ));
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.input(sui::tx::Input::owned(
+    let leader_cap = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
-    ));
-
-    // `claim_coin: Coin<SUI>`
-    let claim_coin = tx.input(sui::tx::Input::owned(
-        *claim_coin.object_id(),
-        claim_coin.version(),
-        *claim_coin.digest(),
+        false,
     ));
 
     Ok(tx.move_call(
@@ -903,7 +895,6 @@ pub fn dag_begin_execution_from_scheduler(
             dag,
             gas_service,
             leader_cap,
-            claim_coin,
             amount_execution_arg,
             amount_priority_arg,
             clock,
@@ -919,7 +910,6 @@ pub fn execute_scheduled_occurrence(
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
-    claim_coin: &sui::types::ObjectReference,
     amount_execution: u64,
     amount_priority: u64,
     generator: OccurrenceGenerator,
@@ -970,15 +960,10 @@ pub fn execute_scheduled_occurrence(
         objects.gas_service.version(),
         true,
     ));
-    let leader_cap = tx.input(sui::tx::Input::owned(
+    let leader_cap = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
-        *leader_cap.digest(),
-    ));
-    let claim_coin = tx.input(sui::tx::Input::owned(
-        *claim_coin.object_id(),
-        claim_coin.version(),
-        *claim_coin.digest(),
+        false,
     ));
     let amount_execution_arg = tx.input(pure_arg(&amount_execution)?);
     let amount_priority_arg = tx.input(pure_arg(&amount_priority)?);
@@ -996,7 +981,6 @@ pub fn execute_scheduled_occurrence(
             dag,
             gas_service,
             leader_cap,
-            claim_coin,
             amount_execution_arg,
             amount_priority_arg,
             clock,
@@ -1095,23 +1079,6 @@ mod tests {
             assert_eq!(object_id, expected.object_id());
             assert_eq!(*initial_shared_version, expected.version());
             assert_eq!(*actual_mutable, mutable);
-        }
-
-        fn expect_owned_object(
-            &self,
-            argument: &sui::types::Argument,
-            expected: &(sui::types::Address, sui::types::Version, sui::types::Digest),
-        ) {
-            let sui::types::Input::ImmutableOrOwned(object) = self.input(argument) else {
-                panic!(
-                    "expected owned object argument, got {:?}",
-                    self.input(argument)
-                );
-            };
-
-            assert_eq!(object.object_id(), &expected.0);
-            assert_eq!(object.version(), expected.1);
-            assert_eq!(object.digest(), &expected.2);
         }
 
         fn expect_clock(&self, argument: &sui::types::Argument) {
@@ -1615,9 +1582,6 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = leader_cap.clone().into_parts();
-        let claim_coin = sui_mocks::mock_sui_object_ref();
-        let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 
         let amount_execution = 44;
@@ -1629,7 +1593,6 @@ mod tests {
             &task,
             &dag,
             &leader_cap,
-            &claim_coin,
             amount_execution,
             amount_priority,
         )
@@ -1638,7 +1601,7 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 9);
+        assert_eq!(call.arguments.len(), 8);
 
         inspector.expect_shared_object(&call.arguments[0], &objects.default_tap, true);
         inspector.expect_shared_object(&call.arguments[1], &task, true);
@@ -1658,11 +1621,10 @@ mod tests {
         assert!(!*mutable);
 
         inspector.expect_shared_object(&call.arguments[3], &objects.gas_service, true);
-        inspector.expect_owned_object(&call.arguments[4], &leader_cap_tuple);
-        inspector.expect_owned_object(&call.arguments[5], &claim_coin_tuple);
-        inspector.expect_u64(&call.arguments[6], amount_execution);
-        inspector.expect_u64(&call.arguments[7], amount_priority);
-        inspector.expect_clock(&call.arguments[8]);
+        inspector.expect_shared_object(&call.arguments[4], &leader_cap, false);
+        inspector.expect_u64(&call.arguments[5], amount_execution);
+        inspector.expect_u64(&call.arguments[6], amount_priority);
+        inspector.expect_clock(&call.arguments[7]);
     }
 
     #[test]
@@ -1671,9 +1633,6 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let leader_cap_tuple = leader_cap.clone().into_parts();
-        let claim_coin = sui_mocks::mock_sui_object_ref();
-        let claim_coin_tuple = claim_coin.clone().into_parts();
         let mut tx = sui::tx::TransactionBuilder::new();
 
         execute_scheduled_occurrence(
@@ -1682,7 +1641,6 @@ mod tests {
             &task,
             &dag,
             &leader_cap,
-            &claim_coin,
             100,
             200,
             OccurrenceGenerator::Queue,
@@ -1714,7 +1672,7 @@ mod tests {
             tap_call.function,
             workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.name
         );
-        assert_eq!(tap_call.arguments.len(), 9);
+        assert_eq!(tap_call.arguments.len(), 8);
         inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);
         inspector.expect_shared_object(&tap_call.arguments[1], &task, true);
         let sui::types::Input::Shared {
@@ -1732,11 +1690,10 @@ mod tests {
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.gas_service, true);
-        inspector.expect_owned_object(&tap_call.arguments[4], &leader_cap_tuple);
-        inspector.expect_owned_object(&tap_call.arguments[5], &claim_coin_tuple);
-        inspector.expect_u64(&tap_call.arguments[6], 100);
-        inspector.expect_u64(&tap_call.arguments[7], 200);
-        inspector.expect_clock(&tap_call.arguments[8]);
+        inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
+        inspector.expect_u64(&tap_call.arguments[5], 100);
+        inspector.expect_u64(&tap_call.arguments[6], 200);
+        inspector.expect_clock(&tap_call.arguments[7]);
 
         let finish_call = inspector.move_call(2);
         assert_eq!(finish_call.module, workflow::Scheduler::FINISH.module);
@@ -1752,7 +1709,6 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let claim_coin = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::tx::TransactionBuilder::new();
 
         execute_scheduled_occurrence(
@@ -1761,7 +1717,6 @@ mod tests {
             &task,
             &dag,
             &leader_cap,
-            &claim_coin,
             10,
             20,
             OccurrenceGenerator::Periodic,
