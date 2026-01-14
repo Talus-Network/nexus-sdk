@@ -775,8 +775,7 @@ impl ToolRegistry {
     /// `nexus_workflow::tool_registry::claim_collateral_for_tool`
     pub const CLAIM_COLLATERAL_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        // TODO: This will likely be renamed to `claim_collateral_for_tool`.
-        name: sui::types::Identifier::from_static("claim_collateral_for_off_chain_tool"),
+        name: sui::types::Identifier::from_static("claim_collateral_for_tool"),
     };
     /// Get the witness ID for an onchain tool.
     ///
@@ -844,13 +843,12 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("ToolRegistry"),
     };
-    /// Unregister an tool.
+    /// Unregister a tool.
     ///
     /// `nexus_workflow::tool_registry::unregister_tool`
     pub const UNREGISTER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        // TODO: This will likely be renamed to `unregister_tool`.
-        name: sui::types::Identifier::from_static("unregister_off_chain_tool"),
+        name: sui::types::Identifier::from_static("unregister_tool"),
     };
 }
 

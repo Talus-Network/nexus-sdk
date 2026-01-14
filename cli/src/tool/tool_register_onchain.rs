@@ -108,7 +108,7 @@ pub(crate) async fn register_onchain_tool(
         }
         // If the tool is already registered, we don't want to fail the
         // command.
-        Err(NexusError::Wallet(e)) if e.to_string().contains("register_off_chain_tool_") => {
+        Err(NexusError::Wallet(e)) if e.to_string().contains("register_on_chain_tool_") => {
             gas_config.release_gas_coin(gas_coin).await;
 
             notify_error!(
