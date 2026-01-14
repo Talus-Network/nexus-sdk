@@ -2,7 +2,7 @@
     "default_values": [
     {
       "vertex": "execute_first",
-      "input_port": "2",
+      "input_port": "clock",
       "value": {
         "storage": "inline",
         "data": "0x6"
@@ -10,7 +10,7 @@
     },
     {
         "vertex": "execute_second",
-        "input_port": "2",
+        "input_port": "clock",
         "value": {
           "storage": "inline",
           "data": "0x6"
@@ -26,11 +26,11 @@
         "name": "execute_first",
         "entry_ports": [
           {
-            "name": "0",
+            "name": "state",
             "encrypted": false
           },
           {
-            "name": "1",
+            "name": "input_value",
             "encrypted": false
           }
         ]
@@ -43,7 +43,7 @@
         "name": "execute_second",
         "entry_ports": [
           {
-            "name": "0",
+            "name": "state",
             "encrypted": false
           }
         ]
@@ -58,7 +58,7 @@
         },
         "to": {
           "vertex": "execute_second",
-          "input_port": "1"
+          "input_port": "input_value"
         }
       }
     ]

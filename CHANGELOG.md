@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ObjectCrawler` moved under `nexus` module and uses GRPC
 - `onchain_schema_gen` module now uses GRPC
 - all types in the SDK changed to use `sui-rust-sdk` types instead of `sui-sdk`
+- onchain tools now use default execute parameter names
+- use `sui move summary` to generate input and output schemas for onchain tools
 
 #### Removed
 

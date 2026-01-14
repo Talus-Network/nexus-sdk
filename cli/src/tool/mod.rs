@@ -62,15 +62,28 @@ pub(crate) enum RegisterCommand {
     #[command(about = "Register an onchain tool")]
     Onchain {
         #[arg(
-            long = "package",
+            long = "package-path",
             short = 'p',
+            help = "Path to the onchain tool package folder containing Move.toml.",
+            value_name = "PATH",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        package_path: PathBuf,
+
+        #[arg(
+            long = "package-address",
+            short = 'a',
             help = "The onchain tool package address",
             value_name = "ADDRESS"
         )]
-        package: sui::types::Address,
+        package_address: sui::types::Address,
 
-        #[arg(long = "module", short = 'm', help = "The onchain tool module name")]
-        module: sui::types::Identifier,
+        #[arg(
+            long = "module-name",
+            short = 'm',
+            help = "The onchain tool module name"
+        )]
+        module_name: sui::types::Identifier,
 
         #[arg(
             long = "tool-fqn",
@@ -294,8 +307,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 .await
             }
             RegisterCommand::Onchain {
-                package,
-                module,
+                package_path,
+                package_address,
+                module_name,
                 tool_fqn,
                 description,
                 witness_id,
@@ -304,8 +318,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 gas,
             } => {
                 register_onchain_tool(
-                    package,
-                    module,
+                    package_path,
+                    package_address,
+                    module_name,
                     tool_fqn,
                     description,
                     witness_id,
