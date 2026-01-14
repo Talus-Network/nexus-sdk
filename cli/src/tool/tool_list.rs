@@ -63,8 +63,11 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             ToolVariant::OnChain(t) => (
                 // Parse package address and create Sui location.
                 ToolLocation::new_sui(
-                    t.package_address.parse().unwrap_or_default(),
-                    t.module_name.clone(),
+                    t.package_address
+                        .parse()
+                        .unwrap_or_else(|_| sui::types::Address::ZERO),
+                    sui::types::Identifier::new(&t.module_name)
+                        .unwrap_or_else(|_| sui::types::Identifier::from_static("unknown")),
                 ),
                 t.description.clone(),
                 t.registered_at_ms,
@@ -73,7 +76,11 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             ),
         };
 
-        let tool_type = if location.is_onchain() { "OnChain" } else { "OffChain" };
+        let tool_type = if location.is_onchain() {
+            "OnChain"
+        } else {
+            "OffChain"
+        };
 
         // Build JSON output with common fields plus type-specific ones.
         let mut tool_json = json!({

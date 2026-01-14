@@ -13,7 +13,7 @@ use {
 /// # String Representations
 ///
 /// - Offchain: `https://example.com/my-tool`
-/// - Onchain: `0xabc123::my_module` (MoveModuleId format)
+/// - Onchain: `0xabc123::my_module` (address::module format)
 ///
 /// # Examples
 ///
@@ -33,9 +33,9 @@ pub enum ToolLocation {
     /// Sui module for onchain tools (package::module format).
     Sui {
         /// The package address containing the tool module.
-        package: sui::Address,
+        package: sui::types::Address,
         /// The module name within the package.
-        module: String,
+        module: sui::types::Identifier,
     },
 }
 
@@ -46,11 +46,8 @@ impl ToolLocation {
     }
 
     /// Creates a new onchain tool location from package address and module name.
-    pub fn new_sui(package: sui::Address, module: impl Into<String>) -> Self {
-        Self::Sui {
-            package,
-            module: module.into(),
-        }
+    pub fn new_sui(package: sui::types::Address, module: sui::types::Identifier) -> Self {
+        Self::Sui { package, module }
     }
 
     /// Returns true if this is an offchain (HTTP) tool location.
@@ -72,7 +69,7 @@ impl ToolLocation {
     }
 
     /// Returns the package address if this is an onchain tool location.
-    pub fn package_address(&self) -> Option<sui::Address> {
+    pub fn package_address(&self) -> Option<sui::types::Address> {
         match self {
             Self::Http(_) => None,
             Self::Sui { package, .. } => Some(*package),
@@ -80,7 +77,7 @@ impl ToolLocation {
     }
 
     /// Returns the module name if this is an onchain tool location.
-    pub fn module_name(&self) -> Option<&str> {
+    pub fn module_name(&self) -> Option<&sui::types::Identifier> {
         match self {
             Self::Http(_) => None,
             Self::Sui { module, .. } => Some(module),
@@ -104,11 +101,15 @@ impl FromStr for ToolLocation {
         }
 
         // Otherwise, try to parse as a Sui module ID (address::module).
-        let module_id = sui::MoveModuleId::from_str(s)
-            .map_err(|e| anyhow::anyhow!("Invalid tool location format: {e}"))?;
+        let parts: Vec<&str> = s.splitn(2, "::").collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid tool location format: expected 'address::module', got '{s}'");
+        }
 
-        let package = sui::Address::from(*module_id.address());
-        let module = module_id.name().to_string();
+        let package = sui::types::Address::from_str(parts[0])
+            .map_err(|e| anyhow::anyhow!("Invalid package address: {e}"))?;
+        let module = sui::types::Identifier::from_str(parts[1])
+            .map_err(|e| anyhow::anyhow!("Invalid module identifier: {e}"))?;
 
         Ok(Self::Sui { package, module })
     }
@@ -153,16 +154,6 @@ impl From<reqwest::Url> for ToolLocation {
     }
 }
 
-/// Conversion from MoveModuleId to ToolLocation.
-impl From<sui::MoveModuleId> for ToolLocation {
-    fn from(module_id: sui::MoveModuleId) -> Self {
-        Self::Sui {
-            package: sui::Address::from(*module_id.address()),
-            module: module_id.name().to_string(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use {super::*, assert_matches::assert_matches};
@@ -186,7 +177,10 @@ mod tests {
         let location: ToolLocation = "http://localhost:8080/tool".parse().unwrap();
 
         assert!(location.is_offchain());
-        assert_eq!(location.url().unwrap().as_str(), "http://localhost:8080/tool");
+        assert_eq!(
+            location.url().unwrap().as_str(),
+            "http://localhost:8080/tool"
+        );
     }
 
     #[test]
@@ -200,7 +194,10 @@ mod tests {
         assert!(!location.is_offchain());
         assert!(location.url().is_none());
         assert!(location.package_address().is_some());
-        assert_eq!(location.module_name(), Some("my_module"));
+        assert_eq!(
+            location.module_name(),
+            Some(&sui::types::Identifier::from_static("my_module"))
+        );
     }
 
     #[test]
@@ -209,7 +206,10 @@ mod tests {
         let location: ToolLocation = "0x1::module".parse().unwrap();
 
         assert!(location.is_onchain());
-        assert_eq!(location.module_name(), Some("module"));
+        assert_eq!(
+            location.module_name(),
+            Some(&sui::types::Identifier::from_static("module"))
+        );
     }
 
     #[test]
@@ -221,13 +221,13 @@ mod tests {
 
     #[test]
     fn test_display_sui() {
-        let addr = sui::Address::from_str(
+        let addr = sui::types::Address::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
         )
         .unwrap();
         let location = ToolLocation::Sui {
             package: addr,
-            module: "my_module".to_string(),
+            module: sui::types::Identifier::from_static("my_module"),
         };
 
         assert_eq!(
@@ -249,13 +249,13 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_sui() {
-        let addr = sui::Address::from_str(
+        let addr = sui::types::Address::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
         )
         .unwrap();
         let location = ToolLocation::Sui {
             package: addr,
-            module: "my_module".to_string(),
+            module: sui::types::Identifier::from_static("my_module"),
         };
 
         let serialized = serde_json::to_string(&location).unwrap();
@@ -281,19 +281,16 @@ mod tests {
 
     #[test]
     fn test_new_constructors() {
-        let http_location =
-            ToolLocation::new_http("https://example.com/tool".parse().unwrap());
+        let http_location = ToolLocation::new_http("https://example.com/tool".parse().unwrap());
         assert!(http_location.is_offchain());
 
-        let addr = sui::Address::from_str(
+        let addr = sui::types::Address::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
         )
         .unwrap();
-        let sui_location = ToolLocation::new_sui(addr, "my_module");
+        let module = sui::types::Identifier::from_static("my_module");
+        let sui_location = ToolLocation::new_sui(addr, module.clone());
         assert!(sui_location.is_onchain());
-        assert_eq!(sui_location.module_name(), Some("my_module"));
+        assert_eq!(sui_location.module_name(), Some(&module));
     }
 }
-
-
-
