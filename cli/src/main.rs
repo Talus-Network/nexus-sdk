@@ -26,6 +26,10 @@ struct Cli {
         help = "Change the output format to JSON"
     )]
     json: bool,
+
+    #[command(flatten)]
+    verbose: clap_verbosity::Verbosity<clap_verbosity::ErrorLevel>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -76,6 +80,10 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    env_logger::builder()
+        .filter(None, cli.verbose.log_level_filter())
+        .build();
 
     JSON_MODE.store(cli.json, Ordering::Relaxed);
 
