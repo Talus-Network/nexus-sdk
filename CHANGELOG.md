@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [`0.5.0`] Unreleased
 
 ### `nexus-cli`
 
@@ -17,7 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler periodic set` / `disable`
 - enable more verbose output using the `RUST_LOG` env var
 
-## [`0.4.0`] - 2025-01-07
+### `nexus-sdk`
+
+#### Changed
+
+- leader and crypto caps in PTB templates are now party objects
+- added `ToolRegistryCreated` as tracked event
+- set Rust toolchain back to `stable`
+
+## [`0.4.0`] - 2026-01-07
 
 ### `nexus-cli`
 

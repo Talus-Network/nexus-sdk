@@ -143,7 +143,10 @@ impl CryptoActions {
             tokio::select! {
                 result = next_page.recv() => {
                     let page = match result {
-                        Some(page) => page,
+                        Some(Ok(page)) => page,
+                        Some(Err(e)) => {
+                            return Err(NexusError::Channel(anyhow!("Error fetching events: {}", e)));
+                        }
                         None => {
                             return Err(NexusError::Channel(anyhow!("Event fetcher stopped unexpectedly")));
                         }

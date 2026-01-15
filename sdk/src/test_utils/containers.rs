@@ -25,6 +25,9 @@ pub type PgContainer = ContainerAsync<Postgres>;
 pub type RedisContainer = ContainerAsync<Redis>;
 pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand;
 
+const SUI_TOOLS_TAG_AMD64: &str = "mainnet-v1.61.2";
+const SUI_TOOLS_TAG_ARM64: &str = "mainnet-v1.61.2-arm64";
+
 pub struct SuiInstance {
     pub container: SuiContainer,
     pub pg: PgContainer,
@@ -59,6 +62,25 @@ pub async fn setup_sui_instance() -> SuiInstance {
     request.name = "sui-net";
     let _ = docker.create_network(request).await.ok();
 
+    let sui_tools_tag = docker
+        .version()
+        .await
+        .ok()
+        .and_then(|version| version.arch)
+        .map(|arch| arch.to_ascii_lowercase())
+        .as_deref()
+        .map(|arch| match arch {
+            "arm64" | "aarch64" => SUI_TOOLS_TAG_ARM64,
+            _ => SUI_TOOLS_TAG_AMD64,
+        })
+        .unwrap_or_else(|| {
+            if cfg!(target_arch = "aarch64") {
+                SUI_TOOLS_TAG_ARM64
+            } else {
+                SUI_TOOLS_TAG_AMD64
+            }
+        });
+
     let container_name = format!("sui-postgres-{}", rpc_host_port);
 
     let pg_request = Postgres::default()
@@ -82,7 +104,7 @@ pub async fn setup_sui_instance() -> SuiInstance {
         ))
         .with_graphql(true)
         .with_name("mysten/sui-tools")
-        .with_tag("mainnet-v1.61.2")
+        .with_tag(sui_tools_tag)
         .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
         .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123))
         .with_mapped_port(graphql_host_port, ContainerPort::Tcp(9125))

@@ -7,7 +7,7 @@ use std::ascii::String as AsciiString;
 
 use sui::object_bag::{Self, ObjectBag};
 use sui::object_table::{Self, ObjectTable};
-use sui::table::{Self, Table};
+use sui::table_vec::{Self, TableVec};
 use sui::linked_table::{Self, LinkedTable};
 use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
@@ -23,20 +23,16 @@ public struct Guy has key, store {
     hobbies: VecSet<AsciiString>,
     groups: VecMap<Name, vector<Name>>,
 
-    chair: Table<Name, Name>,
     timetable: ObjectTable<Name, Value>,
     friends: ObjectBag,
     bag: Bag,
     heterogeneous: Bag,
+    sequence: TableVec<Name>,
     linked_table: LinkedTable<Name, Name>,
 }
 
 public struct Name has copy, drop, store {
     name: AsciiString,
-}
-
-public struct AnotherName has copy, drop, store {
-    another_name: AsciiString,
 }
 
 public struct Value has key, store {
@@ -79,10 +75,6 @@ fun init(ctx: &mut TxContext) {
 
     groups.insert(group_1_name, group_1_members);
     groups.insert(group_2_name, group_2_members);
-
-    let mut chair = table::new(ctx);
-    chair.add(Name { name: b"Chairman".to_ascii_string() }, Name { name: b"John Doe".to_ascii_string() });
-    chair.add(Name { name: b"Vice Chairman".to_ascii_string() }, Name { name: b"Alice".to_ascii_string() });
 
     let mut timetable = object_table::new(ctx);
 
@@ -145,6 +137,11 @@ fun init(ctx: &mut TxContext) {
         another_value: b"Another Bag Data",
     });
 
+    let mut sequence = table_vec::empty(ctx);
+    table_vec::push_back(&mut sequence, Name { name: b"First".to_ascii_string() });
+    table_vec::push_back(&mut sequence, Name { name: b"Second".to_ascii_string() });
+    table_vec::push_back(&mut sequence, Name { name: b"Third".to_ascii_string() });
+
     let mut linked_table = linked_table::new(ctx);
     linked_table.push_back(Name { name: b"Key 1".to_ascii_string() }, Name { name: b"Value 1".to_ascii_string() });
 
@@ -154,11 +151,11 @@ fun init(ctx: &mut TxContext) {
         age,
         hobbies,
         groups,
-        chair,
         timetable,
         friends,
         bag,
         heterogeneous,
+        sequence,
         linked_table,
     };
 
