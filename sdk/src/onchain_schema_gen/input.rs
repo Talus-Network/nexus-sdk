@@ -1,7 +1,7 @@
 //! Input schema generation for Move onchain tools.
 
 use {
-    super::types::{convert_move_type_to_schema, is_tx_context_param},
+    super::types::{convert_move_signature_to_schema, is_tx_context_param},
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
@@ -60,18 +60,19 @@ pub async fn generate_input_schema(
     let mut param_index = 0;
 
     for (i, param_type) in execute_func.parameters().iter().enumerate() {
-        let signature = param_type.body_opt().ok_or_else(|| {
+        let body = param_type.body_opt().ok_or_else(|| {
             anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
         })?;
 
-        let is_tx_context = is_tx_context_param(signature);
+        let is_tx_context = is_tx_context_param(body);
 
         // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
         if i == 0 || is_tx_context {
             continue;
         }
 
-        let param_schema = convert_move_type_to_schema(signature)?;
+        // Convert the full signature (includes reference/mutability info).
+        let param_schema = convert_move_signature_to_schema(param_type)?;
 
         // Store parameter information with index as the default name.
         let param_obj = match param_schema {
@@ -184,6 +185,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("RandomCounter"));
+        assert_eq!(param0["mutable"], true);
 
         // Check parameter 1 (increase_with).
         let param1 = schema
@@ -191,6 +193,7 @@ mod tests {
             .expect("Schema should have parameter 1 (increase_with)");
         assert_eq!(param1["type"], "u64");
         assert_eq!(param1["description"], "64-bit unsigned integer");
+        assert!(param1.get("mutable").is_none());
 
         // Verify only 2 parameters (ProofOfUID and TxContext were skipped).
         assert_eq!(schema.as_object().unwrap().len(), 2);
