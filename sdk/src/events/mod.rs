@@ -102,6 +102,7 @@ events! {
     PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
     PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
+    ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
     // These events are unused for now.
     // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
@@ -369,7 +370,7 @@ pub struct MissedOccurrenceEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
 }
 
@@ -422,7 +423,7 @@ pub struct OccurrenceConsumedEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
@@ -459,7 +460,7 @@ pub struct PeriodicScheduleConfiguredEvent {
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
     )]
-    pub gas_price: Option<u64>,
+    pub priority_fee_per_gas_unit: Option<u64>,
     #[serde(
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
@@ -550,6 +551,15 @@ pub struct PreKeyAssociatedEvent {
 pub struct DAGCreatedEvent {
     /// Address of the created DAG.
     pub dag: sui::types::Address,
+}
+
+/// Fired by the Nexus Workflow when a new ToolRegistry is created.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ToolRegistryCreatedEvent {
+    /// Address of the created ToolRegistry.
+    pub registry: sui::types::Address,
+    /// Address of the relevant slashing cap.
+    pub slashing_cap: sui::types::Address,
 }
 
 #[cfg(test)]

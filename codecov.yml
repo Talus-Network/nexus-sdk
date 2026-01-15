@@ -35,6 +35,7 @@ coverage:
         informational: false
         paths:
           - "!cli/"
+          - "!sdk/src/test_utils/"
 
 component_management:
   individual_components:
