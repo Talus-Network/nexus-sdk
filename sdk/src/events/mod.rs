@@ -370,7 +370,7 @@ pub struct MissedOccurrenceEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
 }
 
@@ -423,7 +423,7 @@ pub struct OccurrenceConsumedEvent {
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub gas_price: u64,
+    pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
@@ -460,7 +460,7 @@ pub struct PeriodicScheduleConfiguredEvent {
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"
     )]
-    pub gas_price: Option<u64>,
+    pub priority_fee_per_gas_unit: Option<u64>,
     #[serde(
         deserialize_with = "deserialize_sui_option_u64",
         serialize_with = "serialize_sui_option_u64"

@@ -1,6 +1,6 @@
 # 🧰 Nexus SDK
 
-This documentation aims to document the Nexus SDK, a combination of a CLI tool and Toolkit to facilitate developers building with Nexus. For more information about Nexus itself, please refer to [the Nexus Core documentation](../nexus-next/index.md).
+This documentation aims to document the Nexus SDK, including the CLI, the Rust client (`NexusClient`), and the Toolkit to facilitate developers building with Nexus. For more information about Nexus itself, please refer to [the Nexus Core documentation](../nexus-next/index.md).
 
 ## Actors
 
@@ -29,6 +29,7 @@ Docs:
 
 - [Nexus CLI](cli.md)
 - [DAG Construction Guide](guides/dag-construction.md)
+- [Nexus Client (Rust)](client.md)
 
 ## Toolkit
 
