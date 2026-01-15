@@ -196,7 +196,19 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ### `nexus scheduler`
 
-Manage scheduler tasks, one-off occurrences, and periodic schedules.
+Manage scheduler tasks, occurrences, and periodic schedules.
+
+#### Concepts
+
+- **Task**: owned on-chain object that bundles metadata, policies, and lifecycle state (active/paused/canceled):
+  - an **execution policy** (“what to do”): today this is “begin DAG execution”, but tasks are designed to support additional execution types in the future
+  - a **constraints policy** (“when it may run”): defines when the task is eligible to execute. In the current scheduler this eligibility is time-based and expressed via **occurrences** (start + optional deadline windows) produced by either queue-based scheduling or periodic scheduling
+- In other words: the scheduler is task/schedule/occurrence oriented; DAG execution is just the current default execution policy.
+- **Queue-based scheduling**: you enqueue one-off **occurrences** for a task (as many as you want). This is intentionally generic: by enqueueing occurrences at different times (and with different priorities), you can implement custom strategies such as delayed runs, retries, backoff, and more.
+- **Periodic scheduling**: you configure a repeating schedule (first start + period, plus optional deadline window and max iterations). The scheduler produces occurrences automatically based on that config.
+- **Occurrence**: an eligibility window for a single task run. An occurrence carries a start time (or start offset), optional deadline window, and `priority_fee_per_gas_unit` (ordering/pricing signal). When the window is open and the occurrence is consumed, the task’s execution policy runs once. Ordering is deterministic: earlier start wins; ties break on higher `priority_fee_per_gas_unit`; then FIFO.
+- Each eligible (consumed) occurrence triggers one run of the task’s execution policy: periodic tasks run the same execution periodically, and queue tasks run it once per enqueued occurrence.
+- Each run is independent: the scheduler does not automatically pass outputs/data from one run to the next. If you need stateful behavior across runs, persist and manage that state externally.
 
 ---
 
@@ -204,7 +216,7 @@ Manage scheduler tasks, one-off occurrences, and periodic schedules.
 
 Creates a new scheduler task tied to the specified DAG. Key options:
 
-- `--entry-group` points to the DAG entry function and defaults to `default`.
+- `--entry-group` points to the DAG entry function and defaults to `_default_group`.
 - `--input-json` provides inline input data; `--remote vertex.port,...` forces specific inputs to be uploaded to the configured remote storage instead of inlining them on-chain.
 - `--metadata key=value` attaches arbitrary metadata entries and replaces any existing entries if the command is re-run.
 - `--execution-priority-fee-per-gas-unit` sets the priority fee for future DAG executions launched by the task.
@@ -218,6 +230,9 @@ Data for encrypted entry ports is automatically encrypted when a session is avai
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
 
 **`nexus scheduler task inspect --task-id <id>`**
 
@@ -293,7 +308,7 @@ This command requires that a wallet is connected to the CLI and spends gas for *
 
 **`nexus crypto generate-identity-key`**
 
-Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid—run `nexus crypto auth` immediately after to populate a replacement session.
+Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
 
 ---
 
@@ -301,7 +316,7 @@ Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.
 
 Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
 
-Use `--force` to overwrite an existing raw key or stored passphrase—doing so deletes all saved sessions and identity material because it can no longer be decrypted.
+Use `--force` to overwrite an existing raw key or stored passphrase; doing so deletes all saved sessions and identity material because it can no longer be decrypted.
 
 ---
 

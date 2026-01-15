@@ -275,7 +275,8 @@ impl WorkflowActions {
                     tokio::select! {
                         maybe_page = next_page.recv() => {
                             let events = match maybe_page {
-                                Some(EventPage { events, .. }) => events,
+                                Some(Ok(EventPage { events, .. })) => events,
+                                Some(Err(e)) => return Err(NexusError::Channel(anyhow!("Error fetching events: {}", e))),
                                 None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
                             };
 
@@ -655,7 +656,7 @@ mod tests {
             .inspect_execution(
                 execution_object_id,
                 1,
-                Some(std::time::Duration::from_secs(1)),
+                Some(std::time::Duration::from_secs(3)),
             )
             .await
             .expect("Failed to setup channel");

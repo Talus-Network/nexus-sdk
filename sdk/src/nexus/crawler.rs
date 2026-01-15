@@ -221,6 +221,70 @@ impl Crawler {
             .collect())
     }
 
+    /// Fetch all items in a `TableVec<T>` and return them as a `Vec<T>`.
+    pub async fn get_table_vec<T>(&self, parent: &TableVec<T>) -> anyhow::Result<Vec<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let expected_size = parent.size();
+        if expected_size == 0 {
+            return Ok(vec![]);
+        }
+
+        let names_and_ids = self
+            .fetch_dynamic_fields::<u64>(parent.id(), expected_size)
+            .await?;
+
+        let mut index_by_field_id = HashMap::with_capacity(names_and_ids.len());
+        let mut field_ids = Vec::with_capacity(names_and_ids.len());
+
+        for (name, _child_id, field_id) in names_and_ids {
+            let Some(field_id) = field_id else {
+                bail!("Dynamic field ID missing for TableVec");
+            };
+
+            let index = usize::try_from(name).unwrap_or(usize::MAX);
+            if index >= expected_size {
+                bail!("TableVec index out of bounds: {index} >= {expected_size}");
+            }
+
+            if index_by_field_id.insert(field_id, index).is_some() {
+                bail!("Duplicate dynamic field ID '{field_id}' for TableVec");
+            }
+
+            field_ids.push(field_id);
+        }
+
+        let field_objects = self.get_objects::<DynamicValue<T>>(&field_ids).await?;
+
+        let mut values_by_index: Vec<Option<T>> = std::iter::repeat_with(|| None)
+            .take(expected_size)
+            .collect();
+        for obj in field_objects {
+            let index = index_by_field_id
+                .get(&obj.object_id)
+                .copied()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Unexpected dynamic field ID '{}' for TableVec",
+                        obj.object_id
+                    )
+                })?;
+
+            if values_by_index[index].is_some() {
+                bail!("Duplicate TableVec element at index {index}");
+            }
+
+            values_by_index[index] = Some(obj.data.value.into_inner());
+        }
+
+        values_by_index
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| value.ok_or_else(|| anyhow!("Missing TableVec element {index}")))
+            .collect()
+    }
+
     /// Helper function to fetch an object based on its ID and field mask.
     async fn fetch_object(
         &self,
@@ -419,15 +483,71 @@ impl Crawler {
 /// Wrapper for `sui::bag::Bag` projection.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Bag {
-    pub id: sui::types::Address,
-    pub size: u64,
+    #[serde(flatten)]
+    inner: IdSize,
+}
+
+impl Bag {
+    pub fn new(id: sui::types::Address, size: u64) -> Self {
+        Self {
+            inner: IdSize { id, size },
+        }
+    }
+
+    pub fn id(&self) -> sui::types::Address {
+        self.inner.id
+    }
+
+    pub fn size_u64(&self) -> u64 {
+        self.inner.size
+    }
+
+    pub fn size(&self) -> usize {
+        self.inner.size()
+    }
 }
 
 /// Wrapper for `sui::object_bag::ObjectBag` projection.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObjectBag {
+    #[serde(flatten)]
+    inner: IdSize,
+}
+
+impl ObjectBag {
+    pub fn new(id: sui::types::Address, size: u64) -> Self {
+        Self {
+            inner: IdSize { id, size },
+        }
+    }
+
+    pub fn id(&self) -> sui::types::Address {
+        self.inner.id
+    }
+
+    pub fn size_u64(&self) -> u64 {
+        self.inner.size
+    }
+
+    pub fn size(&self) -> usize {
+        self.inner.size()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IdSize {
     pub id: sui::types::Address,
+    #[serde(
+        deserialize_with = "crate::types::deserialize_sui_u64",
+        serialize_with = "crate::types::serialize_sui_u64"
+    )]
     pub size: u64,
+}
+
+impl IdSize {
+    pub fn size(&self) -> usize {
+        usize::try_from(self.size).unwrap_or(0)
+    }
 }
 
 /// A generic response wrapper for fetched objects. Contains metadata such as
@@ -465,7 +585,7 @@ impl<T> Response<T> {
 
     // Get a Sui object ref.
     pub fn object_ref(&self) -> sui::types::ObjectReference {
-        sui::types::ObjectReference::new(self.object_id, self.version, self.digest)
+        sui::types::ObjectReference::new(self.object_id, self.get_initial_version(), self.digest)
     }
 }
 
@@ -609,21 +729,53 @@ where
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct Wrapper<K, V>
+        #[serde(untagged)]
+        enum Wrapper<K, V>
         where
             K: Eq + Hash,
         {
-            contents: Vec<Pair<K, V>>,
+            Pairs { contents: Vec<Pair<K, V>> },
+            Map { contents: HashMap<K, V> },
         }
 
-        let Wrapper { contents } = Wrapper::<K, V>::deserialize(deserializer)?;
+        match Wrapper::<K, V>::deserialize(deserializer)? {
+            Wrapper::Pairs { contents } => Ok(Self {
+                contents: contents
+                    .into_iter()
+                    .map(|Pair { key, value }| (key, value))
+                    .collect(),
+            }),
+            Wrapper::Map { contents } => Ok(Self { contents }),
+        }
+    }
+}
 
-        Ok(Self {
-            contents: contents
-                .into_iter()
-                .map(|Pair { key, value }| (key, value))
-                .collect(),
-        })
+/// Wrapper around `sui::table_vec::TableVec<T>`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TableVec<T> {
+    contents: IdSize,
+    #[serde(skip)]
+    _marker: PhantomData<T>,
+}
+
+impl<T> TableVec<T> {
+    pub fn new(id: sui::types::Address, size: u64) -> Self {
+        Self {
+            contents: IdSize { id, size },
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn id(&self) -> sui::types::Address {
+        self.contents.id
+    }
+
+    pub fn size_u64(&self) -> u64 {
+        self.contents.size
+    }
+
+    pub fn size(&self) -> usize {
+        self.contents.size()
     }
 }
 
@@ -638,6 +790,14 @@ pub struct DynamicMap<K, V> {
 }
 
 impl<K, V> DynamicMap<K, V> {
+    pub fn new(id: sui::types::Address, size: u64) -> Self {
+        Self {
+            id,
+            size: size.to_string(),
+            _marker: PhantomData,
+        }
+    }
+
     pub fn id(&self) -> sui::types::Address {
         self.id
     }
@@ -691,6 +851,11 @@ impl<V> ValueOrWrapper<V> {
             ValueOrWrapper::Wrapper { value } => value,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DynamicValue<V> {
+    value: ValueOrWrapper<V>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
