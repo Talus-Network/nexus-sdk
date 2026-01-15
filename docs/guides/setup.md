@@ -51,7 +51,7 @@ nexus --version
 ## Download the Nexus objects
 
 ```bash
-wget https://storage.googleapis.com/production-talus-sui-objects/v0.4.0/objects.devnet.toml
+wget -O ~/.nexus/objects.devnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.4.0/objects.devnet.toml
 ```
 
 ## Configure the Talus devnet
@@ -59,9 +59,10 @@ wget https://storage.googleapis.com/production-talus-sui-objects/v0.4.0/objects.
 Configure your Nexus CLI to connect to the Talus `devnet` by running:
 
 ```bash
-nexus conf set --sui.net devnet \
-  --sui.rpc-url https://rpc.ssfn.devnet.production.taluslabs.dev \
-  --nexus.objects objects.devnet.toml
+nexus conf set \
+  --sui.rpc-url https://grpc.ssfn.devnet.production.taluslabs.dev \
+  --sui.gql-url https://graphql.devnet.production.taluslabs.dev/graphql \
+  --nexus.objects ~/.nexus/objects.devnet.toml
 ```
 
 ### Configure the Sui client
@@ -94,6 +95,14 @@ sui client switch --address tally
 {% hint style="danger" %}
 This command will output your wallet details, including your address and recovery phrase. Ensure you store this information securely.
 {% endhint %}
+
+Import the newly created wallet to `nexus`:
+
+```bash
+PK=$(sui keytool export --key-identity tally --json | jq -er '.exportedPrivateKey')
+BASE64_PK=$(sui keytool convert "$PK" --json | jq -er '.base64WithFlag')
+nexus conf set --sui.pk "$BASE64_PK"
+```
 
 To request funds from the faucet, run the following command twice to get 2 gas coins:
 
