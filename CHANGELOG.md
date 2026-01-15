@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
+- add `--verbose` flag for debug log output
 
 ### `nexus-sdk`
 
