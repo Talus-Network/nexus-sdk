@@ -13,7 +13,7 @@ use {
 
 /// List tools available in the tool registry.
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
-    command_title!("Listing all available Neuxs tools");
+    command_title!("Listing all available Nexus tools");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
@@ -52,24 +52,22 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.data;
 
-        let (location, description, registered_at_ms, witness_id, input_schema) = match &tool {
+        let (location, description, registered_at_ms, witness_id, input_schema, output_schema) = match &tool {
             ToolVariant::OffChain(t) => (
                 ToolLocation::from(t.url.clone()),
                 t.description.clone(),
                 t.registered_at_ms,
                 None,
-                None,
+                t.input_schema.clone(),
+                t.output_schema.clone(),
             ),
             ToolVariant::OnChain(t) => (
-                ToolLocation::new_sui(&t.package_address, &t.module_name).map_err(|_| {
-                    NexusCliError::Any(anyhow!(
-                        "Invalid package address or module name in onchain tool"
-                    ))
-                })?,
+                ToolLocation::new_sui(&t.package_address, &t.module_name).map_err(|_| NexusCliError::Any(anyhow!("Invalid package address or module name in onchain tool")))?,
                 t.description.clone(),
                 t.registered_at_ms,
                 Some(t.witness_id.clone()),
-                Some(t.input_schema.clone()),
+                t.input_schema.clone(),
+                t.output_schema.clone(),
             ),
         };
 
@@ -91,9 +89,9 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         if let Some(wid) = &witness_id {
             tool_json["witness_id"] = json!(wid);
         }
-        if let Some(schema) = &input_schema {
-            tool_json["input_schema"] = json!(schema);
-        }
+
+        tool_json["input_schema"] = json!(input_schema);
+        tool_json["output_schema"] = json!(output_schema);
 
         tools_json.push(tool_json);
 
@@ -130,6 +128,10 @@ struct OffChainTool {
     url: reqwest::Url,
     #[serde(deserialize_with = "deserialize_bytes_to_string")]
     description: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    input_schema: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    output_schema: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,
 }
@@ -143,6 +145,8 @@ struct OnChainTool {
     description: String,
     #[serde(deserialize_with = "deserialize_bytes_to_string")]
     input_schema: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    output_schema: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,
 }
