@@ -94,7 +94,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         if location.is_onchain() {
             tool_json["package_address"] = json!(location.package_address().unwrap().to_string());
             tool_json["module_name"] = json!(location.module_name().unwrap().to_string());
-            tool_json["witness_id"] = json!(witness_id.to_string());
+            tool_json["witness_id"] = json!(location.witness_id().unwrap().to_string());
         }
 
         tool_json["input_schema"] = json!(input_schema);
