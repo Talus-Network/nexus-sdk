@@ -9,8 +9,32 @@ use {
     serde_json::{json, Value},
 };
 
-/// Convert a Sui Move normalized type to a JSON schema representation.
+/// Convert a Sui Move signature (which includes reference info) to a JSON schema representation.
 ///
+/// This function handles the full `OpenSignature` type which includes both the type body
+/// and reference information (mutable vs immutable). Use this for function parameters.
+pub fn convert_move_signature_to_schema(signature: &sui::grpc::OpenSignature) -> AnyResult<Value> {
+    let body = signature
+        .body
+        .as_ref()
+        .ok_or_else(|| anyhow!("OpenSignature missing body"))?;
+
+    let mut schema = convert_move_type_to_schema(body)?;
+
+    // Add mutable field if this is a mutable reference.
+    // This works since we default to "false" for mutability in the leader when
+    // creating the tx objects.
+    //
+    // Reference enum: Unknown = 0, Immutable = 1, Mutable = 2.
+    if signature.reference == Some(sui::grpc::open_signature::Reference::Mutable as i32) {
+        if let Value::Object(ref mut obj) = schema {
+            obj.insert("mutable".to_string(), Value::Bool(true));
+        }
+    }
+
+    Ok(schema)
+}
+
 /// This function introspects Move types and generates corresponding JSON schema
 /// representations that can be used for tool registration and validation.
 pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> AnyResult<Value> {
@@ -156,6 +180,17 @@ mod tests {
         sui::grpc::OpenSignatureBody::default()
             .with_type(Type::Vector)
             .with_type_parameter_instantiation(vec![inner])
+    }
+
+    fn make_signature(
+        body: sui::grpc::OpenSignatureBody,
+        reference: Option<sui::grpc::open_signature::Reference>,
+    ) -> sui::grpc::OpenSignature {
+        let sig = sui::grpc::OpenSignature::default().with_body(body);
+        match reference {
+            Some(r) => sig.with_reference(r),
+            None => sig,
+        }
     }
 
     #[test]
@@ -365,5 +400,51 @@ mod tests {
                 "Schema missing 'description' field"
             );
         }
+    }
+
+    #[test]
+    fn test_signature_mutable_reference() {
+        // Mutable reference to an object.
+        let body = make_struct("0x2", "coin", "Coin");
+        let sig = make_signature(body, Some(sui::grpc::open_signature::Reference::Mutable));
+        let schema = convert_move_signature_to_schema(&sig).unwrap();
+
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["mutable"], true);
+    }
+
+    #[test]
+    fn test_signature_immutable_reference() {
+        // Immutable reference to an object.
+        let body = make_struct("0x2", "coin", "Coin");
+        let sig = make_signature(body, Some(sui::grpc::open_signature::Reference::Immutable));
+        let schema = convert_move_signature_to_schema(&sig).unwrap();
+
+        assert_eq!(schema["type"], "object");
+        // No mutable field for immutable references.
+        assert!(schema.get("mutable").is_none());
+    }
+
+    #[test]
+    fn test_signature_no_reference() {
+        // Value type (no reference).
+        let body = make_prim(Type::U64);
+        let sig = make_signature(body, None);
+        let schema = convert_move_signature_to_schema(&sig).unwrap();
+
+        assert_eq!(schema["type"], "u64");
+        // No mutable field for value types.
+        assert!(schema.get("mutable").is_none());
+    }
+
+    #[test]
+    fn test_signature_mutable_primitive() {
+        // Mutable reference to a primitive (edge case).
+        let body = make_prim(Type::Bool);
+        let sig = make_signature(body, Some(sui::grpc::open_signature::Reference::Mutable));
+        let schema = convert_move_signature_to_schema(&sig).unwrap();
+
+        assert_eq!(schema["type"], "bool");
+        assert_eq!(schema["mutable"], true);
     }
 }

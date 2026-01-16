@@ -20,13 +20,13 @@ Set of commands for managing Tools.
 
 ---
 
-**`nexus tool new <name> --template <template>`**
+**`nexus tool new --name <name> --template <template>`**
 
 Create a new Tool scaffolding in a folder called `<name>`. Which files are generated is determined by the `--template` flag. I propose having `templates/tools/<template>.template` files that contain the Tool skeleton files. For example for `rust` it'd be a `Cargo.toml` with the `nexus-toolkit` dependency, and a `src/main.rs` file that shows a basic use case of the crate.
 
 ---
 
-**`nexus tool validate --off-chain <url>`**
+**`nexus tool validate off-chain --url <url>`**
 
 Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
 
@@ -42,7 +42,7 @@ This command should also check that the URL is accessible by the Leader node. It
 
 ---
 
-**`nexus tool validate --on-chain <ident>`**
+**`nexus tool validate on-chain --ident <ident>`**
 
 {% hint style="warning" %}
 The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.
@@ -50,7 +50,7 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
+**`nexus tool register offchain --url <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
@@ -70,7 +70,7 @@ Tool registration is currently restricted during the beta phase. To register you
 
 ---
 
-**`nexus tool register --on-chain <ident>`**
+**`nexus tool register on-chain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --witness-id <OBJECT_ID>`**
 
 {% hint style="warning" %}
 The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.

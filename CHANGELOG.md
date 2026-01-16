@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
+- `ToolRef` to combine offchain url and onchain move module id
+- add `--verbose` flag for debug log output
 
 ### `nexus-sdk`
 
@@ -23,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - leader and crypto caps in PTB templates are now party objects
 - added `ToolRegistryCreated` as tracked event
 - combined some functions in tool_registry.move
+- set Rust toolchain back to `stable`
 
 ## [`0.4.0`] - 2026-01-07
 
