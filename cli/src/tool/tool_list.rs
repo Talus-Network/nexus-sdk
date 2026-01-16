@@ -61,14 +61,11 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
                 None,
             ),
             ToolVariant::OnChain(t) => (
-                // Parse package address and create Sui location.
-                ToolLocation::new_sui(
-                    t.package_address
-                        .parse()
-                        .unwrap_or_else(|_| sui::types::Address::ZERO),
-                    sui::types::Identifier::new(&t.module_name)
-                        .unwrap_or_else(|_| sui::types::Identifier::from_static("unknown")),
-                ),
+                ToolLocation::new_sui(&t.package_address, &t.module_name).map_err(|_| {
+                    NexusCliError::Any(anyhow!(
+                        "Invalid package address or module name in onchain tool"
+                    ))
+                })?,
                 t.description.clone(),
                 t.registered_at_ms,
                 Some(t.witness_id.clone()),

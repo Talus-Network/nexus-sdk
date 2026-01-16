@@ -46,8 +46,10 @@ impl ToolLocation {
     }
 
     /// Creates a new onchain tool location from package address and module name.
-    pub fn new_sui(package: sui::types::Address, module: sui::types::Identifier) -> Self {
-        Self::Sui { package, module }
+    pub fn new_sui(package: &str, module: &str) -> Result<Self, anyhow::Error> {
+        let package = package.parse()?;
+        let module = sui::types::Identifier::new(module)?;
+        Ok(Self::Sui { package, module })
     }
 
     /// Returns true if this is an offchain (HTTP) tool location.
@@ -284,13 +286,49 @@ mod tests {
         let http_location = ToolLocation::new_http("https://example.com/tool".parse().unwrap());
         assert!(http_location.is_offchain());
 
-        let addr = sui::types::Address::from_str(
+        let sui_location = ToolLocation::new_sui(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
+            "my_module",
         )
         .unwrap();
-        let module = sui::types::Identifier::from_static("my_module");
-        let sui_location = ToolLocation::new_sui(addr, module.clone());
         assert!(sui_location.is_onchain());
-        assert_eq!(sui_location.module_name().unwrap(), &module);
+        assert_eq!(
+            sui_location.module_name().unwrap(),
+            &sui::types::Identifier::from_static("my_module")
+        );
+    }
+
+    #[test]
+    fn test_new_sui_success() {
+        let location = ToolLocation::new_sui(
+            "0x0000000000000000000000000000000000000000000000000000000000001234",
+            "my_module",
+        )
+        .unwrap();
+
+        assert!(location.is_onchain());
+        assert_eq!(
+            location.package_address().unwrap().to_string(),
+            "0x0000000000000000000000000000000000000000000000000000000000001234"
+        );
+        assert_eq!(
+            location.module_name().unwrap(),
+            &sui::types::Identifier::from_static("my_module")
+        );
+    }
+
+    #[test]
+    fn test_new_sui_invalid_address() {
+        let result = ToolLocation::new_sui("invalid_address", "my_module");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_sui_invalid_module() {
+        let result = ToolLocation::new_sui(
+            "0x0000000000000000000000000000000000000000000000000000000000001234",
+            "invalid-module-name",
+        );
+        assert!(result.is_err());
     }
 }
