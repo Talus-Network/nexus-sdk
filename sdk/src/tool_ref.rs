@@ -177,9 +177,7 @@ impl<'de> Deserialize<'de> for ToolRef {
         D: serde::Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let reference = value
-            .parse::<ToolRef>()
-            .map_err(serde::de::Error::custom)?;
+        let reference = value.parse::<ToolRef>().map_err(serde::de::Error::custom)?;
 
         Ok(reference)
     }
