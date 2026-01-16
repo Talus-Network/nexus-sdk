@@ -83,7 +83,7 @@ async fn main() {
 
     env_logger::builder()
         .filter(None, cli.verbose.log_level_filter())
-        .build();
+        .init();
 
     JSON_MODE.store(cli.json, Ordering::Relaxed);
 
