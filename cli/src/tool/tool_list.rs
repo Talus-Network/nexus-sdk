@@ -52,20 +52,24 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     for (fqn, tool) in tools {
         let tool = tool.data;
 
-        let (location, description, registered_at_ms, witness_id, input_schema, output_schema) = match &tool {
+        let (location, description, registered_at_ms, input_schema, output_schema) = match &tool {
             ToolVariant::OffChain(t) => (
                 ToolLocation::from(t.url.clone()),
                 t.description.clone(),
                 t.registered_at_ms,
-                None,
                 t.input_schema.clone(),
                 t.output_schema.clone(),
             ),
             ToolVariant::OnChain(t) => (
-                ToolLocation::new_sui(&t.package_address, &t.module_name).map_err(|_| NexusCliError::Any(anyhow!("Invalid package address or module name in onchain tool")))?,
+                ToolLocation::new_sui(&t.package_address, &t.module_name, &t.witness_id).map_err(
+                    |_| {
+                        NexusCliError::Any(anyhow!(
+                            "Invalid package address, module name, or witness ID in onchain tool"
+                        ))
+                    },
+                )?,
                 t.description.clone(),
                 t.registered_at_ms,
-                Some(t.witness_id.clone()),
                 t.input_schema.clone(),
                 t.output_schema.clone(),
             ),
@@ -86,8 +90,11 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             "description": description,
         });
 
-        if let Some(wid) = &witness_id {
-            tool_json["witness_id"] = json!(wid);
+        // A bit redundant, but for sake of clarity.
+        if location.is_onchain() {
+            tool_json["package_address"] = json!(location.package_address().unwrap().to_string());
+            tool_json["module_name"] = json!(location.module_name().unwrap().to_string());
+            tool_json["witness_id"] = json!(witness_id.to_string());
         }
 
         tool_json["input_schema"] = json!(input_schema);

@@ -13,7 +13,7 @@ use {
 /// # String Representations
 ///
 /// - Offchain: `https://example.com/my-tool`
-/// - Onchain: `0xabc123::my_module` (address::module format)
+/// - Onchain: `0xabc123::my_module@0xwitness` (address::module@witness format)
 ///
 /// # Examples
 ///
@@ -23,19 +23,21 @@ use {
 /// assert!(offchain.is_offchain());
 ///
 /// // Parse an onchain tool location.
-/// let onchain: ToolLocation = "0x1234::my_module".parse().unwrap();
+/// let onchain: ToolLocation = "0x1234::my_module@0x5678".parse().unwrap();
 /// assert!(onchain.is_onchain());
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ToolLocation {
     /// HTTP(S) endpoint for offchain tools.
     Http(reqwest::Url),
-    /// Sui module for onchain tools (package::module format).
+    /// Sui module for onchain tools (package::module@witness format).
     Sui {
         /// The package address containing the tool module.
         package: sui::types::Address,
         /// The module name within the package.
         module: sui::types::Identifier,
+        /// The witness ID for the onchain tool.
+        witness_id: sui::types::Address,
     },
 }
 
@@ -45,11 +47,16 @@ impl ToolLocation {
         Self::Http(url)
     }
 
-    /// Creates a new onchain tool location from package address and module name.
-    pub fn new_sui(package: &str, module: &str) -> Result<Self, anyhow::Error> {
+    /// Creates a new onchain tool location from package address, module name, and witness ID.
+    pub fn new_sui(package: &str, module: &str, witness_id: &str) -> Result<Self, anyhow::Error> {
         let package = package.parse()?;
         let module = sui::types::Identifier::new(module)?;
-        Ok(Self::Sui { package, module })
+        let witness_id = witness_id.parse()?;
+        Ok(Self::Sui {
+            package,
+            module,
+            witness_id,
+        })
     }
 
     /// Returns true if this is an offchain (HTTP) tool location.
@@ -85,6 +92,14 @@ impl ToolLocation {
             Self::Sui { module, .. } => Ok(module),
         }
     }
+
+    /// Returns the witness ID if this is an onchain tool location.
+    pub fn witness_id(&self) -> Result<sui::types::Address, anyhow::Error> {
+        match self {
+            Self::Http(_) => anyhow::bail!("Witness ID is not available for offchain tools"),
+            Self::Sui { witness_id, .. } => Ok(*witness_id),
+        }
+    }
 }
 
 impl FromStr for ToolLocation {
@@ -94,7 +109,7 @@ impl FromStr for ToolLocation {
     ///
     /// The format is auto-detected:
     /// - If it starts with `http://` or `https://`, it's parsed as an HTTP URL.
-    /// - Otherwise, it's parsed as a Sui module ID (`package_address::module_name`).
+    /// - Otherwise, it's parsed as a Sui module ID (`package_address::module_name@witness_id`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Check if it looks like an HTTP URL.
         if s.starts_with("http://") || s.starts_with("https://") {
@@ -102,18 +117,35 @@ impl FromStr for ToolLocation {
             return Ok(Self::Http(url));
         }
 
-        // Otherwise, try to parse as a Sui module ID (address::module).
+        // Otherwise, try to parse as a Sui module ID (address::module@witness).
         let parts: Vec<&str> = s.splitn(2, "::").collect();
         if parts.len() != 2 {
-            anyhow::bail!("Invalid tool location format: expected 'address::module', got '{s}'");
+            anyhow::bail!(
+                "Invalid tool location format: expected 'address::module@witness', got '{s}'"
+            );
         }
 
         let package = sui::types::Address::from_str(parts[0])
             .map_err(|e| anyhow::anyhow!("Invalid package address: {e}"))?;
-        let module = sui::types::Identifier::from_str(parts[1])
-            .map_err(|e| anyhow::anyhow!("Invalid module identifier: {e}"))?;
 
-        Ok(Self::Sui { package, module })
+        // Split the module part to extract module name and witness ID.
+        let module_witness: Vec<&str> = parts[1].splitn(2, '@').collect();
+        if module_witness.len() != 2 {
+            anyhow::bail!(
+                "Invalid tool location format: expected 'address::module@witness', got '{s}'"
+            );
+        }
+
+        let module = sui::types::Identifier::from_str(module_witness[0])
+            .map_err(|e| anyhow::anyhow!("Invalid module identifier: {e}"))?;
+        let witness_id = sui::types::Address::from_str(module_witness[1])
+            .map_err(|e| anyhow::anyhow!("Invalid witness ID: {e}"))?;
+
+        Ok(Self::Sui {
+            package,
+            module,
+            witness_id,
+        })
     }
 }
 
@@ -121,7 +153,11 @@ impl std::fmt::Display for ToolLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Http(url) => write!(f, "{}", url),
-            Self::Sui { package, module } => write!(f, "{}::{}", package, module),
+            Self::Sui {
+                package,
+                module,
+                witness_id,
+            } => write!(f, "{}::{}@{}", package, module, witness_id),
         }
     }
 }
@@ -172,6 +208,7 @@ mod tests {
         );
         assert!(location.package_address().is_err());
         assert!(location.module_name().is_err());
+        assert!(location.witness_id().is_err());
     }
 
     #[test]
@@ -188,7 +225,7 @@ mod tests {
     #[test]
     fn test_parse_sui_module_id() {
         let location: ToolLocation =
-            "0x0000000000000000000000000000000000000000000000000000000000001234::my_module"
+            "0x0000000000000000000000000000000000000000000000000000000000001234::my_module@0x0000000000000000000000000000000000000000000000000000000000005678"
                 .parse()
                 .unwrap();
 
@@ -200,18 +237,23 @@ mod tests {
             location.module_name().unwrap(),
             &sui::types::Identifier::from_static("my_module")
         );
+        assert_eq!(
+            location.witness_id().unwrap().to_string(),
+            "0x0000000000000000000000000000000000000000000000000000000000005678"
+        );
     }
 
     #[test]
     fn test_parse_short_sui_address() {
         // Short addresses are expanded by the Sui SDK.
-        let location: ToolLocation = "0x1::module".parse().unwrap();
+        let location: ToolLocation = "0x1::module@0x2".parse().unwrap();
 
         assert!(location.is_onchain());
         assert_eq!(
             location.module_name().unwrap(),
             &sui::types::Identifier::from_static("module")
         );
+        assert!(location.witness_id().is_ok());
     }
 
     #[test]
@@ -223,18 +265,23 @@ mod tests {
 
     #[test]
     fn test_display_sui() {
-        let addr = sui::types::Address::from_str(
+        let package = sui::types::Address::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
         )
         .unwrap();
+        let witness_id = sui::types::Address::from_str(
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
+        )
+        .unwrap();
         let location = ToolLocation::Sui {
-            package: addr,
+            package,
             module: sui::types::Identifier::from_static("my_module"),
+            witness_id,
         };
 
         assert_eq!(
             location.to_string(),
-            "0x0000000000000000000000000000000000000000000000000000000000001234::my_module"
+            "0x0000000000000000000000000000000000000000000000000000000000001234::my_module@0x0000000000000000000000000000000000000000000000000000000000005678"
         );
     }
 
@@ -251,13 +298,18 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_sui() {
-        let addr = sui::types::Address::from_str(
+        let package = sui::types::Address::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
         )
         .unwrap();
+        let witness_id = sui::types::Address::from_str(
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
+        )
+        .unwrap();
         let location = ToolLocation::Sui {
-            package: addr,
+            package,
             module: sui::types::Identifier::from_static("my_module"),
+            witness_id,
         };
 
         let serialized = serde_json::to_string(&location).unwrap();
@@ -289,6 +341,7 @@ mod tests {
         let sui_location = ToolLocation::new_sui(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
             "my_module",
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
         )
         .unwrap();
         assert!(sui_location.is_onchain());
@@ -296,6 +349,7 @@ mod tests {
             sui_location.module_name().unwrap(),
             &sui::types::Identifier::from_static("my_module")
         );
+        assert!(sui_location.witness_id().is_ok());
     }
 
     #[test]
@@ -303,6 +357,7 @@ mod tests {
         let location = ToolLocation::new_sui(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
             "my_module",
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
         )
         .unwrap();
 
@@ -315,11 +370,19 @@ mod tests {
             location.module_name().unwrap(),
             &sui::types::Identifier::from_static("my_module")
         );
+        assert_eq!(
+            location.witness_id().unwrap().to_string(),
+            "0x0000000000000000000000000000000000000000000000000000000000005678"
+        );
     }
 
     #[test]
     fn test_new_sui_invalid_address() {
-        let result = ToolLocation::new_sui("invalid_address", "my_module");
+        let result = ToolLocation::new_sui(
+            "invalid_address",
+            "my_module",
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
+        );
         assert!(result.is_err());
     }
 
@@ -328,7 +391,27 @@ mod tests {
         let result = ToolLocation::new_sui(
             "0x0000000000000000000000000000000000000000000000000000000000001234",
             "invalid-module-name",
+            "0x0000000000000000000000000000000000000000000000000000000000005678",
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_sui_invalid_witness() {
+        let result = ToolLocation::new_sui(
+            "0x0000000000000000000000000000000000000000000000000000000000001234",
+            "my_module",
+            "invalid_witness",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_sui_missing_witness() {
+        // Should fail because witness_id is missing.
+        let result =
+            "0x0000000000000000000000000000000000000000000000000000000000001234::my_module"
+                .parse::<ToolLocation>();
+        assert_matches!(result, Err(e) if e.to_string().contains("Invalid tool location format"));
     }
 }
