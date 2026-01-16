@@ -19,9 +19,9 @@ default = ["tool_fqn"]
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
 
-# Tool Location feature enables the use of the `ToolLocation` enum for unified
-# tool location representation (HTTP URL or Sui module ID).
-tool_location = ["sui_types", "reqwest"]
+# Tool Ref feature enables the use of the `ToolRef` enum for unified
+# tool reference representation (HTTP URL or Sui module ID and witness).
+tool_ref = ["sui_types", "reqwest"]
 
 # Crypto feature enables cryptographic primitives
 crypto = [
