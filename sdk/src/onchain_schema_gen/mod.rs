@@ -10,5 +10,5 @@ mod types;
 pub use {
     input::generate_input_schema,
     output::generate_output_schema,
-    types::{convert_move_type_to_schema, is_tx_context_param},
+    types::{convert_move_signature_to_schema, convert_move_type_to_schema, is_tx_context_param},
 };
