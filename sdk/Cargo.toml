@@ -89,7 +89,7 @@ test_utils = [
 # Enable all features apart from `test_utils`.
 full = [
     "tool_fqn",
-    "tool_location",
+    "tool_ref",
     "crypto",
     "secret_core",
     "sui_types",
