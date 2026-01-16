@@ -14,16 +14,20 @@ categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
+bytes = "1"
+ed25519-dalek = "2"
 reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
+hex.workspace = true
 warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
 # === Nexus deps ===
-nexus-sdk.workspace = true
+nexus-sdk = { workspace = true, features = ["signed_http"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12.14", features = ["json"] }

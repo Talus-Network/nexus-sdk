@@ -2,7 +2,7 @@
 
 use {
     anyhow::Result as AnyResult,
-    nexus_sdk::ToolFqn,
+    nexus_sdk::{signed_http::v1::VerifiedInvokeRequestV1, ToolFqn},
     reqwest::Url,
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
@@ -10,6 +10,38 @@ use {
     std::future::Future,
     warp::http::StatusCode,
 };
+
+/// Authenticated request context available to tools when signed HTTP is enabled.
+///
+/// This context is produced by the toolkit runtime after it has:
+/// - verified the Leader's signature on the invocation request, and
+/// - verified the request freshness window (`iat_ms`/`exp_ms`), and
+/// - verified the request body hash, method/path/query binding, and tool id.
+///
+/// Tools can use this context inside [`NexusTool::authorize`] to implement their own
+/// admission policy (allowlists, task gating, rate-limits, etc) without any on-chain reads.
+#[derive(Clone, Debug)]
+pub struct AuthContext {
+    /// Parsed signed request claims.
+    pub claims: nexus_sdk::signed_http::v1::InvokeRequestClaimsV1,
+    /// The Leader public key bytes that successfully verified the request signature.
+    pub leader_public_key: [u8; 32],
+    /// `sha256(sig_input_bytes)` for the request signature envelope.
+    ///
+    /// This is useful if you want to correlate logs with the response binding
+    /// (`req_sig_input_sha256`) that the runtime signs in responses.
+    pub request_sig_input_sha256: [u8; 32],
+}
+
+impl AuthContext {
+    pub(crate) fn from_verified(verified: &VerifiedInvokeRequestV1) -> Self {
+        Self {
+            claims: verified.claims.clone(),
+            leader_public_key: verified.leader_public_key,
+            request_sig_input_sha256: verified.sig_input_sha256,
+        }
+    }
+}
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
@@ -52,6 +84,70 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// It is used to generate the `/invoke` endpoint.
     fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+
+    /// Authorize an invocation after it has been authenticated via signed HTTP.
+    ///
+    /// This is an optional ergonomic hook for tool developers to implement their
+    /// own admission policy (allowlists, rate-limits, task gating, etc).
+    ///
+    /// Default: allow.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use {
+    ///     nexus_sdk::{fqn, ToolFqn},
+    ///     nexus_toolkit::{AnyResult, AuthContext, NexusTool},
+    ///     schemars::JsonSchema,
+    ///     serde::{Deserialize, Serialize},
+    ///     warp::http::StatusCode,
+    /// };
+    ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Input {
+    ///     prompt: String,
+    /// }
+    ///
+    /// #[derive(Serialize, JsonSchema)]
+    /// enum Output {
+    ///     Ok { message: String },
+    /// }
+    ///
+    /// struct MyTool;
+    ///
+    /// impl NexusTool for MyTool {
+    ///     type Input = Input;
+    ///     type Output = Output;
+    ///
+    ///     fn fqn() -> ToolFqn {
+    ///         fqn!("example.my.tool@1")
+    ///     }
+    ///
+    ///     async fn new() -> Self {
+    ///         Self
+    ///     }
+    ///
+    ///     fn authorize(&self, ctx: AuthContext) -> impl std::future::Future<Output = AnyResult<()>> + Send {
+    ///         async move {
+    ///             // Example policy: only allow a specific LeaderId.
+    ///             if ctx.claims.leader_id != "0x1111" {
+    ///                 anyhow::bail!("leader not allowed");
+    ///             }
+    ///             Ok(())
+    ///         }
+    ///     }
+    ///
+    ///     async fn invoke(&self, input: Self::Input) -> Self::Output {
+    ///         Output::Ok { message: input.prompt }
+    ///     }
+    ///
+    ///     async fn health(&self) -> AnyResult<StatusCode> {
+    ///         Ok(StatusCode::OK)
+    ///     }
+    /// }
+    /// ```
+    fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
+        async { Ok(()) }
+    }
     /// Returns the health status of the tool. For now, this only returns an
     /// HTTP status code.
     ///
