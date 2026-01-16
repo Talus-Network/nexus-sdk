@@ -61,26 +61,26 @@ impl ToolLocation {
     }
 
     /// Returns the URL if this is an offchain tool location.
-    pub fn url(&self) -> Option<&reqwest::Url> {
+    pub fn url(&self) -> Result<&reqwest::Url, anyhow::Error> {
         match self {
-            Self::Http(url) => Some(url),
-            Self::Sui { .. } => None,
+            Self::Http(url) => Ok(url),
+            Self::Sui { .. } => anyhow::bail!("URL is not available for onchain tools"),
         }
     }
 
     /// Returns the package address if this is an onchain tool location.
-    pub fn package_address(&self) -> Option<sui::types::Address> {
+    pub fn package_address(&self) -> Result<sui::types::Address, anyhow::Error> {
         match self {
-            Self::Http(_) => None,
-            Self::Sui { package, .. } => Some(*package),
+            Self::Http(_) => anyhow::bail!("Package address is not available for offchain tools"),
+            Self::Sui { package, .. } => Ok(*package),
         }
     }
 
     /// Returns the module name if this is an onchain tool location.
-    pub fn module_name(&self) -> Option<&sui::types::Identifier> {
+    pub fn module_name(&self) -> Result<&sui::types::Identifier, anyhow::Error> {
         match self {
-            Self::Http(_) => None,
-            Self::Sui { module, .. } => Some(module),
+            Self::Http(_) => anyhow::bail!("Module name is not available for offchain tools"),
+            Self::Sui { module, .. } => Ok(module),
         }
     }
 }
@@ -168,8 +168,8 @@ mod tests {
             location.url().unwrap().as_str(),
             "https://example.com/my-tool"
         );
-        assert!(location.package_address().is_none());
-        assert!(location.module_name().is_none());
+        assert!(location.package_address().is_err());
+        assert!(location.module_name().is_err());
     }
 
     #[test]
@@ -192,11 +192,11 @@ mod tests {
 
         assert!(location.is_onchain());
         assert!(!location.is_offchain());
-        assert!(location.url().is_none());
-        assert!(location.package_address().is_some());
+        assert!(location.url().is_err());
+        assert!(location.package_address().is_ok());
         assert_eq!(
-            location.module_name(),
-            Some(&sui::types::Identifier::from_static("my_module"))
+            location.module_name().unwrap(),
+            &sui::types::Identifier::from_static("my_module")
         );
     }
 
@@ -207,8 +207,8 @@ mod tests {
 
         assert!(location.is_onchain());
         assert_eq!(
-            location.module_name(),
-            Some(&sui::types::Identifier::from_static("module"))
+            location.module_name().unwrap(),
+            &sui::types::Identifier::from_static("module")
         );
     }
 
@@ -276,7 +276,7 @@ mod tests {
         let location = ToolLocation::from(url.clone());
 
         assert!(location.is_offchain());
-        assert_eq!(location.url(), Some(&url));
+        assert_eq!(location.url().unwrap(), &url);
     }
 
     #[test]
@@ -291,6 +291,6 @@ mod tests {
         let module = sui::types::Identifier::from_static("my_module");
         let sui_location = ToolLocation::new_sui(addr, module.clone());
         assert!(sui_location.is_onchain());
-        assert_eq!(sui_location.module_name(), Some(&module));
+        assert_eq!(sui_location.module_name().unwrap(), &module);
     }
 }
