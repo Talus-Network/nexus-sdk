@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
   - `nexus scheduler occurrence add`
   - `nexus scheduler periodic set` / `disable`
+- `ToolLocation` to combine offchain url and onchain move module id
 
 ### `nexus-sdk`
 
@@ -45,7 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - support for `scheduler` transactions and events
 - onchain schema generation
-- `ToolLocation` to combine offchain url and onchain movemoduleid
 - `EventFetcher` under `nexus` module to fetch events from Sui GraphQL
 
 #### Changed
