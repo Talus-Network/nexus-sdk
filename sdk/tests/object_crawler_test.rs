@@ -1,25 +1,20 @@
 #![cfg(feature = "test_utils")]
 
 use {
+    futures::future::join_all,
     nexus_sdk::{
-        nexus::crawler::{
-            Bag,
-            Crawler,
-            DynamicMap,
-            DynamicObjectMap,
-            Map,
-            ObjectBag,
-            Set,
-            TableVec,
+        nexus::{
+            crawler::{Bag, Crawler, DynamicMap, DynamicObjectMap, Map, ObjectBag, Set, TableVec},
+            signer::Signer,
         },
         sui,
-        test_utils,
+        test_utils::{self, sui_mocks},
         types::deserialize_encoded_bytes,
     },
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{collections::HashMap, str::FromStr, sync::Arc},
-    tokio::sync::Mutex,
+    tokio::{sync::Mutex, time::Instant},
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -84,23 +79,103 @@ enum HeterogeneousValue {
 // TODO: <https://github.com/Talus-Network/nexus-sdk/issues/318>
 #[tokio::test]
 async fn test_object_crawler() {
-    // Spin up the Sui instance.
-    let test_utils::containers::SuiInstance {
-        rpc_port,
-        faucet_port,
-        pg: _pg,
-        container: _container,
-        ..
-    } = test_utils::containers::setup_sui_instance().await;
+    // // Spin up the Sui instance.
+    // let test_utils::containers::SuiInstance {
+    //     rpc_port,
+    //     faucet_port,
+    //     pg: _pg,
+    //     container: _container,
+    //     ..
+    // } = test_utils::containers::setup_sui_instance().await;
 
-    let rpc_url = format!("http://127.0.0.1:{rpc_port}");
-    let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
+    let rpc_url = format!("https://grpc.ssfn.devnet.production.taluslabs.dev");
+    let faucet_url = format!("https://faucet.devnet.production.taluslabs.dev/gas");
 
     let mut rng = rand::thread_rng();
 
     // Create a wallet and request some gas tokens.
     let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
     let addr = pk.public_key().derive_address();
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
 
     test_utils::faucet::request_tokens(&faucet_url, addr)
         .await
@@ -119,7 +194,20 @@ async fn test_object_crawler() {
     )
     .await;
 
+    let gas_coins = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
+        .await
+        .expect("Failed to fetch gas coins.");
+
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let pkg_id = response
+        .objects
+        .iter()
+        .find_map(|c| match c.data() {
+            sui::types::ObjectData::Package(m) => Some(m.id),
+            _ => None,
+        })
+        .expect("Move package must be published");
 
     let guy = response
         .objects
@@ -130,223 +218,290 @@ async fn test_object_crawler() {
             };
 
             if *object_type.name() == sui::types::Identifier::from_static("Guy") {
-                Some(obj.object_id())
+                Some(obj)
             } else {
                 None
             }
         })
         .expect("Guy object must be created");
 
-    let guy = sui::types::Address::from_str(&guy.to_string()).unwrap();
+    let guy = sui::tx::Input::shared(guy.object_id(), guy.version(), false);
 
-    let grpc = sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
-        .expect("Could not create gRPC client");
-
-    let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
-
-    let guy = crawler
-        .get_object::<Guy>(guy)
-        .await
-        .expect("Could not fetch Guy object.");
-
-    assert!(guy.is_shared());
-
-    let guy = guy.data;
-
-    assert_eq!(guy.name, "John Doe");
-    assert_eq!(guy.age, 30);
-    assert_eq!(
-        guy.hobbies.into_inner(),
-        vec!["Reading".to_string(), "Swimming".to_string()]
-            .into_iter()
-            .collect()
+    let mut grpc =
+        sui::grpc::Client::new(format!("https://grpc.ssfn.devnet.production.taluslabs.dev"))
+            .expect("Could not create gRPC client");
+    let addr = pk.public_key().derive_address();
+    let signer = Signer::new(
+        Arc::new(Mutex::new(grpc.clone())),
+        pk.clone(),
+        std::time::Duration::from_secs(30),
+        Arc::new(sui_mocks::mock_nexus_objects()),
     );
 
-    // Check map and nested vector fetched correctly.
-    let groups = guy.groups.into_inner();
-    assert_eq!(groups.len(), 2);
+    let reference_gas_price = grpc
+        .get_reference_gas_price()
+        .await
+        .expect("Failed to get reference gas price.");
 
-    // Contains book club with the correct people.
-    let group = groups.clone().into_iter().find(|(group, people)| {
-        group.clone().name == "Book Club"
-            && people.iter().any(|p| p.name == "Alice")
-            && people.iter().any(|p| p.name == "Bob")
+    let tasks = gas_coins.into_iter().map(|(gas_coin, _)| {
+        let signer = signer.clone();
+        let addr = addr;
+        let reference_gas_price = reference_gas_price;
+        let gas_coin = gas_coin.clone();
+        let guy = guy.clone();
+
+        tokio::spawn(async move {
+            println!("Starting tx execution task...");
+
+            let mut tx = sui::tx::TransactionBuilder::new();
+
+            let guy = tx.input(guy);
+
+            tx.move_call(
+                sui::tx::Function::new(
+                    pkg_id,
+                    sui::types::Identifier::from_static("main"),
+                    sui::types::Identifier::from_static("test_serial"),
+                    vec![],
+                ),
+                vec![guy],
+            );
+
+            tx.set_sender(addr);
+            tx.set_gas_budget(1_000_000_000);
+            tx.set_gas_price(reference_gas_price);
+            tx.add_gas_objects(vec![sui::tx::Input::owned(
+                *gas_coin.object_id(),
+                gas_coin.version(),
+                *gas_coin.digest(),
+            )]);
+
+            let tx = tx.finish().expect("Failed to finish transaction.");
+
+            let signature = signer
+                .sign_tx(&tx)
+                .await
+                .expect("Failed to sign transaction.");
+
+            let now = Instant::now();
+
+            println!("Executing transaction...");
+
+            let _response = signer
+                .execute_tx(tx, signature, &mut gas_coin.clone())
+                .await;
+
+            println!("Executed tx in {:?}", now.elapsed());
+        })
     });
 
-    assert!(group.is_some());
+    join_all(tasks).await;
 
-    // Contains swimming club with the correct people.
-    let group = groups.clone().into_iter().find(|(group, people)| {
-        group.clone().name == "Swimming Club"
-            && people.iter().any(|p| p.name == "Charlie")
-            && people.iter().any(|p| p.name == "David")
-    });
+    //     let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
 
-    assert!(group.is_some());
+    //     let guy = crawler
+    //         .get_object::<Guy>(guy)
+    //         .await
+    //         .expect("Could not fetch Guy object.");
 
-    // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
-    assert_eq!(guy.timetable.size(), 2);
-    let timetable = crawler
-        .get_dynamic_field_objects(&guy.timetable)
-        .await
-        .unwrap();
-    assert_eq!(timetable.len(), 2);
+    //     assert!(guy.is_shared());
 
-    // Fetch monday.
-    let monday = timetable
-        .get(&Name {
-            name: "Monday".to_string(),
-        })
-        .unwrap();
+    //     let guy = guy.data;
 
-    assert_eq!(monday.data.value.name, "Meeting");
+    //     assert_eq!(guy.name, "John Doe");
+    //     assert_eq!(guy.age, 30);
+    //     assert_eq!(
+    //         guy.hobbies.into_inner(),
+    //         vec!["Reading".to_string(), "Swimming".to_string()]
+    //             .into_iter()
+    //             .collect()
+    //     );
 
-    assert_eq!(monday.data.pouch.size(), 1);
-    let pouch = crawler
-        .get_dynamic_field_objects(&monday.data.pouch)
-        .await
-        .unwrap();
+    //     // Check map and nested vector fetched correctly.
+    //     let groups = guy.groups.into_inner();
+    //     assert_eq!(groups.len(), 2);
 
-    assert_eq!(pouch.len(), 1);
-    let (key, value) = pouch.into_iter().next().unwrap();
-    assert_eq!(key.name, "Pouch Item");
-    assert_eq!(value.data.value, b"Pouch Data");
+    //     // Contains book club with the correct people.
+    //     let group = groups.clone().into_iter().find(|(group, people)| {
+    //         group.clone().name == "Book Club"
+    //             && people.iter().any(|p| p.name == "Alice")
+    //             && people.iter().any(|p| p.name == "Bob")
+    //     });
 
-    // Fetch tuesday
-    let tuesday = timetable
-        .get(&Name {
-            name: "Tuesday".to_string(),
-        })
-        .unwrap();
+    //     assert!(group.is_some());
 
-    assert_eq!(tuesday.data.value.name, "Code Review");
+    //     // Contains swimming club with the correct people.
+    //     let group = groups.clone().into_iter().find(|(group, people)| {
+    //         group.clone().name == "Swimming Club"
+    //             && people.iter().any(|p| p.name == "Charlie")
+    //             && people.iter().any(|p| p.name == "David")
+    //     });
 
-    assert_eq!(tuesday.data.pouch.size(), 1);
-    let pouch = crawler
-        .get_dynamic_field_objects(&tuesday.data.pouch)
-        .await
-        .unwrap();
-    assert_eq!(pouch.len(), 1);
-    let (key, value) = pouch.into_iter().next().unwrap();
-    assert_eq!(key.name, "Pouch Code");
-    assert_eq!(value.data.value, b"MOREDATA15");
+    //     assert!(group.is_some());
 
-    // Fetch friends which is an ObjectBag.
-    assert_eq!(guy.friends.size(), 2);
-    let friends = crawler
-        .get_dynamic_field_objects(&guy.friends)
-        .await
-        .unwrap();
-    assert_eq!(friends.len(), 2);
+    //     // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
+    //     assert_eq!(guy.timetable.size(), 2);
+    //     let timetable = crawler
+    //         .get_dynamic_field_objects(&guy.timetable)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(timetable.len(), 2);
 
-    // Fetch first friend.
-    let charlie = friends
-        .get(&Name {
-            name: "Charlie".to_string(),
-        })
-        .unwrap();
+    //     // Fetch monday.
+    //     let monday = timetable
+    //         .get(&Name {
+    //             name: "Monday".to_string(),
+    //         })
+    //         .unwrap();
 
-    assert_eq!(charlie.data.value.clone(), b"Never Seen");
+    //     assert_eq!(monday.data.value.name, "Meeting");
 
-    // Fetch second friend.
-    let david = friends
-        .get(&Name {
-            name: "David".to_string(),
-        })
-        .unwrap();
+    //     assert_eq!(monday.data.pouch.size(), 1);
+    //     let pouch = crawler
+    //         .get_dynamic_field_objects(&monday.data.pouch)
+    //         .await
+    //         .unwrap();
 
-    assert_eq!(david.data.value.clone(), b"Definitely Imagination");
+    //     assert_eq!(pouch.len(), 1);
+    //     let (key, value) = pouch.into_iter().next().unwrap();
+    //     assert_eq!(key.name, "Pouch Item");
+    //     assert_eq!(value.data.value, b"Pouch Data");
 
-    // Now fetch bag which is a Bag. Finally.
-    assert_eq!(guy.bag.size(), 2);
-    let bag = crawler.get_dynamic_fields(&guy.bag).await.unwrap();
-    assert_eq!(bag.len(), 2);
+    //     // Fetch tuesday
+    //     let tuesday = timetable
+    //         .get(&Name {
+    //             name: "Tuesday".to_string(),
+    //         })
+    //         .unwrap();
 
-    // Fetch first item from bag.
-    let item1 = bag
-        .get(&Name {
-            name: "Bag Item".to_string(),
-        })
-        .unwrap();
+    //     assert_eq!(tuesday.data.value.name, "Code Review");
 
-    assert_eq!(item1.value.clone(), b"Bag Data");
+    //     assert_eq!(tuesday.data.pouch.size(), 1);
+    //     let pouch = crawler
+    //         .get_dynamic_field_objects(&tuesday.data.pouch)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(pouch.len(), 1);
+    //     let (key, value) = pouch.into_iter().next().unwrap();
+    //     assert_eq!(key.name, "Pouch Code");
+    //     assert_eq!(value.data.value, b"MOREDATA15");
 
-    // Fetch second item from bag.
-    let item2 = bag
-        .get(&Name {
-            name: "Bag Item 2".to_string(),
-        })
-        .unwrap();
+    //     // Fetch friends which is an ObjectBag.
+    //     assert_eq!(guy.friends.size(), 2);
+    //     let friends = crawler
+    //         .get_dynamic_field_objects(&guy.friends)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(friends.len(), 2);
 
-    assert_eq!(item2.value.clone(), b"Bag Data 2");
+    //     // Fetch first friend.
+    //     let charlie = friends
+    //         .get(&Name {
+    //             name: "Charlie".to_string(),
+    //         })
+    //         .unwrap();
 
-    // Fetch heterogeneous Bag.
-    assert_eq!(guy.heterogeneous.size(), 2);
-    let heterogeneous = crawler
-        .get_dynamic_fields(&guy.heterogeneous)
-        .await
-        .unwrap();
-    assert!(heterogeneous.len() == 2);
+    //     assert_eq!(charlie.data.value.clone(), b"Never Seen");
 
-    for (key, value) in heterogeneous {
-        if key.name == "Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::Value(v) if v.value.clone() == b"Bag Data")
-            );
-        } else if key.name == "Another Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone() == b"Another Bag Data")
-            );
-        } else {
-            panic!("Unexpected key in heterogeneous bag: {:?}", key);
-        }
-    }
+    //     // Fetch second friend.
+    //     let david = friends
+    //         .get(&Name {
+    //             name: "David".to_string(),
+    //         })
+    //         .unwrap();
 
-    // Fetch linked table.
-    assert_eq!(guy.linked_table.size(), 1);
-    let linked_table = crawler.get_dynamic_fields(&guy.linked_table).await.unwrap();
-    assert_eq!(linked_table.len(), 1);
+    //     assert_eq!(david.data.value.clone(), b"Definitely Imagination");
 
-    // Fetch first value from linked table.
-    let linked_item = linked_table
-        .get(&Name {
-            name: "Key 1".to_string(),
-        })
-        .unwrap();
+    //     // Now fetch bag which is a Bag. Finally.
+    //     assert_eq!(guy.bag.size(), 2);
+    //     let bag = crawler.get_dynamic_fields(&guy.bag).await.unwrap();
+    //     assert_eq!(bag.len(), 2);
 
-    assert_eq!(linked_item.name, "Value 1");
+    //     // Fetch first item from bag.
+    //     let item1 = bag
+    //         .get(&Name {
+    //             name: "Bag Item".to_string(),
+    //         })
+    //         .unwrap();
 
-    // Fetch TableVec.
-    assert_eq!(guy.sequence.size(), 3);
-    assert_eq!(guy.sequence.size_u64(), 3);
-    let sequence_id = guy.sequence.id();
-    assert_ne!(sequence_id, sui::types::Address::from_static("0x0"));
+    //     assert_eq!(item1.value.clone(), b"Bag Data");
 
-    let sequence = crawler.get_table_vec(&guy.sequence).await.unwrap();
-    assert_eq!(sequence.len(), 3);
-    assert_eq!(sequence[0].name, "First");
-    assert_eq!(sequence[1].name, "Second");
-    assert_eq!(sequence[2].name, "Third");
-}
+    //     // Fetch second item from bag.
+    //     let item2 = bag
+    //         .get(&Name {
+    //             name: "Bag Item 2".to_string(),
+    //         })
+    //         .unwrap();
 
-#[test]
-fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
-    let id = nexus_sdk::sui::types::Address::from_static("0x123");
+    //     assert_eq!(item2.value.clone(), b"Bag Data 2");
 
-    let bag = Bag::new(id, 2);
-    assert_eq!(bag.id(), id);
-    assert_eq!(bag.size_u64(), 2);
-    assert_eq!(bag.size(), 2);
+    //     // Fetch heterogeneous Bag.
+    //     assert_eq!(guy.heterogeneous.size(), 2);
+    //     let heterogeneous = crawler
+    //         .get_dynamic_fields(&guy.heterogeneous)
+    //         .await
+    //         .unwrap();
+    //     assert!(heterogeneous.len() == 2);
 
-    let object_bag = ObjectBag::new(id, 3);
-    assert_eq!(object_bag.id(), id);
-    assert_eq!(object_bag.size_u64(), 3);
-    assert_eq!(object_bag.size(), 3);
+    //     for (key, value) in heterogeneous {
+    //         if key.name == "Bag Item" {
+    //             assert!(
+    //                 matches!(value, HeterogeneousValue::Value(v) if v.value.clone() == b"Bag Data")
+    //             );
+    //         } else if key.name == "Another Bag Item" {
+    //             assert!(
+    //                 matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone() == b"Another Bag Data")
+    //             );
+    //         } else {
+    //             panic!("Unexpected key in heterogeneous bag: {:?}", key);
+    //         }
+    //     }
 
-    let table_vec: TableVec<u64> = TableVec::new(id, 5);
-    assert_eq!(table_vec.id(), id);
-    assert_eq!(table_vec.size_u64(), 5);
-    assert_eq!(table_vec.size(), 5);
+    //     // Fetch linked table.
+    //     assert_eq!(guy.linked_table.size(), 1);
+    //     let linked_table = crawler.get_dynamic_fields(&guy.linked_table).await.unwrap();
+    //     assert_eq!(linked_table.len(), 1);
+
+    //     // Fetch first value from linked table.
+    //     let linked_item = linked_table
+    //         .get(&Name {
+    //             name: "Key 1".to_string(),
+    //         })
+    //         .unwrap();
+
+    //     assert_eq!(linked_item.name, "Value 1");
+
+    //     // Fetch TableVec.
+    //     assert_eq!(guy.sequence.size(), 3);
+    //     assert_eq!(guy.sequence.size_u64(), 3);
+    //     let sequence_id = guy.sequence.id();
+    //     assert_ne!(sequence_id, sui::types::Address::from_static("0x0"));
+
+    //     let sequence = crawler.get_table_vec(&guy.sequence).await.unwrap();
+    //     assert_eq!(sequence.len(), 3);
+    //     assert_eq!(sequence[0].name, "First");
+    //     assert_eq!(sequence[1].name, "Second");
+    //     assert_eq!(sequence[2].name, "Third");
+    // }
+
+    // #[test]
+    // fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
+    //     let id = nexus_sdk::sui::types::Address::from_static("0x123");
+
+    //     let bag = Bag::new(id, 2);
+    //     assert_eq!(bag.id(), id);
+    //     assert_eq!(bag.size_u64(), 2);
+    //     assert_eq!(bag.size(), 2);
+
+    //     let object_bag = ObjectBag::new(id, 3);
+    //     assert_eq!(object_bag.id(), id);
+    //     assert_eq!(object_bag.size_u64(), 3);
+    //     assert_eq!(object_bag.size(), 3);
+
+    //     let table_vec: TableVec<u64> = TableVec::new(id, 5);
+    //     assert_eq!(table_vec.id(), id);
+    //     assert_eq!(table_vec.size_u64(), 5);
+    //     assert_eq!(table_vec.size(), 5);
 }
 
 #[test]

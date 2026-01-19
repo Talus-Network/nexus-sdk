@@ -51,6 +51,12 @@ public struct AnotherPlainValue has key, store {
     another_value: vector<u8>,
 }
 
+public fun test_serial(obj: &mut Guy) {
+    assert!(obj.age >= 30);
+
+    obj.age = obj.age + 1;
+}
+
 fun init(ctx: &mut TxContext) {
     let guy_id = object::new(ctx);
     let name = b"John Doe".to_ascii_string();
