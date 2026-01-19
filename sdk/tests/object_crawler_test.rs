@@ -168,171 +168,24 @@ async fn test_object_crawler() {
         sui::grpc::Client::new(format!("https://grpc.ssfn.devnet.production.taluslabs.dev"))
             .expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
-    let signer = Signer::new(
-        Arc::new(Mutex::new(grpc.clone())),
-        pk.clone(),
-        std::time::Duration::from_secs(30),
-        Arc::new(sui_mocks::mock_nexus_objects()),
-    );
 
     let reference_gas_price = grpc
         .get_reference_gas_price()
         .await
         .expect("Failed to get reference gas price.");
 
-    const TASKS_PER_RUN: usize = 5;
+    const TASKS_PER_RUN: usize = 12;
     let mut gas_iter = gas_coins.into_iter();
-    let shared_signer_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
-    let per_task_signer_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
     let read_imm_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
     let read_mut_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
     let noop_mut_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
     let serial_mut_gas: Vec<_> = gas_iter.by_ref().take(TASKS_PER_RUN).collect();
+    let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
 
-    assert_eq!(shared_signer_gas.len(), TASKS_PER_RUN);
-    assert_eq!(per_task_signer_gas.len(), TASKS_PER_RUN);
     assert_eq!(read_imm_gas.len(), TASKS_PER_RUN);
     assert_eq!(read_mut_gas.len(), TASKS_PER_RUN);
     assert_eq!(noop_mut_gas.len(), TASKS_PER_RUN);
     assert_eq!(serial_mut_gas.len(), TASKS_PER_RUN);
-
-    println!("=== shared signer run ({TASKS_PER_RUN} txs) ===");
-    let batch_start = Instant::now();
-    let tasks = shared_signer_gas.into_iter().map(|(gas_coin, _)| {
-        let signer = signer.clone();
-        let addr = addr;
-        let reference_gas_price = reference_gas_price;
-        let gas_coin = gas_coin.clone();
-        let guy = guy_imm.clone();
-
-        tokio::spawn(async move {
-            println!("Starting tx execution task...");
-
-            let mut tx = sui::tx::TransactionBuilder::new();
-
-            let guy = tx.input(guy);
-
-            tx.move_call(
-                sui::tx::Function::new(
-                    pkg_id,
-                    sui::types::Identifier::from_static("main"),
-                    sui::types::Identifier::from_static("test_serial"),
-                    vec![],
-                ),
-                vec![guy],
-            );
-
-            tx.set_sender(addr);
-            tx.set_gas_budget(1_000_000_000);
-            tx.set_gas_price(reference_gas_price);
-            tx.add_gas_objects(vec![sui::tx::Input::owned(
-                *gas_coin.object_id(),
-                gas_coin.version(),
-                *gas_coin.digest(),
-            )]);
-
-            let tx = tx.finish().expect("Failed to finish transaction.");
-
-            let signature = signer
-                .sign_tx(&tx)
-                .await
-                .expect("Failed to sign transaction.");
-
-            let now = Instant::now();
-
-            println!("Executing transaction...");
-
-            match signer
-                .execute_tx(tx, signature, &mut gas_coin.clone())
-                .await
-            {
-                Ok(_) => println!("Executed tx (ok) in {:?}", now.elapsed()),
-                Err(e) => println!("Executed tx (err) in {:?}: {e}", now.elapsed()),
-            }
-        })
-    });
-
-    join_all(tasks).await;
-    println!("Shared signer batch took {:?}", batch_start.elapsed());
-
-    let guy_version = crawler
-        .get_object_metadata(guy_id)
-        .await
-        .expect("Failed to fetch Guy metadata")
-        .version;
-    println!("Guy version after shared signer run: {guy_version}");
-
-    // Now do the same run but with a dedicated gRPC client per task to remove the
-    // `Arc<Mutex<Client>>` contention from the timing measurement.
-    let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
-    println!("=== per-task signer run ({TASKS_PER_RUN} txs) ===");
-    let batch_start = Instant::now();
-    let tasks = per_task_signer_gas.into_iter().map(|(gas_coin, _)| {
-        let pk = pk.clone();
-        let addr = addr;
-        let rpc_url = rpc_url.clone();
-        let reference_gas_price = reference_gas_price;
-        let gas_coin = gas_coin.clone();
-        let guy = guy_imm.clone();
-        let nexus_objects = nexus_objects.clone();
-
-        tokio::spawn(async move {
-            let signer = Signer::new(
-                Arc::new(Mutex::new(
-                    sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client"),
-                )),
-                pk,
-                std::time::Duration::from_secs(30),
-                nexus_objects,
-            );
-
-            let mut tx = sui::tx::TransactionBuilder::new();
-            let guy = tx.input(guy);
-            tx.move_call(
-                sui::tx::Function::new(
-                    pkg_id,
-                    sui::types::Identifier::from_static("main"),
-                    sui::types::Identifier::from_static("test_serial"),
-                    vec![],
-                ),
-                vec![guy],
-            );
-
-            tx.set_sender(addr);
-            tx.set_gas_budget(1_000_000_000);
-            tx.set_gas_price(reference_gas_price);
-            tx.add_gas_objects(vec![sui::tx::Input::owned(
-                *gas_coin.object_id(),
-                gas_coin.version(),
-                *gas_coin.digest(),
-            )]);
-
-            let tx = tx.finish().expect("Failed to finish transaction.");
-            let signature = signer
-                .sign_tx(&tx)
-                .await
-                .expect("Failed to sign transaction.");
-
-            let now = Instant::now();
-            match signer
-                .execute_tx(tx, signature, &mut gas_coin.clone())
-                .await
-            {
-                Ok(_) => println!("Executed tx (ok) in {:?}", now.elapsed()),
-                Err(e) => println!("Executed tx (err) in {:?}: {e}", now.elapsed()),
-            }
-        })
-    });
-
-    join_all(tasks).await;
-    println!("Per-task signer batch took {:?}", batch_start.elapsed());
-
-    let guy_version = crawler
-        .get_object_metadata(guy_id)
-        .await
-        .expect("Failed to fetch Guy metadata")
-        .version;
-    println!("Guy version after per-task signer run: {guy_version}");
 
     async fn per_task_signer_batch(
         label: &str,
@@ -491,12 +344,14 @@ async fn test_object_crawler() {
         .version;
     println!("Guy version after write &mut: {guy_version}");
 
-    //     let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
+    let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
 
-    //     let guy = crawler
-    //         .get_object::<Guy>(guy)
-    //         .await
-    //         .expect("Could not fetch Guy object.");
+    let guy = crawler
+        .get_object::<Guy>(guy_id)
+        .await
+        .expect("Could not fetch Guy object.");
+
+    println!("Final Guy object: {:?}", guy.data);
 
     //     assert!(guy.is_shared());
 

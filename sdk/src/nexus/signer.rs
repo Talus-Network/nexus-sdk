@@ -185,20 +185,19 @@ impl Signer {
         // Wait for the transaction to appear in a checkpoint.
         let timeout_future = tokio::time::sleep(self.transaction_timeout);
         let checkpoint_future = async {
-            return Ok(0);
-            // while let Some(response) = checkpoint_stream.try_next().await? {
-            //     let checkpoint = response.checkpoint();
+            while let Some(response) = checkpoint_stream.try_next().await? {
+                let checkpoint = response.checkpoint();
 
-            //     for tx in checkpoint.transactions() {
-            //         if tx.digest() == digest.to_string() {
-            //             return Ok(checkpoint.sequence_number());
-            //         }
-            //     }
-            // }
+                for tx in checkpoint.transactions() {
+                    if tx.digest() == digest.to_string() {
+                        return Ok(checkpoint.sequence_number());
+                    }
+                }
+            }
 
-            // Err(anyhow::anyhow!(
-            //     "Checkpoint stream closed before transaction was confirmed."
-            // ))
+            Err(anyhow::anyhow!(
+                "Checkpoint stream closed before transaction was confirmed."
+            ))
         };
 
         tokio::select! {
