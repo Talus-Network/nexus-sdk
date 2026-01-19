@@ -33,6 +33,8 @@ pub async fn publish_move_package_with_overrides(
     let install_dir = PathBuf::from(path_str);
     let lock_file = PathBuf::from(format!("{path_str}/Move.lock"));
 
+    let _ = std::fs::remove_file(&lock_file);
+
     let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
     let signer = Signer::new(
@@ -143,7 +145,10 @@ pub async fn publish_move_package_with_overrides(
     )
     .expect("Failed to update lock file.");
 
-    lock.commit(lock_file).expect("Failed to update lock file.");
+    lock.commit(lock_file.clone())
+        .expect("Failed to update lock file.");
+
+    let _ = std::fs::remove_file(&lock_file);
 
     response
 }

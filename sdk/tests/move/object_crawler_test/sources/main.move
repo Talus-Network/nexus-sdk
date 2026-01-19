@@ -57,6 +57,16 @@ public fun test_serial(obj: &mut Guy) {
     obj.age = obj.age + 1;
 }
 
+/// Read-only access to the shared object.
+public fun test_read(obj: &Guy) {
+    assert!(obj.age >= 30);
+}
+
+/// Takes a mutable reference but does not mutate.
+public fun test_noop_mut(obj: &mut Guy) {
+    assert!(obj.age >= 30);
+}
+
 fun init(ctx: &mut TxContext) {
     let guy_id = object::new(ctx);
     let name = b"John Doe".to_ascii_string();
