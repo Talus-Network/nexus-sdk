@@ -834,6 +834,7 @@ mod tests {
             }),
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
                 shared_objects: vec![addr()],
+                objects_by_ref_mut: false,
             }),
             NexusEventKind::OffChainToolRegistered(OffChainToolRegisteredEvent {
                 registry: addr(),
