@@ -5831,7 +5831,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk-wasm"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5839,7 +5839,7 @@ dependencies = [
  "base64 0.21.7",
  "bincode",
  "console_error_panic_hook",
- "getrandom 0.2.15",
+ "getrandom 0.2.16",
  "hex",
  "js-sys",
  "nexus-sdk",
@@ -5847,7 +5847,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "thiserror 2.0.12",
+ "thiserror 2.0.17",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
