@@ -627,7 +627,7 @@ pub enum ResponderRejectionKindV1 {
 
 /// A verified inbound request without an `InFlight` reservation.
 ///
-/// This is returned for replay-related rejections so callers can still produce a signed error
+/// This is returned for replay related rejections so callers can still produce a signed error
 /// response that is bound to the authenticated request.
 #[derive(Clone)]
 pub struct AuthenticatedRequestV1 {
@@ -662,7 +662,7 @@ impl AuthenticatedRequestV1 {
     }
 }
 
-/// Replay-related rejection after request authentication.
+/// Replay related rejection after request authentication.
 #[derive(Clone)]
 pub struct ResponderRejectionV1 {
     pub kind: ResponderRejectionKindV1,

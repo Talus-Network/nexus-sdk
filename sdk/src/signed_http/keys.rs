@@ -1,6 +1,6 @@
 //! Ed25519 key utilities for signed HTTP.
 //!
-//! Signed HTTP (Leader <=> Tool) uses Ed25519 message-signing keys at the
+//! Signed HTTP (Leader <=> Tool) uses Ed25519 message signing keys at the
 //! application layer. These keys are not Sui transaction keys:
 //! - Sui tx keys authorize on-chain transactions.
 //! - Signed HTTP keys authorize off-chain HTTP messages.
