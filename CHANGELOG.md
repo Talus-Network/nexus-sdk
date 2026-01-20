@@ -5,19 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.6.0`] Unreleased
+## [`0.6.0`] - Unreleased
 
 ### `nexus-sdk`
 
 #### Added
 
-- `signed http` support for signing HTTP requests with ed25519 keys
+- `signed_http` feature and module for application layer HTTP request/response signatures.
 
-### `toolkit-rust`
+### `nexus-toolkit-rust`
 
 #### Added
 
-- `signed http` support for tools runtime
+- Signed HTTP runtime support with tool signing keys and leader allowlists.
 
 ## [`0.5.0`] - 2026-01-16
 

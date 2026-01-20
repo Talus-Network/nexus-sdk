@@ -1,6 +1,6 @@
 //! Signed HTTP requests/responses.
 //!
-//! This module implements a simple, deployment-agnostic signing format designed
+//! This module implements a simple, deployment agnostic signing format designed
 //! for Nexus Leader <=> Tool communication:
 //! - Payload stays as the regular HTTP body (e.g., tool input/output JSON).
 //! - A small JSON "claims" blob is serialized to bytes and signed with Ed25519.
