@@ -6,16 +6,19 @@
 //!
 //! See more documentation at <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
+mod config;
 mod nexus_tool;
 mod runtime;
 mod serde_tracked;
+pub mod signed_http_warp;
 
 pub use {
     anyhow::Result as AnyResult,
+    config::{SignedHttpMode, ToolkitRuntimeConfig, ENV_TOOLKIT_CONFIG_PATH},
     env_logger,
     log::debug,
-    nexus_tool::NexusTool,
-    runtime::routes_for_,
+    nexus_tool::{AuthContext, NexusTool},
+    runtime::{routes_for_, routes_for_with_config_},
     serde_tracked::*,
     warp::{self, http::StatusCode},
 };

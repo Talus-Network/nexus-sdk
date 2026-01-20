@@ -11,6 +11,21 @@ use {
     warp::http::StatusCode,
 };
 
+/// Authenticated request context available to tools when signed HTTP is enabled.
+///
+/// This context is produced by the toolkit runtime after it has:
+/// - verified the invoker's signature on the invocation request, and
+/// - verified the request freshness window (`iat_ms`/`exp_ms`), and
+/// - verified the request body hash, method/path/query binding, and tool id.
+///
+/// Tools can use this context inside [`NexusTool::authorize`] to implement their own
+/// admission policy (allowlists, task gating, rate-limits, etc) without any on-chain reads.
+///
+/// Terminology:
+/// - Invoker: the node calling the tool (in Nexus, the Leader).
+/// - Responder: the node serving the request (in Nexus, the Tool).
+pub type AuthContext = nexus_sdk::signed_http::v1::AuthContextV1;
+
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
 ///
@@ -52,6 +67,70 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// It is used to generate the `/invoke` endpoint.
     fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+
+    /// Authorize an invocation after it has been authenticated via signed HTTP.
+    ///
+    /// This is an optional ergonomic hook for tool developers to implement their
+    /// own admission policy (allowlists, rate-limits, task gating, etc).
+    ///
+    /// Default: allow.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use {
+    ///     nexus_sdk::{fqn, ToolFqn},
+    ///     nexus_toolkit::{AnyResult, AuthContext, NexusTool},
+    ///     schemars::JsonSchema,
+    ///     serde::{Deserialize, Serialize},
+    ///     warp::http::StatusCode,
+    /// };
+    ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Input {
+    ///     prompt: String,
+    /// }
+    ///
+    /// #[derive(Serialize, JsonSchema)]
+    /// enum Output {
+    ///     Ok { message: String },
+    /// }
+    ///
+    /// struct MyTool;
+    ///
+    /// impl NexusTool for MyTool {
+    ///     type Input = Input;
+    ///     type Output = Output;
+    ///
+    ///     fn fqn() -> ToolFqn {
+    ///         fqn!("example.my.tool@1")
+    ///     }
+    ///
+    ///     async fn new() -> Self {
+    ///         Self
+    ///     }
+    ///
+    ///     fn authorize(&self, ctx: AuthContext) -> impl std::future::Future<Output = AnyResult<()>> + Send {
+    ///         async move {
+    ///             // Example policy: only allow a specific LeaderId.
+    ///             if ctx.invoker_id != "0x1111" {
+    ///                 anyhow::bail!("leader not allowed");
+    ///             }
+    ///             Ok(())
+    ///         }
+    ///     }
+    ///
+    ///     async fn invoke(&self, input: Self::Input) -> Self::Output {
+    ///         Output::Ok { message: input.prompt }
+    ///     }
+    ///
+    ///     async fn health(&self) -> AnyResult<StatusCode> {
+    ///         Ok(StatusCode::OK)
+    ///     }
+    /// }
+    /// ```
+    fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
+        async { Ok(()) }
+    }
     /// Returns the health status of the tool. For now, this only returns an
     /// HTTP status code.
     ///
