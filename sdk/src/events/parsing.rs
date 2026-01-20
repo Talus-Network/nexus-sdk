@@ -228,7 +228,7 @@ mod tests {
             fqn,
             idents::primitives,
             test_utils::sui_mocks,
-            types::{NexusData, PolicySymbol, PortsData},
+            types::{NexusData, PolicySymbol, PortsData, SharedObjectRef},
             ToolFqn,
         },
         serde::{Deserialize, Serialize},
@@ -833,8 +833,7 @@ mod tests {
                 worksheet_from_type: TypeName::new("worksheet"),
             }),
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
-                shared_objects: vec![addr()],
-                objects_by_ref_mut: false,
+                shared_objects: vec![SharedObjectRef::new_imm(addr())],
             }),
             NexusEventKind::OffChainToolRegistered(OffChainToolRegisteredEvent {
                 registry: addr(),
