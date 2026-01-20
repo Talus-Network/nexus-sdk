@@ -1,4 +1,5 @@
 mod json_dag;
+mod network_auth;
 mod nexus_data;
 mod nexus_data_parser;
 mod nexus_objects;
@@ -13,6 +14,7 @@ mod type_name;
 
 pub use {
     json_dag::*,
+    network_auth::*,
     nexus_data::*,
     nexus_objects::NexusObjects,
     ports_data::PortsData,

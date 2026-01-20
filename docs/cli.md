@@ -38,7 +38,7 @@ Validate an off-chain Nexus Tool on the provided URL. This command checks whethe
 As an improvement, the command could take a `[data]` parameter that invokes the Tool and checks the response against the output schema.
 {% endhint %}
 
-This command should also check that the URL is accessible by the Leader node. It should, however, be usable with `localhost` Tools for development purposes, printing a warning.
+This command should also check that the URL is accessible by Leader nodes. For local testing, it should still be usable with `localhost` Tools, printing a warning.
 
 ---
 
@@ -113,6 +113,57 @@ If the OwnerCap object ID is not passed, the CLI will attempt to use the one sav
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
+
+---
+
+**`nexus tool signed-http`**
+
+Commands for operating signed HTTP (message signatures) for off-chain Tools.
+
+Signed HTTP is Nexus’ application-layer authentication for `POST /invoke`:
+
+- Leader node → Tool requests are signed so the Tool can verify which Leader node is calling and prevent replay.
+- Tool → Leader node responses are signed so the Leader node can verify provenance and bind a response to a specific request.
+
+These commands help Tool operators:
+
+- generate an Ed25519 Tool message-signing keypair,
+- register/rotate the Tool’s message-signing public key on-chain (Network Auth), and
+- export a local `allowed_leaders.json` file consumed by the Tool runtime for request verification (no RPC at runtime).
+
+See also:
+
+- [Tool Communication (HTTPS + Signed HTTP)](guides/tool-communication.md)
+
+---
+
+**`nexus tool signed-http keygen [--out <path>]`**
+
+Generates a new Ed25519 Tool message-signing keypair.
+
+- If `--out` is provided, writes a JSON file containing `private_key_hex` and `public_key_hex`.
+- You will use the private key in the Tool runtime config (`tool_signing_key`).
+- You will register the public key on-chain via `register-key`.
+
+---
+
+**`nexus tool signed-http register-key --tool-fqn <fqn> --signing-key <key-or-path> [--owner-cap <object_id>] [--description <text>] ...gas`**
+
+Registers (or rotates) the Tool’s message-signing key in the on-chain Network Auth registry.
+
+- Requires an `OwnerCap<OverTool>` (the tool ownership cap) to prove Tool identity.
+- Requires a proof-of-possession signature so the chain can verify the registrant controls the private key.
+- Returns the registered `tool_kid` (key id) which must match the Tool runtime config.
+
+If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the CLI config for that Tool.
+
+---
+
+**`nexus tool signed-http export-allowed-leaders --leader <address>... --out <path> ...gas`**
+
+Exports a local allowlist file (JSON) of permitted Leader nodes and their active signing keys.
+
+This file is consumed by the Rust toolkit runtime (`allowed_leaders_path`) so the Tool can verify signed requests without performing Sui RPC calls at runtime.
 
 ---
 

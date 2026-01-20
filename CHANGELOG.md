@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [`0.6.0`] Unreleased
+
+### `nexus-sdk`
+
+#### Added
+
+- `signed http` support for signing HTTP requests with ed25519 keys
+
+### `toolkit-rust`
+
+#### Added
+
+- `signed http` support for tools runtime
+
 ## [`0.5.0`] - 2026-01-16
 
 ### `nexus-cli`
@@ -20,14 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-sdk`
 
-#### Changed
+#### Added
 
+- `signed http` support for signing HTTP requests with ed25519 keys
 - leader and crypto caps in PTB templates are now party objects
 - added `ToolRegistryCreated` as tracked event
 - combined some functions in tool_registry.move
 - set Rust toolchain back to `stable`
-
-## [`0.4.0`] - 2026-01-07
 
 ### `nexus-cli`
 

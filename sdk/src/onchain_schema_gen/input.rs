@@ -75,7 +75,7 @@ pub async fn generate_input_schema(
         let param_schema = convert_move_signature_to_schema(param_type)?;
 
         // Store parameter information with index as the default name.
-        let param_obj = match param_schema {
+        let mut param_obj = match param_schema {
             Value::Object(obj) => obj,
             other => {
                 let mut new_obj = Map::new();
@@ -83,6 +83,20 @@ pub async fn generate_input_schema(
                 new_obj
             }
         };
+
+        let reference_kind = param_type
+            .reference
+            .and_then(|reference| sui::grpc::open_signature::Reference::try_from(reference).ok())
+            .unwrap_or(sui::grpc::open_signature::Reference::Unknown);
+
+        if param_obj.get("type").and_then(|v| v.as_str()) == Some("object")
+            && reference_kind != sui::grpc::open_signature::Reference::Unknown
+        {
+            param_obj.insert(
+                "mutable".to_string(),
+                Value::Bool(reference_kind == sui::grpc::open_signature::Reference::Mutable),
+            );
+        }
 
         schema_map.insert(param_index.to_string(), Value::Object(param_obj));
         param_index += 1;
@@ -181,6 +195,7 @@ mod tests {
             .get("0")
             .expect("Schema should have parameter 0 (counter)");
         assert_eq!(param0["type"], "object");
+        assert_eq!(param0["mutable"], true);
         assert!(param0["description"]
             .as_str()
             .unwrap()

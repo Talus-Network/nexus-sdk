@@ -18,6 +18,7 @@ pub struct NexusObjects {
     pub interface_pkg_id: sui::types::Address,
     pub network_id: sui::types::Address,
     pub tool_registry: sui::types::ObjectReference,
+    pub network_auth: sui::types::ObjectReference,
     pub default_tap: sui::types::ObjectReference,
     pub gas_service: sui::types::ObjectReference,
     pub pre_key_vault: sui::types::ObjectReference,
@@ -92,6 +93,11 @@ mod tests {
             interface_pkg_id: sui::types::Address::generate(&mut rng),
             network_id: sui::types::Address::generate(&mut rng),
             tool_registry: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            network_auth: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
                 sui::types::Digest::generate(&mut rng),
