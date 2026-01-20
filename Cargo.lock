@@ -5775,6 +5775,7 @@ dependencies = [
  "chrono",
  "ciborium",
  "dirs 6.0.0",
+ "ed25519-dalek",
  "enum_dispatch",
  "futures",
  "futures-util",
@@ -5824,7 +5825,11 @@ name = "nexus-toolkit"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.7",
+ "bytes",
+ "ed25519-dalek",
  "env_logger",
+ "hex",
  "log",
  "nexus-sdk",
  "reqwest",
