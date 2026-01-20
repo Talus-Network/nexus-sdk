@@ -87,7 +87,7 @@ jobs:
       - name: Install build dependencies
         if: ${{ runner.os == 'Linux' }}
         run: |
-          sudo apt install -y libssl-dev musl-tools pkg-config
+          sudo apt install -y libssl-dev musl-tools pkg-config libdbus-1-dev
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2
@@ -109,7 +109,7 @@ jobs:
 
       - name: Package
         run: |
-          tar -cv CHANGELOG.md LICENSE.txt README.md \
+          tar -cv CHANGELOG.md LICENSE README.md \
             -C target/${{ matrix.target }}/release/ nexus |
             gzip --best > \
             nexus-cli-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz

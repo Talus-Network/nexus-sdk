@@ -1,41 +1,42 @@
 use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
-        object_crawler::{fetch_one, ObjectBag, Structure},
+        nexus::crawler::DynamicObjectMap,
         types::{
-            deserialize_bytes_to_lossy_utf8,
+            deserialize_bytes_to_string,
             deserialize_bytes_to_url,
             deserialize_string_to_datetime,
         },
+        ToolRef,
     },
 };
 
 /// List tools available in the tool registry.
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
-    command_title!("Listing all available Neuxs tools");
+    command_title!("Listing all available Nexus tools");
 
-    // Load CLI configuration.
-    let mut conf = CliConf::load().await.unwrap_or_default();
-
-    // Nexus objects must be present in the configuration.
-    let NexusObjects { tool_registry, .. } = &get_nexus_objects(&mut conf).await?;
-
-    // Build the Sui client.
-    let sui = build_sui_client(&conf.sui).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_objects = &*nexus_client.get_nexus_objects();
+    let crawler = nexus_client.crawler();
 
     let tools_handle = loading!("Fetching tools from the tool registry...");
 
-    let tool_registry =
-        match fetch_one::<Structure<ToolRegistry>>(&sui, tool_registry.object_id).await {
-            Ok(tool_registry) => tool_registry.data.into_inner(),
-            Err(e) => {
-                tools_handle.error();
+    let tool_registry = match crawler
+        .get_object::<ToolRegistry>(*nexus_objects.tool_registry.object_id())
+        .await
+    {
+        Ok(tool_registry) => tool_registry.data,
+        Err(e) => {
+            tools_handle.error();
 
-                return Err(NexusCliError::Any(e));
-            }
-        };
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
-    let tools = match tool_registry.tools.fetch_all(&sui).await {
+    let tools = match crawler
+        .get_dynamic_field_objects(&tool_registry.tools)
+        .await
+    {
         Ok(tools) => tools,
         Err(e) => {
             tools_handle.error();
@@ -49,22 +50,65 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     let mut tools_json = Vec::new();
 
     for (fqn, tool) in tools {
-        let tool = tool.into_inner();
+        let tool = tool.data;
 
-        tools_json.push(json!(
-        {
+        let (reference, description, registered_at_ms, input_schema, output_schema) = match &tool {
+            ToolVariant::OffChain(t) => (
+                ToolRef::from(t.url.clone()),
+                t.description.clone(),
+                t.registered_at_ms,
+                t.input_schema.clone(),
+                t.output_schema.clone(),
+            ),
+            ToolVariant::OnChain(t) => (
+                ToolRef::new_sui(&t.package_address, &t.module_name, &t.witness_id).map_err(
+                    |_| {
+                        NexusCliError::Any(anyhow!(
+                            "Invalid package address, module name, or witness ID in onchain tool"
+                        ))
+                    },
+                )?,
+                t.description.clone(),
+                t.registered_at_ms,
+                t.input_schema.clone(),
+                t.output_schema.clone(),
+            ),
+        };
+
+        let tool_type = if reference.is_onchain() {
+            "OnChain"
+        } else {
+            "OffChain"
+        };
+
+        // Build JSON output with common fields plus type-specific ones.
+        let mut tool_json = json!({
             "fqn": fqn,
-            "url": tool.url,
-            "registered_at_ms": tool.registered_at_ms,
-            "description": tool.description
-        }));
+            "reference": reference.to_string(),
+            "type": tool_type,
+            "registered_at_ms": registered_at_ms,
+            "description": description,
+        });
+
+        // A bit redundant, but for sake of clarity.
+        if reference.is_onchain() {
+            tool_json["package_address"] = json!(reference.package_address().unwrap().to_string());
+            tool_json["module_name"] = json!(reference.module_name().unwrap().to_string());
+            tool_json["witness_id"] = json!(reference.witness_id().unwrap().to_string());
+        }
+
+        tool_json["input_schema"] = json!(input_schema);
+        tool_json["output_schema"] = json!(output_schema);
+
+        tools_json.push(tool_json);
 
         item!(
-            "Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
+            "{tool_type} Tool '{fqn}' at '{reference}' registered '{registered_at}' - {description}",
+            tool_type = tool_type.truecolor(100, 100, 100),
             fqn = fqn.to_string().truecolor(100, 100, 100),
-            url = tool.url.as_str().truecolor(100, 100, 100),
-            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
-            description = tool.description.truecolor(100, 100, 100),
+            reference = reference.to_string().truecolor(100, 100, 100),
+            registered_at = registered_at_ms.to_string().truecolor(100, 100, 100),
+            description = description.truecolor(100, 100, 100),
         );
     }
 
@@ -75,15 +119,41 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
 #[derive(Debug, Clone, Deserialize)]
 struct ToolRegistry {
-    tools: ObjectBag<ToolFqn, Structure<Tool>>,
+    tools: DynamicObjectMap<ToolFqn, ToolVariant>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct Tool {
+#[serde(untagged)]
+enum ToolVariant {
+    OffChain(OffChainTool),
+    OnChain(OnChainTool),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OffChainTool {
     #[serde(deserialize_with = "deserialize_bytes_to_url")]
     url: reqwest::Url,
-    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
     description: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    input_schema: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    output_schema: String,
+    #[serde(deserialize_with = "deserialize_string_to_datetime")]
+    registered_at_ms: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OnChainTool {
+    package_address: String,
+    module_name: String,
+    witness_id: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    description: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    input_schema: String,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    output_schema: String,
     #[serde(deserialize_with = "deserialize_string_to_datetime")]
     registered_at_ms: chrono::DateTime<chrono::Utc>,
 }

@@ -18,11 +18,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
+clap-verbosity.workspace = true
 colored.workspace = true
 convert_case.workspace = true
+env_logger.workspace = true
 home.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true
@@ -58,7 +61,10 @@ keyring = { workspace = true, features = ["windows-native"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
 # `-sync-persistent` requires `apt-get install -y libdbus-1-dev` in CI
-keyring = { workspace = true, features = ["linux-native-sync-persistent"] }
+keyring = { workspace = true, features = [
+    "linux-native-sync-persistent",
+    "vendored",
+] }
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]

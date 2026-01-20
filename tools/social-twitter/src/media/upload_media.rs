@@ -16,7 +16,6 @@ use {
         },
         twitter_client::{TwitterClient, TWITTER_X_API_BASE},
     },
-    base64,
     nexus_sdk::{fqn, ToolFqn},
     nexus_toolkit::*,
     reqwest::multipart::{Form, Part},
@@ -184,6 +183,7 @@ impl NexusTool for UploadMedia {
 }
 
 /// Upload media to Twitter in chunks
+#[allow(clippy::too_many_arguments)]
 async fn upload_media(
     client: &TwitterClient,
     auth: &TwitterAuth,
@@ -341,10 +341,7 @@ fn calculate_optimal_chunk_size(
     let calculated_size = media_size / ideal_chunk_count;
 
     // Ensure the calculated size is within bounds and round to nearest 128KB
-    let chunk_size = std::cmp::min(
-        MAX_CHUNK_SIZE,
-        std::cmp::max(MIN_CHUNK_SIZE, calculated_size),
-    );
+    let chunk_size = calculated_size.clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
     // Round to nearest 128KB for efficiency
     (chunk_size / CHUNK_SIZE_ALIGNMENT) * CHUNK_SIZE_ALIGNMENT

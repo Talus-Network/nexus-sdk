@@ -6,18 +6,18 @@ use {
 pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
     command_title!("Establishing a secure session with the network");
 
-    let (nexus_client, _) = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
     // Fetch or create an identity key.
     if CryptoConf::get_identity_key(None).await.is_err() {
         CryptoConf::set_identity_key(IdentityKey::generate(), None)
             .await
-            .map_err(|e| NexusCliError::Any(e))?;
+            .map_err(NexusCliError::Any)?;
     }
 
     let ik = CryptoConf::get_identity_key(None)
         .await
-        .map_err(|e| NexusCliError::Any(e))?;
+        .map_err(NexusCliError::Any)?;
 
     // Perform the handshake.
     let handshake_handle = loading!("Establishing secure session...");
