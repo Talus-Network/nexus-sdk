@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `signed_http` feature and module for application layer HTTP request/response signatures.
 
+### `nexus-toolkit-rust`
+
+#### Added
+
+- Signed HTTP runtime support with tool signing keys and leader allowlists.
+
 ## [`0.5.0`] - 2026-01-16
 
 ### `nexus-cli`
