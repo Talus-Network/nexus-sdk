@@ -4,17 +4,19 @@
 //! application-layer Ed25519 signatures used in Leader <=> Tool HTTP calls.
 //!
 //! # Module layout
+//! - [`error`]: shared error types.
 //! - [`wire`]: the v1 wire format (claims structs, header encoding/decoding, and low-level sign/verify).
 //! - [`engine`]: a higher-level invoker/responder API (sessions + replay store) built on top of [`wire`].
 //!
-//! Most consumers should prefer the invoker/responder API ([`SignedHttpEngineV1`], [`SignedHttpInvokerV1`],
-//! [`SignedHttpResponderV1`]) so that HTTP signing, replay rules, and response binding are encapsulated.
+//! Most consumers should prefer the invoker/responder API ([`engine::SignedHttpEngineV1`],
+//! [`engine::SignedHttpInvokerV1`], [`engine::SignedHttpResponderV1`]) so that HTTP signing, replay
+//! rules, and response binding are encapsulated.
 //!
 //! # Wire format (headers)
 //! Every signed request/response carries three headers:
-//! - [`HEADER_SIG_VERSION`]: protocol version string (`"1"` for this module).
-//! - [`HEADER_SIG_INPUT`]: base64url (no padding) of the raw JSON claims bytes.
-//! - [`HEADER_SIG`]: base64url (no padding) of the 64-byte Ed25519 signature.
+//! - [`wire::HEADER_SIG_VERSION`]: protocol version string (`"1"` for this module).
+//! - [`wire::HEADER_SIG_INPUT`]: base64url (no padding) of the raw JSON claims bytes.
+//! - [`wire::HEADER_SIG`]: base64url (no padding) of the 64-byte Ed25519 signature.
 //!
 //! `base64url` is the URL-safe base64 variant (RFC 4648) that uses `-` and `_` instead of `+`
 //! and `/`. We use the no-padding form because it is compact and safe to embed in HTTP headers.
@@ -61,8 +63,8 @@
 //!
 //! # Claims
 //! The signed claims are JSON-serialized structs:
-//! - [`InvokeRequestClaimsV1`] (Leader -> Tool)
-//! - [`InvokeResponseClaimsV1`] (Tool -> Leader)
+//! - [`wire::InvokeRequestClaimsV1`] (Leader -> Tool)
+//! - [`wire::InvokeResponseClaimsV1`] (Tool -> Leader)
 //!
 //! We call these fields "claims" because they are signed assertions made by the sender about
 //! the HTTP message (identity, intent, body hash, freshness, nonce), rather than the application
@@ -95,7 +97,7 @@
 //! ```
 //! use {
 //!     ed25519_dalek::SigningKey,
-//!     nexus_sdk::signed_http::v1::*,
+//!     nexus_sdk::signed_http::v1::wire::*,
 //! };
 //!
 //! // === Setup identities and keys ===
@@ -204,9 +206,8 @@
 //! ```
 
 pub mod engine;
+pub mod error;
 pub mod wire;
-
-pub use {engine::*, wire::*};
 
 #[cfg(test)]
 mod tests;

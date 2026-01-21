@@ -36,5 +36,3 @@
 pub mod v1;
 
 pub mod keys;
-
-pub use {keys::*, v1::*};

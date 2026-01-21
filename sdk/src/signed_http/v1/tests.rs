@@ -1,4 +1,7 @@
-use {super::*, ed25519_dalek::SigningKey};
+use {
+    super::{engine::*, error::*, wire::*},
+    ed25519_dalek::SigningKey,
+};
 
 fn sk_from_byte(byte: u8) -> SigningKey {
     SigningKey::from_bytes(&[byte; 32])
