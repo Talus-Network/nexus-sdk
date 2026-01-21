@@ -1,7 +1,8 @@
 module {{ name_snake_case }}::{{ name_snake_case }};
 
+use nexus_primitives::data;
 use nexus_primitives::proof_of_uid::ProofOfUID;
-use nexus_workflow::tool_output::{Self, ToolOutput};
+use nexus_primitives::tool_output::{Self, ToolOutput};
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;
@@ -82,17 +83,18 @@ public fun execute(
     // Implement your tool logic here.
     if (input_value == 0) {
         // Return error variant.
-        tool_output::err(b"Input value cannot be zero")
+        Self::new(b"err")
+            .with_port(b"reason", data::typed_string(b"Input value cannot be zero"))
     } else if (input_value > 1000) {
         // Return custom variant.
-        tool_output::variant(b"custom_result")
-            .with_field(b"data", tool_output::string_value(b"large_value_processed"))
-            .with_field(b"timestamp", tool_output::string_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
+        Self::new(b"custom_result")
+            .with_port(b"data", data::typed_string(b"large_value_processed"))
+            .with_port(b"timestamp", data::typed_number(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
     } else {
         // Return success variant.
         let result = input_value * 2;
-        tool_output::ok()
-            .with_field(b"result", tool_output::number_value(result.to_string().into_bytes()))
+        Self::new(b"ok")
+            .with_port(b"result", data::typed_number(result.to_string().into_bytes()))
     }
 }
 

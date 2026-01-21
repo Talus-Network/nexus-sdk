@@ -72,8 +72,9 @@ In `sources/my_onchain_tool.move`:
 ```move
 module my_onchain_tool::my_onchain_tool;
 
+use nexus_primitives::data;
 use nexus_primitives::proof_of_uid::ProofOfUID;
-use nexus_workflow::tool_output::{Self, ToolOutput};
+use nexus_primitives::tool_output::{Self, ToolOutput};
 use sui::bag::{Self, Bag};
 use sui::clock::Clock;
 use sui::transfer::share_object;
@@ -168,17 +169,18 @@ public fun execute(
     // Implement your tool logic here
     if (input_value == 0) {
         // Return error variant
-        tool_output::err(b"Input value cannot be zero")
+        Self::new(b"err")
+            .with_port(b"reason", data::typed_string(b"Input value cannot be zero"))
     } else if (input_value > 1000) {
         // Return custom variant
-        tool_output::variant(b"custom_result")
-            .with_field(b"data", tool_output::string_value(b"large_value_processed"))
-            .with_field(b"timestamp", tool_output::number_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
+        Self::new(b"custom_result")
+            .with_port(b"data", data::typed_string(b"large_value_processed"))
+            .with_port(b"timestamp", data::typed_number(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
     } else {
         // Return success variant
         let result = input_value * 2;
-        tool_output::ok()
-            .with_field(b"result", tool_output::number_value(result.to_string().into_bytes()))
+        Self::new(b"ok")
+            .with_port(b"result", data::typed_number(result.to_string().into_bytes()))
     }
 }
 ```
@@ -189,16 +191,19 @@ When adding fields to `ToolOutput`, you must use typed constructor functions to 
 
 ```move
 // Numeric values (u8, u16, u32, u64, u128, u256)
-.with_field(b"count", tool_output::number_value(value.to_string().into_bytes()))
+.with_port(b"count", data::typed_number(value.to_string().into_bytes()))
 
 // String values (will be wrapped in quotes in JSON)
-.with_field(b"message", tool_output::string_value(b"Hello world"))
+.with_port(b"message", data::typed_string(b"Hello world"))
 
 // Boolean values (true/false without quotes in JSON)
-.with_field(b"success", tool_output::bool_value(b"true"))
+.with_port(b"success", data::typed_bool(b"true"))
 
 // Address values (prefixed with "0x" and wrapped in quotes in JSON)
-.with_field(b"sender", tool_output::address_value(address.to_string().into_bytes()))
+.with_port(b"sender", data::typed_address(address.to_string().into_bytes()))
+
+// Raw JSON values (objects, arrays, null - passed through as-is)
+.with_port(b"metadata", data::typed_raw(b"{\"key\":\"value\"}"))
 ```
 
 This typing ensures that the Nexus framework correctly parses and processes your tool's outputs.
