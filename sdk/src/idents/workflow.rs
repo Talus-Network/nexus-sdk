@@ -1064,6 +1064,13 @@ impl NetworkAuth {
         module: NETWORK_AUTH_MODULE,
         name: sui::types::Identifier::from_static("IdentityKey"),
     };
+    /// The NetworkAuth struct type.
+    ///
+    /// `nexus_workflow::network_auth::NetworkAuth`
+    pub const NETWORK_AUTH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("NetworkAuth"),
+    };
     /// Construct a proof-of-possession for a key registration slot.
     ///
     /// `nexus_workflow::network_auth::new_proof_of_key`
