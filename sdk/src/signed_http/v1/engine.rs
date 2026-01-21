@@ -5,30 +5,32 @@
 //! - responders authenticate requests, apply replay rules, and sign responses.
 
 use {
-    super::wire::{
-        decode_signature_headers_v1,
-        encode_signature_headers_v1,
-        message_to_verify,
-        now_ms,
-        parse_hex_32,
-        sha256,
-        sha256_hex,
-        sign_invoke_request_v1,
-        sign_invoke_response_v1,
-        validate_time_window,
-        verify_invoke_response_v1,
-        AllowedLeadersV1,
-        DecodedSignatureV1,
-        EncodedSignatureHeadersV1,
-        HttpRequestMeta,
-        InvokeRequestClaimsV1,
-        InvokeResponseClaimsV1,
-        SignedHttpError,
-        VerifyOptions,
-        DOMAIN_REQUEST_V1,
-        HEADER_SIG,
-        HEADER_SIG_INPUT,
-        HEADER_SIG_VERSION,
+    super::{
+        error::SignedHttpError,
+        wire::{
+            decode_signature_headers_v1,
+            encode_signature_headers_v1,
+            message_to_verify,
+            now_ms,
+            parse_hex_32,
+            sha256,
+            sha256_hex,
+            sign_invoke_request_v1,
+            sign_invoke_response_v1,
+            validate_time_window,
+            verify_invoke_response_v1,
+            AllowedLeadersV1,
+            DecodedSignatureV1,
+            EncodedSignatureHeadersV1,
+            HttpRequestMeta,
+            InvokeRequestClaimsV1,
+            InvokeResponseClaimsV1,
+            VerifyOptions,
+            DOMAIN_REQUEST_V1,
+            HEADER_SIG,
+            HEADER_SIG_INPUT,
+            HEADER_SIG_VERSION,
+        },
     },
     base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _},
     ed25519_dalek::{Signature, SigningKey, VerifyingKey},
@@ -456,7 +458,11 @@ impl SignedHttpInvokerV1 {
         http: HttpRequestMeta<'_>,
         body: &[u8],
     ) -> Result<OutboundSessionV1, SignedHttpError> {
-        self.begin_invoke_with_nonce(responder_id, http, body, generate_nonce_v1())
+        let mut bytes = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
+        let nonce = URL_SAFE_NO_PAD.encode(bytes);
+
+        self.begin_invoke_with_nonce(responder_id, http, body, nonce)
     }
 
     /// Begin a signed invocation request using an explicit nonce.
@@ -903,10 +909,4 @@ impl SignedHttpResponderV1 {
             headers,
         })
     }
-}
-
-fn generate_nonce_v1() -> String {
-    let mut bytes = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
 }

@@ -7,6 +7,7 @@ mod runtime_vertex;
 mod scheduler;
 mod secret_value;
 mod serde_parsers;
+mod shared_object_ref;
 mod storage_kind;
 mod tool_meta;
 mod type_name;
@@ -20,6 +21,7 @@ pub use {
     scheduler::*,
     secret_value::SecretValue,
     serde_parsers::*,
+    shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
     tool_meta::ToolMeta,
     type_name::TypeName,
