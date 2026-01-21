@@ -24,7 +24,7 @@ use {
 /// Terminology:
 /// - Invoker: the node calling the tool (in Nexus, the Leader).
 /// - Responder: the node serving the request (in Nexus, the Tool).
-pub type AuthContext = nexus_sdk::signed_http::v1::AuthContextV1;
+pub type AuthContext = nexus_sdk::signed_http::v1::engine::AuthContextV1;
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:

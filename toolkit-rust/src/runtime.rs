@@ -6,7 +6,7 @@ use {
         signed_http_warp::{handle_invoke, InvokeAuthRuntime},
         NexusTool,
     },
-    nexus_sdk::signed_http::v1::HttpRequestMeta,
+    nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
     reqwest::Url,
     serde_json::json,
     std::sync::Arc,
@@ -455,7 +455,7 @@ mod tests {
         super::*,
         nexus_sdk::{
             fqn,
-            signed_http::v1::{
+            signed_http::v1::wire::{
                 decode_signature_headers_v1,
                 encode_signature_headers_v1,
                 now_ms,

@@ -103,7 +103,7 @@ use {
     ed25519_dalek::SigningKey,
     nexus_sdk::signed_http::{
         keys::parse_ed25519_signing_key,
-        v1::{AllowedLeadersFileV1, AllowedLeadersV1},
+        v1::wire::{AllowedLeadersFileV1, AllowedLeadersV1},
     },
     serde::Deserialize,
     std::{
