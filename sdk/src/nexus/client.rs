@@ -67,7 +67,6 @@ pub struct NexusClientBuilder {
     gas_budget: Option<u64>,
     nexus_objects: Option<NexusObjects>,
     transaction_timeout: Option<Duration>,
-    reference_gas_price: Option<u64>,
 }
 
 impl NexusClientBuilder {
@@ -113,15 +112,6 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Override the reference gas price instead of fetching it via RPC.
-    ///
-    /// This is primarily intended for tests and offline environments where the
-    /// caller does not want `build()` to depend on network connectivity.
-    pub fn with_reference_gas_price(mut self, reference_gas_price: u64) -> Self {
-        self.reference_gas_price = Some(reference_gas_price);
-        self
-    }
-
     /// Build the [`NexusClient`].
     pub async fn build(self) -> Result<NexusClient, NexusError> {
         let pk = self
@@ -152,15 +142,12 @@ impl NexusClientBuilder {
             sui_rpc::Client::new(&rpc_url).map_err(|e| NexusError::Rpc(e.into()))?,
         ));
 
-        let reference_gas_price = match self.reference_gas_price {
-            Some(reference_gas_price) => reference_gas_price,
-            None => client
-                .lock()
-                .await
-                .get_reference_gas_price()
-                .await
-                .map_err(|e| NexusError::Rpc(e.into()))?,
-        };
+        let reference_gas_price = client
+            .lock()
+            .await
+            .get_reference_gas_price()
+            .await
+            .map_err(|e| NexusError::Rpc(e.into()))?;
 
         let signer = Signer::new(
             client.clone(),
@@ -243,7 +230,6 @@ impl NexusClient {
     }
 
     /// Return a [`NetworkAuthActions`] instance for tool network-auth operations.
-    #[cfg(feature = "signed_http")]
     pub fn network_auth(&self) -> crate::nexus::network_auth::NetworkAuthActions {
         crate::nexus::network_auth::NetworkAuthActions {
             client: self.clone(),
@@ -360,10 +346,17 @@ mod tests {
         let coins = vec![coin];
         let budget = 1000;
 
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: None,
+            subscription_service_mock: None,
+        });
+
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
-            .with_reference_gas_price(1)
+            .with_rpc_url(&rpc_url)
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -480,10 +473,17 @@ mod tests {
         let coins = vec![coin];
         let budget = 1000;
 
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: None,
+            subscription_service_mock: None,
+        });
+
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
-            .with_reference_gas_price(1)
+            .with_rpc_url(&rpc_url)
             .with_nexus_objects(objects)
             .with_gas(coins, budget)
             .with_transaction_timeout(Duration::from_secs(10));

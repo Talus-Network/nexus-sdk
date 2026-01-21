@@ -226,7 +226,7 @@ You need an Ed25519 keypair dedicated to signing Tool responses.
 Using the CLI:
 
 ```bash
-nexus tool signed-http keygen --out ./tool_keypair.json
+nexus tool tool-auth keygen --out ./tool_keypair.json
 ```
 
 Store the private key securely. Treat it like an API credential.
@@ -248,7 +248,7 @@ The Tool URL should be `https://...`.
 Using the CLI (requires the tool’s OwnerCap object id and a gas coin):
 
 ```bash
-nexus tool signed-http register-key \
+nexus tool tool-auth register-key \
   --tool-fqn com.example.my-tool@1 \
   --owner-cap 0x... \
   --signing-key ./tool_signing_key.hex \
@@ -268,12 +268,10 @@ This creates (or updates) the Tool’s key binding in `network_auth` and returns
 Tools should not RPC to Sui on every request. Instead, generate a local allowlist file of permitted Leader nodes:
 
 ```bash
-nexus tool signed-http export-allowed-leaders \
+nexus tool tool-auth export-allowed-leaders \
   --leader 0x... \
   --leader 0x... \
-  --out ./allowed_leaders.json \
-  --sui-gas-coin 0x... \
-  --sui-gas-budget 50000000
+  --out ./allowed_leaders.json
 ```
 
 Deploy `allowed_leaders.json` next to your Tool.

@@ -1,5 +1,5 @@
 use {
-    super::SignedHttpCommand,
+    super::ToolAuthCommand,
     crate::{
         command_title,
         display::json_output,
@@ -15,18 +15,18 @@ use {
     std::path::PathBuf,
 };
 
-pub(crate) async fn handle_signed_http(cmd: SignedHttpCommand) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
     match cmd {
-        SignedHttpCommand::Keygen { out } => keygen(out).await,
-        SignedHttpCommand::RegisterKey {
+        ToolAuthCommand::Keygen { out } => keygen(out).await,
+        ToolAuthCommand::RegisterKey {
             tool_fqn,
             owner_cap,
             signing_key,
             description,
             gas,
         } => register_key(tool_fqn, owner_cap, signing_key, description, gas).await,
-        SignedHttpCommand::ExportAllowedLeaders { leaders, out, gas } => {
-            export_allowed_leaders(leaders, out, gas).await
+        ToolAuthCommand::ExportAllowedLeaders { leaders, out } => {
+            export_allowed_leaders(leaders, out).await
         }
     }
 }
@@ -116,7 +116,6 @@ async fn register_key(
 async fn export_allowed_leaders(
     leaders: Vec<sui::types::Address>,
     out: PathBuf,
-    gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Exporting allowed leaders file");
     if leaders.is_empty() {
@@ -125,7 +124,7 @@ async fn export_allowed_leaders(
         )));
     }
 
-    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
     nexus_client

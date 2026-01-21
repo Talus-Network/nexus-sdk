@@ -1,34 +1,36 @@
+mod tool_auth;
 mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
 mod tool_register_offchain;
 mod tool_register_onchain;
 mod tool_set_invocation_cost;
-mod tool_signed_http;
 mod tool_unregister;
 mod tool_validate;
 
 use {
     crate::prelude::*,
+    tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_list::*,
     tool_new::*,
     tool_register_offchain::register_off_chain_tool,
     tool_register_onchain::register_onchain_tool,
     tool_set_invocation_cost::*,
-    tool_signed_http::handle_signed_http,
     tool_unregister::*,
     tool_validate::{validate_off_chain_tool, validate_on_chain_tool},
 };
 
 #[derive(Subcommand)]
-pub(crate) enum SignedHttpCommand {
+pub(crate) enum ToolAuthCommand {
     #[command(about = "Generate a new Ed25519 message-signing key for a tool.")]
     Keygen {
-        /// Write the generated keypair JSON to this path.
-        ///
-        /// The output contains both `private_key_hex` and `public_key_hex`.
-        #[arg(long = "out", value_parser = ValueParser::from(expand_tilde))]
+        #[arg(
+            long = "out",
+            help = "Write the generated keypair JSON to this path.",
+            long_help = "Write the generated keypair JSON to this path. The output contains both `private_key_hex` and `public_key_hex`.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
         out: Option<PathBuf>,
     },
 
@@ -77,12 +79,12 @@ pub(crate) enum SignedHttpCommand {
         #[arg(long = "leader", value_name = "ADDRESS")]
         leaders: Vec<sui::types::Address>,
 
-        /// Output path for the allowlist JSON file.
-        #[arg(long = "out", value_parser = ValueParser::from(expand_tilde))]
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
         out: PathBuf,
-
-        #[command(flatten)]
-        gas: GasArgs,
     },
 }
 
@@ -321,10 +323,10 @@ pub(crate) enum ToolCommand {
         //
     },
 
-    #[command(about = "Manage signed HTTP for tools.")]
-    SignedHttp {
+    #[command(about = "Manage tool auth for signed HTTP.")]
+    ToolAuth {
         #[command(subcommand)]
-        cmd: SignedHttpCommand,
+        cmd: ToolAuthCommand,
     },
 }
 
@@ -435,7 +437,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
 
-        // == `$ nexus tool signed-http` ==
-        ToolCommand::SignedHttp { cmd } => handle_signed_http(cmd).await,
+        // == `$ nexus tool tool-auth` ==
+        ToolCommand::ToolAuth { cmd } => handle_tool_auth(cmd).await,
     }
 }

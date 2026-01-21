@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus tool signed-http` subcommands for key generation, tool key registration, and leader allowlist export.
+- `nexus tool tool-auth` subcommands for key generation, tool key registration, and leader allowlist export.
 
 ### `nexus-toolkit-rust`
 
@@ -41,13 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `nexus-sdk`
 
-#### Added
+#### Changed
 
-- `signed http` support for signing HTTP requests with ed25519 keys
 - leader and crypto caps in PTB templates are now party objects
 - added `ToolRegistryCreated` as tracked event
 - combined some functions in tool_registry.move
 - set Rust toolchain back to `stable`
+
+## [`0.4.0`] - 2026-01-07
 
 ### `nexus-cli`
 

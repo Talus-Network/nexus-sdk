@@ -12,7 +12,7 @@ The [`NexusClient`] provides access to:
 - [`CryptoActions`]: perform cryptographic handshakes with Nexus
 - [`WorkflowActions`]: publish and execute workflows (DAGs)
 - [`SchedulerActions`]: create and manage scheduler tasks, occurrences, and periodic schedules
-- [`NetworkAuthActions`]: (when `signed_http` is enabled) manage message-signing key bindings for Tools/Leader nodes
+- [`NetworkAuthActions`]: manage message-signing key bindings for Tools/Leader nodes
 
 You can initialize a `NexusClient` via [`NexusClient::builder()`] with:
 
@@ -49,12 +49,12 @@ async fn main() -> anyhow::Result<()> {
 
 ## 🔏 Network Auth (signed HTTP)
 
-When the `signed_http` feature is enabled, `NexusClient` exposes `network_auth()` for Tool/Leader node message-signing key operations:
+`NexusClient` exposes `network_auth()` for Tool/Leader node message-signing key operations:
 
 - register/rotate a Tool message-signing key on-chain, and
 - export a local allowlist file of permitted Leader nodes for Tool-side verification (no RPC at runtime).
 
-This is the same functionality exposed via the CLI under `nexus tool signed-http ...`.
+This is the same functionality exposed via the CLI under `nexus tool tool-auth ...`.
 
 ---
 
