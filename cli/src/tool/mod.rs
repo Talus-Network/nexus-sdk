@@ -324,7 +324,7 @@ pub(crate) enum ToolCommand {
     },
 
     #[command(about = "Manage tool auth for signed HTTP.")]
-    ToolAuth {
+    Auth {
         #[command(subcommand)]
         cmd: ToolAuthCommand,
     },
@@ -437,7 +437,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
 
-        // == `$ nexus tool tool-auth` ==
-        ToolCommand::ToolAuth { cmd } => handle_tool_auth(cmd).await,
+        // == `$ nexus tool auth` ==
+        ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
     }
 }

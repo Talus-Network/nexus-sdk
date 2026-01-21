@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- `nexus tool tool-auth` subcommands for key generation, tool key registration, and leader allowlist export.
+- `nexus tool auth` subcommands for key generation, tool key registration, and leader allowlist export.
 
 ### `nexus-toolkit-rust`
 

@@ -116,7 +116,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tool tool-auth`**
+**`nexus tool auth`**
 
 Commands for operating signed HTTP (message signatures) for off-chain Tools.
 
@@ -137,7 +137,7 @@ See also:
 
 ---
 
-**`nexus tool tool-auth keygen [--out <path>]`**
+**`nexus tool auth keygen [--out <path>]`**
 
 Generates a new Ed25519 Tool message-signing keypair.
 
@@ -147,7 +147,7 @@ Generates a new Ed25519 Tool message-signing keypair.
 
 ---
 
-**`nexus tool tool-auth register-key --tool-fqn <fqn> --signing-key <key-or-path> [--owner-cap <object_id>] [--description <text>] ...gas`**
+**`nexus tool auth register-key --tool-fqn <fqn> --signing-key <key-or-path> [--owner-cap <object_id>] [--description <text>] ...gas`**
 
 Registers (or rotates) the Tool’s message-signing key in the on-chain Network Auth registry.
 
@@ -159,7 +159,7 @@ If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the C
 
 ---
 
-**`nexus tool tool-auth export-allowed-leaders --leader <address>... --out <path>`**
+**`nexus tool auth export-allowed-leaders --leader <address>... --out <path>`**
 
 Exports a local allowlist file (JSON) of permitted Leader nodes and their active signing keys.
 
