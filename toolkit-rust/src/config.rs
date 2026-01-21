@@ -55,6 +55,7 @@
 //! use {
 //!     ed25519_dalek::SigningKey,
 //!     nexus_toolkit::ToolkitRuntimeConfig,
+//!     serde_json::{json, Map},
 //! };
 //!
 //! let tool_id = "xyz.dummy.tool@1";
@@ -62,23 +63,34 @@
 //! let leader_sk = SigningKey::from_bytes(&[9u8; 32]);
 //! let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
 //!
-//! let cfg_json = format!(r#"{{
-//!   "version": 1,
-//!   "invoke_max_body_bytes": 123,
-//!   "signed_http": {{
-//!     "mode": "required",
-//!     "allowed_leaders": {{
-//!       "version": 1,
-//!       "leaders": [{{"leader_id":"0x1111","keys":[{{"kid":0,"public_key":"{leader_pk_hex}"}}]}}]
-//!     }},
-//!     "tools": {{
-//!       "{tool_id}": {{
+//! let mut tools = Map::new();
+//! tools.insert(
+//!     tool_id.to_string(),
+//!     json!({
 //!         "tool_kid": 0,
-//!         "tool_signing_key": "{tool_sk_hex}"
-//!       }}
-//!     }}
-//!   }}
-//! }}"#);
+//!         "tool_signing_key": tool_sk_hex,
+//!     }),
+//! );
+//!
+//! let cfg_json = serde_json::to_string_pretty(&json!({
+//!     "version": 1,
+//!     "invoke_max_body_bytes": 123,
+//!     "signed_http": {
+//!         "mode": "required",
+//!         "allowed_leaders": {
+//!             "version": 1,
+//!             "leaders": [{
+//!                 "leader_id": "0x1111",
+//!                 "keys": [{
+//!                     "kid": 0,
+//!                     "public_key": leader_pk_hex,
+//!                 }],
+//!             }],
+//!         },
+//!         "tools": tools,
+//!     },
+//! }))
+//! .unwrap();
 //!
 //! let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
 //! assert_eq!(cfg.invoke_max_body_bytes(), 123);
@@ -90,7 +102,7 @@ use {
     anyhow::Context as _,
     ed25519_dalek::SigningKey,
     nexus_sdk::signed_http::{
-        parse_ed25519_signing_key,
+        keys::parse_ed25519_signing_key,
         v1::{AllowedLeadersFileV1, AllowedLeadersV1},
     },
     serde::Deserialize,
@@ -327,7 +339,10 @@ fn load_signed_http_config(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        serde_json::{json, Map},
+    };
 
     fn make_config_json(
         tool_id: &str,
@@ -335,27 +350,36 @@ mod tests {
         leader_id: &str,
         leader_pk_hex: &str,
     ) -> String {
-        format!(
-            r#"{{
-  "version": 1,
-  "invoke_max_body_bytes": 123,
-  "signed_http": {{
-    "mode": "required",
-    "allowed_leaders": {{
-      "version": 1,
-      "leaders": [{{"leader_id":"{leader_id}","keys":[{{"kid":0,"public_key":"{leader_pk_hex}"}}]}}]
-    }},
-    "max_clock_skew_ms": 10,
-    "max_validity_ms": 20,
-    "tools": {{
-      "{tool_id}": {{
-        "tool_kid": 7,
-        "tool_signing_key": "{tool_sk_hex}"
-      }}
-    }}
-  }}
-}}"#
-        )
+        let mut tools = Map::new();
+        tools.insert(
+            tool_id.to_string(),
+            json!({
+                "tool_kid": 7,
+                "tool_signing_key": tool_sk_hex,
+            }),
+        );
+
+        serde_json::to_string(&json!({
+            "version": 1,
+            "invoke_max_body_bytes": 123,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": leader_id,
+                        "keys": [{
+                            "kid": 0,
+                            "public_key": leader_pk_hex,
+                        }],
+                    }],
+                },
+                "max_clock_skew_ms": 10,
+                "max_validity_ms": 20,
+                "tools": tools,
+            },
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -384,12 +408,17 @@ mod tests {
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_sk_hex = hex::encode([6u8; 32]);
 
-        let allowlist_json = format!(
-            r#"{{
-  "version": 1,
-  "leaders": [{{"leader_id":"0x9999","keys":[{{"kid":0,"public_key":"{leader_pk_hex}"}}]}}]
-}}"#
-        );
+        let allowlist_json = serde_json::to_string(&json!({
+            "version": 1,
+            "leaders": [{
+                "leader_id": "0x9999",
+                "keys": [{
+                    "kid": 0,
+                    "public_key": leader_pk_hex,
+                }],
+            }],
+        }))
+        .unwrap();
 
         let file_name = format!(
             "nexus-allowlist-{}.json",
@@ -401,23 +430,20 @@ mod tests {
         let path = std::env::temp_dir().join(file_name);
         fs::write(&path, allowlist_json).unwrap();
 
-        let cfg_json = format!(
-            r#"{{
-  "version": 1,
-  "signed_http": {{
-    "mode": "required",
-    "allowed_leaders_path": "{}",
-    "tools": {{
-      "xyz.demo.tool@1": {{
-        "tool_kid": 0,
-        "tool_signing_key": "{}"
-      }}
-    }}
-  }}
-}}"#,
-            path.display(),
-            tool_sk_hex
-        );
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders_path": path.display().to_string(),
+                "tools": {
+                    "xyz.demo.tool@1": {
+                        "tool_kid": 0,
+                        "tool_signing_key": tool_sk_hex,
+                    },
+                },
+            },
+        }))
+        .unwrap();
 
         let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
         assert!(cfg.signed_http_is_required());
@@ -430,26 +456,57 @@ mod tests {
 
     #[test]
     fn signed_http_disabled_is_ignored() {
-        let cfg_json = r#"{"version":1,"signed_http":{"mode":"disabled"}}"#;
-        let cfg = ToolkitRuntimeConfig::from_json_str(cfg_json).unwrap();
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
+            "signed_http": {
+                "mode": "disabled",
+            },
+        }))
+        .unwrap();
+        let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
         assert!(!cfg.signed_http_is_required());
     }
 
     #[test]
     fn signed_http_requires_allowlist() {
-        let cfg_json = r#"{"version":1,"signed_http":{"mode":"required","tools":{"demo":{"tool_kid":0,"tool_signing_key":"00"}}}}"#;
-        assert!(ToolkitRuntimeConfig::from_json_str(cfg_json).is_err());
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
+            "signed_http": {
+                "mode": "required",
+                "tools": {
+                    "demo": {
+                        "tool_kid": 0,
+                        "tool_signing_key": "00",
+                    },
+                },
+            },
+        }))
+        .unwrap();
+        assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
     }
 
     #[test]
     fn signed_http_requires_tool_entries() {
-        let cfg_json = r#"{"version":1,"signed_http":{"mode":"required","allowed_leaders":{"version":1,"leaders":[]}}}"#;
-        assert!(ToolkitRuntimeConfig::from_json_str(cfg_json).is_err());
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [],
+                },
+            },
+        }))
+        .unwrap();
+        assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
     }
 
     #[test]
     fn rejects_unknown_config_version() {
-        let cfg_json = r#"{"version":2}"#;
-        assert!(ToolkitRuntimeConfig::from_json_str(cfg_json).is_err());
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 2,
+        }))
+        .unwrap();
+        assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
     }
 }

@@ -84,6 +84,7 @@ pub trait NexusTool: Send + Sync + 'static {
     ///     serde::{Deserialize, Serialize},
     ///     warp::http::StatusCode,
     /// };
+    /// # use std::future::Future;
     ///
     /// #[derive(Deserialize, JsonSchema)]
     /// struct Input {
@@ -98,34 +99,27 @@ pub trait NexusTool: Send + Sync + 'static {
     /// struct MyTool;
     ///
     /// impl NexusTool for MyTool {
-    ///     type Input = Input;
-    ///     type Output = Output;
-    ///
-    ///     fn fqn() -> ToolFqn {
-    ///         fqn!("example.my.tool@1")
-    ///     }
-    ///
-    ///     async fn new() -> Self {
-    ///         Self
-    ///     }
-    ///
-    ///     fn authorize(&self, ctx: AuthContext) -> impl std::future::Future<Output = AnyResult<()>> + Send {
-    ///         async move {
-    ///             // Example policy: only allow a specific LeaderId.
-    ///             if ctx.invoker_id != "0x1111" {
-    ///                 anyhow::bail!("leader not allowed");
-    ///             }
-    ///             Ok(())
+    /// #   type Input = Input;
+    /// #   type Output = Output;
+    /// #   fn fqn() -> ToolFqn {
+    /// #       fqn!("example.my.tool@1")
+    /// #   }
+    ///     async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
+    ///         // Example policy: only allow a specific LeaderId.
+    ///         if ctx.invoker_id != "0x1111" {
+    ///             anyhow::bail!("leader not allowed");
     ///         }
+    ///         Ok(())
     ///     }
-    ///
-    ///     async fn invoke(&self, input: Self::Input) -> Self::Output {
-    ///         Output::Ok { message: input.prompt }
-    ///     }
-    ///
-    ///     async fn health(&self) -> AnyResult<StatusCode> {
-    ///         Ok(StatusCode::OK)
-    ///     }
+    /// #   fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send {
+    /// #       async move { Output::Ok { message: input.prompt } }
+    /// #   }
+    /// #   fn health(&self) -> impl Future<Output = AnyResult<StatusCode>> + Send {
+    /// #       async { Ok(StatusCode::OK) }
+    /// #   }
+    /// #   fn new() -> impl Future<Output = Self> + Send {
+    /// #       async { Self }
+    /// #   }
     /// }
     /// ```
     fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {

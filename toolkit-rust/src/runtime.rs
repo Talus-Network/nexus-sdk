@@ -507,14 +507,9 @@ mod tests {
             Self
         }
 
-        fn authorize(
-            &self,
-            _ctx: crate::AuthContext,
-        ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send {
-            async move {
-                AUTHORIZE_CALLS.fetch_add(1, Ordering::SeqCst);
-                anyhow::bail!("leader not allowed")
-            }
+        async fn authorize(&self, _ctx: crate::AuthContext) -> anyhow::Result<()> {
+            AUTHORIZE_CALLS.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("leader not allowed")
         }
 
         async fn invoke(&self, input: Self::Input) -> Self::Output {
