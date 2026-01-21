@@ -456,7 +456,11 @@ impl SignedHttpInvokerV1 {
         http: HttpRequestMeta<'_>,
         body: &[u8],
     ) -> Result<OutboundSessionV1, SignedHttpError> {
-        self.begin_invoke_with_nonce(responder_id, http, body, generate_nonce_v1())
+        let mut bytes = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
+        let nonce = URL_SAFE_NO_PAD.encode(bytes);
+
+        self.begin_invoke_with_nonce(responder_id, http, body, nonce)
     }
 
     /// Begin a signed invocation request using an explicit nonce.
@@ -903,10 +907,4 @@ impl SignedHttpResponderV1 {
             headers,
         })
     }
-}
-
-fn generate_nonce_v1() -> String {
-    let mut bytes = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
 }
