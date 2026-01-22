@@ -28,7 +28,7 @@ public struct ProofOfUID {
 /// Tool execution output variants.
 /// update: We only use this for when we register the tool. The SDK automatically fetches
 /// the output schema from this enum. It is not used in the tool execution. Instead, we use
-/// the new `ToolOutput` object.
+/// the new `TaggedOutput` object.
 public enum Output {
     Ok {
         old_count: u64,
