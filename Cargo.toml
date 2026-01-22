@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["toolkit-rust", "cli", "sdk", "tools/*"]
+members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
