@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.6.0`] - Unreleased
 
-### `tools`
-
-### Changed
-
-- Move tools to their own repo
-
 ### `nexus-sdk`
 
 #### Added
