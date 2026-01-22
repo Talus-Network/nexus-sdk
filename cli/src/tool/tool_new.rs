@@ -241,7 +241,7 @@ mod tests {
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
         assert!(move_contents.contains("public fun execute("));
         assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
-        assert!(move_contents.contains("): ToolOutput"));
+        assert!(move_contents.contains("): TaggedOutput"));
         assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));
         assert!(
             move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")
