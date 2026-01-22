@@ -98,7 +98,6 @@ Available recipes:
     cli ...          # Commands concerning Nexus CLI
     sdk ...          # Commands concerning the Nexus SDK
     toolkit-rust ... # Commands concerning Nexus Toolkit for Rust
-    tools ...        # Commands concerning native Nexus Tools
 ```
 
 Learn more about `just` in the [official manual][just-manual].
