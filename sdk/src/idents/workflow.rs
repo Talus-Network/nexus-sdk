@@ -729,12 +729,12 @@ impl Dag {
         }
     }
 
-    /// Convert ToolOutput to DAG types.
+    /// Convert TaggedOutput to DAG types.
     ///
-    /// `nexus_workflow::dag::tool_output_to_dag_types`
+    /// `nexus_workflow::dag::tagged_output_to_dag_types`
     pub const TOOL_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("tool_output_to_dag_types"),
+        name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
     };
 }
 
