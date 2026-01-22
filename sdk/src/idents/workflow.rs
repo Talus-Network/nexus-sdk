@@ -405,6 +405,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
     };
+    /// Convert TaggedOutput to DAG types.
+    ///
+    /// `nexus_workflow::dag::tagged_output_to_dag_types`
+    pub const TOOL_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
+    };
     /// The Vertex struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::Vertex`
@@ -728,14 +735,6 @@ impl Dag {
             }
         }
     }
-
-    /// Convert TaggedOutput to DAG types.
-    ///
-    /// `nexus_workflow::dag::tagged_output_to_dag_types`
-    pub const TOOL_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
-    };
 }
 
 // == `nexus_workflow::tool_registry` ==
