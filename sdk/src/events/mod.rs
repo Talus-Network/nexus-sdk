@@ -141,7 +141,7 @@ pub struct RequestWalkExecutionEvent {
 /// `confirm_tool_eval_for_walk` on it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AnnounceInterfacePackageEvent {
-    pub shared_objects: Vec<sui::types::Address>,
+    pub shared_objects: Vec<SharedObjectRef>,
 }
 
 /// Fired by the Nexus Workflow when a new off-chain tool is registered so that

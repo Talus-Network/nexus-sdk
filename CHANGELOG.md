@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - Signed HTTP runtime support with tool signing keys and leader allowlists.
+- `SharedObjectRef` type to represent shared object references with mutability information
+- `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
+- added support for tagged_output in sdk
 
 ## [`0.5.0`] - 2026-01-16
 
