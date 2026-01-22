@@ -72,8 +72,9 @@ In `sources/my_onchain_tool.move`:
 ```move
 module my_onchain_tool::my_onchain_tool;
 
+use nexus_primitives::data;
 use nexus_primitives::proof_of_uid::ProofOfUID;
-use nexus_workflow::tool_output::{Self, ToolOutput};
+use nexus_primitives::tagged_output::{Self, TaggedOutput};
 use sui::bag::{Self, Bag};
 use sui::clock::Clock;
 use sui::transfer::share_object;
@@ -103,7 +104,7 @@ public struct MyToolState has key {
 ```move
 /// Tool execution output variants.
 /// This enum is used for automatic schema generation during registration.
-/// It's not used during execution. Only the ToolOutput object is used.
+/// It's not used during execution. Only the TaggedOutput object is used.
 public enum Output {
     Ok {
         result: u64,
@@ -149,7 +150,7 @@ This is the core of your tool, the function that performs the actual execution:
 /// CRITICAL REQUIREMENTS:
 /// 1. First parameter: worksheet: &mut ProofOfUID
 /// 2. Last parameter: ctx: &mut TxContext
-/// 3. Return type: ToolOutput
+/// 3. Return type: TaggedOutput
 /// 4. Must stamp worksheet with witness ID
 public fun execute(
     worksheet: &mut ProofOfUID,
@@ -158,7 +159,7 @@ public fun execute(
     input_value: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): ToolOutput {
+): TaggedOutput {
     // Get the witness for stamping.
     let witness = state.witness();
 
@@ -168,37 +169,44 @@ public fun execute(
     // Implement your tool logic here
     if (input_value == 0) {
         // Return error variant
-        tool_output::err(b"Input value cannot be zero")
+        Self::new(b"err")
+            .with_named_payload(b"reason", data::inline_one(b"Input value cannot be zero").as_string())
     } else if (input_value > 1000) {
         // Return custom variant
-        tool_output::variant(b"custom_result")
-            .with_field(b"data", tool_output::string_value(b"large_value_processed"))
-            .with_field(b"timestamp", tool_output::number_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
+        Self::new(b"custom_result")
+            .with_named_payload(b"data", data::inline_one(b"large_value_processed").as_string())
+            .with_named_payload(b"timestamp", data::inline_one(sui::clock::timestamp_ms(clock).to_string().into_bytes()).as_number())
     } else {
         // Return success variant
         let result = input_value * 2;
-        tool_output::ok()
-            .with_field(b"result", tool_output::number_value(result.to_string().into_bytes()))
+        Self::new(b"ok")
+            .with_named_payload(b"result", data::inline_one(result.to_string().into_bytes()).as_number())
     }
 }
 ```
 
 #### Understanding Field Value Types
 
-When adding fields to `ToolOutput`, you must use typed constructor functions to ensure proper JSON formatting:
+When adding fields to `TaggedOutput`, you must use the fluent API with type hints to ensure proper JSON formatting:
 
 ```move
 // Numeric values (u8, u16, u32, u64, u128, u256)
-.with_field(b"count", tool_output::number_value(value.to_string().into_bytes()))
+.with_named_payload(b"count", data::inline_one(value.to_string().into_bytes()).as_number())
 
 // String values (will be wrapped in quotes in JSON)
-.with_field(b"message", tool_output::string_value(b"Hello world"))
+.with_named_payload(b"message", data::inline_one(b"Hello world").as_string())
 
 // Boolean values (true/false without quotes in JSON)
-.with_field(b"success", tool_output::bool_value(b"true"))
+.with_named_payload(b"success", data::inline_one(b"true").as_bool())
 
 // Address values (prefixed with "0x" and wrapped in quotes in JSON)
-.with_field(b"sender", tool_output::address_value(address.to_string().into_bytes()))
+.with_named_payload(b"sender", data::inline_one(address.to_string().into_bytes()).as_address())
+
+// Raw JSON values (objects, arrays, null - passed through as-is)
+.with_named_payload(b"metadata", data::inline_one(b"{\"key\":\"value\"}").as_raw())
+
+// Many values (for loops in nexus)
+.with_named_payload(b"items", data::inline_many(items).as_number())
 ```
 
 This typing ensures that the Nexus framework correctly parses and processes your tool's outputs.
