@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
 
 #### Changed
+
 - moved tool_output to primitives
 
 ## [`0.5.0`] - 2026-01-16
