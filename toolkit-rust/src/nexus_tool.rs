@@ -24,7 +24,7 @@ use {
 /// Terminology:
 /// - Invoker: the node calling the tool (in Nexus, the Leader).
 /// - Responder: the node serving the request (in Nexus, the Tool).
-pub type AuthContext = nexus_sdk::signed_http::v1::AuthContextV1;
+pub type AuthContext = nexus_sdk::signed_http::v1::engine::AuthContextV1;
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
@@ -77,55 +77,12 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// # Example
     /// ```no_run
-    /// use {
-    ///     nexus_sdk::{fqn, ToolFqn},
-    ///     nexus_toolkit::{AnyResult, AuthContext, NexusTool},
-    ///     schemars::JsonSchema,
-    ///     serde::{Deserialize, Serialize},
-    ///     warp::http::StatusCode,
-    /// };
-    ///
-    /// #[derive(Deserialize, JsonSchema)]
-    /// struct Input {
-    ///     prompt: String,
-    /// }
-    ///
-    /// #[derive(Serialize, JsonSchema)]
-    /// enum Output {
-    ///     Ok { message: String },
-    /// }
-    ///
-    /// struct MyTool;
-    ///
-    /// impl NexusTool for MyTool {
-    ///     type Input = Input;
-    ///     type Output = Output;
-    ///
-    ///     fn fqn() -> ToolFqn {
-    ///         fqn!("example.my.tool@1")
+    /// async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
+    ///     // Example policy: only allow a specific LeaderId.
+    ///     if ctx.invoker_id != "0x1111" {
+    ///         anyhow::bail!("leader not allowed");
     ///     }
-    ///
-    ///     async fn new() -> Self {
-    ///         Self
-    ///     }
-    ///
-    ///     fn authorize(&self, ctx: AuthContext) -> impl std::future::Future<Output = AnyResult<()>> + Send {
-    ///         async move {
-    ///             // Example policy: only allow a specific LeaderId.
-    ///             if ctx.invoker_id != "0x1111" {
-    ///                 anyhow::bail!("leader not allowed");
-    ///             }
-    ///             Ok(())
-    ///         }
-    ///     }
-    ///
-    ///     async fn invoke(&self, input: Self::Input) -> Self::Output {
-    ///         Output::Ok { message: input.prompt }
-    ///     }
-    ///
-    ///     async fn health(&self) -> AnyResult<StatusCode> {
-    ///         Ok(StatusCode::OK)
-    ///     }
+    ///     Ok(())
     /// }
     /// ```
     fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {

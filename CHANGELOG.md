@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - `nexus tool auth` subcommands for key generation, tool key registration, and leader allowlist export.
+- `SharedObjectRef` type to represent shared object references with mutability information
+- `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
+- added support for tagged_output in sdk
 
 ### `nexus-toolkit-rust`
 
