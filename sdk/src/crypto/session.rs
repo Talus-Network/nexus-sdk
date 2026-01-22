@@ -575,10 +575,17 @@ impl Session {
     }
 }
 
+impl Zeroize for Session {
+    fn zeroize(&mut self) {
+        self.session_id.zeroize();
+        self.ratchet.zeroize();
+    }
+}
+
 impl Drop for Session {
     /// Zeroises the session-ID on drop to reduce key-material lifetime in RAM.
     fn drop(&mut self) {
-        self.session_id.zeroize();
+        self.zeroize();
     }
 }
 

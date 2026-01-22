@@ -6,6 +6,7 @@ mod nexus_objects;
 mod ports_data;
 mod runtime_vertex;
 mod scheduler;
+mod secret;
 mod secret_value;
 mod serde_parsers;
 mod storage_kind;
@@ -20,6 +21,7 @@ pub use {
     ports_data::PortsData,
     runtime_vertex::RuntimeVertex,
     scheduler::*,
+    secret::Secret,
     secret_value::SecretValue,
     serde_parsers::*,
     storage_kind::StorageKind,

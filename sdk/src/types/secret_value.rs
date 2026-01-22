@@ -1,9 +1,12 @@
 //! String wrapper for type safety around our secret strings. Also implements
 //! custom display that avoids leaking the secret in logs.
 
-use serde::{Deserialize, Serialize};
+use {
+    serde::{Deserialize, Serialize},
+    zeroize::{Zeroize, ZeroizeOnDrop},
+};
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct SecretValue(String);
 
 impl From<String> for SecretValue {
