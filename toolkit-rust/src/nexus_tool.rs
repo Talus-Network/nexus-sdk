@@ -77,49 +77,12 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// # Example
     /// ```no_run
-    /// use {
-    ///     nexus_sdk::{fqn, ToolFqn},
-    ///     nexus_toolkit::{AnyResult, AuthContext, NexusTool},
-    ///     schemars::JsonSchema,
-    ///     serde::{Deserialize, Serialize},
-    ///     warp::http::StatusCode,
-    /// };
-    /// # use std::future::Future;
-    ///
-    /// #[derive(Deserialize, JsonSchema)]
-    /// struct Input {
-    ///     prompt: String,
-    /// }
-    ///
-    /// #[derive(Serialize, JsonSchema)]
-    /// enum Output {
-    ///     Ok { message: String },
-    /// }
-    ///
-    /// struct MyTool;
-    ///
-    /// impl NexusTool for MyTool {
-    /// #   type Input = Input;
-    /// #   type Output = Output;
-    /// #   fn fqn() -> ToolFqn {
-    /// #       fqn!("example.my.tool@1")
-    /// #   }
-    ///     async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
-    ///         // Example policy: only allow a specific LeaderId.
-    ///         if ctx.invoker_id != "0x1111" {
-    ///             anyhow::bail!("leader not allowed");
-    ///         }
-    ///         Ok(())
+    /// async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
+    ///     // Example policy: only allow a specific LeaderId.
+    ///     if ctx.invoker_id != "0x1111" {
+    ///         anyhow::bail!("leader not allowed");
     ///     }
-    /// #   fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send {
-    /// #       async move { Output::Ok { message: input.prompt } }
-    /// #   }
-    /// #   fn health(&self) -> impl Future<Output = AnyResult<StatusCode>> + Send {
-    /// #       async { Ok(StatusCode::OK) }
-    /// #   }
-    /// #   fn new() -> impl Future<Output = Self> + Send {
-    /// #       async { Self }
-    /// #   }
+    ///     Ok(())
     /// }
     /// ```
     fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
