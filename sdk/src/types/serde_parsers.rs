@@ -167,31 +167,62 @@ where
 }
 
 /// Deserialize a timestamp in milliseconds since epoch stored as a string
-pub fn deserialize_string_to_datetime<'de, D>(
+pub fn deserialize_sui_u64_to_datetime<'de, D>(
     deserializer: D,
 ) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let value: String = Deserialize::deserialize(deserializer)?;
-    let timestamp = value.parse::<i64>().map_err(serde::de::Error::custom)?;
-    let datetime = chrono::DateTime::from_timestamp_millis(timestamp);
+    let timestamp = deserialize_sui_u64(deserializer)?;
+    let datetime = chrono::DateTime::from_timestamp_millis(timestamp as i64);
 
     datetime.ok_or(serde::de::Error::custom("datetime out of range"))
 }
 
-/// Inverse of [deserialize_string_to_datetime].
-pub fn serialize_datetime_to_string<S>(
+/// Inverse of [deserialize_sui_u64_to_datetime].
+pub fn serialize_datetime_to_sui_u64<S>(
     value: &chrono::DateTime<chrono::Utc>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let timestamp = value.timestamp_millis();
-    let timestamp_str = timestamp.to_string();
+    let timestamp = value.timestamp_millis() as u64;
 
-    timestamp_str.serialize(serializer)
+    serialize_sui_u64(&timestamp, serializer)
+}
+
+/// Deserialize a timestamp in milliseconds since epoch stored as a string
+pub fn deserialize_option_sui_u64_to_datetime<'de, D>(
+    deserializer: D,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let timestamp = deserialize_sui_option_u64(deserializer)?;
+
+    let Some(timestamp) = timestamp else {
+        return Ok(None);
+    };
+
+    Ok(chrono::DateTime::from_timestamp_millis(timestamp as i64))
+}
+
+/// Inverse of [deserialize_option_sui_u64_to_datetime].
+pub fn serialize_option_datetime_to_sui_u64<S>(
+    value: &Option<chrono::DateTime<chrono::Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(datetime) => {
+            let timestamp = datetime.timestamp_millis() as u64;
+            serialize_sui_option_u64(&Some(timestamp), serializer)
+        }
+        None => serialize_sui_option_u64(&None, serializer),
+    }
 }
 
 /// Deserialize a base64 encoded vector of bytest to a [`Vec<u8>`].

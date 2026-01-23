@@ -124,7 +124,7 @@ pub fn register_off_chain_for_self(
     // `Tool`
     let tool_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::ToolRegistry::TOOL);
 
-    // `sui::transfer::share_object`
+    // `sui::transfer::public_share_object`
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -240,7 +240,7 @@ pub fn register_on_chain_for_self(
     // `Tool`
     let tool_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::ToolRegistry::TOOL);
 
-    // `sui::transfer::share_object`
+    // `sui::transfer::public_share_object`
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
