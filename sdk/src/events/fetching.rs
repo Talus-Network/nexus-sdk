@@ -113,9 +113,10 @@ impl EventFetcher {
                     let response = match client.post(&url).json(&query).send().await {
                         Ok(resp) => resp,
                         Err(e) => {
-                            if let Err(_) = notify_about_events
+                            if notify_about_events
                                 .send(Err(anyhow::anyhow!("Failed to send GQL request: {e}")))
                                 .await
+                                .is_err()
                             {
                                 // Receiver dropped, exit the poller process.
                                 break;
@@ -132,9 +133,10 @@ impl EventFetcher {
                     {
                         Ok(data) => data,
                         Err(e) => {
-                            if let Err(_) = notify_about_events
+                            if notify_about_events
                                 .send(Err(anyhow::anyhow!("Failed to send GQL request: {e}")))
                                 .await
+                                .is_err()
                             {
                                 // Receiver dropped, exit the poller process.
                                 break;

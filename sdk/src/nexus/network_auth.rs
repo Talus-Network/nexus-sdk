@@ -292,7 +292,7 @@ impl NetworkAuthActions {
         {
             Ok(obj) => Ok(Some(obj)),
             Err(e) if e.to_string().contains("not found") => Ok(None),
-            Err(e) => Err(NexusError::Rpc(e.into())),
+            Err(e) => Err(NexusError::Rpc(e)),
         }
     }
 }

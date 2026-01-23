@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Changed
 
-- `nexus tool list` now works with pagination and derived objects
+- `nexus tool list` now works with derived objects
 
 ### `nexus-toolkit-rust`
 

@@ -44,6 +44,23 @@ pub enum ToolRef {
     },
 }
 
+/// [`ToolRef`] display implementation.
+///
+/// - Http: `https://example.com/my-tool`
+/// - Sui: `0xabc123::my_module@0xwitness` (address::module@witness)
+impl std::fmt::Display for ToolRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolRef::Http { url } => write!(f, "{url}"),
+            ToolRef::Sui {
+                package_address,
+                module_name,
+                witness_id,
+            } => write!(f, "{package_address}::{module_name}@{witness_id}"),
+        }
+    }
+}
+
 /// A [`Tool`] represents a tool that can be either on-chain or off-chain. This
 /// structure matches the on-chain representation of a tool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -108,6 +125,7 @@ mod tests {
     use {
         super::*,
         crate::{fqn, test_utils::sui_mocks},
+        std::collections::HashSet,
     };
 
     #[test]
@@ -232,5 +250,77 @@ mod tests {
         let serialized = serde_json::to_string(&tool).unwrap();
         let deserialized: Tool = serde_json::from_str(&serialized).unwrap();
         assert_eq!(tool, deserialized);
+    }
+
+    #[test]
+    fn test_toolref_display_http() {
+        let url = reqwest::Url::parse("https://example.com/tool").unwrap();
+        let tool_ref = ToolRef::Http { url: url.clone() };
+        let display = format!("{}", tool_ref);
+        assert_eq!(display, url.to_string());
+    }
+
+    #[test]
+    fn test_toolref_display_sui() {
+        let package_address = sui::types::Address::from_static(
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        );
+        let module_name = sui::types::Identifier::from_static("my_tool_module");
+        let witness_id = sui::types::Address::from_static(
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        );
+        let tool_ref = ToolRef::Sui {
+            package_address,
+            module_name: module_name.clone(),
+            witness_id,
+        };
+        let display = format!("{}", tool_ref);
+        assert_eq!(
+            display,
+            format!("{}::{}@{}", package_address, module_name, witness_id)
+        );
+    }
+
+    #[test]
+    fn test_toolref_equality_and_hash() {
+        let url1 = reqwest::Url::parse("https://example.com/tool1").unwrap();
+        let url2 = reqwest::Url::parse("https://example.com/tool2").unwrap();
+        let ref1 = ToolRef::Http { url: url1.clone() };
+        let ref2 = ToolRef::Http { url: url2.clone() };
+        let mut set = HashSet::new();
+        set.insert(ref1.clone());
+        assert!(set.contains(&ref1));
+        assert!(!set.contains(&ref2));
+    }
+
+    #[test]
+    fn test_tool_partial_eq_and_hash() {
+        let id = sui_mocks::mock_sui_address();
+        let tool1 = Tool {
+            id,
+            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
+            reference: ToolRef::Http {
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+            },
+            description: "Tool 1".to_string(),
+            input_schema: serde_json::json!({ "type": "object" }),
+            output_schema: serde_json::json!({ "type": "object" }),
+            registered_at_ms: chrono::Utc::now(),
+        };
+        let tool2 = Tool {
+            id,
+            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
+            reference: ToolRef::Http {
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+            },
+            description: "Tool 1".to_string(),
+            input_schema: serde_json::json!({ "type": "object" }),
+            output_schema: serde_json::json!({ "type": "object" }),
+            registered_at_ms: tool1.registered_at_ms,
+        };
+        assert_eq!(tool1, tool2);
+        let mut set = HashSet::new();
+        set.insert(tool1.clone());
+        assert!(set.contains(&tool2));
     }
 }

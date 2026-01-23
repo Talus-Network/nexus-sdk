@@ -520,7 +520,7 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER_TOOL.module);
         assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER_TOOL.name);
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]
@@ -553,7 +553,7 @@ mod tests {
             call.function,
             workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name
         );
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]
@@ -587,6 +587,6 @@ mod tests {
             call.function,
             workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 4);
     }
 }
