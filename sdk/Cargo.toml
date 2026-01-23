@@ -50,7 +50,7 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module.
-types = ["sui_types", "sui_idents","crypto", "enum_dispatch", "walrus", "futures", "jsonschema"]
+types = ["sui_types", "sui_idents", "crypto", "enum_dispatch", "walrus", "futures", "jsonschema"]
 
 # Events feature enables the use of the `events` module.
 events = ["types", "graphql_client"]
