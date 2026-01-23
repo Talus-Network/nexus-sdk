@@ -10,7 +10,7 @@ mod config;
 mod nexus_tool;
 mod runtime;
 mod serde_tracked;
-pub mod signed_http_warp;
+mod signed_http_warp;
 
 pub use {
     anyhow::Result as AnyResult,
