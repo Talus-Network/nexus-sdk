@@ -1,5 +1,6 @@
-// CLI v0.3.0 Crypto Implementation for WASM
+// CLI v0.5.0 Crypto Implementation for WASM
 // Direct port of CLI crypto with localStorage instead of OS keyring
+// Updated for v0.5.0: Added EncryptionMode support for scheduler
 
 use {
     aes_gcm::{
@@ -19,6 +20,25 @@ use {
     wasm_bindgen::prelude::*,
     zeroize::Zeroizing,
 };
+
+// =============================================================================
+// EncryptionMode (v0.5.0 - CLI Parity)
+// =============================================================================
+
+/// Encryption mode for entry port data
+/// - Plain: No encryption
+/// - Standard: Normal encryption (for dag execute)
+/// - LimitedPersistent: Reusable key encryption (for scheduler tasks)
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EncryptionMode {
+    /// No encryption
+    Plain             = 0,
+    /// Standard encryption - keys are consumed after use
+    Standard          = 1,
+    /// Limited persistent - keys can be reused for scheduler tasks
+    LimitedPersistent = 2,
+}
 
 // === Constants (matching CLI) ===
 
@@ -473,8 +493,21 @@ pub fn get_session_count() -> usize {
 }
 
 /// Encrypt input ports with active session (CLI parity)
+/// Uses Standard encryption mode (for dag execute)
 #[wasm_bindgen]
 pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> String {
+    encrypt_entry_ports_with_mode(input_json, encrypted_ports_json, EncryptionMode::Standard)
+}
+
+/// Encrypt input ports with specified encryption mode (v0.5.0)
+/// - Standard: for dag execute (one-time use)
+/// - LimitedPersistent: for scheduler tasks (reusable keys)
+#[wasm_bindgen]
+pub fn encrypt_entry_ports_with_mode(
+    input_json: &str,
+    encrypted_ports_json: &str,
+    mode: EncryptionMode,
+) -> String {
     let result = (|| -> Result<String, String> {
         // Load sessions if not already loaded
         let _ = load_sessions();
@@ -484,11 +517,16 @@ pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> Stri
         let encrypted_ports: HashMap<String, Vec<String>> =
             serde_json::from_str(encrypted_ports_json).map_err(|e| e.to_string())?;
 
-        if encrypted_ports.is_empty() {
+        if encrypted_ports.is_empty() || mode == EncryptionMode::Plain {
             return Ok(serde_json::json!({
                 "success": true,
                 "input_data": input_data,
-                "encrypted_count": 0
+                "encrypted_count": 0,
+                "encryption_mode": match mode {
+                    EncryptionMode::Plain => "plain",
+                    EncryptionMode::Standard => "standard",
+                    EncryptionMode::LimitedPersistent => "limited_persistent",
+                }
             })
             .to_string());
         }
@@ -510,22 +548,48 @@ pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> Stri
                         let plaintext = slot.take();
                         let bytes = serde_json::to_vec(&plaintext).map_err(|e| e.to_string())?;
 
-                        let msg = session
-                            .encrypt(&bytes)
-                            .map_err(|e| format!("Encrypt: {}", e))?;
+                        // Use appropriate encryption based on mode (v0.5.0)
+                        let msg = match mode {
+                            EncryptionMode::Standard => session
+                                .encrypt(&bytes)
+                                .map_err(|e| format!("Encrypt: {}", e))?,
+                            EncryptionMode::LimitedPersistent => session
+                                .encrypt_limited_persistent(&bytes)
+                                .map_err(|e| format!("Encrypt limited persistent: {}", e))?,
+                            EncryptionMode::Plain => {
+                                // Should not reach here due to early return
+                                return Err("Plain mode should not encrypt".into());
+                            }
+                        };
 
-                        let Message::Standard(pkt) = msg else {
-                            return Err("Expected StandardMessage".into());
+                        // Extract the StandardMessage from the Message enum
+                        let pkt = match msg {
+                            Message::Standard(pkt) => pkt,
+                            Message::LimitedPersistent(pkt) => pkt,
+                            _ => return Err("Expected StandardMessage".into()),
                         };
 
                         // CLI parity: serialize StandardMessage directly as JSON object
-                        *slot = serde_json::to_value(&pkt).map_err(|e| e.to_string())?;
+                        // For LimitedPersistent, we include the "kind" tag
+                        if mode == EncryptionMode::LimitedPersistent {
+                            *slot = serde_json::json!({
+                                "kind": "limited_persistent",
+                                "version": pkt.version,
+                                "header": pkt.header,
+                                "ciphertext": pkt.ciphertext
+                            });
+                        } else {
+                            *slot = serde_json::to_value(&pkt).map_err(|e| e.to_string())?;
+                        }
                         encrypted_count += 1;
                     }
                 }
             }
 
-            session.commit_sender(None);
+            // Only commit for Standard mode; LimitedPersistent keeps keys cached
+            if mode == EncryptionMode::Standard {
+                session.commit_sender(None);
+            }
             Ok(())
         })?;
 
@@ -535,7 +599,12 @@ pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> Stri
         Ok(serde_json::json!({
             "success": true,
             "input_data": input_data,
-            "encrypted_count": encrypted_count
+            "encrypted_count": encrypted_count,
+            "encryption_mode": match mode {
+                EncryptionMode::Plain => "plain",
+                EncryptionMode::Standard => "standard",
+                EncryptionMode::LimitedPersistent => "limited_persistent",
+            }
         })
         .to_string())
     })();
@@ -551,16 +620,16 @@ pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> Stri
 }
 
 /// Decrypt output data with active session (CLI parity)
+/// Supports both Standard and LimitedPersistent messages (v0.5.0)
 #[wasm_bindgen]
 pub fn decrypt_output_data(encrypted_json: &str) -> String {
     let result = (|| -> Result<String, String> {
         // Load sessions if not already loaded
         let _ = load_sessions();
 
-        // CLI parity: StandardMessage is serialized as JSON object, not bincode
-        let standard_msg: nexus_sdk::crypto::session::StandardMessage =
-            serde_json::from_str(encrypted_json)
-                .map_err(|e| format!("Parse StandardMessage: {}", e))?;
+        // Parse the encrypted JSON - could be Standard or LimitedPersistent (v0.5.0)
+        let encrypted_value: serde_json::Value =
+            serde_json::from_str(encrypted_json).map_err(|e| format!("Parse JSON: {}", e))?;
 
         let decrypted_data = SESSIONS.with(|sessions| {
             let mut sessions = sessions.borrow_mut();
@@ -571,14 +640,55 @@ pub fn decrypt_output_data(encrypted_json: &str) -> String {
 
             let (_session_id, session) = sessions.iter_mut().next().ok_or("No sessions")?;
 
+            // Determine message type from "kind" field (v0.5.0)
+            let msg = if let Some(kind) = encrypted_value.get("kind").and_then(|k| k.as_str()) {
+                // Has "kind" tag - parse as full Message enum
+                match kind {
+                    "limited_persistent" => {
+                        let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                            serde_json::from_value(encrypted_value.clone())
+                                .map_err(|e| format!("Parse LimitedPersistent: {}", e))?;
+                        Message::LimitedPersistent(standard_msg)
+                    }
+                    "standard" => {
+                        let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                            serde_json::from_value(encrypted_value.clone())
+                                .map_err(|e| format!("Parse Standard: {}", e))?;
+                        Message::Standard(standard_msg)
+                    }
+                    _ => {
+                        // Try to parse as full Message enum
+                        serde_json::from_value(encrypted_value.clone())
+                            .map_err(|e| format!("Parse Message: {}", e))?
+                    }
+                }
+            } else {
+                // No "kind" tag - assume StandardMessage directly (backward compatible)
+                let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                    serde_json::from_value(encrypted_value.clone())
+                        .map_err(|e| format!("Parse StandardMessage: {}", e))?;
+                Message::Standard(standard_msg)
+            };
+
+            // Try to read own message first (for sender reading their own encrypted data)
+            if let Some(bytes) = session.read_own_msg(&msg) {
+                let data: serde_json::Value = serde_json::from_slice(&bytes)
+                    .map_err(|e| format!("Parse JSON from own message: {}", e))?;
+                return Ok(data);
+            }
+
+            // Otherwise decrypt normally
             let decrypted_bytes = session
-                .decrypt(&Message::Standard(standard_msg))
+                .decrypt(&msg)
                 .map_err(|e| format!("Decrypt: {}", e))?;
 
             let data: serde_json::Value = serde_json::from_slice(&decrypted_bytes)
                 .map_err(|e| format!("Parse JSON: {}", e))?;
 
-            session.commit_receiver(None, None);
+            // Only commit for Standard messages; LimitedPersistent keeps keys cached
+            if matches!(msg, Message::Standard(_)) {
+                session.commit_receiver(None, None);
+            }
             Ok(data)
         })?;
 
@@ -588,6 +698,91 @@ pub fn decrypt_output_data(encrypted_json: &str) -> String {
         Ok(serde_json::json!({
             "success": true,
             "data": decrypted_data
+        })
+        .to_string())
+    })();
+
+    match result {
+        Ok(json) => json,
+        Err(e) => serde_json::json!({
+            "success": false,
+            "error": e
+        })
+        .to_string(),
+    }
+}
+
+/// Decrypt an array of encrypted values (v0.5.0)
+/// Useful for decrypting multiple outputs from a DAG execution
+#[wasm_bindgen]
+pub fn decrypt_output_array(encrypted_array_json: &str) -> String {
+    let result = (|| -> Result<String, String> {
+        // Load sessions if not already loaded
+        let _ = load_sessions();
+
+        let encrypted_values: Vec<serde_json::Value> =
+            serde_json::from_str(encrypted_array_json)
+                .map_err(|e| format!("Parse array: {}", e))?;
+
+        let mut decrypted_values = Vec::with_capacity(encrypted_values.len());
+
+        SESSIONS.with(|sessions| {
+            let mut sessions = sessions.borrow_mut();
+
+            if sessions.is_empty() {
+                return Err("No active sessions".to_string());
+            }
+
+            let (_session_id, session) = sessions.iter_mut().next().ok_or("No sessions")?;
+
+            for encrypted_value in encrypted_values {
+                // Determine message type
+                let msg = if let Some(kind) = encrypted_value.get("kind").and_then(|k| k.as_str()) {
+                    match kind {
+                        "limited_persistent" => {
+                            let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                                serde_json::from_value(encrypted_value.clone())
+                                    .map_err(|e| format!("Parse LimitedPersistent: {}", e))?;
+                            Message::LimitedPersistent(standard_msg)
+                        }
+                        _ => {
+                            let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                                serde_json::from_value(encrypted_value.clone())
+                                    .map_err(|e| format!("Parse Standard: {}", e))?;
+                            Message::Standard(standard_msg)
+                        }
+                    }
+                } else {
+                    let standard_msg: nexus_sdk::crypto::session::StandardMessage =
+                        serde_json::from_value(encrypted_value.clone())
+                            .map_err(|e| format!("Parse StandardMessage: {}", e))?;
+                    Message::Standard(standard_msg)
+                };
+
+                // Try read_own_msg first
+                let decrypted: serde_json::Value = if let Some(bytes) = session.read_own_msg(&msg) {
+                    serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("Parse JSON from own message: {}", e))?
+                } else {
+                    let bytes = session
+                        .decrypt(&msg)
+                        .map_err(|e| format!("Decrypt: {}", e))?;
+                    serde_json::from_slice(&bytes).map_err(|e| format!("Parse JSON: {}", e))?
+                };
+
+                decrypted_values.push(decrypted);
+            }
+
+            Ok(())
+        })?;
+
+        // Persist updated sessions
+        persist_sessions()?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "data": decrypted_values,
+            "count": decrypted_values.len()
         })
         .to_string())
     })();

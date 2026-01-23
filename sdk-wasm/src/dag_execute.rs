@@ -67,6 +67,7 @@ impl ExecutionResult {
 }
 
 /// ✅ Build DAG execution transaction using SDK (CLI-compatible with auto-encryption)
+/// Updated for v0.5.0: Added priority_fee_per_gas_unit support
 #[wasm_bindgen]
 pub fn build_dag_execution_transaction(
     dag_id: &str,
@@ -74,6 +75,7 @@ pub fn build_dag_execution_transaction(
     input_json: &str,
     encrypted_ports_json: &str,
     gas_budget: &str,
+    priority_fee_per_gas_unit: Option<String>,
 ) -> ExecutionResult {
     use web_sys::console;
 
@@ -280,7 +282,14 @@ pub fn build_dag_execution_transaction(
         let entry_group_result_index = command_index;
         command_index += 1;
 
-        // Step 4: Final DAG execution call (exactly like CLI)
+        // Parse priority fee (v0.5.0 feature)
+        let priority_fee: u64 = priority_fee_per_gas_unit
+            .as_ref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        // Step 4: Final DAG execution call (exactly like CLI/SDK)
+        // Arguments order matches SDK: default_tap, dag, gas_service, network, entry_group, inputs, priority_fee, clock
         commands.push(serde_json::json!({
             "type": "moveCall",
             "target": "{{workflow_pkg_id}}::default_tap::begin_dag_execution",
@@ -291,6 +300,7 @@ pub fn build_dag_execution_transaction(
                 {"type": "pure", "pure_type": "id", "value": "{{network_id}}"},
                 {"type": "result", "index": entry_group_result_index},
                 {"type": "result", "index": 0},
+                {"type": "pure", "pure_type": "u64", "value": priority_fee},
                 {"type": "clock_object"}
             ],
             "result_index": command_index
@@ -299,6 +309,7 @@ pub fn build_dag_execution_transaction(
         let transaction_data = serde_json::json!({
             "commands": commands,
             "gas_budget": gas_budget_u64,
+            "priority_fee_per_gas_unit": priority_fee,
             "encrypted_ports_count": encrypted_ports.len(),
             "vertices_count": input_data.as_object().map_or(0, |obj| obj.len()),
             "auto_encrypted": !encrypted_ports.is_empty()
