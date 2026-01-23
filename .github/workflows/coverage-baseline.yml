@@ -14,7 +14,6 @@ jobs:
         cli/**
         sdk/**
         toolkit-rust/**
-        tools/**
 
   update-baseline:
     runs-on: ubuntu-latest
