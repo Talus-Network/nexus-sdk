@@ -87,13 +87,13 @@ pub struct Tool {
     )]
     pub output_schema: serde_json::Value,
     #[serde(
-        rename = "registered_at",
+        rename = "registered_at_ms",
         serialize_with = "serialize_datetime_to_sui_u64",
         deserialize_with = "deserialize_sui_u64_to_datetime"
     )]
     pub registered_at: chrono::DateTime<chrono::Utc>,
     #[serde(
-        rename = "unregistered_at",
+        rename = "unregistered_at_ms",
         serialize_with = "serialize_option_datetime_to_sui_u64",
         deserialize_with = "deserialize_option_sui_u64_to_datetime"
     )]
