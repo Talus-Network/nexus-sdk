@@ -25,7 +25,11 @@ use {
     crate::{
         idents::workflow,
         nexus::{client::NexusClient, error::NexusError},
-        signed_http::v1::{AllowedLeaderFileV1, AllowedLeaderKeyFileV1, AllowedLeadersFileV1},
+        signed_http::v1::wire::{
+            AllowedLeaderFileV1,
+            AllowedLeaderKeyFileV1,
+            AllowedLeadersFileV1,
+        },
         sui,
         transactions,
         types::{IdentityKey, KeyBinding, Tool},

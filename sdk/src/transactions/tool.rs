@@ -1,11 +1,8 @@
-use {
-    crate::{
-        idents::{move_std, pure_arg, sui_framework, workflow},
-        sui,
-        types::{NexusObjects, ToolMeta},
-        ToolFqn,
-    },
-    std::vec,
+use crate::{
+    idents::{move_std, pure_arg, sui_framework, workflow},
+    sui,
+    types::{NexusObjects, ToolMeta},
+    ToolFqn,
 };
 
 /// PTB template for registering a new Nexus Tool.

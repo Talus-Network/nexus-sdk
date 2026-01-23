@@ -105,7 +105,10 @@ impl Tool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::fqn};
+    use {
+        super::*,
+        crate::{fqn, test_utils::sui_mocks},
+    };
 
     #[test]
     fn test_tool_derive_id() {
@@ -128,5 +131,106 @@ mod tests {
         );
         let derived_id = Tool::derive_id(registry_id, &fqn).unwrap();
         assert_eq!(derived_id, expected_id);
+    }
+
+    #[test]
+    fn test_toolref_http_serialization() {
+        let url = reqwest::Url::parse("https://example.com/tool").unwrap();
+        let tool_ref = ToolRef::Http { url: url.clone() };
+        let serialized = serde_json::to_string(&tool_ref).unwrap();
+        let deserialized: ToolRef = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, tool_ref);
+        if let ToolRef::Http { url: des_url } = deserialized {
+            assert_eq!(des_url, url);
+        } else {
+            panic!("Deserialized ToolRef is not Http variant");
+        }
+    }
+
+    #[test]
+    fn test_toolref_sui_serialization() {
+        let tool_ref = ToolRef::Sui {
+            package_address: sui::types::Address::from_static(
+                "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            ),
+            module_name: sui::types::Identifier::from_static("my_tool_module"),
+            witness_id: sui::types::Address::from_static(
+                "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            ),
+        };
+        let serialized = serde_json::to_string(&tool_ref).unwrap();
+        let deserialized: ToolRef = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, tool_ref);
+    }
+
+    #[test]
+    fn test_tool_validate_input_and_output_success() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "x": { "type": "integer" }
+            },
+            "required": ["x"]
+        });
+        let tool = Tool {
+            id: sui_mocks::mock_sui_address(),
+            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
+            reference: ToolRef::Http {
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+            },
+            description: "A test tool".to_string(),
+            input_schema: schema.clone(),
+            output_schema: schema.clone(),
+            registered_at_ms: chrono::Utc::now(),
+        };
+        let valid_data = serde_json::json!({ "x": 42 });
+        assert!(tool.validate_input(&valid_data).is_ok());
+        assert!(tool.validate_output(&valid_data).is_ok());
+    }
+
+    #[test]
+    fn test_tool_validate_input_and_output_failure() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "x": { "type": "integer" }
+            },
+            "required": ["x"]
+        });
+        let tool = Tool {
+            id: sui_mocks::mock_sui_address(),
+            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
+            reference: ToolRef::Http {
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+            },
+            description: "A test tool".to_string(),
+            input_schema: schema.clone(),
+            output_schema: schema.clone(),
+            registered_at_ms: chrono::Utc::now(),
+        };
+        let invalid_data = serde_json::json!({ "y": 42 });
+        assert!(tool.validate_input(&invalid_data).is_err());
+        assert!(tool.validate_output(&invalid_data).is_err());
+    }
+
+    #[test]
+    fn test_tool_serde_roundtrip() {
+        let tool = Tool {
+            id: sui_mocks::mock_sui_address(),
+            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
+            reference: ToolRef::Http {
+                url: reqwest::Url::parse("https://example.com").unwrap(),
+            },
+            description: "A test tool".to_string(),
+            input_schema: serde_json::json!({ "type": "object" }),
+            output_schema: serde_json::json!({ "type": "object" }),
+            registered_at_ms: chrono::DateTime::from_timestamp_millis(
+                chrono::Utc::now().timestamp_millis(),
+            )
+            .unwrap(),
+        };
+        let serialized = serde_json::to_string(&tool).unwrap();
+        let deserialized: Tool = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(tool, deserialized);
     }
 }
