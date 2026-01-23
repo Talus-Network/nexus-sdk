@@ -181,6 +181,26 @@ Notice that the `invoke` function does not return a `Result`. This is because er
 
 ---
 
+#### `NexusTool::authorize` (optional)
+
+`authorize` is an optional hook that runs **after** the request has been authenticated via signed HTTP (when enabled).
+
+It receives an `AuthContext` that includes the verified Leader node identity (`invoker_id`), key id (`invoker_kid`), request validity window (`iat_ms`/`exp_ms`), nonce, and the HTTP target (`method`/`path`/`query`).
+
+Use it for Tool-side policy such as:
+
+- allowing only specific Leader nodes,
+- rate limiting by Leader node id,
+- gating sensitive functionality.
+
+If `authorize` returns an error, the runtime returns `403` (and the response is still signed after authentication).
+
+{% hint style="info" %}
+If signed HTTP is disabled, `authorize` is not invoked.
+{% endhint %}
+
+---
+
 ### `nexus_toolkit::bootstrap!`
 
 The `bootstrap!` macro hides away the boilerplate code needed to create the
@@ -223,6 +243,42 @@ async fn main() {
     bootstrap!(([0, 0, 0, 0], 8081), [MyTool, MyOtherTool])
 }
 ```
+
+---
+
+## Signed HTTP and HTTPS
+
+Nexus expects off-chain Tools to be reachable over **HTTPS** and to require **signed HTTP** for `POST /invoke`.
+
+- HTTPS provides transport security; Leader nodes validate Tool certificates using the system root trust store (similar to `curl`).
+- TLS authenticates the Tool endpoint to the Leader node. Nexus Leader nodes do not currently present client certificates when calling Tools, so Tools cannot authenticate callers at the TLS layer (no mTLS client authentication today).
+- Signed HTTP provides application-layer request/response signatures so both sides can verify provenance and prevent replay.
+  - Signed HTTP is the authentication mechanism for `/invoke`: Tools authenticate the calling Leader node by verifying the request signature, and Leader nodes authenticate Tool responses by verifying the response signature.
+
+The toolkit runtime itself is an HTTP server. Run it behind a TLS terminator (reverse proxy / load balancer).
+
+Signed HTTP is enabled via a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`.
+This config contains:
+
+- a local `allowed_leaders.json` allowlist file (Leader node ids + public keys), and
+- the Tool’s signing key + `tool_kid` (key id) used to sign responses.
+
+{% hint style="info" %}
+Signed HTTP is enforced only when `signed_http.mode = "required"`. If signed HTTP is disabled, `POST /invoke` accepts unsigned requests.
+{% endhint %}
+
+{% hint style="info" %}
+Signed HTTP verification happens after the TLS handshake. If you want to reduce unwanted TLS handshakes/traffic, apply policy at your TLS terminator (rate limiting, firewall/WAF, mTLS, or private ingress such as Cloudflare Tunnel).
+{% endhint %}
+
+{% hint style="info" %}
+Nexus currently relies on system-root certificate validation and signed HTTP for Tool authentication.
+In a future update, Nexus will support self-signed certificates and TLS client authentication (mTLS) for Tool communication.
+{% endhint %}
+
+For a full end-to-end setup guide (TLS termination options + key registration + runtime config), see:
+
+- [Tool Communication (HTTPS + Signed HTTP)](guides/tool-communication.md)
 
 <!-- List of References -->
 

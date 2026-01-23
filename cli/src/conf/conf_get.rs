@@ -32,6 +32,7 @@ mod tests {
             interface_pkg_id: sui::types::Address::generate(&mut rng),
             network_id: sui::types::Address::generate(&mut rng),
             tool_registry: sui_mocks::mock_sui_object_ref(),
+            network_auth: sui_mocks::mock_sui_object_ref(),
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
             pre_key_vault: sui_mocks::mock_sui_object_ref(),

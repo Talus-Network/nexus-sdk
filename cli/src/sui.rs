@@ -320,18 +320,23 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [default_tap]
+                [network_auth]
                 object_id = "0x6"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [gas_service]
+                [default_tap]
                 object_id = "0x7"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [pre_key_vault]
+                [gas_service]
                 object_id = "0x8"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [pre_key_vault]
+                object_id = "0x9"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
@@ -372,8 +377,17 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            *objects.default_tap.object_id(),
+            *objects.network_auth.object_id(),
             sui::types::Address::from_static("0x6")
+        );
+        assert_eq!(objects.network_auth.version(), 1);
+        assert_eq!(
+            *objects.network_auth.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.default_tap.object_id(),
+            sui::types::Address::from_static("0x7")
         );
         assert_eq!(objects.default_tap.version(), 1);
         assert_eq!(
@@ -382,7 +396,7 @@ mod tests {
         );
         assert_eq!(
             *objects.gas_service.object_id(),
-            sui::types::Address::from_static("0x7")
+            sui::types::Address::from_static("0x8")
         );
         assert_eq!(objects.gas_service.version(), 1);
         assert_eq!(
@@ -391,7 +405,7 @@ mod tests {
         );
         assert_eq!(
             *objects.pre_key_vault.object_id(),
-            sui::types::Address::from_static("0x8")
+            sui::types::Address::from_static("0x9")
         );
         assert_eq!(objects.pre_key_vault.version(), 1);
         assert_eq!(

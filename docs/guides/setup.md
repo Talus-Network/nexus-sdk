@@ -201,12 +201,13 @@ sequenceDiagram
     participant Sui as Sui chain
     participant Vault as PreKeyVault contract
     participant Network as Nexus network
+    participant LeaderNode as Leader node
 
     CLI->>Conf: Load config + decrypt identity key
     CLI->>Sui: Submit claim_pre_key_for_self PTB (request)
     Sui->>Vault: execute pre_key_vault::claim_pre_key_for_self
     Vault-->>Sui: Emit PreKeyRequestedEvent (no bundle yet)
-    Leader->>Sui: Submit fulfill_pre_key_for_user PTB
+    LeaderNode->>Sui: Submit fulfill_pre_key_for_user PTB
     Sui->>Vault: execute pre_key_vault::fulfill_pre_key_for_user
     Vault-->>Sui: Emit PreKeyFulfilledEvent (carries pre_key bytes)
     CLI->>Sui: poll events, read pre_key bytes from PreKeyFulfilledEvent
