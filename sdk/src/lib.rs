@@ -70,3 +70,7 @@ pub mod onchain_schema_gen;
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]
 pub mod nexus;
+
+/// Application-layer request/response signatures for HTTP.
+#[cfg(feature = "signed_http")]
+pub mod signed_http;

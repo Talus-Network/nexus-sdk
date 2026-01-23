@@ -19,6 +19,10 @@ default = ["tool_fqn"]
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
 
+# Signed HTTP feature enables application-layer Ed25519 signatures for HTTP
+# requests/responses (headers + signed claims).
+signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand"]
+
 # Tool Ref feature enables the use of the `ToolRef` enum for unified
 # tool reference representation (HTTP URL or Sui module ID and witness).
 tool_ref = ["sui_types", "reqwest"]
@@ -89,6 +93,7 @@ test_utils = [
 # Enable all features apart from `test_utils`.
 full = [
     "tool_fqn",
+    "signed_http",
     "tool_ref",
     "crypto",
     "secret_core",
@@ -258,6 +263,10 @@ optional = true
 
 [dependencies.thiserror]
 workspace = true
+optional = true
+
+[dependencies.ed25519-dalek]
+version = "2"
 optional = true
 
 [dependencies.tokio]
