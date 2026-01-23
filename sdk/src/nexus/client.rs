@@ -229,6 +229,13 @@ impl NexusClient {
         }
     }
 
+    /// Return a [`NetworkAuthActions`] instance for tool network-auth operations.
+    pub fn network_auth(&self) -> crate::nexus::network_auth::NetworkAuthActions {
+        crate::nexus::network_auth::NetworkAuthActions {
+            client: self.clone(),
+        }
+    }
+
     /// Return a [`Crawler`] instance for object crawling operations.
     pub fn crawler(&self) -> &Crawler {
         &self.crawler
@@ -339,9 +346,17 @@ mod tests {
         let coins = vec![coin];
         let budget = 1000;
 
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: None,
+            subscription_service_mock: None,
+        });
+
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url(&rpc_url)
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
@@ -458,9 +473,17 @@ mod tests {
         let coins = vec![coin];
         let budget = 1000;
 
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: None,
+            subscription_service_mock: None,
+        });
+
         let builder = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
+            .with_rpc_url(&rpc_url)
             .with_nexus_objects(objects)
             .with_gas(coins, budget)
             .with_transaction_timeout(Duration::from_secs(10));

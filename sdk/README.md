@@ -21,6 +21,19 @@ tag = "v0.5.0"
 package = "nexus-sdk"
 ```
 
+## Signed HTTP (Leader nodes <-> Tools)
+
+This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:
+
+- Ed25519 signatures over a small JSON “claims” blob shipped in `X-Nexus-Sig-*` headers
+- request/response binding, body integrity binding (SHA-256), freshness windows, and replay resistance
+
+It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
+
+See the end-to-end guide:
+
+- [Tool communication guide](https://github.com/Talus-Network/nexus-sdk/blob/main/docs/guides/tool-communication.md)
+
 <!-- List of references -->
 
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust

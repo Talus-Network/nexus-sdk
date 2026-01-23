@@ -12,3 +12,6 @@ pub mod crypto;
 
 /// Transactions concerning operations around the scheduler.
 pub mod scheduler;
+
+/// Transactions concerning network authentication (identity key bindings).
+pub mod network_auth;

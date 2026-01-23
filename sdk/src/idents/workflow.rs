@@ -1034,6 +1034,63 @@ impl GasExtension {
 
 pub struct PreKeyVault;
 
+// == `nexus_workflow::network_auth` ==
+
+pub struct NetworkAuth;
+
+const NETWORK_AUTH_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("network_auth");
+
+impl NetworkAuth {
+    /// Create a new key binding for an identity.
+    ///
+    /// `nexus_workflow::network_auth::create_binding`
+    pub const CREATE_BINDING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("create_binding"),
+    };
+    /// Move type `nexus_workflow::network_auth::IdentityKey`.
+    pub const IDENTITY_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("IdentityKey"),
+    };
+    /// The NetworkAuth struct type.
+    ///
+    /// `nexus_workflow::network_auth::NetworkAuth`
+    pub const NETWORK_AUTH: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("NetworkAuth"),
+    };
+    /// Construct a proof-of-possession for a key registration slot.
+    ///
+    /// `nexus_workflow::network_auth::new_proof_of_key`
+    pub const NEW_PROOF_OF_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("new_proof_of_key"),
+    };
+    /// Create proof-of-identity for a leader (sender), using a leader capability.
+    ///
+    /// `nexus_workflow::network_auth::prove_leader`
+    pub const PROVE_LEADER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("prove_leader"),
+    };
+    /// Create proof-of-identity for an off-chain tool (checked against ToolRegistry).
+    ///
+    /// `nexus_workflow::network_auth::prove_offchain_tool`
+    pub const PROVE_OFFCHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("prove_offchain_tool"),
+    };
+    /// Register a new key on an existing binding and set it active.
+    ///
+    /// `nexus_workflow::network_auth::register_key`
+    pub const REGISTER_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("register_key"),
+    };
+}
+
 const PRE_KEY_VAULT_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("pre_key_vault");
 

@@ -70,3 +70,24 @@ Each Nexus Tool should have a clear and publicly accessible README file that des
 If using Rust, the `main.rs` file should include this documentation via `#![doc = include_str!("../path/to/README.md")]`.
 
 See also [an example README file](../tools/llm-openai-chat-completion/README.md).
+
+---
+
+## Security and Deployment
+
+Nexus Tools are off-chain HTTP services and must be deployed with:
+
+- **HTTPS**: Nexus Leader nodes connect to Tools over HTTPS and validate the Tool’s certificate using the system root trust store.
+- **Signed HTTP for `/invoke`**: Tool invocations are authenticated and replay-protected using Ed25519 signatures in `X-Nexus-Sig-*` headers.
+
+Tool developers should design with these constraints in mind:
+
+- Do not assume the caller is trusted just because they can reach your server. Authentication is done at the signed-message layer.
+- Signed HTTP verification happens after the TLS handshake. If you want to reduce unwanted TLS handshakes/traffic, apply policy at your TLS terminator / edge (rate limiting, firewall/WAF, mTLS, or private ingress such as Cloudflare Tunnel).
+- Do not rely only on static IP allowlists (Leader node IPs can change). If you add a firewall, treat it as defense-in-depth.
+- Keep Tool signing keys secret and rotate them if exposed.
+- Ensure your host clock is accurate (NTP), because signed requests use validity windows.
+
+For a detailed guide (TLS termination options, key registration, runtime config, and troubleshooting), see:
+
+- [Tool Communication (HTTPS + Signed HTTP)](guides/tool-communication.md)

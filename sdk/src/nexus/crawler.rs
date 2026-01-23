@@ -177,18 +177,39 @@ impl Crawler {
             .fetch_dynamic_fields::<K>(parent.id(), parent.size())
             .await?;
 
-        // Now fetch all dynamic field objects in batch.
-        let child_ids = names_and_ids
-            .iter()
-            .filter_map(|(_, _, id)| *id)
-            .collect::<Vec<_>>();
+        let mut name_by_field_id = HashMap::with_capacity(names_and_ids.len());
+        let mut field_ids = Vec::with_capacity(names_and_ids.len());
 
-        let child_objects = self.get_objects::<DynamicPair<K, V>>(&child_ids).await?;
+        for (name, _child_id, field_id) in names_and_ids {
+            let Some(field_id) = field_id else {
+                bail!("Dynamic field ID missing for dynamic map");
+            };
 
-        Ok(child_objects
-            .into_iter()
-            .map(|obj| (obj.data.name, obj.data.value.into_inner()))
-            .collect())
+            if name_by_field_id.insert(field_id, name).is_some() {
+                bail!("Duplicate dynamic field ID '{field_id}' for dynamic map");
+            }
+
+            field_ids.push(field_id);
+        }
+
+        // Fetch the dynamic field objects and parse only their `value` field.
+        // This avoids deserializing the `name` field from JSON, which may encode
+        // `u64` keys as strings.
+        let field_objects = self.get_objects::<DynamicValue<V>>(&field_ids).await?;
+
+        let mut out = HashMap::with_capacity(field_objects.len());
+        for obj in field_objects {
+            let name = name_by_field_id.remove(&obj.object_id).ok_or_else(|| {
+                anyhow!(
+                    "Unexpected dynamic field ID '{}' for dynamic map",
+                    obj.object_id
+                )
+            })?;
+
+            out.insert(name, obj.data.value.into_inner());
+        }
+
+        Ok(out)
     }
 
     /// Fetch all dynamic object fields for a given parent and parse them into a

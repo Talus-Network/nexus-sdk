@@ -1,3 +1,4 @@
+mod tool_auth;
 mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
@@ -9,6 +10,7 @@ mod tool_validate;
 
 use {
     crate::prelude::*,
+    tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_list::*,
     tool_new::*,
@@ -18,6 +20,73 @@ use {
     tool_unregister::*,
     tool_validate::{validate_off_chain_tool, validate_on_chain_tool},
 };
+
+#[derive(Subcommand)]
+pub(crate) enum ToolAuthCommand {
+    #[command(about = "Generate a new Ed25519 message-signing key for a tool.")]
+    Keygen {
+        #[arg(
+            long = "out",
+            help = "Write the generated keypair JSON to this path.",
+            long_help = "Write the generated keypair JSON to this path. The output contains both `private_key_hex` and `public_key_hex`.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: Option<PathBuf>,
+    },
+
+    #[command(about = "Register (or rotate) a tool message-signing key on-chain.")]
+    RegisterKey {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "OwnerCap<OverTool> object ID (defaults to saved CLI config for this tool).",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+
+        #[arg(
+            long = "signing-key",
+            short = 'k',
+            help = "Tool Ed25519 private key (hex/base64/base64url) OR a path to a file containing it.",
+            value_name = "KEY_OR_PATH"
+        )]
+        signing_key: String,
+
+        #[arg(
+            long = "description",
+            help = "Optional description bytes stored on the key binding.",
+            value_name = "TEXT"
+        )]
+        description: Option<String>,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(
+        about = "Export a leader allowlist file for tool-side verification (no RPC at runtime)."
+    )]
+    ExportAllowedLeaders {
+        /// One or more leader addresses to include.
+        #[arg(long = "leader", value_name = "ADDRESS")]
+        leaders: Vec<sui::types::Address>,
+
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+    },
+}
 
 #[derive(Subcommand)]
 pub(crate) enum RegisterCommand {
@@ -253,6 +322,12 @@ pub(crate) enum ToolCommand {
     List {
         //
     },
+
+    #[command(about = "Manage tool auth for signed HTTP.")]
+    Auth {
+        #[command(subcommand)]
+        cmd: ToolAuthCommand,
+    },
 }
 
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
@@ -361,5 +436,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
+
+        // == `$ nexus tool auth` ==
+        ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
     }
 }
