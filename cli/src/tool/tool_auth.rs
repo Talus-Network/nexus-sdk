@@ -9,7 +9,7 @@ use {
         sui::get_nexus_client,
     },
     nexus_sdk::{
-        signed_http::{keys::Ed25519Keypair, parse_ed25519_signing_key},
+        signed_http::keys::{parse_ed25519_signing_key, Ed25519Keypair},
         ToolFqn,
     },
     std::path::PathBuf,
