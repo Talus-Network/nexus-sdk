@@ -787,10 +787,10 @@ impl ToolRegistry {
     };
     /// Unregister a tool.
     ///
-    /// `nexus_workflow::tool_registry::unregister_tool`
-    pub const UNREGISTER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::unregister`
+    pub const UNREGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("unregister_tool"),
+        name: sui::types::Identifier::from_static("unregister"),
     };
 }
 

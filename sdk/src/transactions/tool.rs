@@ -332,12 +332,12 @@ pub fn unregister(
         false,
     ));
 
-    // `nexus::tool_registry::unregister_tool()`
+    // `nexus::tool_registry::unregister()`
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ToolRegistry::UNREGISTER_TOOL.module,
-            workflow::ToolRegistry::UNREGISTER_TOOL.name,
+            workflow::ToolRegistry::UNREGISTER.module,
+            workflow::ToolRegistry::UNREGISTER.name,
             vec![],
         ),
         vec![tool, owner_cap, clock],
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unregister_tool() {
+    fn test_UNREGISTER() {
         let objects = sui_mocks::mock_nexus_objects();
         let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
@@ -518,8 +518,8 @@ mod tests {
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER_TOOL.module);
-        assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER_TOOL.name);
+        assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER.module);
+        assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER.name);
         assert_eq!(call.arguments.len(), 3);
     }
 
