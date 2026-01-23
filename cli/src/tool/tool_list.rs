@@ -77,7 +77,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             "OffChain"
         };
 
-        let unregistered = match tool.unregistered_at_ms {
+        let unregistered = match tool.unregistered_at {
             Some(unregistered_at) => format!(
                 "(Unregistered at '{}') ",
                 unregistered_at.timestamp_millis()
@@ -93,7 +93,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             tool_type = tool_type.truecolor(100, 100, 100),
             fqn = tool.fqn.to_string().truecolor(100, 100, 100),
             reference = tool.reference.to_string().truecolor(100, 100, 100),
-            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
+            registered_at = tool.registered_at.to_string().truecolor(100, 100, 100),
             description = tool.description.truecolor(100, 100, 100),
         );
     }

@@ -87,15 +87,17 @@ pub struct Tool {
     )]
     pub output_schema: serde_json::Value,
     #[serde(
+        rename = "registered_at",
         serialize_with = "serialize_datetime_to_sui_u64",
         deserialize_with = "deserialize_sui_u64_to_datetime"
     )]
-    pub registered_at_ms: chrono::DateTime<chrono::Utc>,
+    pub registered_at: chrono::DateTime<chrono::Utc>,
     #[serde(
+        rename = "unregistered_at",
         serialize_with = "serialize_option_datetime_to_sui_u64",
         deserialize_with = "deserialize_option_sui_u64_to_datetime"
     )]
-    pub unregistered_at_ms: Option<chrono::DateTime<chrono::Utc>>,
+    pub unregistered_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl Tool {
@@ -206,8 +208,8 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: schema.clone(),
             output_schema: schema.clone(),
-            registered_at_ms: chrono::Utc::now(),
-            unregistered_at_ms: None,
+            registered_at: chrono::Utc::now(),
+            unregistered_at: None,
         };
         let valid_data = serde_json::json!({ "x": 42 });
         assert!(tool.validate_input(&valid_data).is_ok());
@@ -232,8 +234,8 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: schema.clone(),
             output_schema: schema.clone(),
-            registered_at_ms: chrono::Utc::now(),
-            unregistered_at_ms: None,
+            registered_at: chrono::Utc::now(),
+            unregistered_at: None,
         };
         let invalid_data = serde_json::json!({ "y": 42 });
         assert!(tool.validate_input(&invalid_data).is_err());
@@ -251,11 +253,11 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
-            registered_at_ms: chrono::DateTime::from_timestamp_millis(
+            registered_at: chrono::DateTime::from_timestamp_millis(
                 chrono::Utc::now().timestamp_millis(),
             )
             .unwrap(),
-            unregistered_at_ms: None,
+            unregistered_at: None,
         };
         let serialized = serde_json::to_string(&tool).unwrap();
         let deserialized: Tool = serde_json::from_str(&serialized).unwrap();
@@ -315,8 +317,8 @@ mod tests {
             description: "Tool 1".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
-            registered_at_ms: chrono::Utc::now(),
-            unregistered_at_ms: Some(chrono::Utc::now()),
+            registered_at: chrono::Utc::now(),
+            unregistered_at: Some(chrono::Utc::now()),
         };
         let tool2 = Tool {
             id,
@@ -327,8 +329,8 @@ mod tests {
             description: "Tool 1".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
-            registered_at_ms: tool1.registered_at_ms,
-            unregistered_at_ms: tool1.unregistered_at_ms,
+            registered_at: tool1.registered_at,
+            unregistered_at: tool1.unregistered_at,
         };
         assert_eq!(tool1, tool2);
         let mut set = HashSet::new();
