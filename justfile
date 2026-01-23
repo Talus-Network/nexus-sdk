@@ -14,9 +14,6 @@ mod toolkit-rust 'toolkit-rust/.just'
 # Commands concerning the Nexus SDK
 mod sdk 'sdk/.just'
 
-# Commands concerning native Nexus Tools
-mod tools 'tools/.just'
-
 # Pre-commit hooks
 mod pre-commit '.pre-commit/.just'
 
