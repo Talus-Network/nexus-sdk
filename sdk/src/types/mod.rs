@@ -11,6 +11,7 @@ mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
+mod tool;
 mod tool_meta;
 mod type_name;
 
@@ -27,6 +28,7 @@ pub use {
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
+    tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
     type_name::TypeName,
 };

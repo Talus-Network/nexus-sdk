@@ -205,8 +205,6 @@ mod tests {
                 NexusEventKind,
                 OccurrenceConsumedEvent,
                 OccurrenceScheduledEvent,
-                OffChainToolRegisteredEvent,
-                OnChainToolRegisteredEvent,
                 PeriodicScheduleConfiguredEvent,
                 PreKeyAssociatedEvent,
                 PreKeyFulfilledEvent,
@@ -220,6 +218,7 @@ mod tests {
                 TaskCreatedEvent,
                 TaskPausedEvent,
                 TaskResumedEvent,
+                ToolRegisteredEvent,
                 ToolUnregisteredEvent,
                 TypeName,
                 WalkAdvancedEvent,
@@ -835,25 +834,9 @@ mod tests {
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
                 shared_objects: vec![SharedObjectRef::new_imm(addr())],
             }),
-            NexusEventKind::OffChainToolRegistered(OffChainToolRegisteredEvent {
-                registry: addr(),
+            NexusEventKind::ToolRegistered(ToolRegisteredEvent {
                 tool: addr(),
                 fqn: fqn.clone(),
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-                input_schema: serde_json::json!({"in": 1}),
-                output_schema: serde_json::json!({"out": 1}),
-            }),
-            NexusEventKind::OnChainToolRegistered(OnChainToolRegisteredEvent {
-                registry: addr(),
-                tool: addr(),
-                registered_at_ms: 10,
-                fqn: fqn.clone(),
-                package_address: addr(),
-                module_name: "module".to_string(),
-                witness_id: addr(),
-                input_schema: serde_json::json!({"in": 1}),
-                output_schema: serde_json::json!({"out": 1}),
-                description: "desc".to_string(),
             }),
             NexusEventKind::ToolUnregistered(ToolUnregisteredEvent {
                 tool: addr(),

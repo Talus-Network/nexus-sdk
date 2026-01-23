@@ -1,10 +1,9 @@
 //! Programmable transaction builders for `nexus_workflow::network_auth`.
 
 use crate::{
-    idents::{move_std, pure_arg, sui_framework, workflow},
+    idents::{pure_arg, sui_framework, workflow},
     sui,
     types::NexusObjects,
-    ToolFqn,
 };
 
 /// Create a new off-chain tool key binding and register the first key.
@@ -17,16 +16,16 @@ pub fn create_tool_binding_and_register_key(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     sender: sui::types::Address,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    // `registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -37,9 +36,6 @@ pub fn create_tool_binding_and_register_key(
         *owner_cap_over_tool.digest(),
     ));
 
-    // `fqn: AsciiString` (consumed by the Move call)
-    let fqn_for_binding = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `proof: ProofOfIdentity`
     let proof_for_binding = tx.move_call(
         sui::tx::Function::new(
@@ -48,7 +44,7 @@ pub fn create_tool_binding_and_register_key(
             workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap, fqn_for_binding],
+        vec![tool, owner_cap],
     );
 
     // `registry: &mut NetworkAuth`
@@ -72,8 +68,6 @@ pub fn create_tool_binding_and_register_key(
         vec![network_auth, proof_for_binding, description],
     );
 
-    let fqn_for_key = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // Need a fresh proof for key registration (the previous one was consumed by create_binding).
     let proof_for_key = tx.move_call(
         sui::tx::Function::new(
@@ -82,11 +76,12 @@ pub fn create_tool_binding_and_register_key(
             workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap, fqn_for_key],
+        vec![tool, owner_cap],
     );
 
     // `public_key: vector<u8>`
     let public_key = tx.input(pure_arg(&public_key.to_vec())?);
+
     // `signature: vector<u8>`
     let signature = tx.input(pure_arg(&pop_signature.to_vec())?);
 
@@ -121,6 +116,7 @@ pub fn create_tool_binding_and_register_key(
 
     // Transfer the newly created binding back to the sender.
     let address = sui_framework::Address::address_from_type(tx, sender)?;
+
     tx.transfer_objects(vec![binding], address);
 
     Ok(())
@@ -134,7 +130,7 @@ pub fn register_tool_key_on_existing_binding(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     binding: &sui::types::ObjectReference,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
@@ -146,10 +142,10 @@ pub fn register_tool_key_on_existing_binding(
         *binding.digest(),
     ));
 
-    // `registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -160,9 +156,6 @@ pub fn register_tool_key_on_existing_binding(
         *owner_cap_over_tool.digest(),
     ));
 
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `proof: ProofOfIdentity`
     let proof = tx.move_call(
         sui::tx::Function::new(
@@ -171,7 +164,7 @@ pub fn register_tool_key_on_existing_binding(
             workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap, fqn],
+        vec![tool, owner_cap],
     );
 
     let public_key = tx.input(pure_arg(&public_key.to_vec())?);
@@ -385,7 +378,7 @@ pub fn register_leader_key_on_existing_binding(
 mod tests {
     use {
         super::*,
-        crate::{fqn, idents::workflow, test_utils::sui_mocks},
+        crate::{idents::workflow, test_utils::sui_mocks},
     };
 
     fn count_move_calls(
@@ -419,7 +412,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let sender = sui_mocks::mock_sui_address();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let public_key = [7u8; 32];
         let pop_signature = [9u8; 64];
         let description = Some(b"rotation-1".to_vec());
@@ -429,7 +422,7 @@ mod tests {
             &mut tx,
             &objects,
             sender,
-            &tool_fqn,
+            &tool,
             &owner_cap,
             public_key,
             pop_signature,
@@ -488,7 +481,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let binding = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let public_key = [11u8; 32];
         let pop_signature = [22u8; 64];
 
@@ -497,7 +490,7 @@ mod tests {
             &mut tx,
             &objects,
             &binding,
-            &tool_fqn,
+            &tool,
             &owner_cap,
             public_key,
             pop_signature,

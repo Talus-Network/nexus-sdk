@@ -25,14 +25,10 @@ use {
     crate::{
         idents::workflow,
         nexus::{client::NexusClient, error::NexusError},
-        signed_http::v1::wire::{
-            AllowedLeaderFileV1,
-            AllowedLeaderKeyFileV1,
-            AllowedLeadersFileV1,
-        },
+        signed_http::v1::{AllowedLeaderFileV1, AllowedLeaderKeyFileV1, AllowedLeadersFileV1},
         sui,
         transactions,
-        types::{IdentityKey, KeyBinding},
+        types::{IdentityKey, KeyBinding, Tool},
         ToolFqn,
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
@@ -108,6 +104,26 @@ impl NetworkAuthActions {
                 ))
             })?;
 
+        // Resolve derived tool object ref for PTB.
+        let tool_id =
+            Tool::derive_id(*objects.tool_registry.object_id(), &tool_fqn).map_err(|e| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "failed to derive ToolId for FQN '{tool_fqn}': {e}"
+                ))
+            })?;
+
+        let tool = self
+            .client
+            .crawler()
+            .get_object_metadata(tool_id)
+            .await
+            .map(|r| r.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "failed to fetch Tool object ref for FQN '{tool_fqn}': {e}"
+                ))
+            })?;
+
         // Craft and submit tx.
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -116,7 +132,7 @@ impl NetworkAuthActions {
                 &mut tx,
                 objects,
                 address,
-                &tool_fqn,
+                &tool,
                 &owner_cap_ref,
                 public_key,
                 pop_sig,
@@ -127,7 +143,7 @@ impl NetworkAuthActions {
                 &mut tx,
                 objects,
                 &binding_ref,
-                &tool_fqn,
+                &tool,
                 &owner_cap_ref,
                 public_key,
                 pop_sig,

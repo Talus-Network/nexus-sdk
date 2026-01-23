@@ -166,6 +166,7 @@ where
     serialize_encoded_bytes(bytes, serializer)
 }
 
+/// Deserialize a timestamp in milliseconds since epoch stored as a string
 pub fn deserialize_string_to_datetime<'de, D>(
     deserializer: D,
 ) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
@@ -177,6 +178,20 @@ where
     let datetime = chrono::DateTime::from_timestamp_millis(timestamp);
 
     datetime.ok_or(serde::de::Error::custom("datetime out of range"))
+}
+
+/// Inverse of [deserialize_string_to_datetime].
+pub fn serialize_datetime_to_string<S>(
+    value: &chrono::DateTime<chrono::Utc>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let timestamp = value.timestamp_millis();
+    let timestamp_str = timestamp.to_string();
+
+    timestamp_str.serialize(serializer)
 }
 
 /// Deserialize a base64 encoded vector of bytest to a [`Vec<u8>`].

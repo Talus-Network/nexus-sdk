@@ -23,10 +23,6 @@ tool_fqn = ["regex", "lazy-regex"]
 # requests/responses (headers + signed claims).
 signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand"]
 
-# Tool Ref feature enables the use of the `ToolRef` enum for unified
-# tool reference representation (HTTP URL or Sui module ID and witness).
-tool_ref = ["sui_types", "reqwest"]
-
 # Crypto feature enables cryptographic primitives
 crypto = [
     "aead", "serde-big-array", "chacha20poly1305", "hkdf", "rand", "rand_core",
@@ -54,10 +50,10 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module.
-types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures"]
+types = ["sui_types", "sui_idents","crypto", "enum_dispatch", "walrus", "futures", "jsonschema"]
 
 # Events feature enables the use of the `events` module.
-events = ["sui_idents", "types", "graphql_client"]
+events = ["types", "graphql_client"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -94,7 +90,6 @@ test_utils = [
 full = [
     "tool_fqn",
     "signed_http",
-    "tool_ref",
     "crypto",
     "secret_core",
     "sui_types",
@@ -226,6 +221,10 @@ version = "0.3"
 optional = true
 
 [dependencies.graphql_client]
+workspace = true
+optional = true
+
+[dependencies.jsonschema]
 workspace = true
 optional = true
 

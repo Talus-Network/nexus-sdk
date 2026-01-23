@@ -1,8 +1,7 @@
 use crate::{
-    idents::{move_std, pure_arg, sui_framework, workflow},
+    idents::{pure_arg, sui_framework, workflow},
     sui,
     types::NexusObjects,
-    ToolFqn,
 };
 
 /// PTB template to add gas budget to a transaction.
@@ -61,7 +60,7 @@ pub fn add_budget(
 pub fn enable_expiry(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     cost_per_minute: u64,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -72,10 +71,10 @@ pub fn enable_expiry(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -89,9 +88,6 @@ pub fn enable_expiry(
     // `cost_per_minute: u64`
     let cost_per_minute = tx.input(pure_arg(&cost_per_minute)?);
 
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `nexus_workflow::gas_extension::enable_expiry`
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -100,7 +96,7 @@ pub fn enable_expiry(
             workflow::GasExtension::ENABLE_EXPIRY.name,
             vec![],
         ),
-        vec![gas_service, tool_registry, owner_cap, cost_per_minute, fqn],
+        vec![gas_service, tool, owner_cap, cost_per_minute],
     ))
 }
 
@@ -108,7 +104,7 @@ pub fn enable_expiry(
 pub fn disable_expiry(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut GasService`
@@ -118,10 +114,10 @@ pub fn disable_expiry(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -132,9 +128,6 @@ pub fn disable_expiry(
         *owner_cap.digest(),
     ));
 
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `nexus_workflow::gas_extension::disable_expiry`
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -143,7 +136,7 @@ pub fn disable_expiry(
             workflow::GasExtension::DISABLE_EXPIRY.name,
             vec![],
         ),
-        vec![gas_service, tool_registry, owner_cap, fqn],
+        vec![gas_service, tool, owner_cap],
     ))
 }
 
@@ -151,7 +144,7 @@ pub fn disable_expiry(
 pub fn buy_expiry_gas_ticket(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     minutes: u64,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -162,15 +155,12 @@ pub fn buy_expiry_gas_ticket(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
-
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `minutes: u64`
     let minutes = tx.input(pure_arg(&minutes)?);
@@ -197,7 +187,7 @@ pub fn buy_expiry_gas_ticket(
             workflow::GasExtension::BUY_EXPIRY_GAS_TICKET.name,
             vec![],
         ),
-        vec![gas_service, tool_registry, fqn, minutes, pay_with, clock],
+        vec![gas_service, tool, minutes, pay_with, clock],
     ))
 }
 
@@ -205,7 +195,7 @@ pub fn buy_expiry_gas_ticket(
 pub fn enable_limited_invocations(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     cost_per_invocation: u64,
     min_invocations: u64,
@@ -218,10 +208,10 @@ pub fn enable_limited_invocations(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -241,9 +231,6 @@ pub fn enable_limited_invocations(
     // `max_invocations: u64`
     let max_invocations = tx.input(pure_arg(&max_invocations)?);
 
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `nexus_workflow::gas_extension::enable_limited_invocations`
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -254,12 +241,11 @@ pub fn enable_limited_invocations(
         ),
         vec![
             gas_service,
-            tool_registry,
+            tool,
             owner_cap,
             cost_per_invocation,
             min_invocations,
             max_invocations,
-            fqn,
         ],
     ))
 }
@@ -268,7 +254,7 @@ pub fn enable_limited_invocations(
 pub fn disable_limited_invocations(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut GasService`
@@ -278,10 +264,10 @@ pub fn disable_limited_invocations(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
 
@@ -292,9 +278,6 @@ pub fn disable_limited_invocations(
         *owner_cap.digest(),
     ));
 
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
-
     // `nexus_workflow::gas_extension::disable_limited_invocations`
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -303,7 +286,7 @@ pub fn disable_limited_invocations(
             workflow::GasExtension::DISABLE_LIMITED_INVOCATIONS.name,
             vec![],
         ),
-        vec![gas_service, tool_registry, owner_cap, fqn],
+        vec![gas_service, tool, owner_cap],
     ))
 }
 
@@ -311,7 +294,7 @@ pub fn disable_limited_invocations(
 pub fn buy_limited_invocations_gas_ticket(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     invocations: u64,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -322,15 +305,12 @@ pub fn buy_limited_invocations_gas_ticket(
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         false,
     ));
-
-    // `fqn: ToolFqn`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `invocations: u64`
     let invocations = tx.input(pure_arg(&invocations)?);
@@ -357,23 +337,13 @@ pub fn buy_limited_invocations_gas_ticket(
             workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET.name,
             vec![],
         ),
-        vec![
-            gas_service,
-            tool_registry,
-            fqn,
-            invocations,
-            pay_with,
-            clock,
-        ],
+        vec![gas_service, tool, invocations, pay_with, clock],
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{fqn, test_utils::sui_mocks},
-    };
+    use {super::*, crate::test_utils::sui_mocks};
 
     /// Default cost per minute for gas expiry
     const DEFAULT_COST_PER_MINUTE: u64 = 100;
@@ -407,12 +377,12 @@ mod tests {
     #[test]
     fn test_enable_expiry() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let cost_per_minute = DEFAULT_COST_PER_MINUTE;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        enable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap, cost_per_minute).unwrap();
+        enable_expiry(&mut tx, &objects, &tool, &owner_cap, cost_per_minute).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -433,11 +403,11 @@ mod tests {
     #[test]
     fn test_disable_expiry() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        disable_expiry(&mut tx, &objects, &tool_fqn, &owner_cap).unwrap();
+        disable_expiry(&mut tx, &objects, &tool, &owner_cap).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -458,12 +428,12 @@ mod tests {
     #[test]
     fn test_buy_expiry_gas_ticket() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let pay_with = sui_mocks::mock_sui_object_ref();
         let minutes = 60;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        buy_expiry_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, minutes).unwrap();
+        buy_expiry_gas_ticket(&mut tx, &objects, &tool, &pay_with, minutes).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -490,7 +460,7 @@ mod tests {
     #[test]
     fn test_enable_limited_invocations() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let cost_per_invocation = 50;
         let min_invocations = 10;
@@ -500,7 +470,7 @@ mod tests {
         enable_limited_invocations(
             &mut tx,
             &objects,
-            &tool_fqn,
+            &tool,
             &owner_cap,
             cost_per_invocation,
             min_invocations,
@@ -533,11 +503,11 @@ mod tests {
     #[test]
     fn test_disable_limited_invocations() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        disable_limited_invocations(&mut tx, &objects, &tool_fqn, &owner_cap).unwrap();
+        disable_limited_invocations(&mut tx, &objects, &tool, &owner_cap).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -564,12 +534,12 @@ mod tests {
     #[test]
     fn test_buy_limited_invocations_gas_ticket() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.test.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let pay_with = sui_mocks::mock_sui_object_ref();
         let invocations = 100;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        buy_limited_invocations_gas_ticket(&mut tx, &objects, &tool_fqn, &pay_with, invocations)
+        buy_limited_invocations_gas_ticket(&mut tx, &objects, &tool, &pay_with, invocations)
             .unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(

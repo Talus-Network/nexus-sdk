@@ -5783,6 +5783,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "jsonschema",
  "lazy-regex",
  "lru 0.12.5",
  "mockall 0.14.0",
