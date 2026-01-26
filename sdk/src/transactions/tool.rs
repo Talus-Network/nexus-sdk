@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn test_UNREGISTER() {
+    fn test_unregister() {
         let objects = sui_mocks::mock_nexus_objects();
         let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
