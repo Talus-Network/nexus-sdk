@@ -777,10 +777,7 @@ fn build_task_state_impl(
     };
 
     cb.move_call(
-        cb.workflow_target(
-            "scheduler",
-            &format!("{action_name}_time_constraint_for_task"),
-        ),
+        cb.workflow_target("scheduler", action_name),
         vec![],
         vec![CommandBuilder::shared_object(task_id, true)],
     );
