@@ -62,6 +62,8 @@ use {
     zeroize::{Zeroize, Zeroizing},
 };
 
+type SkippedDecrypt = Option<(Vec<u8>, [u8; 32], u32, [u8; 32])>;
+
 /// Maximum number of skipped message keys to derive per chain before rejecting incoming traffic,
 ///  as mentioned in section 4 of the spec.
 const MAX_SKIP_PER_CHAIN: usize = 1_000;
@@ -70,8 +72,6 @@ const MAX_SKIP_PER_CHAIN: usize = 1_000;
 const MAX_SKIP_GLOBAL: usize = 2 * MAX_SKIP_PER_CHAIN;
 /// Maximum cached outgoing drafts (bounded LRU).
 const MAX_OUTGOING: usize = 1024;
-/// Deterministic SIV nonce (16-byte all-zero).
-const ZERO_NONCE: [u8; 16] = [0u8; 16];
 /// Each AES‑SIV nonce is 128‑bit.  We concatenate an 8‑byte random prefix with
 /// an 8‑byte big‑endian counter to get a unique value for every encryption.
 /// Note: We use AES‑128‑SIV with 32‑byte (256‑bit) keys for 128‑bit security.
@@ -469,7 +469,7 @@ impl RatchetStateHE {
     /// Reject the identity point and other small‑order curve points.
     /// This is a defence‑in‑depth measure.
     #[inline]
-    /// Reject identity *and* any of the eight small‑order points.
+    /// Reject identity and any of the eight small‑order points.
     fn validate_pk(pk: &PublicKey) -> Result<(), RatchetError> {
         for bad in SMALL_ORDER {
             if pk.as_bytes().ct_eq(&bad).unwrap_u8() == 1 {
@@ -537,18 +537,17 @@ impl RatchetStateHE {
     // hencrypt/hdecrypt unchanged
     fn hencrypt(&self, hk: &[u8; 32], pt: &[u8]) -> Result<Vec<u8>, RatchetError> {
         let cipher = Aes128SivAead::new_from_slice(hk)?;
+        let zero_nonce = Nonce::default();
         cipher
-            .encrypt(
-                Nonce::from_slice(&ZERO_NONCE),
-                Payload { msg: pt, aad: &[] },
-            )
+            .encrypt(&zero_nonce, Payload { msg: pt, aad: &[] })
             .map_err(Into::into)
     }
 
     fn hdecrypt(hk: &[u8; 32], data: &[u8]) -> Result<Header, RatchetError> {
         let cipher = Aes128SivAead::new_from_slice(hk)?;
+        let zero_nonce = Nonce::default();
         let pt = cipher.decrypt(
-            Nonce::from_slice(&ZERO_NONCE),
+            &zero_nonce,
             Payload {
                 msg: data,
                 aad: &[],
@@ -698,8 +697,10 @@ impl RatchetStateHE {
         full_ad.extend_from_slice(&enc_header);
         let cipher = Aes128SivAead::new_from_slice(&mk).unwrap();
         let nonce_bytes = self.nonce_seq_msg.next();
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(&nonce_bytes);
         let mut ct = cipher.encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            &nonce,
             Payload {
                 msg: plaintext,
                 aad: &full_ad,
@@ -726,17 +727,37 @@ impl RatchetStateHE {
         ciphertext: &[u8],
         ad: &[u8],
     ) -> Result<Vec<u8>, RatchetError> {
-        // 0. try skipped keys first
-        if let Some(pt) = self.try_skipped_keys(enc_header, ciphertext, ad)? {
+        self.ratchet_decrypt_he_impl(enc_header, ciphertext, ad, false)
+    }
+
+    /// Decrypts a message while keeping its key cached for limited reuse.
+    pub fn ratchet_decrypt_he_persistent(
+        &mut self,
+        enc_header: &[u8],
+        ciphertext: &[u8],
+        ad: &[u8],
+    ) -> Result<Vec<u8>, RatchetError> {
+        self.ratchet_decrypt_he_impl(enc_header, ciphertext, ad, true)
+    }
+
+    fn ratchet_decrypt_he_impl(
+        &mut self,
+        enc_header: &[u8],
+        ciphertext: &[u8],
+        ad: &[u8],
+        retain_mk: bool,
+    ) -> Result<Vec<u8>, RatchetError> {
+        if let Some((pt, hk, n, mk)) = self.try_skipped_keys(enc_header, ciphertext, ad)? {
+            if retain_mk {
+                self.mkskipped.insert((hk, n), mk);
+            }
             return Ok(pt);
         }
 
-        // 1. decrypt header using HK_r or NHK_r
         let (header, used_nhk, hk_used) = self.decrypt_header(enc_header)?;
+        let hk_for_cache = if used_nhk { Some(self.nhkr) } else { hk_used };
 
-        // If we used NHK_r, we need to do a DH ratchet and then handle skipped messages
         if used_nhk {
-            // 1. deal with the previous chain (PN)
             self.skip_message_keys_he(header.pn, None)?;
             self.dh_ratchet_he(&header)?;
 
@@ -754,7 +775,6 @@ impl RatchetStateHE {
                 return Err(RatchetError::MissingHeaderKey);
             }
         } else if self.ckr.is_none() {
-            // We have never derived a receiving chain: perform a DH-ratchet now.
             self.skip_message_keys_he(header.pn, None)?;
             self.dh_ratchet_he(&header)?;
             self.skip_message_keys_he(header.n, self.hkr)?;
@@ -772,13 +792,12 @@ impl RatchetStateHE {
             }
         }
 
-        // 2. normal message‑key ratchet
         let ckr = self.ckr.ok_or(RatchetError::MissingReceivingChain)?;
         let (new_ckr, mk) = Self::kdf_ck(&ckr);
+        let mk_copy = mk;
         self.ckr = Some(new_ckr);
         self.nr = self.nr.wrapping_add(1);
 
-        // 3. decrypt payload
         if ciphertext.len() < NONCE_LEN {
             return Err(RatchetError::CryptoError);
         }
@@ -786,9 +805,11 @@ impl RatchetStateHE {
         let mut full_ad = ad.to_vec();
         full_ad.extend_from_slice(enc_header);
         let cipher = Aes128SivAead::new_from_slice(&mk).unwrap();
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(nonce_bytes);
         let result = cipher
             .decrypt(
-                Nonce::from_slice(nonce_bytes),
+                &nonce,
                 Payload {
                     msg: ct,
                     aad: &full_ad,
@@ -796,10 +817,13 @@ impl RatchetStateHE {
             )
             .map_err(Into::into);
 
-        // 4. Remove any matching key from skipped messages to prevent replay
         if result.is_ok() {
-            if let Some(hk_used) = hk_used {
-                self.mkskipped.remove(&(hk_used, header.n));
+            if let Some(hk_cache) = hk_for_cache {
+                if retain_mk {
+                    self.mkskipped.insert((hk_cache, header.n), mk_copy);
+                } else {
+                    self.mkskipped.remove(&(hk_cache, header.n));
+                }
             }
         }
 
@@ -814,18 +838,17 @@ impl RatchetStateHE {
         enc_header: &[u8],
         ciphertext: &[u8],
         ad: &[u8],
-    ) -> Result<Option<Vec<u8>>, RatchetError> {
-        // Try all stored skipped message keys
+    ) -> Result<SkippedDecrypt, RatchetError> {
         let keys: Vec<_> = self.mkskipped.keys().cloned().collect();
         for (hk, n) in keys {
             if let Ok(hdr) = Self::hdecrypt(&hk, enc_header) {
                 if hdr.n == n {
                     if let Some(mk) = self.mkskipped.get(&(hk, n)) {
-                        // Try decrypting with the skipped key, ignore errors and only succeed on valid decryption.
+                        let mk_copy = *mk;
                         if let Ok(Some(pt)) = Self::decrypt_with_mk(ciphertext, ad, enc_header, mk)
                         {
                             self.mkskipped.remove(&(hk, n));
-                            return Ok(Some(pt));
+                            return Ok(Some((pt, hk, n, mk_copy)));
                         }
                     }
                 }
@@ -1055,12 +1078,13 @@ impl RatchetStateHE {
         }
         let (nonce_bytes, ct) = ciphertext.split_at(NONCE_LEN);
         let cipher = Aes128SivAead::new_from_slice(mk).map_err(|_| RatchetError::CryptoError)?;
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let mut nonce = Nonce::default();
+        nonce.copy_from_slice(nonce_bytes);
         let mut full_ad = ad.to_vec();
         full_ad.extend_from_slice(enc_header);
         cipher
             .decrypt(
-                nonce,
+                &nonce,
                 Payload {
                     msg: ct,
                     aad: &full_ad,

@@ -233,7 +233,7 @@ mod tests {
         let version_too_large: u64 = u32::MAX as u64 + 1;
 
         let version_too_large =
-            format!("xyz.taluslabs.example@{}", version_too_large).parse::<ToolFqn>();
+            format!("xyz.taluslabs.example@{version_too_large}").parse::<ToolFqn>();
 
         assert_matches!(version_too_large, Err(e) if e.to_string().contains("Tool version too large"));
     }

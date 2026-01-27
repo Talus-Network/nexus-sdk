@@ -26,8 +26,17 @@ pub const KEY_LEN: usize = 32;
 pub const SALT_LEN: usize = 16;
 
 /// Argon2id default parameters (64 MiB, 4 passes, single thread).
+#[cfg(not(test))]
 const ARGON2_MEMORY_KIB: u32 = 64 * 1024;
+#[cfg(not(test))]
 const ARGON2_ITERATIONS: u32 = 4;
+
+/// Lighter Argon2 parameters used when building/running tests to keep the
+/// suite fast.
+#[cfg(test)]
+const ARGON2_MEMORY_KIB: u32 = 1024; // 1 MiB
+#[cfg(test)]
+const ARGON2_ITERATIONS: u32 = 1;
 
 // === error type ===
 

@@ -1,6 +1,8 @@
 # Nexus SDK
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Talus-Network/nexus-sdk/blob/main/LICENSE)
+[![Actions](https://img.shields.io/badge/GitHub_Actions-Active-brightgreen)](https://github.com/Talus-Network/nexus-sdk/actions)
 [![codecov](https://codecov.io/gh/Talus-Network/nexus-sdk/graph/badge.svg?token=Q9I01BXJSE)](https://codecov.io/gh/Talus-Network/nexus-sdk)
 
 The **Nexus SDK** is a collection of tools that simplifies building with **Nexus**, the Agentic Workflow Engine. Developers can quickly create [Talus agents][talus-agents] or [Talus tools][talus-tools].
@@ -50,7 +52,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v0.3.0 \
+  --tag v0.5.0 \
   --locked
 ```
 
@@ -65,11 +67,15 @@ Nexus CLI
 Usage: nexus [OPTIONS] <COMMAND>
 
 Commands:
-  tool     Manage Nexus Tools
-  conf     Manage Nexus Configuration
-  dag      Validate, publish and execute Nexus DAGs
-  network  Mange Nexus networks and leader caps
-  help     Print this message or the help of the given subcommand(s)
+  tool        Manage Nexus Tools
+  conf        Manage Nexus Configuration
+  dag         Validate, publish and execute Nexus DAGs
+  scheduler   Manage scheduler tasks and occurrences
+  gas         Manage Nexus gas budgets and tickets
+  network     Manage Nexus networks and leader caps
+  crypto      Manage Nexus crypto
+  completion  Provide shell completions
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
       --json     Change the output format to JSON

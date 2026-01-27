@@ -8,6 +8,13 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
+/// The ToolRef type represents the reference of a tool, either as an HTTP
+/// URL for offchain tools or as a Sui module identifier for onchain tools.
+#[cfg(feature = "tool_ref")]
+mod tool_ref;
+#[cfg(feature = "tool_ref")]
+pub use tool_ref::*;
+
 /// Ubiquitously used resource identifiers for on-chain types and functions.
 /// This includes workflow, primitives and interface Nexus modules but also
 /// some Sui framework and Sui move std modules that we use.
@@ -28,11 +35,6 @@ pub mod types;
 /// also contains the logic for serializing and deserializing these events.
 #[cfg(feature = "events")]
 pub mod events;
-
-/// Object crawler attempts to improve the Sui SDK object fetching by allowing
-/// direct parsing into structs.
-#[cfg(feature = "object_crawler")]
-pub mod object_crawler;
 
 /// Transactions module contains builders for PTBs that are submitted to Sui
 /// and perform various operations on the Nexus ecosystem.
@@ -60,6 +62,10 @@ pub mod secret_core;
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
+
+/// Schema generation utilities for Move onchain tools.
+#[cfg(feature = "schema_gen")]
+pub mod onchain_schema_gen;
 
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]

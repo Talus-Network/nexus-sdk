@@ -1,18 +1,41 @@
-use crate::sui;
+use crate::{sui, sui::traits::*};
 
 /// Fetch gas coin for the provided address.
 pub async fn fetch_gas_coins(
-    sui: &sui::Client,
-    addr: sui::Address,
-) -> anyhow::Result<Vec<sui::Coin>> {
-    let limit = None;
-    let cursor = None;
-    let default_to_sui_coin_type = None;
+    rpc_url: &str,
+    owner: sui::types::Address,
+) -> anyhow::Result<Vec<(sui::types::ObjectReference, u64)>> {
+    let mut client = sui::grpc::Client::new(rpc_url)?;
 
-    let response = sui
-        .coin_read_api()
-        .get_coins(addr, default_to_sui_coin_type, cursor, limit)
-        .await?;
+    let request = sui::grpc::ListOwnedObjectsRequest::default()
+        .with_owner(owner)
+        .with_page_size(1000)
+        .with_object_type(sui::types::StructTag::gas_coin())
+        .with_read_mask(sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "balance",
+        ]));
 
-    Ok(response.data)
+    let response = client
+        .state_client()
+        .list_owned_objects(request)
+        .await
+        .map(|resp| resp.into_inner())?;
+
+    Ok(response
+        .objects()
+        .iter()
+        .filter_map(|object| {
+            Some((
+                sui::types::ObjectReference::new(
+                    object.object_id_opt()?.parse().ok()?,
+                    object.version_opt()?,
+                    object.digest_opt()?.parse().ok()?,
+                ),
+                object.balance(),
+            ))
+        })
+        .collect())
 }

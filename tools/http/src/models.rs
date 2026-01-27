@@ -40,9 +40,10 @@ pub(crate) struct SchemaValidationDetails {
 }
 
 /// HTTP Method enum for type-safe method handling
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
+    #[default]
     Get,
     Post,
     Put,
@@ -50,12 +51,6 @@ pub enum HttpMethod {
     Patch,
     Head,
     Options,
-}
-
-impl Default for HttpMethod {
-    fn default() -> Self {
-        HttpMethod::Get
-    }
 }
 
 /// Convert HttpMethod to reqwest::Method

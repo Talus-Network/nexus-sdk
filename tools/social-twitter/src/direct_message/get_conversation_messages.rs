@@ -23,7 +23,6 @@ use {
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -85,6 +84,7 @@ impl Input {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

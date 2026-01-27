@@ -4,9 +4,8 @@ use crate::{command_title, prelude::*};
 pub(crate) async fn get_nexus_conf(conf_path: PathBuf) -> AnyResult<CliConf, NexusCliError> {
     let conf = CliConf::load_from_path(&conf_path).await.map_err(|e| {
         NexusCliError::Any(anyhow!(
-            "Failed to load Nexus CLI configuration from {}: {}",
+            "Failed to load Nexus CLI configuration from {}: {e}",
             conf_path.display(),
-            e
         ))
     })?;
 
@@ -21,16 +20,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_nexus_conf() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let mut rng = rand::thread_rng();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
 
         let nexus_objects = NexusObjects {
-            workflow_pkg_id: sui::ObjectID::random(),
-            primitives_pkg_id: sui::ObjectID::random(),
-            interface_pkg_id: sui::ObjectID::random(),
-            network_id: sui::ObjectID::random(),
+            workflow_pkg_id: sui::types::Address::generate(&mut rng),
+            primitives_pkg_id: sui::types::Address::generate(&mut rng),
+            interface_pkg_id: sui::types::Address::generate(&mut rng),
+            network_id: sui::types::Address::generate(&mut rng),
             tool_registry: sui_mocks::mock_sui_object_ref(),
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
@@ -38,9 +38,9 @@ mod tests {
         };
 
         let sui_conf = SuiConf {
-            net: SuiNet::Mainnet,
-            wallet_path: tempdir.join("wallet"),
+            pk: Some("123".to_string().into()),
             rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            gql_url: Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
         };
 
         let tools = HashMap::new();

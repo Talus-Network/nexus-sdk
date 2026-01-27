@@ -17,7 +17,6 @@ use {
     reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]

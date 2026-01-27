@@ -12,7 +12,6 @@ use {
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -45,6 +44,7 @@ pub(crate) struct Input {
     user_fields: Option<Vec<UserField>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

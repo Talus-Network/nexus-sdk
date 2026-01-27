@@ -1,16 +1,17 @@
 use {
-    crate::{command_title, display::json_output, loading, prelude::*, sui::resolve_wallet_path},
+    crate::{command_title, display::json_output, loading, prelude::*},
     nexus_sdk::{
-        types::StorageKind,
+        types::{SecretValue, StorageKind},
         walrus::{WALRUS_AGGREGATOR_URL, WALRUS_PUBLISHER_URL},
     },
 };
 
 /// Set the Nexus CLI configuration from the provided arguments.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
-    sui_net: Option<SuiNet>,
-    sui_wallet_path: Option<PathBuf>,
+    sui_pk: Option<String>,
     sui_rpc_url: Option<reqwest::Url>,
+    sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
     data_storage_walrus_publisher_url: Option<reqwest::Url>,
@@ -30,26 +31,24 @@ pub(crate) async fn set_nexus_conf(
     if let Some(objects_path) = nexus_objects_path {
         let content = std::fs::read_to_string(&objects_path).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to read objects file {}: {}",
+                "Failed to read objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
         let objects: NexusObjects = toml::from_str(&content).map_err(|e| {
             NexusCliError::Any(anyhow!(
-                "Failed to parse objects file {}: {}",
+                "Failed to parse objects file {}: {e}",
                 objects_path.display(),
-                e
             ))
         })?;
 
         conf.nexus = Some(objects);
     }
 
-    conf.sui.net = sui_net.unwrap_or(conf.sui.net);
-    conf.sui.wallet_path = resolve_wallet_path(sui_wallet_path, &conf.sui)?;
+    conf.sui.pk = sui_pk.map(SecretValue::from).or(conf.sui.pk);
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
+    conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
     // Preferred remote storage cannot be inline.
     if matches!(
@@ -101,17 +100,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_conf_loads_and_saves() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
         let objects_path = tempdir.join("objects.toml");
+        let mut rng = rand::thread_rng();
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
 
         let nexus_objects_instance = NexusObjects {
-            workflow_pkg_id: sui::ObjectID::random(),
-            primitives_pkg_id: sui::ObjectID::random(),
-            interface_pkg_id: sui::ObjectID::random(),
-            network_id: sui::ObjectID::random(),
+            workflow_pkg_id: sui::types::Address::generate(&mut rng),
+            primitives_pkg_id: sui::types::Address::generate(&mut rng),
+            interface_pkg_id: sui::types::Address::generate(&mut rng),
+            network_id: sui::types::Address::generate(&mut rng),
             tool_registry: sui_mocks::mock_sui_object_ref(),
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
@@ -129,10 +129,10 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some(SuiNet::Mainnet),
-            Some(tempdir.join("wallet")),
+            Some("123".to_string().into()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
-            Some(tempdir.join("objects.toml")),
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
+            Some(objects_path),
             Some(reqwest::Url::parse("https://aggregator.url").unwrap()),
             Some(reqwest::Url::parse("https://publisher.url").unwrap()),
             Some(42),
@@ -148,11 +148,14 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.net, SuiNet::Mainnet);
-        assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
+        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+        );
+        assert_eq!(
+            conf.sui.gql_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -171,8 +174,8 @@ mod tests {
 
         // Overriding one value will save that one value and leave other values intact.
         let result = set_nexus_conf(
-            Some(SuiNet::Testnet),
             None,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,
             None,
             None,
@@ -189,11 +192,14 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.net, SuiNet::Testnet);
-        assert_eq!(conf.sui.wallet_path, tempdir.join("wallet"));
+        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
-            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
+        );
+        assert_eq!(
+            conf.sui.gql_url,
+            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -213,14 +219,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_data_storage_testnet_preset() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf_testnet.toml");
 
         // Run with data_storage_testnet = true
         let result = set_nexus_conf(
-            Some(SuiNet::Testnet),
-            Some(tempdir.join("wallet")),
+            None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
+            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,
@@ -251,13 +257,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_inline_preferred_storage_error() {
-        let tempdir = tempfile::tempdir().unwrap().into_path();
+        let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf_inline.toml");
 
         let result = set_nexus_conf(
-            Some(SuiNet::Mainnet),
-            Some(tempdir.join("wallet")),
-            Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            None,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
+            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,

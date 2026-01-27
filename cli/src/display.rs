@@ -156,7 +156,7 @@ pub(crate) fn json_output<T: Serialize>(data: &T) -> AnyResult<(), NexusCliError
 
     match serde_json::to_string_pretty(data) {
         Ok(json) => {
-            println!("{}", json);
+            println!("{json}");
 
             Ok(())
         }

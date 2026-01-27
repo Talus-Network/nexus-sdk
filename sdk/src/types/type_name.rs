@@ -14,6 +14,20 @@ impl TypeName {
             name: name.to_string(),
         }
     }
+
+    fn normalize(name: &str) -> std::borrow::Cow<'_, str> {
+        let trimmed = name.trim_start_matches("0x");
+        if trimmed.len() == name.len() {
+            std::borrow::Cow::Borrowed(name)
+        } else {
+            std::borrow::Cow::Owned(trimmed.to_string())
+        }
+    }
+
+    /// Returns true when two fully-qualified Move type names represent the same symbol.
+    pub fn matches_qualified_name(&self, expected: &str) -> bool {
+        Self::normalize(&self.name).eq_ignore_ascii_case(&Self::normalize(expected))
+    }
 }
 
 impl From<&str> for TypeName {

@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_assignments)]
 //! # X3DH: Extended Triple Diffie‑Hellman key agreement
 //!
 //! This module implements the X3DH protocol as described in Signal's public
@@ -189,6 +190,7 @@ fn kdf(dhs: &[&[u8]], info: &[u8]) -> Result<SharedSecret, X3dhError> {
 ///
 /// A single 32‑byte secret scalar serves double purpose – it is interpreted in
 /// Montgomery form for X25519 and in Edwards form for XEdDSA.
+#[allow(unused_assignments)]
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct IdentityKey {
     /// 32‑byte X25519 secret.
@@ -534,9 +536,11 @@ pub fn sender_init(
     let cipher = XChaCha20Poly1305::new((&*sk).into());
     let mut nonce = [0u8; 24];
     OsRng.fill_bytes(&mut nonce);
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&nonce);
     let ciphertext = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &xnonce,
             Payload {
                 msg: plaintext,
                 aad: &ad,
@@ -636,9 +640,11 @@ pub fn receiver_receive(
 
     // 5. Decrypt
     let cipher = XChaCha20Poly1305::new((&*sk).into());
+    let mut xnonce = XNonce::default();
+    xnonce.copy_from_slice(&msg.nonce);
     let plaintext = cipher
         .decrypt(
-            XNonce::from_slice(&msg.nonce),
+            &xnonce,
             Payload {
                 msg: &msg.ciphertext,
                 aad: &ad,
@@ -653,6 +659,7 @@ pub fn receiver_receive(
 
 /// Container that pairs a publicly published [`PreKeyBundle`] with the
 /// secrets that Receiver keeps in local storage.
+#[allow(unused_assignments)]
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct PreKeyBundleWithSecrets {
     /// The bundle that must be posted to the key server.

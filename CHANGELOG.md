@@ -5,23 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-## [`0.3.0`] - 2025-11-10
+## [`0.5.0`] - 2026-01-16
 
 ### `nexus-cli`
 
 #### Added
 
-- `nexus dag inspect-execution` now also shows the data storage kind for each port
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `ToolRef` to combine offchain url and onchain move module id
+- add `--verbose` flag for debug log output
+
+### `nexus-sdk`
 
 #### Changed
 
-- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
-- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+- leader and crypto caps in PTB templates are now party objects
+- added `ToolRegistryCreated` as tracked event
+- combined some functions in tool_registry.move
+- set Rust toolchain back to `stable`
+
+## [`0.4.0`] - 2026-01-07
+
+### `nexus-cli`
+
+#### Added
+
+- `--priority-fee-per-gas-unit` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `nexus tool register onchain` command to register onchain tools
+- onchain tool development guide
+- `nexus tool new` onchain tool move template
+
+#### Changed
+
+- CLI now uses GRPC behind the scenes to communicate with the Sui blockchain
+- CLI now uses the `EventFetcher` to fetche evens where necessary from Sui GraphQL
+
+### `nexus-sdk`
+
+#### Added
+
+- support for `scheduler` transactions and events
+- onchain schema generation
+- `EventFetcher` under `nexus` module to fetch events from Sui GraphQL
+
+#### Changed
+
+- `crypto auth` now uses the new handshake algorithm
+- `nexus tool register` now has two subcommands for both types of tools
+- wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
+- all identifiers and transaction templates now use new `sui-rust-sdk` types
+- `NexusClient` uses GRPC client under the hood
+- `ObjectCrawler` moved under `nexus` module and uses GRPC
+- `onchain_schema_gen` module now uses GRPC
+- all types in the SDK changed to use `sui-rust-sdk` types instead of `sui-sdk`
+
+#### Removed
+
+- dependency on `sui-sdk` crate in favour of `sui-rust-sdk`
+
+## [`0.3.0`] - 2025-11-10
+
+### `nexus-cli`
 
 #### Fixed
 
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
 ### `nexus-sdk`

@@ -17,7 +17,7 @@ pub(crate) enum GasCommand {
             help = "Owned SUI coin object ID to use as budget",
             value_name = "OBJECT_ID"
         )]
-        coin: sui::ObjectID,
+        coin: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -49,7 +49,7 @@ pub(crate) enum ExpiryCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[arg(
             long = "cost-per-minute",
             short = 'c',
@@ -76,7 +76,7 @@ pub(crate) enum ExpiryCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -103,7 +103,7 @@ pub(crate) enum ExpiryCommand {
             help = "Owned SUI coin object ID to use to pay for the ticket",
             value_name = "OBJECT_ID"
         )]
-        coin: sui::ObjectID,
+        coin: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -126,7 +126,7 @@ pub(crate) enum LimitedInvocationsCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[arg(
             long = "cost-per-invocation",
             short = 'c',
@@ -165,7 +165,7 @@ pub(crate) enum LimitedInvocationsCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -192,7 +192,7 @@ pub(crate) enum LimitedInvocationsCommand {
             help = "Owned SUI coin object ID to use to pay for the ticket",
             value_name = "OBJECT_ID"
         )]
-        coin: sui::ObjectID,
+        coin: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },

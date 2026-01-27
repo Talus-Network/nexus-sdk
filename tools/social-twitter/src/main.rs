@@ -3,6 +3,16 @@
 //! This module contains tools for Twitter operations.
 #![doc = include_str!("../README.md")]
 #![recursion_limit = "256"]
+#![allow(
+    clippy::single_component_path_imports,
+    clippy::large_enum_variant,
+    clippy::upper_case_acronyms,
+    clippy::too_many_arguments,
+    clippy::manual_clamp,
+    clippy::derivable_impls,
+    clippy::to_string_trait_impl,
+    clippy::assertions_on_constants
+)]
 
 use nexus_toolkit::bootstrap;
 mod auth;

@@ -20,8 +20,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Configure iptables for Docker
+      shell: bash
+      run: |
+        sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
+        sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+
     - name: Set up Docker
       uses: docker/setup-docker-action@v4
+
+    - name: Restart Docker to reinitialize iptables
+      shell: bash
+      run: |
+        sudo systemctl restart docker
+        sleep 5
 
     - name: Install Rust Toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1

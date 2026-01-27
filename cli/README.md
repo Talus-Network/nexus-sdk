@@ -36,7 +36,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v0.3.0 \
+  --tag v0.5.0 \
   --locked
 ```
 
@@ -51,11 +51,15 @@ Nexus CLI
 Usage: nexus [OPTIONS] <COMMAND>
 
 Commands:
-  tool     Manage Nexus Tools
-  conf     Manage Nexus Configuration
-  dag      Validate, publish and execute Nexus DAGs
-  network  Mange Nexus networks and leader caps
-  help     Print this message or the help of the given subcommand(s)
+  tool        Manage Nexus Tools
+  conf        Manage Nexus Configuration
+  dag         Validate, publish and execute Nexus DAGs
+  scheduler   Manage scheduler tasks and occurrences
+  gas         Manage Nexus gas budgets and tickets
+  network     Manage Nexus networks and leader caps
+  crypto      Manage Nexus crypto
+  completion  Provide shell completions
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
       --json     Change the output format to JSON

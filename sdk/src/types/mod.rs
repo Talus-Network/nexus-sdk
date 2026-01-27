@@ -12,6 +12,10 @@ mod ports_data;
 mod runtime_vertex;
 
 #[cfg(feature = "types")]
+mod scheduler;
+#[cfg(feature = "types")]
+mod secret_value;
+#[cfg(feature = "types")]
 mod serde_parsers;
 #[cfg(any(feature = "types", feature = "wasm_types"))]
 mod storage_kind;
@@ -32,6 +36,8 @@ pub use {
     nexus_objects::NexusObjects,
     ports_data::PortsData,
     runtime_vertex::RuntimeVertex,
+    scheduler::*,
+    secret_value::SecretValue,
     serde_parsers::*,
     tool_meta::ToolMeta,
     type_name::TypeName,

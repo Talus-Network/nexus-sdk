@@ -13,7 +13,6 @@ use {
     reqwest::Client,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct Input {
@@ -35,6 +34,7 @@ pub(crate) struct Input {
     pub user_fields: Option<Vec<UserField>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

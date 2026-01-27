@@ -94,6 +94,7 @@ mod tests {
 
         // Isolate XDG config so salt lives under the temp dir
         let tmp_xdg = TempDir::new().expect("temp xdg");
+
         env::set_var("XDG_CONFIG_HOME", tmp_xdg.path());
 
         // Ensure no lingering keyring entries
