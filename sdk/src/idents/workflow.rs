@@ -400,7 +400,6 @@ impl Dag {
     /// its result to the workflow.
     ///
     /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk`
-    // TODO: <https://github.com/Talus-Network/nexus-next/issues/30>
     pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
@@ -845,6 +844,13 @@ impl Gas {
     pub const CLAIM_LEADER_GAS_FOR_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
+    };
+    /// Derive a `ToolGas` object while setting the initial invocation price.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas`
+    pub const CREATE_TOOL_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas"),
     };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
