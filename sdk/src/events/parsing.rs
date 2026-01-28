@@ -501,6 +501,7 @@ mod tests {
         let walk = RequestWalkExecutionEvent {
             dag: sui::types::Address::generate(&mut rng),
             execution: sui::types::Address::generate(&mut rng),
+            invoker: sui::types::Address::generate(&mut rng),
             walk_index: 1,
             next_vertex: RuntimeVertex::plain("v"),
             evaluations: sui::types::Address::generate(&mut rng),
@@ -809,6 +810,7 @@ mod tests {
                 request: RequestWalkExecutionEvent {
                     dag: addr(),
                     execution: addr(),
+                    invoker: addr(),
                     walk_index: 1,
                     next_vertex: vertex.clone(),
                     evaluations: addr(),
@@ -826,6 +828,7 @@ mod tests {
             NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
                 dag: addr(),
                 execution: addr(),
+                invoker: addr(),
                 walk_index: 7,
                 next_vertex: vertex.clone(),
                 evaluations: addr(),

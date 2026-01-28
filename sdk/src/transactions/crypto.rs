@@ -11,6 +11,7 @@ use crate::{
 pub fn claim_pre_key_for_self(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
+    invoker_gas: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut PreKeyVault`
     let pre_key_vault = tx.input(sui::tx::Input::shared(
@@ -19,10 +20,10 @@ pub fn claim_pre_key_for_self(
         true,
     ));
 
-    // `gas_service: &GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
+    // `invoker_gas: &InvokerGas`
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
         false,
     ));
 
@@ -41,7 +42,7 @@ pub fn claim_pre_key_for_self(
             workflow::PreKeyVault::CLAIM_PRE_KEY_FOR_SELF.name,
             vec![],
         ),
-        vec![pre_key_vault, gas_service, clock],
+        vec![pre_key_vault, invoker_gas, clock],
     ))
 }
 
@@ -199,6 +200,7 @@ mod tests {
     #[test]
     fn test_claim_pre_key_for_self() {
         let objects = sui_mocks::mock_nexus_objects();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
         tx.set_sender(sui::types::Address::from_static("0x1"));
@@ -210,7 +212,7 @@ mod tests {
             gas.version(),
             *gas.digest(),
         )]);
-        claim_pre_key_for_self(&mut tx, &objects).unwrap();
+        claim_pre_key_for_self(&mut tx, &objects, &invoker_gas).unwrap();
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },

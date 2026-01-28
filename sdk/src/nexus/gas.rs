@@ -6,6 +6,7 @@ use crate::{
     nexus::{client::NexusClient, error::NexusError},
     sui,
     transactions::gas,
+    types::derive_invoker_gas_id,
 };
 
 pub struct AddBudgetResult {
@@ -32,9 +33,27 @@ impl GasActions {
             .await
             .map_err(NexusError::Rpc)?;
 
+        // Derive and fetch the InvokerGas object.
+        let invoker_gas_id = derive_invoker_gas_id(*nexus_objects.gas_service.object_id(), address)
+            .map_err(NexusError::Parsing)?;
+
+        let invoker_gas = self
+            .client
+            .crawler()
+            .get_object_metadata(invoker_gas_id)
+            .await
+            .map(|resp| resp.object_ref())
+            .ok();
+
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address, &coin.object_ref()) {
+        if let Err(e) = gas::add_budget(
+            &mut tx,
+            nexus_objects,
+            address,
+            &coin.object_ref(),
+            invoker_gas.as_ref(),
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 

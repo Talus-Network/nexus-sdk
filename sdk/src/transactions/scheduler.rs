@@ -829,7 +829,7 @@ pub fn register_begin_execution(
 
 /// PTB template to invoke DAG execution from the scheduler via the Default TAP.
 #[allow(clippy::too_many_arguments)]
-pub fn dag_begin_execution_from_scheduler(
+pub fn begin_dag_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -885,8 +885,8 @@ pub fn dag_begin_execution_from_scheduler(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.module,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.name,
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module,
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name,
             vec![],
         ),
         vec![
@@ -971,8 +971,8 @@ pub fn execute_scheduled_occurrence(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.module,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.name,
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module,
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name,
             vec![],
         ),
         vec![
@@ -1577,7 +1577,7 @@ mod tests {
     }
 
     #[test]
-    fn dag_begin_execution_from_scheduler_builds_full_call() {
+    fn begin_dag_execution_from_scheduler_builds_full_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
@@ -1587,7 +1587,7 @@ mod tests {
         let amount_execution = 44;
         let amount_priority = 55;
 
-        dag_begin_execution_from_scheduler(
+        begin_dag_execution_from_scheduler(
             &mut tx,
             &objects,
             &task,
@@ -1666,11 +1666,11 @@ mod tests {
         let tap_call = inspector.move_call(1);
         assert_eq!(
             tap_call.module,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.module
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module
         );
         assert_eq!(
             tap_call.function,
-            workflow::DefaultTap::DAG_BEGIN_EXECUTION_FROM_SCHEDULER.name
+            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name
         );
         assert_eq!(tap_call.arguments.len(), 8);
         inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);

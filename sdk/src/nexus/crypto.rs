@@ -13,6 +13,7 @@ use {
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::crypto,
+        types::derive_invoker_gas_id,
     },
     anyhow::anyhow,
     std::time::Duration,
@@ -37,9 +38,21 @@ impl CryptoActions {
 
         // == Claim PreKey transaction ==
 
+        // Fetch derived InvokerGas object.
+        let invoker_gas_id = derive_invoker_gas_id(*nexus_objects.gas_service.object_id(), address)
+            .map_err(NexusError::Parsing)?;
+
+        let invoker_gas = self
+            .client
+            .crawler()
+            .get_object_metadata(invoker_gas_id)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(NexusError::Rpc)?;
+
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = crypto::claim_pre_key_for_self(&mut tx, nexus_objects) {
+        if let Err(e) = crypto::claim_pre_key_for_self(&mut tx, nexus_objects, &invoker_gas) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -188,6 +201,7 @@ mod tests {
         let associate_tx_digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
 
         let ik = IdentityKey::generate();
         let receiver_id = IdentityKey::generate();
@@ -200,6 +214,13 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Immutable,
+            None,
+        );
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,

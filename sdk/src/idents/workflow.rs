@@ -21,19 +21,19 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("begin_dag_execution"),
     };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::begin_dag_execution_from_scheduler`
+    pub const BEGIN_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("begin_dag_execution_from_scheduler"),
+    };
     /// The witness type needed to register DAG execution.
     ///
     /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
     pub const BEGIN_DAG_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("BeginDagExecutionWitness"),
-    };
-    /// Scheduler entry point to invoke DAG execution via the default TAP.
-    ///
-    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
-    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("dag_begin_execution_from_scheduler"),
     };
     /// The DefaultTAP struct type.
     ///
@@ -845,6 +845,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
     };
+    /// Derive an `InvokerGas` object.
+    ///
+    /// `nexus_workflow::gas::create_invoker_gas`
+    pub const CREATE_INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_invoker_gas"),
+    };
     /// Derive a `ToolGas` object while setting the initial invocation price.
     ///
     /// `nexus_workflow::gas::create_tool_gas`
@@ -865,6 +872,13 @@ impl Gas {
     pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("GasService"),
+    };
+    /// InvokerGas struct type.
+    ///
+    /// `nexus_workflow::gas::InvokerGas`
+    pub const INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("InvokerGas"),
     };
     /// OverGas owner cap generic.
     ///
@@ -907,6 +921,13 @@ impl Gas {
     pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("sync_gas_state"),
+    };
+    /// Sync gas for a tool in the current execution.
+    ///
+    /// `nexus_workflow::gas::sync_gas_state_for_tool`
+    pub const SYNC_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("sync_gas_state_for_tool"),
     };
 
     /// Convert an object ID to an InvokerAddress scope.

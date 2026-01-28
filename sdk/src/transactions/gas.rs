@@ -10,13 +10,37 @@ pub fn add_budget(
     objects: &NexusObjects,
     invoker_address: sui::types::Address,
     coin: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
-    // `self: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
-        true,
-    ));
+    invoker_gas_ref: Option<&sui::types::ObjectReference>,
+) -> anyhow::Result<()> {
+    // `invoker_gas: &mut InvokerGas`
+    let invoker_gas = if let Some(invoker_gas) = invoker_gas_ref {
+        tx.input(sui::tx::Input::shared(
+            *invoker_gas.object_id(),
+            invoker_gas.version(),
+            true,
+        ))
+    } else {
+        // `self: &mut GasService`
+        let gas_service = tx.input(sui::tx::Input::shared(
+            *objects.gas_service.object_id(),
+            objects.gas_service.version(),
+            true,
+        ));
+
+        // `invoker: address`
+        let invoker = sui_framework::Address::address_from_type(tx, invoker_address)?;
+
+        // `nexus_workflow::gas::create_invoker_gas() -> InvokerGas`
+        tx.move_call(
+            sui::tx::Function::new(
+                objects.workflow_pkg_id,
+                workflow::Gas::CREATE_INVOKER_GAS.module,
+                workflow::Gas::CREATE_INVOKER_GAS.name,
+                vec![],
+            ),
+            vec![gas_service, invoker],
+        )
+    };
 
     // `scope: Scope`
     let scope = workflow::Gas::scope_invoker_address_from_object_id(
@@ -45,15 +69,37 @@ pub fn add_budget(
     );
 
     // `nexus_workflow::gas::add_gas_budget`
-    Ok(tx.move_call(
+    tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Gas::ADD_GAS_BUDGET.module,
             workflow::Gas::ADD_GAS_BUDGET.name,
             vec![],
         ),
-        vec![gas_service, scope, balance],
-    ))
+        vec![invoker_gas, scope, balance],
+    );
+
+    // If we already had an `InvokerGas`, we are done.
+    if invoker_gas_ref.is_some() {
+        return Ok(());
+    }
+
+    // `InvokerGas`
+    let invoker_gas_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::INVOKER_GAS);
+
+    // `sui::transfer::public_share_object`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![invoker_gas_type],
+        ),
+        vec![invoker_gas],
+    );
+
+    Ok(())
 }
 
 /// PTB template to enable the expiry gas extension for a tool.
@@ -356,7 +402,42 @@ mod tests {
         let coin = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        add_budget(&mut tx, &objects, invoker_address, &coin).unwrap();
+        add_budget(&mut tx, &objects, invoker_address, &coin, None).unwrap();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.iter().nth(3).unwrap() else {
+            panic!("Expected last command to be a MoveCall to add gas budget");
+        };
+
+        assert_eq!(commands.len(), 5);
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.module, workflow::Gas::ADD_GAS_BUDGET.module);
+        assert_eq!(call.function, workflow::Gas::ADD_GAS_BUDGET.name);
+    }
+
+    #[test]
+    fn test_add_budget_with_existing_invoker_gas() {
+        let rng = &mut rand::thread_rng();
+        let objects = sui_mocks::mock_nexus_objects();
+        let invoker_address = sui::types::Address::generate(rng);
+        let coin: sui_sdk_types::ObjectReference = sui_mocks::mock_sui_object_ref();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        add_budget(
+            &mut tx,
+            &objects,
+            invoker_address,
+            &coin,
+            Some(&invoker_gas),
+        )
+        .unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -369,6 +450,7 @@ mod tests {
             panic!("Expected last command to be a MoveCall to add gas budget");
         };
 
+        assert_eq!(commands.len(), 3);
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Gas::ADD_GAS_BUDGET.module);
         assert_eq!(call.function, workflow::Gas::ADD_GAS_BUDGET.name);
