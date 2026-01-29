@@ -974,6 +974,7 @@ pub fn execute_scheduled_occurrence(
         // `amount_priority: u64`
         let amount_priority_arg = tx.input(pure_arg(&amount_priority)?);
 
+        // `nexus_workflow::gas::claim_leader_gas_for_self()`
         tx.move_call(
             sui::tx::Function::new(
                 objects.workflow_pkg_id,
