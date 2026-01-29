@@ -13,21 +13,6 @@ const DEFAULT_TAP_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("default_tap");
 
 impl DefaultTap {
-    /// This function is called when a DAG is to be executed using the default
-    /// TAP implementation.
-    ///
-    /// `nexus_workflow::default_tap::begin_dag_execution`
-    pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("begin_dag_execution"),
-    };
-    /// Scheduler entry point to invoke DAG execution via the default TAP.
-    ///
-    /// `nexus_workflow::default_tap::begin_dag_execution_from_scheduler`
-    pub const BEGIN_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("begin_dag_execution_from_scheduler"),
-    };
     /// The witness type needed to register DAG execution.
     ///
     /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
@@ -41,6 +26,21 @@ impl DefaultTap {
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultTAP"),
+    };
+    /// This function is called when a DAG is to be executed using the default
+    /// TAP implementation.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution`
+    pub const PREPARE_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution"),
+    };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution_from_scheduler`
+    pub const PREPARE_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution_from_scheduler"),
     };
     /// Register DAG execution configuration on the execution policy.
     ///
@@ -859,12 +859,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("create_tool_gas"),
     };
+    /// Same as `CREATE_TOOL_GAS` but object is shared.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas_and_share`
+    pub const CREATE_TOOL_GAS_AND_SHARE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas_and_share"),
+    };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
     /// `nexus_workflow::gas::deescalate`
     pub const DEESCALATE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("deescalate"),
+    };
+    /// ExecutionGas struct type.
+    ///
+    /// `nexus_workflow::gas::ExecutionGas`
+    pub const EXECUTION_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("ExecutionGas"),
     };
     /// GasService type for lookups.
     ///

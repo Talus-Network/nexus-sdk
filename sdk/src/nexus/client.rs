@@ -9,14 +9,18 @@ use {
             crypto::CryptoActions,
             error::NexusError,
             gas::GasActions,
+            models::Dag,
             scheduler::SchedulerActions,
             signer::Signer,
             workflow::WorkflowActions,
         },
         sui,
-        types::NexusObjects,
+        types::{derive_invoker_gas_id, derive_tool_gas_id, NexusObjects},
     },
-    std::sync::Arc,
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
     tokio::{
         sync::{Mutex, Notify},
         time::Duration,
@@ -265,6 +269,50 @@ impl NexusClient {
     pub fn get_nexus_objects(&self) -> Arc<NexusObjects> {
         Arc::clone(&self.nexus_objects)
     }
+
+    // == Helpers reused by multiple actions ==
+
+    /// Fetch all [`ToolGas`] derived objects that are relevant to the provided
+    /// DAG object ID.
+    pub(crate) async fn fetch_tool_gas_for_dag(
+        &self,
+        dag: &Dag,
+    ) -> anyhow::Result<HashSet<(sui::types::Address, sui::types::Version)>> {
+        let crawler = self.crawler();
+        let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
+
+        let vertices = crawler
+            .get_dynamic_fields(&dag.vertices)
+            .await?
+            .into_iter()
+            .map(|(vertex, tool)| (vertex, tool.kind.tool_fqn().clone()))
+            .collect::<HashMap<_, _>>();
+
+        // Derive `ToolGas` IDs and fetch them in bulk.
+        let tool_gas_ids = vertices
+            .values()
+            .map(|fqn| derive_tool_gas_id(gas_service_object_id, fqn))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let tool_gas = crawler.get_objects_metadata(&tool_gas_ids).await?;
+
+        Ok(tool_gas
+            .into_iter()
+            .map(|resp| (resp.object_id, resp.get_initial_version()))
+            .collect())
+    }
+
+    /// Fetch an [`InvokerGas`] object for the current signer address.
+    pub(crate) async fn fetch_invoker_gas(&self) -> anyhow::Result<sui::types::ObjectReference> {
+        let crawler = self.crawler();
+        let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
+        let invoker_address = self.signer.get_active_address();
+
+        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)?;
+        let invoker_gas = crawler.get_object_metadata(invoker_gas_id).await?;
+
+        Ok(invoker_gas.object_ref())
+    }
 }
 
 #[cfg(test)]
@@ -350,8 +398,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: None,
-            subscription_service_mock: None,
+            ..Default::default()
         });
 
         let builder = NexusClientBuilder::new()
@@ -477,8 +524,7 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: None,
-            subscription_service_mock: None,
+            ..Default::default()
         });
 
         let builder = NexusClientBuilder::new()
@@ -521,6 +567,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;

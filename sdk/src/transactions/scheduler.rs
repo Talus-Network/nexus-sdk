@@ -310,7 +310,7 @@ pub fn new_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS,
+        workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER,
     );
 
     let execution_symbol = tx.move_call(
@@ -829,7 +829,7 @@ pub fn register_begin_execution(
 
 /// PTB template to invoke DAG execution from the scheduler via the Default TAP.
 #[allow(clippy::too_many_arguments)]
-pub fn begin_dag_execution_from_scheduler(
+pub fn prepare_dag_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -885,8 +885,8 @@ pub fn begin_dag_execution_from_scheduler(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.module,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name,
             vec![],
         ),
         vec![
@@ -944,48 +944,15 @@ pub fn execute_scheduled_occurrence(
         ),
     };
 
-    // Begin DAG execution through the TAP.
-    let tap = tx.input(sui::tx::Input::shared(
-        *objects.default_tap.object_id(),
-        objects.default_tap.version(),
-        true,
-    ));
-    let dag = tx.input(sui::tx::Input::shared(
-        *dag.object_id(),
-        dag.version(),
-        false,
-    ));
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
-        true,
-    ));
-    let leader_cap = tx.input(sui::tx::Input::shared(
-        *leader_cap.object_id(),
-        leader_cap.version(),
-        false,
-    ));
-    let amount_execution_arg = tx.input(pure_arg(&amount_execution)?);
-    let amount_priority_arg = tx.input(pure_arg(&amount_priority)?);
-
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name,
-            vec![],
-        ),
-        vec![
-            tap,
-            task_arg,
-            dag,
-            gas_service,
-            leader_cap,
-            amount_execution_arg,
-            amount_priority_arg,
-            clock,
-        ],
-    );
+    prepare_dag_execution_from_scheduler(
+        tx,
+        objects,
+        task,
+        dag,
+        leader_cap,
+        amount_execution,
+        amount_priority,
+    )?;
 
     // Consume the proof to satisfy Move's non-drop requirement and reset task policies.
     tx.move_call(
@@ -1577,7 +1544,7 @@ mod tests {
     }
 
     #[test]
-    fn begin_dag_execution_from_scheduler_builds_full_call() {
+    fn prepare_dag_execution_from_scheduler_builds_full_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
@@ -1587,7 +1554,7 @@ mod tests {
         let amount_execution = 44;
         let amount_priority = 55;
 
-        begin_dag_execution_from_scheduler(
+        prepare_dag_execution_from_scheduler(
             &mut tx,
             &objects,
             &task,
@@ -1666,11 +1633,11 @@ mod tests {
         let tap_call = inspector.move_call(1);
         assert_eq!(
             tap_call.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.module
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.module
         );
         assert_eq!(
             tap_call.function,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION_FROM_SCHEDULER.name
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name
         );
         assert_eq!(tap_call.arguments.len(), 8);
         inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);

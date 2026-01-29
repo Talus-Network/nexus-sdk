@@ -109,8 +109,8 @@ pub fn register_off_chain_for_self(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Gas::CREATE_TOOL_GAS.module,
-            workflow::Gas::CREATE_TOOL_GAS.name,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
             vec![],
         ),
         vec![
@@ -258,12 +258,12 @@ pub fn register_on_chain_for_self(
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.input(pure_arg(&0u64)?);
 
-    // `nexus_workflow::gas::create_tool_gas`
+    // `nexus_workflow::gas::create_tool_gas_and_share`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Gas::CREATE_TOOL_GAS.module,
-            workflow::Gas::CREATE_TOOL_GAS.name,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
             vec![],
         ),
         vec![

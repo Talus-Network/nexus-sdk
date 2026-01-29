@@ -9,6 +9,7 @@ pub mod crawler;
 pub mod crypto;
 pub mod error;
 pub mod gas;
+pub mod models;
 pub mod network_auth;
 pub mod scheduler;
 pub mod signer;
