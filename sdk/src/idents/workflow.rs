@@ -845,6 +845,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
     };
+    /// Claim leader gas and transfer Coin to the tx sender.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_self`
+    pub const CLAIM_LEADER_GAS_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("claim_leader_gas_for_self"),
+    };
     /// Derive an `InvokerGas` object.
     ///
     /// `nexus_workflow::gas::create_invoker_gas`
