@@ -13,7 +13,6 @@ use {
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::crypto,
-        types::derive_invoker_gas_id,
     },
     anyhow::anyhow,
     std::time::Duration,
@@ -39,15 +38,10 @@ impl CryptoActions {
         // == Claim PreKey transaction ==
 
         // Fetch derived InvokerGas object.
-        let invoker_gas_id = derive_invoker_gas_id(*nexus_objects.gas_service.object_id(), address)
-            .map_err(NexusError::Parsing)?;
-
         let invoker_gas = self
             .client
-            .crawler()
-            .get_object_metadata(invoker_gas_id)
+            .fetch_invoker_gas()
             .await
-            .map(|resp| resp.object_ref())
             .map_err(NexusError::Rpc)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -218,7 +212,7 @@ mod tests {
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
             invoker_gas_ref,
-            sui::types::Owner::Immutable,
+            sui::types::Owner::Shared(1),
             None,
         );
 

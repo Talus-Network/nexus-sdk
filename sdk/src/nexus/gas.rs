@@ -6,7 +6,6 @@ use crate::{
     nexus::{client::NexusClient, error::NexusError},
     sui,
     transactions::gas,
-    types::derive_invoker_gas_id,
 };
 
 pub struct AddBudgetResult {
@@ -34,16 +33,7 @@ impl GasActions {
             .map_err(NexusError::Rpc)?;
 
         // Derive and fetch the InvokerGas object.
-        let invoker_gas_id = derive_invoker_gas_id(*nexus_objects.gas_service.object_id(), address)
-            .map_err(NexusError::Parsing)?;
-
-        let invoker_gas = self
-            .client
-            .crawler()
-            .get_object_metadata(invoker_gas_id)
-            .await
-            .map(|resp| resp.object_ref())
-            .ok();
+        let invoker_gas = self.client.fetch_invoker_gas().await.ok();
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -103,6 +93,7 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let coin_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -114,6 +105,13 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
             sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Shared(1),
             None,
         );
 
