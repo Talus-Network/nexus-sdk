@@ -936,13 +936,6 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
     };
-    /// Sync gas for the vertices in the current execution object.
-    ///
-    /// `nexus_workflow::gas::sync_gas_state`
-    pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("sync_gas_state"),
-    };
     /// Sync gas for a tool in the current execution.
     ///
     /// `nexus_workflow::gas::sync_gas_state_for_tool`
