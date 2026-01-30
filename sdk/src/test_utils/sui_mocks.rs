@@ -80,9 +80,11 @@ pub mod grpc {
     use {
         super::*,
         mockall::mock,
+        serde::Serialize,
         std::time::SystemTime,
         sui_rpc::proto::sui::rpc::v2::{
             ledger_service_server::{LedgerService, LedgerServiceServer},
+            state_service_server::{StateService, StateServiceServer},
             subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
                 TransactionExecutionService,
@@ -90,6 +92,7 @@ pub mod grpc {
             },
             *,
         },
+        sui_sdk_types::bcs::ToBcs,
         tonic::{Request, Response, Status},
     };
 
@@ -133,6 +136,38 @@ pub mod grpc {
                 &self,
                 request: Request<GetEpochRequest>,
             ) -> Result<Response<GetEpochResponse>, Status>;
+        }
+    }
+
+    mock! {
+        pub StateService {}
+
+        #[tonic::async_trait]
+        impl StateService for StateService {
+            async fn list_dynamic_fields(
+                &self,
+                request: Request<ListDynamicFieldsRequest>,
+            ) -> Result<Response<ListDynamicFieldsResponse>, Status>;
+
+            async fn list_owned_objects(
+                &self,
+                request: Request<ListOwnedObjectsRequest>,
+            ) -> Result<Response<ListOwnedObjectsResponse>, Status>;
+
+            async fn get_coin_info(
+                &self,
+                request: Request<GetCoinInfoRequest>,
+            ) -> Result<Response<GetCoinInfoResponse>, Status>;
+
+            async fn get_balance(
+                &self,
+                request: Request<GetBalanceRequest>,
+            ) -> Result<Response<GetBalanceResponse>, Status>;
+
+            async fn list_balances(
+                &self,
+                request: Request<ListBalancesRequest>,
+            ) -> Result<Response<ListBalancesResponse>, Status>;
         }
     }
 
@@ -213,6 +248,7 @@ pub mod grpc {
         pub ledger_service_mock: Option<MockLedgerService>,
         pub execution_service_mock: Option<MockTransactionExecutionService>,
         pub subscription_service_mock: Option<MockSubscriptionService>,
+        pub state_service_mock: Option<MockStateService>,
     }
 
     pub fn mock_server(mocks: ServerMocks) -> String {
@@ -227,12 +263,14 @@ pub mod grpc {
         let subscription_service = mocks.subscription_service_mock.map(|m| {
             SubscriptionServiceServer::new(SubscriptionServiceAdapter::new(std::sync::Arc::new(m)))
         });
+        let state_service = mocks.state_service_mock.map(StateServiceServer::new);
 
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_optional_service(ledger_service)
                 .add_optional_service(execution_service)
                 .add_optional_service(subscription_service)
+                .add_optional_service(state_service)
                 .serve(thread_addr.parse().unwrap())
                 .await
                 .unwrap();
@@ -423,6 +461,40 @@ pub mod grpc {
             });
     }
 
+    /// Expect a `batch_get_objects` call and return an object populated with metadata
+    /// and a JSON payload (converted into `prost_types::Value`).
+    pub fn mock_get_objects_json(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(
+            sui::types::ObjectReference,
+            sui::types::Owner,
+            serde_json::Value,
+        )>,
+    ) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+
+                for (object_ref, owner, json_value) in objects.clone() {
+                    let mut result = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_object_id(object_ref.object_id().to_string());
+                    grpc_object.json = Some(Box::new(json_to_prost_value(&json_value)));
+                    result.set_object(grpc_object.clone());
+                    objs.push(result);
+                }
+
+                response.set_objects(objs);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
     /// Expect a `get_epoch` call and return the end timestamp.
     pub fn mock_get_epoch_end(ledger_service: &mut MockLedgerService, epoch_end: SystemTime) {
         ledger_service
@@ -433,6 +505,32 @@ pub mod grpc {
                 let mut epoch = sui::grpc::Epoch::default();
                 epoch.set_end(epoch_end);
                 response.set_epoch(epoch);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    /// Expect a `list_dynamic_fields` call and return the given dynamic fields.
+    pub fn mock_list_dynamic_fields<T: Serialize + Clone + Send + 'static>(
+        state_service: &mut MockStateService,
+        fields: Vec<(T, sui::types::Address)>,
+    ) {
+        state_service
+            .expect_list_dynamic_fields()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut dynamic_fields = Vec::new();
+
+                for (key, id) in fields.clone() {
+                    let mut dynamic_field = sui::grpc::DynamicField::default();
+                    dynamic_field.set_child_id(id);
+                    dynamic_field.set_field_id(id);
+                    dynamic_field.set_name(key.to_bcs().expect("Cannot serialize BCS key"));
+                    // dynamic_field.set_value(key.to_bcs().expect("Cannot serialize BCS key"));
+                    dynamic_fields.push(dynamic_field);
+                }
+
+                response.set_dynamic_fields(dynamic_fields);
                 Ok(tonic::Response::new(response))
             });
     }

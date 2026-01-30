@@ -6,7 +6,6 @@ use crate::{
     nexus::{client::NexusClient, error::NexusError},
     sui,
     transactions::gas,
-    types::Tool,
 };
 
 pub struct AddBudgetResult {
@@ -57,9 +56,18 @@ impl GasActions {
             .await
             .map_err(NexusError::Rpc)?;
 
+        // Derive and fetch the InvokerGas object.
+        let invoker_gas = self.client.fetch_invoker_gas().await.ok();
+
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address, &coin.object_ref()) {
+        if let Err(e) = gas::add_budget(
+            &mut tx,
+            nexus_objects,
+            address,
+            &coin.object_ref(),
+            invoker_gas.as_ref(),
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -111,19 +119,23 @@ impl GasActions {
             .map(|resp| resp.object_ref())
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}",
-                    owner_cap = owner_cap,
-                    e = e
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) =
-            gas::enable_expiry(&mut tx, nexus_objects, &tool, &owner_cap, cost_per_minute)
-        {
+        if let Err(e) = gas::enable_expiry(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &owner_cap,
+            cost_per_minute,
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -178,11 +190,12 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool, &owner_cap) {
+        if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -234,19 +247,19 @@ impl GasActions {
             .map(|resp| resp.object_ref())
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch coin object metadata for '{coin}': {e}",
-                    coin = coin,
-                    e = e
+                    "Failed to fetch coin object metadata for '{coin}': {e}"
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = gas::buy_limited_invocations_gas_ticket(
             &mut tx,
             nexus_objects,
+            &tool_gas,
             &tool,
             &pay_with_coin,
             invocations,
@@ -304,19 +317,19 @@ impl GasActions {
             .map(|resp| resp.object_ref())
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}",
-                    owner_cap = owner_cap,
-                    e = e
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = gas::enable_limited_invocations(
             &mut tx,
             nexus_objects,
+            &tool_gas,
             &tool,
             &owner_cap,
             cost_per_invocation,
@@ -373,17 +386,17 @@ impl GasActions {
             .map(|resp| resp.object_ref())
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}",
-                    owner_cap = owner_cap,
-                    e = e
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::disable_limited_invocations(&mut tx, nexus_objects, &tool, &owner_cap)
+        if let Err(e) =
+            gas::disable_limited_invocations(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap)
         {
             return Err(NexusError::TransactionBuilding(e));
         }
@@ -436,20 +449,24 @@ impl GasActions {
             .map(|resp| resp.object_ref())
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch coin object metadata for '{coin}': {e}",
-                    coin = coin,
-                    e = e
+                    "Failed to fetch coin object metadata for '{coin}': {e}"
                 ))
             })?;
 
-        let tool = self.fetch_tool_object_ref(&tool_fqn).await?;
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
         // Craft the transaction.
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) =
-            gas::buy_expiry_gas_ticket(&mut tx, nexus_objects, &tool, &pay_with_coin, minutes)
-        {
+        if let Err(e) = gas::buy_expiry_gas_ticket(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &pay_with_coin,
+            minutes,
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -483,30 +500,6 @@ impl GasActions {
             tx_digest: response.digest,
         })
     }
-
-    /// Helper to fetch the tool object metadata reference from a ToolFqn.
-    async fn fetch_tool_object_ref(
-        &self,
-        tool_fqn: &crate::tool_fqn::ToolFqn,
-    ) -> Result<sui::types::ObjectReference, NexusError> {
-        let crawler = self.client.crawler();
-
-        let tool_id = Tool::derive_id(
-            *self.client.nexus_objects.tool_registry.object_id(),
-            tool_fqn,
-        )
-        .map_err(NexusError::Parsing)?;
-
-        crawler
-            .get_object_metadata(tool_id)
-            .await
-            .map(|resp| resp.object_ref())
-            .map_err(|e| {
-                NexusError::Rpc(anyhow::anyhow!(
-                    "Failed to fetch tool derived object for tool '{tool_fqn}': {e}",
-                ))
-            })
-    }
 }
 
 #[cfg(test)]
@@ -518,10 +511,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let owner_cap_id = sui::types::Address::generate(&mut rng);
         let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
 
@@ -542,8 +533,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -562,6 +561,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -582,10 +582,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let owner_cap_id = sui::types::Address::generate(&mut rng);
         let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
 
@@ -606,8 +604,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -626,6 +632,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -646,10 +653,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let coin_object_id = sui::types::Address::generate(&mut rng);
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -669,8 +674,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -689,6 +702,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -709,10 +723,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let owner_cap_id = sui::types::Address::generate(&mut rng);
         let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
 
@@ -733,8 +745,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -753,6 +773,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -773,10 +794,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let owner_cap_id = sui::types::Address::generate(&mut rng);
         let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
 
@@ -797,8 +816,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -817,6 +844,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -842,6 +870,7 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let coin_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -853,6 +882,13 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
             sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -871,6 +907,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -894,10 +931,8 @@ mod tests {
 
         // Tool FQN and derived tool id
         let tool_fqn = fqn!("xyz.taluslabs.example@1");
-        let tool_id =
-            crate::types::Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-                .unwrap();
-        let tool_object_ref = sui::types::ObjectReference::new(tool_id, 0, tx_digest);
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -916,8 +951,16 @@ mod tests {
         // Mock tool object metadata
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_object_ref.clone(),
-            sui::types::Owner::Address(sui::types::Address::from_static("0x2")),
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -936,6 +979,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;

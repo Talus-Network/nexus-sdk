@@ -105,12 +105,12 @@ pub fn register_off_chain_for_self(
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
 
-    // `nexus_workflow::gas::set_single_invocation_cost_mist`
+    // `nexus_workflow::gas::create_tool_gas`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.module,
-            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
             vec![],
         ),
         vec![
@@ -237,6 +237,43 @@ pub fn register_on_chain_for_self(
         ));
     };
 
+    // `nexus_workflow::gas::deescalate()`
+    let owner_cap_over_gas = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::DEESCALATE.module,
+            workflow::Gas::DEESCALATE.name,
+            vec![],
+        ),
+        vec![tool, owner_cap_over_tool],
+    );
+
+    // `gas_service: &mut GasService`
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        true,
+    ));
+
+    // `single_invocation_cost_mist: u64`
+    let single_invocation_cost_mist = tx.input(pure_arg(&0u64)?);
+
+    // `nexus_workflow::gas::create_tool_gas_and_share`
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
+            vec![],
+        ),
+        vec![
+            gas_service,
+            tool,
+            owner_cap_over_gas,
+            single_invocation_cost_mist,
+        ],
+    );
+
     // `Tool`
     let tool_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::ToolRegistry::TOOL);
 
@@ -255,7 +292,7 @@ pub fn register_on_chain_for_self(
     let recipient = sui_framework::Address::address_from_type(tx, address)?;
 
     // `sui::transfer::public_transfer`
-    tx.transfer_objects(vec![owner_cap_over_tool], recipient);
+    tx.transfer_objects(vec![owner_cap_over_tool, owner_cap_over_gas], recipient);
 
     Ok(())
 }

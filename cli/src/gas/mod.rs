@@ -4,6 +4,10 @@ mod tickets;
 use {
     crate::prelude::*,
     gas_add_budget::*,
+    nexus_sdk::{
+        nexus::crawler::Crawler,
+        types::{derive_tool_gas_id, derive_tool_id},
+    },
     tickets::{expiry::*, limited_invocations::*},
 };
 

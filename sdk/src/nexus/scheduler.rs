@@ -818,6 +818,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(execution_service_mock),
             subscription_service_mock: Some(subscription_service_mock),
+            ..Default::default()
         });
 
         let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
