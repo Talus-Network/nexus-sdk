@@ -417,7 +417,7 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let sui::types::Command::MoveCall(call) = &commands.iter().nth(3).unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.get(3).unwrap() else {
             panic!("Expected last command to be a MoveCall to add gas budget");
         };
 

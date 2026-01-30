@@ -6,7 +6,6 @@ mod dag;
 mod display;
 mod error;
 mod gas;
-mod network;
 mod prelude;
 mod scheduler;
 mod sui;
@@ -46,8 +45,6 @@ enum Command {
     Scheduler(scheduler::SchedulerCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
-    #[command(subcommand, about = "Manage Nexus networks and leader caps")]
-    Network(network::NetworkCommand),
     #[command(subcommand, about = "Manage Nexus crypto")]
     Crypto(crypto::CryptoCommand),
     #[command(about = "Provide shell completions")]
@@ -92,7 +89,6 @@ async fn main() {
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
-        Command::Network(network) => network::handle(network).await,
         Command::Gas(gas) => gas::handle(gas).await,
         Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
         Command::Crypto(crypto) => crypto::handle(crypto).await,

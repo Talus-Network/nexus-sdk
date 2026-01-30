@@ -117,7 +117,7 @@ impl Signer {
         let gas_coin_ref = crawler
             .get_object_metadata(*gas_coin.object_id())
             .await
-            .map_err(|e| NexusError::Rpc(e))?
+            .map_err(NexusError::Rpc)?
             .object_ref();
 
         *gas_coin = gas_coin_ref;
