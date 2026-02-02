@@ -4,7 +4,8 @@ use crate::{
     types::NexusObjects,
 };
 
-/// PTB template to add gas budget to a transaction.
+/// PTB template to add gas budget to a transaction. If `None` is provided for
+/// `invoker_gas_ref`, a new `InvokerGas` object will be created and shared.
 pub fn add_budget(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
