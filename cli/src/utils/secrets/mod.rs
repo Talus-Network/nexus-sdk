@@ -15,7 +15,7 @@ mod tests {
         super::*,
         keyring::Entry,
         serde::{Deserialize, Serialize},
-        std::{collections::HashMap, env, sync::Mutex},
+        std::{env, sync::Mutex},
         tempfile::TempDir,
     };
 
@@ -67,20 +67,6 @@ mod tests {
     struct SimpleData {
         name: String,
         age: u32,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    struct ComplexData {
-        numbers: Vec<i32>,
-        mapping: HashMap<String, String>,
-        nested: SimpleData,
-        optional: Option<String>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    struct FloatData {
-        value: f64,
-        precision: f32,
     }
 
     #[test]

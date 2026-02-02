@@ -205,8 +205,6 @@ mod tests {
                 NexusEventKind,
                 OccurrenceConsumedEvent,
                 OccurrenceScheduledEvent,
-                OffChainToolRegisteredEvent,
-                OnChainToolRegisteredEvent,
                 PeriodicScheduleConfiguredEvent,
                 PreKeyAssociatedEvent,
                 PreKeyFulfilledEvent,
@@ -220,6 +218,7 @@ mod tests {
                 TaskCreatedEvent,
                 TaskPausedEvent,
                 TaskResumedEvent,
+                ToolRegisteredEvent,
                 ToolUnregisteredEvent,
                 TypeName,
                 WalkAdvancedEvent,
@@ -502,6 +501,7 @@ mod tests {
         let walk = RequestWalkExecutionEvent {
             dag: sui::types::Address::generate(&mut rng),
             execution: sui::types::Address::generate(&mut rng),
+            invoker: sui::types::Address::generate(&mut rng),
             walk_index: 1,
             next_vertex: RuntimeVertex::plain("v"),
             evaluations: sui::types::Address::generate(&mut rng),
@@ -810,6 +810,7 @@ mod tests {
                 request: RequestWalkExecutionEvent {
                     dag: addr(),
                     execution: addr(),
+                    invoker: addr(),
                     walk_index: 1,
                     next_vertex: vertex.clone(),
                     evaluations: addr(),
@@ -827,6 +828,7 @@ mod tests {
             NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
                 dag: addr(),
                 execution: addr(),
+                invoker: addr(),
                 walk_index: 7,
                 next_vertex: vertex.clone(),
                 evaluations: addr(),
@@ -835,25 +837,9 @@ mod tests {
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
                 shared_objects: vec![SharedObjectRef::new_imm(addr())],
             }),
-            NexusEventKind::OffChainToolRegistered(OffChainToolRegisteredEvent {
-                registry: addr(),
+            NexusEventKind::ToolRegistered(ToolRegisteredEvent {
                 tool: addr(),
                 fqn: fqn.clone(),
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-                input_schema: serde_json::json!({"in": 1}),
-                output_schema: serde_json::json!({"out": 1}),
-            }),
-            NexusEventKind::OnChainToolRegistered(OnChainToolRegisteredEvent {
-                registry: addr(),
-                tool: addr(),
-                registered_at_ms: 10,
-                fqn: fqn.clone(),
-                package_address: addr(),
-                module_name: "module".to_string(),
-                witness_id: addr(),
-                input_schema: serde_json::json!({"in": 1}),
-                output_schema: serde_json::json!({"out": 1}),
-                description: "desc".to_string(),
             }),
             NexusEventKind::ToolUnregistered(ToolUnregisteredEvent {
                 tool: addr(),

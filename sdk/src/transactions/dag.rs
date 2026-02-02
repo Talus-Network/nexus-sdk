@@ -17,7 +17,7 @@ use {
             DEFAULT_ENTRY_GROUP,
         },
     },
-    std::collections::HashMap,
+    std::collections::{HashMap, HashSet},
 };
 
 /// PTB template for creating a new empty DAG.
@@ -145,15 +145,11 @@ pub fn create_vertex(
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
-            // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
-        VertexKind::OnChain { tool_fqn } => workflow::Dag::on_chain_vertex_kind_from_fqn(
-            tx,
-            objects.workflow_pkg_id,
-            &objects.tool_registry,
-            tool_fqn,
-        )?,
+        VertexKind::OnChain { tool_fqn } => {
+            workflow::Dag::on_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
+        }
     };
 
     // `dag.with_vertex(name, kind)`
@@ -396,33 +392,21 @@ pub fn mark_entry_input_port(
     ))
 }
 
-/// PTB template to execute a DAG.
-pub fn execute(
+/// PTB template to prepare a DAG execution.
+pub fn prepare_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: &sui::types::ObjectReference,
+    gas_service: sui::types::Argument,
+    dag: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    clock: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut DefaultTAP`
     let default_tap = tx.input(sui::tx::Input::shared(
         *objects.default_tap.object_id(),
         objects.default_tap.version(),
-        true,
-    ));
-
-    // `dag: &DAG`
-    let dag = tx.input(sui::tx::Input::shared(
-        *dag.object_id(),
-        dag.version(),
-        false,
-    ));
-
-    // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
         true,
     ));
 
@@ -529,13 +513,6 @@ pub fn execute(
         );
     }
 
-    // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
-        sui_framework::CLOCK_OBJECT_ID,
-        1,
-        false,
-    ));
-
     // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
@@ -543,8 +520,8 @@ pub fn execute(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.name,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name,
             vec![],
         ),
         vec![
@@ -558,6 +535,168 @@ pub fn execute(
             clock,
         ],
     ))
+}
+
+/// PTB template to sync gas state for the given tools.
+pub fn sync_gas_state_for_tools(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    gas_service: sui::types::Argument,
+    execution_gas: sui::types::Argument,
+    invoker_gas: sui::types::Argument,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    ticket: sui::types::Argument,
+) {
+    for (tool_gas_id, tool_gas_version) in tools_gas {
+        // `tool_gas: &mut ToolGas`
+        let tool_gas = tx.input(sui::tx::Input::shared(
+            *tool_gas_id,
+            *tool_gas_version,
+            true,
+        ));
+
+        // `nexus_workflow::gas::register_tool_gas_for_tool()`
+        tx.move_call(
+            sui::tx::Function::new(
+                objects.workflow_pkg_id,
+                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.module,
+                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.name,
+                vec![],
+            ),
+            vec![
+                execution_gas,
+                tool_gas,
+                invoker_gas,
+                gas_service,
+                dag,
+                execution,
+                ticket,
+            ],
+        );
+    }
+}
+
+/// PTB template to execute a DAG.
+pub fn execute(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    invoker_gas: &sui::types::ObjectReference,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    // `dag: &DAG`
+    let dag = tx.input(sui::tx::Input::shared(
+        *dag.object_id(),
+        dag.version(),
+        false,
+    ));
+
+    // `gas_service: &mut GasService`
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        true,
+    ));
+
+    // `clock: &Clock`
+    let clock = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    let results = prepare_execution(
+        tx,
+        objects,
+        gas_service,
+        dag,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
+        clock,
+    )?;
+
+    // `ticket: RequestWalkExecution`
+    let Some(ticket) = results.nested(0) else {
+        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
+    };
+
+    // `execution: DAGExecution`
+    let Some(execution) = results.nested(1) else {
+        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    };
+
+    // `execution_gas: ExecutionGas`
+    let Some(execution_gas) = results.nested(2) else {
+        return Err(anyhow::anyhow!("Failed to receive execution gas argument"));
+    };
+
+    // `invoker_gas: &mut InvokerGas`
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
+        true,
+    ));
+
+    sync_gas_state_for_tools(
+        tx,
+        objects,
+        gas_service,
+        execution_gas,
+        invoker_gas,
+        tools_gas,
+        dag,
+        execution,
+        ticket,
+    );
+
+    // `nexus_workflow::dag::request_network_to_execute_walks()`
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            vec![],
+        ),
+        vec![dag, execution, ticket, clock],
+    );
+
+    // `DAGExecution`
+    let execution_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+
+    // `sui::transfer::public_share_object<DAGExecution>`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_type],
+        ),
+        vec![execution],
+    );
+
+    // `ExecutionGas`
+    let execution_gas_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::EXECUTION_GAS);
+
+    // `sui::transfer::public_share_object<ExecutionGas>`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_gas_type],
+        ),
+        vec![execution_gas],
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -799,6 +938,8 @@ mod tests {
         let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
         let mut input_data = HashMap::new();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
 
         input_data.insert(
             "vertex1".to_string(),
@@ -819,6 +960,8 @@ mod tests {
             priority_fee_per_gas_unit,
             entry_group,
             &input_data,
+            &invoker_gas,
+            &tools_gas,
         )
         .unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
@@ -829,18 +972,18 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.iter().nth(12).unwrap() else {
             panic!("Expected last command to be a MoveCall to execute a DAG");
         };
 
         assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.module
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module
         );
         assert_eq!(
             call.function,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.name
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name
         );
     }
 

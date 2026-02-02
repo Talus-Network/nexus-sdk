@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, primitives, pure_arg, sui_framework, workflow},
+    idents::{move_std, pure_arg, sui_framework, workflow},
     sui,
     types::{NexusObjects, ToolMeta},
     ToolFqn,
@@ -13,7 +13,7 @@ pub fn register_off_chain_for_self(
     address: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     invocation_cost: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<()> {
     // `self: &mut ToolRegistry`
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
@@ -51,7 +51,7 @@ pub fn register_off_chain_for_self(
     ));
 
     // `nexus_workflow::tool_registry::register_off_chain_tool()`
-    let owner_cap_over_tool = tx.move_call(
+    let result = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
@@ -70,6 +70,20 @@ pub fn register_off_chain_for_self(
         ],
     );
 
+    // `tool: Tool`
+    let Some(tool) = result.nested(0) else {
+        return Err(anyhow::anyhow!(
+            "Failed to extract Tool from register_off_chain_tool result"
+        ));
+    };
+
+    // `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
+    let Some(owner_cap_over_tool) = result.nested(1) else {
+        return Err(anyhow::anyhow!(
+            "Failed to extract OwnerCap<OverTool> from register_off_chain_tool result"
+        ));
+    };
+
     // `nexus_workflow::gas::deescalate()`
     let owner_cap_over_gas = tx.move_call(
         sui::tx::Function::new(
@@ -78,7 +92,7 @@ pub fn register_off_chain_for_self(
             workflow::Gas::DEESCALATE.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap_over_tool, fqn],
+        vec![tool, owner_cap_over_tool],
     );
 
     // `gas_service: &mut GasService`
@@ -90,77 +104,44 @@ pub fn register_off_chain_for_self(
 
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
-    // `nexus_workflow::gas::set_single_invocation_cost_mist`
+
+    // `nexus_workflow::gas::create_tool_gas`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.module,
-            workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
             vec![],
         ),
         vec![
             gas_service,
-            tool_registry,
+            tool,
             owner_cap_over_gas,
-            fqn,
             single_invocation_cost_mist,
         ],
     );
 
-    // `CloneableOwnerCap<OverGas>`
-    let over_gas_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        objects.primitives_pkg_id,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
-        vec![sui::types::TypeTag::Struct(Box::new(
-            sui::types::StructTag::new(
-                objects.workflow_pkg_id,
-                workflow::Gas::OVER_GAS.module,
-                workflow::Gas::OVER_GAS.name,
-                vec![],
-            ),
-        ))],
-    )));
+    // `Tool`
+    let tool_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::ToolRegistry::TOOL);
 
-    // `CloneableOwnerCap<OverTool>`
-    let over_tool_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        objects.primitives_pkg_id,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
-        vec![sui::types::TypeTag::Struct(Box::new(
-            sui::types::StructTag::new(
-                objects.workflow_pkg_id,
-                workflow::ToolRegistry::OVER_TOOL.module,
-                workflow::ToolRegistry::OVER_TOOL.name,
-                vec![],
-            ),
-        ))],
-    )));
+    // `sui::transfer::public_share_object`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![tool_type],
+        ),
+        vec![tool],
+    );
 
     // `recipient: address`
     let recipient = sui_framework::Address::address_from_type(tx, address)?;
 
     // `sui::transfer::public_transfer`
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_TRANSFER.module,
-            sui_framework::Transfer::PUBLIC_TRANSFER.name,
-            vec![over_tool_type],
-        ),
-        vec![owner_cap_over_tool, recipient],
-    );
+    tx.transfer_objects(vec![owner_cap_over_tool, owner_cap_over_gas], recipient);
 
-    // `sui::transfer::public_transfer`
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_TRANSFER.module,
-            sui_framework::Transfer::PUBLIC_TRANSFER.name,
-            vec![over_gas_type],
-        ),
-        vec![owner_cap_over_gas, recipient],
-    ))
+    Ok(())
 }
 
 /// PTB template for registering a new onchain Nexus Tool.
@@ -177,7 +158,7 @@ pub fn register_on_chain_for_self(
     witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<()> {
     // `self: &mut ToolRegistry`
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
@@ -221,7 +202,7 @@ pub fn register_on_chain_for_self(
     ));
 
     // `nexus_workflow::tool_registry::register_on_chain_tool()`
-    let owner_cap_over_tool = tx.move_call(
+    let result = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module,
@@ -242,41 +223,85 @@ pub fn register_on_chain_for_self(
         ],
     );
 
-    // `CloneableOwnerCap<OverTool>`
-    let over_tool_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        objects.primitives_pkg_id,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
-        primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
-        vec![sui::types::TypeTag::Struct(Box::new(
-            sui::types::StructTag::new(
-                objects.workflow_pkg_id,
-                workflow::ToolRegistry::OVER_TOOL.module,
-                workflow::ToolRegistry::OVER_TOOL.name,
-                vec![],
-            ),
-        ))],
-    )));
+    // `tool: Tool`
+    let Some(tool) = result.nested(0) else {
+        return Err(anyhow::anyhow!(
+            "Failed to extract Tool from register_off_chain_tool result"
+        ));
+    };
+
+    // `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
+    let Some(owner_cap_over_tool) = result.nested(1) else {
+        return Err(anyhow::anyhow!(
+            "Failed to extract OwnerCap<OverTool> from register_off_chain_tool result"
+        ));
+    };
+
+    // `nexus_workflow::gas::deescalate()`
+    let owner_cap_over_gas = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::DEESCALATE.module,
+            workflow::Gas::DEESCALATE.name,
+            vec![],
+        ),
+        vec![tool, owner_cap_over_tool],
+    );
+
+    // `gas_service: &mut GasService`
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        true,
+    ));
+
+    // `single_invocation_cost_mist: u64`
+    let single_invocation_cost_mist = tx.input(pure_arg(&0u64)?);
+
+    // `nexus_workflow::gas::create_tool_gas_and_share`
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
+            workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
+            vec![],
+        ),
+        vec![
+            gas_service,
+            tool,
+            owner_cap_over_gas,
+            single_invocation_cost_mist,
+        ],
+    );
+
+    // `Tool`
+    let tool_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::ToolRegistry::TOOL);
+
+    // `sui::transfer::public_share_object`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![tool_type],
+        ),
+        vec![tool],
+    );
 
     // `recipient: address`
     let recipient = sui_framework::Address::address_from_type(tx, address)?;
 
     // `sui::transfer::public_transfer`
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_TRANSFER.module,
-            sui_framework::Transfer::PUBLIC_TRANSFER.name,
-            vec![over_tool_type],
-        ),
-        vec![owner_cap_over_tool, recipient],
-    ))
+    tx.transfer_objects(vec![owner_cap_over_tool, owner_cap_over_gas], recipient);
+
+    Ok(())
 }
 
 /// PTB template for setting the invocation cost of a Nexus Tool.
 pub fn set_invocation_cost(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     invocation_cost: u64,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -287,11 +312,11 @@ pub fn set_invocation_cost(
         true,
     ));
 
-    // `tool_registry: &mut ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
-        true,
+    // `tool: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
+        false,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverGas>`
@@ -300,9 +325,6 @@ pub fn set_invocation_cost(
         owner_cap.version(),
         *owner_cap.digest(),
     ));
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
@@ -315,13 +337,7 @@ pub fn set_invocation_cost(
             workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name,
             vec![],
         ),
-        vec![
-            gas_service,
-            tool_registry,
-            owner_cap,
-            fqn,
-            single_invocation_cost_mist,
-        ],
+        vec![gas_service, tool, owner_cap, single_invocation_cost_mist],
     ))
 }
 
@@ -329,18 +345,15 @@ pub fn set_invocation_cost(
 pub fn unregister(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
-    // `self: &mut ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `self: &mut Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         true,
     ));
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
     let owner_cap = tx.input(sui::tx::Input::owned(
@@ -356,15 +369,15 @@ pub fn unregister(
         false,
     ));
 
-    // `nexus::tool_registry::unregister_tool()`
+    // `nexus::tool_registry::unregister()`
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ToolRegistry::UNREGISTER_TOOL.module,
-            workflow::ToolRegistry::UNREGISTER_TOOL.name,
+            workflow::ToolRegistry::UNREGISTER.module,
+            workflow::ToolRegistry::UNREGISTER.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap, fqn, clock],
+        vec![tool, owner_cap, clock],
     ))
 }
 
@@ -373,13 +386,13 @@ pub fn unregister(
 pub fn claim_collateral_for_self(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_fqn: &ToolFqn,
+    tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
-    // `self: &mut ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
+    // `self: &mut Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
         true,
     ));
 
@@ -389,9 +402,6 @@ pub fn claim_collateral_for_self(
         owner_cap.version(),
         *owner_cap.digest(),
     ));
-
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, tool_fqn.to_string())?;
 
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
@@ -408,7 +418,7 @@ pub fn claim_collateral_for_self(
             workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name,
             vec![],
         ),
-        vec![tool_registry, owner_cap, fqn, clock],
+        vec![tool, owner_cap, clock],
     ))
 }
 
@@ -524,13 +534,13 @@ mod tests {
     }
 
     #[test]
-    fn test_unregister_tool() {
+    fn test_unregister() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        unregister(&mut tx, &objects, &tool_fqn, &owner_cap)
+        unregister(&mut tx, &objects, &tool, &owner_cap)
             .expect("Failed to build PTB for unregistering a tool.");
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -545,19 +555,19 @@ mod tests {
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER_TOOL.module);
-        assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER_TOOL.name);
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER.module);
+        assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER.name);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]
     fn test_claim_collateral_for_self() {
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        claim_collateral_for_self(&mut tx, &objects, &tool_fqn, &owner_cap)
+        claim_collateral_for_self(&mut tx, &objects, &tool, &owner_cap)
             .expect("Failed to build PTB for claiming collateral for a tool.");
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -580,18 +590,18 @@ mod tests {
             call.function,
             workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name
         );
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]
     fn test_set_invocation_cost() {
-        let tool_fqn = fqn!("xyz.dummy.tool@1");
+        let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let objects = sui_mocks::mock_nexus_objects();
         let invocation_cost = 500;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        set_invocation_cost(&mut tx, &objects, &tool_fqn, &owner_cap, invocation_cost)
+        set_invocation_cost(&mut tx, &objects, &tool, &owner_cap, invocation_cost)
             .expect("Failed to build PTB for setting invocation cost.");
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -614,6 +624,6 @@ mod tests {
             call.function,
             workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 4);
     }
 }

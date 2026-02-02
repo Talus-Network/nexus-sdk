@@ -9,10 +9,10 @@ use {
         crypto::session::Session,
         events::{EventPage, NexusEvent, NexusEventKind},
         idents::workflow,
-        nexus::{client::NexusClient, error::NexusError},
+        nexus::{client::NexusClient, error::NexusError, models::Dag},
         sui,
         transactions::dag,
-        types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{Dag as JsonDag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
     std::{collections::HashMap, sync::Arc},
@@ -48,7 +48,7 @@ pub struct WorkflowActions {
 
 impl WorkflowActions {
     /// Publish the provided JSON [`Dag`].
-    pub async fn publish(&self, json_dag: Dag) -> Result<PublishResult, NexusError> {
+    pub async fn publish(&self, json_dag: JsonDag) -> Result<PublishResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
 
@@ -167,7 +167,19 @@ impl WorkflowActions {
         let dag = self
             .client
             .crawler()
-            .get_object_metadata(dag_object_id)
+            .get_object::<Dag>(dag_object_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let invoker_gas = self
+            .client
+            .fetch_invoker_gas()
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let tools_gas = self
+            .client
+            .fetch_tool_gas_for_dag(&dag.data)
             .await
             .map_err(NexusError::Rpc)?;
 
@@ -180,6 +192,8 @@ impl WorkflowActions {
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
+            &invoker_gas,
+            &tools_gas,
         ) {
             return Err(NexusError::TransactionBuilding(e));
         }
@@ -330,6 +344,11 @@ mod tests {
                 NexusEventKind,
                 WalkAdvancedEvent,
             },
+            fqn,
+            nexus::{
+                crawler::DynamicMap,
+                models::{Dag, DagVertexInfo, DagVertexKind},
+            },
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
             types::{NexusData, RuntimeVertex, TypeName},
@@ -387,11 +406,12 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
 
-        let dag = Dag {
+        let dag = JsonDag {
             vertices: vec![],
             edges: vec![],
             default_values: None,
@@ -415,13 +435,16 @@ mod tests {
         let tx_digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
         let (sender, _) = nexus_mocks::mock_session();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
@@ -445,11 +468,55 @@ mod tests {
             1000,
         );
 
+        // DAG
+        let dag = Dag {
+            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+        };
+
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!(dag),
+        );
+
+        // InvokerGas
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            sui::types::ObjectReference::new(dag_object_id, 0, tx_digest),
+            invoker_gas_ref,
             sui::types::Owner::Shared(0),
             None,
+        );
+
+        // Dag.vertices
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("InvokerGas"), *tool_gas_ref.object_id())],
+        );
+
+        // DAGVertexInfo
+        let vertex_info = DagVertexInfo {
+            kind: DagVertexKind::OffChain {
+                tool_fqn: fqn!("xyz.taluslabs.test@1"),
+            },
+        };
+
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                tool_gas_ref.clone(),
+                sui::types::Owner::Shared(0),
+                json!({ "value": vertex_info }),
+            )],
+        );
+
+        // ToolGas
+        sui_mocks::grpc::mock_get_objects_metadata(
+            &mut ledger_service_mock,
+            vec![(tool_gas_ref, sui::types::Owner::Shared(0), None)],
         );
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
@@ -463,17 +530,12 @@ mod tests {
             vec![],
         );
 
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            gas_coin_ref.clone(),
-            sui::types::Owner::Immutable,
-            Some(1000),
-        );
-
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
@@ -497,7 +559,7 @@ mod tests {
         let result = client
             .workflow()
             .execute(
-                dag_object_id,
+                *dag_ref.object_id(),
                 entry_data,
                 price_priority_fee,
                 None,

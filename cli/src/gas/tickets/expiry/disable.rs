@@ -1,5 +1,13 @@
 use {
-    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    crate::{
+        command_title,
+        display::json_output,
+        gas::{fetch_tool, fetch_tool_gas},
+        loading,
+        notify_success,
+        prelude::*,
+        sui::*,
+    },
     nexus_sdk::transactions::gas,
 };
 
@@ -38,12 +46,17 @@ pub(crate) async fn disable_expiry_extension(
             ))
         })?;
 
+    // Resolve derived objects.
+    let tool = fetch_tool(crawler, *nexus_objects.tool_registry.object_id(), &tool_fqn).await?;
+    let tool_gas =
+        fetch_tool_gas(crawler, *nexus_objects.gas_service.object_id(), &tool_fqn).await?;
+
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool_fqn, &owner_cap) {
+    if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

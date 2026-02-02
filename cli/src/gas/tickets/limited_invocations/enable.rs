@@ -1,5 +1,13 @@
 use {
-    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    crate::{
+        command_title,
+        display::json_output,
+        gas::{fetch_tool, fetch_tool_gas},
+        loading,
+        notify_success,
+        prelude::*,
+        sui::*,
+    },
     nexus_sdk::transactions::gas,
 };
 
@@ -42,6 +50,11 @@ pub(crate) async fn enable_limited_invocations_extension(
             ))
         })?;
 
+    // Resolve derived objects.
+    let tool = fetch_tool(crawler, *nexus_objects.tool_registry.object_id(), &tool_fqn).await?;
+    let tool_gas =
+        fetch_tool_gas(crawler, *nexus_objects.gas_service.object_id(), &tool_fqn).await?;
+
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
@@ -50,7 +63,8 @@ pub(crate) async fn enable_limited_invocations_extension(
     if let Err(e) = gas::enable_limited_invocations(
         &mut tx,
         nexus_objects,
-        &tool_fqn,
+        &tool_gas,
+        &tool,
         &owner_cap,
         cost_per_invocation,
         min_invocations,

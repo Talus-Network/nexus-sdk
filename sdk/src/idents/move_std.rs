@@ -17,6 +17,11 @@ impl Ascii {
         module: ASCII_MODULE,
         name: sui::types::Identifier::from_static("string"),
     };
+    /// `std::ascii::String`
+    pub const STRING_TYPE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: ASCII_MODULE,
+        name: sui::types::Identifier::from_static("String"),
+    };
 
     /// Convert a string to a Move ASCII string.
     pub fn ascii_string_from_str<T: AsRef<str>>(
@@ -83,4 +88,15 @@ impl StdString {
             vec![],
         )))
     }
+}
+
+/// Helper to turn a `ModuleAndNameIdent` into a `sui::types::TypeTag`. Useful for
+/// creating generic types.
+pub fn into_type_tag(ident: ModuleAndNameIdent) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        PACKAGE_ID,
+        ident.module,
+        ident.name,
+        vec![],
+    )))
 }

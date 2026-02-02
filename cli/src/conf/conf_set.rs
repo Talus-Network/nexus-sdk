@@ -130,7 +130,7 @@ mod tests {
 
         // Command saves values.
         let result = set_nexus_conf(
-            Some("123".to_string().into()),
+            Some("123".to_string()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
             Some(objects_path),

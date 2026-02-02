@@ -1,3 +1,4 @@
+mod derive;
 mod json_dag;
 mod network_auth;
 mod nexus_data;
@@ -11,10 +12,12 @@ mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
+mod tool;
 mod tool_meta;
 mod type_name;
 
 pub use {
+    derive::*,
     json_dag::*,
     network_auth::*,
     nexus_data::*,
@@ -27,6 +30,7 @@ pub use {
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
+    tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
     type_name::TypeName,
 };
