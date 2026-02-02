@@ -110,6 +110,11 @@ pub(crate) async fn execute_dag(
             .truecolor(100, 100, 100)
     );
 
+    notify_success!(
+        "DAGExecution checkpoint: {id}",
+        id = result.tx_checkpoint.to_string().truecolor(100, 100, 100)
+    );
+
     // Update the session in the configuration.
     CryptoConf::release_session(session, None)
         .await
@@ -118,9 +123,11 @@ pub(crate) async fn execute_dag(
     if inspect {
         inspect_dag_execution(result.execution_object_id, result.tx_checkpoint).await?;
     } else {
-        json_output(
-            &json!({ "digest": result.tx_digest, "execution_id": result.execution_object_id }),
-        )?;
+        json_output(&json!({
+            "execution_id": result.execution_object_id,
+            "digest": result.tx_digest,
+            "tx_checkpoint": result.tx_checkpoint
+        }))?;
     }
 
     Ok(())
