@@ -663,6 +663,13 @@ pub fn new_or_modify_periodic_for_task(
     // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
+    // `clock: &Clock`
+    let clock = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -677,6 +684,7 @@ pub fn new_or_modify_periodic_for_task(
             deadline_offset_ms,
             max_iterations,
             priority_fee_per_gas_unit,
+            clock,
         ],
     ))
 }
@@ -1445,13 +1453,14 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 6);
+        assert_eq!(call.arguments.len(), 7);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], first_start);
         inspector.expect_u64(&call.arguments[2], period);
         inspector.expect_option_u64(&call.arguments[3], deadline_offset);
         inspector.expect_option_u64(&call.arguments[4], max_iterations);
         inspector.expect_u64(&call.arguments[5], priority_fee_per_gas_unit);
+        inspector.expect_clock(&call.arguments[6]);
     }
 
     #[test]

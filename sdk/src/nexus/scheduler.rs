@@ -120,6 +120,7 @@ pub struct PeriodicScheduleConfig {
 
 pub struct PeriodicScheduleResult {
     pub tx_digest: sui::types::Digest,
+    pub event: Option<NexusEventKind>,
 }
 
 pub struct DisablePeriodicResult {
@@ -423,6 +424,7 @@ impl SchedulerActions {
 
         Ok(PeriodicScheduleResult {
             tx_digest: response.digest,
+            event: extract_occurrence_event(&response),
         })
     }
 
@@ -1328,6 +1330,7 @@ mod tests {
             .expect("periodic configured");
 
         assert_eq!(result.tx_digest, digest);
+        assert!(result.event.is_none());
     }
 
     #[tokio::test]
