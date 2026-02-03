@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `signed_http` feature and module for application layer HTTP request/response signatures.
 - `network_auth` helpers, types, and PTB templates for tool key registration and leader allowlists.
 - derived gas service identifiers and PTB templates
-- `secret_store` module (feature: `secret_store`) providing a minimal at-rest secret wrapper with optional encryption.
+- `secret_store` module providing a minimal at-rest secret wrapper with optional encryption.
+- `NexusClient` code for gas tickets
 
 #### Changed
 

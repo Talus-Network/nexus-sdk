@@ -38,11 +38,7 @@ impl CryptoActions {
         // == Claim PreKey transaction ==
 
         // Fetch derived InvokerGas object.
-        let invoker_gas = self
-            .client
-            .fetch_invoker_gas()
-            .await
-            .map_err(NexusError::Rpc)?;
+        let invoker_gas = self.client.fetch_invoker_gas().await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 

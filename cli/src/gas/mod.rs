@@ -4,10 +4,6 @@ mod tickets;
 use {
     crate::prelude::*,
     gas_add_budget::*,
-    nexus_sdk::{
-        nexus::crawler::Crawler,
-        types::{derive_tool_gas_id, derive_tool_id},
-    },
     tickets::{expiry::*, limited_invocations::*},
 };
 
@@ -314,43 +310,4 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
             }
         },
     }
-}
-
-// Note that these functions be remove very soon in favour of using the
-// NexusClient.
-
-pub(super) async fn fetch_tool(
-    crawler: &Crawler,
-    tool_registry_id: sui::types::Address,
-    tool_fqn: &ToolFqn,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    let id = derive_tool_id(tool_registry_id, tool_fqn).map_err(NexusCliError::Any)?;
-
-    crawler
-        .get_object_metadata(id)
-        .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
-            ))
-        })
-}
-
-pub(super) async fn fetch_tool_gas(
-    crawler: &Crawler,
-    gas_service_id: sui::types::Address,
-    tool_fqn: &ToolFqn,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    let id = derive_tool_gas_id(gas_service_id, tool_fqn).map_err(NexusCliError::Any)?;
-
-    crawler
-        .get_object_metadata(id)
-        .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
-            ))
-        })
 }

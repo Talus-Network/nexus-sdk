@@ -15,7 +15,8 @@ use {
             workflow::WorkflowActions,
         },
         sui,
-        types::{derive_invoker_gas_id, derive_tool_gas_id, NexusObjects},
+        types::{derive_invoker_gas_id, derive_tool_gas_id, derive_tool_id, NexusObjects},
+        ToolFqn,
     },
     std::{
         collections::{HashMap, HashSet},
@@ -277,13 +278,14 @@ impl NexusClient {
     pub(crate) async fn fetch_tool_gas_for_dag(
         &self,
         dag: &Dag,
-    ) -> anyhow::Result<HashSet<(sui::types::Address, sui::types::Version)>> {
+    ) -> anyhow::Result<HashSet<(sui::types::Address, sui::types::Version)>, NexusError> {
         let crawler = self.crawler();
         let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
 
         let vertices = crawler
             .get_dynamic_fields(&dag.vertices)
-            .await?
+            .await
+            .map_err(NexusError::Rpc)?
             .into_iter()
             .map(|(vertex, tool)| (vertex, tool.kind.tool_fqn().clone()))
             .collect::<HashMap<_, _>>();
@@ -292,9 +294,13 @@ impl NexusClient {
         let tool_gas_ids = vertices
             .values()
             .map(|fqn| derive_tool_gas_id(gas_service_object_id, fqn))
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<anyhow::Result<Vec<_>>>()
+            .map_err(NexusError::Parsing)?;
 
-        let tool_gas = crawler.get_objects_metadata(&tool_gas_ids).await?;
+        let tool_gas = crawler
+            .get_objects_metadata(&tool_gas_ids)
+            .await
+            .map_err(NexusError::Rpc)?;
 
         Ok(tool_gas
             .into_iter()
@@ -302,14 +308,56 @@ impl NexusClient {
             .collect())
     }
 
-    /// Fetch an [`InvokerGas`] object for the current signer address.
-    pub(crate) async fn fetch_invoker_gas(&self) -> anyhow::Result<sui::types::ObjectReference> {
+    /// Derive and fetch a [`Tool`] object based on the provided tool FQN.
+    pub(crate) async fn fetch_tool(
+        &self,
+        tool_fqn: &ToolFqn,
+    ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
+        let crawler = self.crawler();
+        let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
+
+        let tool_id =
+            derive_tool_id(tool_registry_object_id, tool_fqn).map_err(NexusError::Parsing)?;
+        let tool = crawler
+            .get_object_metadata(tool_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        Ok(tool.object_ref())
+    }
+
+    /// Derive and fetch a [`ToolGas`] object based on the provided tool FQN.
+    pub(crate) async fn fetch_tool_gas(
+        &self,
+        tool_fqn: &ToolFqn,
+    ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
+        let crawler = self.crawler();
+        let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
+
+        let tool_gas_id =
+            derive_tool_gas_id(tool_registry_object_id, tool_fqn).map_err(NexusError::Parsing)?;
+        let tool_gas = crawler
+            .get_object_metadata(tool_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        Ok(tool_gas.object_ref())
+    }
+
+    /// Derive and fetch an [`InvokerGas`] object for the current signer address.
+    pub(crate) async fn fetch_invoker_gas(
+        &self,
+    ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
         let crawler = self.crawler();
         let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
         let invoker_address = self.signer.get_active_address();
 
-        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)?;
-        let invoker_gas = crawler.get_object_metadata(invoker_gas_id).await?;
+        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)
+            .map_err(NexusError::Parsing)?;
+        let invoker_gas = crawler
+            .get_object_metadata(invoker_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?;
 
         Ok(invoker_gas.object_ref())
     }
