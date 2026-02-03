@@ -4,7 +4,8 @@ use crate::{
     types::NexusObjects,
 };
 
-/// PTB template to add gas budget to a transaction.
+/// PTB template to add gas budget to a transaction. If `None` is provided for
+/// `invoker_gas_ref`, a new `InvokerGas` object will be created and shared.
 pub fn add_budget(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -27,9 +28,6 @@ pub fn add_budget(
             true,
         ));
 
-        // `invoker: address`
-        let invoker = sui_framework::Address::address_from_type(tx, invoker_address)?;
-
         // `nexus_workflow::gas::create_invoker_gas() -> InvokerGas`
         tx.move_call(
             sui::tx::Function::new(
@@ -38,7 +36,7 @@ pub fn add_budget(
                 workflow::Gas::CREATE_INVOKER_GAS.name,
                 vec![],
             ),
-            vec![gas_service, invoker],
+            vec![gas_service],
         )
     };
 
