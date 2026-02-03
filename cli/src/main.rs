@@ -9,9 +9,9 @@ mod gas;
 mod network;
 mod prelude;
 mod scheduler;
+mod secrets;
 mod sui;
 mod tool;
-mod utils;
 mod workflow;
 
 use crate::prelude::*;
@@ -48,8 +48,10 @@ enum Command {
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Manage Nexus networks and leader caps")]
     Network(network::NetworkCommand),
-    #[command(subcommand, about = "Manage Nexus crypto")]
+    #[command(subcommand, about = "Manage secure sessions")]
     Crypto(crypto::CryptoCommand),
+    #[command(subcommand, about = "Manage local secret storage")]
+    Secrets(secrets::SecretsCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),
 }
@@ -96,6 +98,7 @@ async fn main() {
         Command::Gas(gas) => gas::handle(gas).await,
         Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
         Command::Crypto(crypto) => crypto::handle(crypto).await,
+        Command::Secrets(secrets) => secrets::handle(secrets).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 

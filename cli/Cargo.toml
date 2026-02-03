@@ -40,14 +40,7 @@ regex.workspace = true
 
 # crypto helpers
 rand.workspace = true
-# Encryption helpers
-aes-gcm.workspace = true
-bincode.workspace = true
-argon2.workspace = true
-directories.workspace = true
 hex.workspace = true
-zeroize.workspace = true
-rpassword.workspace = true
 
 # Add platform-specific keyring dependencies so that the correct backend feature is enabled per operating system.
 [target.'cfg(target_os = "macos")'.dependencies]

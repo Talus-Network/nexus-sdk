@@ -76,14 +76,44 @@ pub trait NexusTool: Send + Sync + 'static {
     /// Default: allow.
     ///
     /// # Example
-    /// ```no_run
-    /// async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
-    ///     // Example policy: only allow a specific LeaderId.
-    ///     if ctx.invoker_id != "0x1111" {
-    ///         anyhow::bail!("leader not allowed");
+    /// ```rust,no_run
+    /// # use nexus_toolkit::{AnyResult, AuthContext, NexusTool, StatusCode};
+    /// # use nexus_sdk::ToolFqn;
+    /// # use schemars::JsonSchema;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::future::Future;
+    /// #
+    /// # struct MyTool;
+    /// # #[derive(JsonSchema, Deserialize)]
+    /// # struct MyInput;
+    /// # #[derive(JsonSchema, Serialize)]
+    /// # enum MyOutput {
+    /// #     Ok,
+    /// # }
+    /// #
+    /// # impl NexusTool for MyTool {
+    /// #     type Input = MyInput;
+    /// #     type Output = MyOutput;
+    /// #     fn fqn() -> ToolFqn { unimplemented!() }
+    /// #     fn invoke(&self, _input: Self::Input) -> impl Future<Output = Self::Output> + Send {
+    /// #         async { MyOutput::Ok }
+    /// #     }
+    /// fn authorize(&self, ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
+    ///     async move {
+    ///         // Example policy: only allow a specific LeaderId.
+    ///         if ctx.invoker_id != "0x1111" {
+    ///             anyhow::bail!("leader not allowed");
+    ///         }
+    ///         Ok(())
     ///     }
-    ///     Ok(())
     /// }
+    /// #     fn health(&self) -> impl Future<Output = AnyResult<StatusCode>> + Send {
+    /// #         async { Ok(StatusCode::OK) }
+    /// #     }
+    /// #     fn new() -> impl Future<Output = Self> + Send {
+    /// #         async { Self }
+    /// #     }
+    /// # }
     /// ```
     fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
         async { Ok(()) }
