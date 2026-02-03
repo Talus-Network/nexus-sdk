@@ -138,6 +138,7 @@ impl std::fmt::Debug for CryptoConf {
 
 impl CryptoConf {
     /// Truncate the configuration (remove identity key and all sessions).
+    #[cfg(test)]
     pub(crate) async fn truncate(path: Option<&PathBuf>) -> AnyResult<()> {
         let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
         let conf_path = path.unwrap_or(&default_path);

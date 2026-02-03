@@ -4,17 +4,8 @@
 //! a 32‑byte master key stored in the OS keyring.
 //!
 //! # Storage format
-//! - **Where:** OS keyring entry `(SERVICE, USER)` (see constants below).
-//! - **What:** a hex string encoding of 32 random bytes (AES‑256 key).
-//!
-//! # Threat model (what this protects against)
-//! If `~/.nexus/crypto.toml` is leaked (backup, disk copy, accidental commit), the encrypted fields
-//! are protected as long as the master key remains unavailable to the attacker.
-//!
-//! # Non-goals
-//! - In-memory protection (a compromised CLI process can always read plaintext).
-//! - Multi-key rotation at the envelope level (rotation is implemented by rewriting stored state).
-//! - Custom key derivation (this module stores a raw high-entropy key).
+//! - Where: OS keyring entry `(SERVICE, USER)` (see constants below).
+//! - What: a hex string encoding of 32 random bytes (AES‑256 key).
 
 use {
     keyring::Entry,
@@ -41,6 +32,7 @@ pub enum MasterKeyError {
     #[error("invalid master key length (expected {expected} bytes, got {got})")]
     InvalidKeyLength { expected: usize, got: usize },
     /// No key is present in the keyring.
+    #[cfg(test)]
     #[error("no master key found; run `nexus secrets enable` to enable encryption")]
     NoPersistentKey,
 }
@@ -84,6 +76,7 @@ pub fn load_master_key() -> Result<Option<secret_store::SecretKey>, MasterKeyErr
     Ok(Some(secret_store::SecretKey::new(key)))
 }
 
+#[cfg(test)]
 pub fn require_master_key() -> Result<secret_store::SecretKey, MasterKeyError> {
     load_master_key()?.ok_or(MasterKeyError::NoPersistentKey)
 }
