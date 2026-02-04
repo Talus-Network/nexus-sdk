@@ -104,7 +104,6 @@ events! {
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
     // These events are unused for now.
-    // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
     // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
     // "DAGEdgeAdded" => DAGEdgeAdded(serde_json::Value),
     // "DAGOutputAdded" => DAGOutputAdded(serde_json::Value),
@@ -123,6 +122,7 @@ events! {
 pub struct RequestWalkExecutionEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
+    pub invoker: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"

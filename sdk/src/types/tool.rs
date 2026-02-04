@@ -3,24 +3,25 @@
 
 use {
     crate::{
-        idents::move_std,
         sui,
-        types::serde_parsers::{
-            deserialize_bytes_to_json_value,
-            deserialize_bytes_to_string,
-            deserialize_bytes_to_url,
-            deserialize_option_sui_u64_to_datetime,
-            deserialize_sui_u64_to_datetime,
-            serialize_datetime_to_sui_u64,
-            serialize_json_value_to_bytes,
-            serialize_option_datetime_to_sui_u64,
-            serialize_string_to_bytes,
-            serialize_url_to_bytes,
+        types::{
+            derive_tool_id,
+            serde_parsers::{
+                deserialize_bytes_to_json_value,
+                deserialize_bytes_to_string,
+                deserialize_bytes_to_url,
+                deserialize_option_sui_u64_to_datetime,
+                deserialize_sui_u64_to_datetime,
+                serialize_datetime_to_sui_u64,
+                serialize_json_value_to_bytes,
+                serialize_option_datetime_to_sui_u64,
+                serialize_string_to_bytes,
+                serialize_url_to_bytes,
+            },
         },
         ToolFqn,
     },
     serde::{Deserialize, Serialize},
-    sui::traits::ToBcs,
 };
 
 /// A [`ToolRef`] is the differentiating enum between HTTP and Sui hosted tools.
@@ -122,10 +123,7 @@ impl Tool {
         registry_id: sui::types::Address,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::Address> {
-        let key_type = move_std::into_type_tag(move_std::Ascii::STRING_TYPE);
-        let key_bcs = fqn.to_bcs()?;
-
-        Ok(registry_id.derive_object_id(&key_type, &key_bcs))
+        derive_tool_id(registry_id, fqn)
     }
 }
 

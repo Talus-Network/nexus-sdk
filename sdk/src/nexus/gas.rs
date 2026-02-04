@@ -32,9 +32,18 @@ impl GasActions {
             .await
             .map_err(NexusError::Rpc)?;
 
+        // Derive and fetch the InvokerGas object.
+        let invoker_gas = self.client.fetch_invoker_gas().await.ok();
+
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address, &coin.object_ref()) {
+        if let Err(e) = gas::add_budget(
+            &mut tx,
+            nexus_objects,
+            address,
+            &coin.object_ref(),
+            invoker_gas.as_ref(),
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
@@ -84,6 +93,7 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let coin_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -95,6 +105,13 @@ mod tests {
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
             sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Shared(1),
             None,
         );
 
@@ -113,6 +130,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;

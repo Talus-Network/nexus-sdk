@@ -1,3 +1,4 @@
+mod derive;
 mod json_dag;
 mod network_auth;
 mod nexus_data;
@@ -16,6 +17,7 @@ mod tool_meta;
 mod type_name;
 
 pub use {
+    derive::*,
     json_dag::*,
     network_auth::*,
     nexus_data::*,

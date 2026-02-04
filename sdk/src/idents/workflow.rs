@@ -13,14 +13,6 @@ const DEFAULT_TAP_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("default_tap");
 
 impl DefaultTap {
-    /// This function is called when a DAG is to be executed using the default
-    /// TAP implementation.
-    ///
-    /// `nexus_workflow::default_tap::begin_dag_execution`
-    pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("begin_dag_execution"),
-    };
     /// The witness type needed to register DAG execution.
     ///
     /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
@@ -28,19 +20,27 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("BeginDagExecutionWitness"),
     };
-    /// Scheduler entry point to invoke DAG execution via the default TAP.
-    ///
-    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
-    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("dag_begin_execution_from_scheduler"),
-    };
     /// The DefaultTAP struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultTAP"),
+    };
+    /// This function is called when a DAG is to be executed using the default
+    /// TAP implementation.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution`
+    pub const PREPARE_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution"),
+    };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution_from_scheduler`
+    pub const PREPARE_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution_from_scheduler"),
     };
     /// Register DAG execution configuration on the execution policy.
     ///
@@ -400,7 +400,6 @@ impl Dag {
     /// its result to the workflow.
     ///
     /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk`
-    // TODO: <https://github.com/Talus-Network/nexus-next/issues/30>
     pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
@@ -846,6 +845,34 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
     };
+    /// Claim leader gas and transfer Coin to the tx sender.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_self`
+    pub const CLAIM_LEADER_GAS_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("claim_leader_gas_for_self"),
+    };
+    /// Derive an `InvokerGas` object.
+    ///
+    /// `nexus_workflow::gas::create_invoker_gas`
+    pub const CREATE_INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_invoker_gas"),
+    };
+    /// Derive a `ToolGas` object while setting the initial invocation price.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas`
+    pub const CREATE_TOOL_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas"),
+    };
+    /// Same as `CREATE_TOOL_GAS` but object is shared.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas_and_share`
+    pub const CREATE_TOOL_GAS_AND_SHARE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas_and_share"),
+    };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
     /// `nexus_workflow::gas::deescalate`
@@ -853,12 +880,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("deescalate"),
     };
+    /// ExecutionGas struct type.
+    ///
+    /// `nexus_workflow::gas::ExecutionGas`
+    pub const EXECUTION_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("ExecutionGas"),
+    };
     /// GasService type for lookups.
     ///
     /// `nexus_workflow::gas::GasService`
     pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("GasService"),
+    };
+    /// InvokerGas struct type.
+    ///
+    /// `nexus_workflow::gas::InvokerGas`
+    pub const INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("InvokerGas"),
     };
     /// OverGas owner cap generic.
     ///
@@ -895,12 +936,12 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
     };
-    /// Sync gas for the vertices in the current execution object.
+    /// Sync gas for a tool in the current execution.
     ///
-    /// `nexus_workflow::gas::sync_gas_state`
-    pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::gas::sync_gas_state_for_tool`
+    pub const SYNC_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("sync_gas_state"),
+        name: sui::types::Identifier::from_static("sync_gas_state_for_tool"),
     };
 
     /// Convert an object ID to an InvokerAddress scope.

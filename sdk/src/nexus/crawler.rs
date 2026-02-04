@@ -40,6 +40,7 @@ impl Crawler {
         ]);
 
         let object = self.fetch_object(object_id, field_mask).await?;
+
         let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
         let data = self.parse_object_content(&object)?;
 
@@ -772,7 +773,7 @@ where
 }
 
 /// Wrapper around `sui::table_vec::TableVec<T>`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct TableVec<T> {
     contents: IdSize,
     #[serde(skip)]
@@ -802,7 +803,7 @@ impl<T> TableVec<T> {
 
 /// Wrapper around a dynamic map-like structure within parsed Sui object data.
 /// These need to be fetched dynamically from Sui based on the parent object ID.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DynamicMap<K, V> {
     id: sui::types::Address,
     size: String,
@@ -831,7 +832,7 @@ impl<K, V> DynamicMap<K, V> {
 /// Wrapper around a dynamic object map-like structure within parsed Sui object
 /// data. These need to be fetched dynamically from Sui based on the parent
 /// object ID. And then each object needs to be fetched separately (or batched).
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DynamicObjectMap<K, V> {
     id: sui::types::Address,
     size: String,
