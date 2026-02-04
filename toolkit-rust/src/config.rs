@@ -122,19 +122,14 @@ const DEFAULT_MAX_CLOCK_SKEW_MS: u64 = 30_000;
 const DEFAULT_MAX_VALIDITY_MS: u64 = 60_000;
 
 /// Signed HTTP mode for the toolkit runtime.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SignedHttpMode {
     /// Do not require signature headers.
     Disabled,
     /// Reject any request missing/invalid signature headers.
+    #[default]
     Required,
-}
-
-impl Default for SignedHttpMode {
-    fn default() -> Self {
-        Self::Required
-    }
 }
 
 /// Fully loaded toolkit runtime config (validated + ready to use).

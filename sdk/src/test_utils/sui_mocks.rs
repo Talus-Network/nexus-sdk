@@ -413,7 +413,7 @@ pub mod grpc {
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
                 let mut grpc_object = sui::grpc::Object::default();
-                grpc_object.set_owner(sui::grpc::Owner::from(owner.clone()));
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
                 grpc_object.set_digest(*object_ref.digest());
                 grpc_object.set_version(object_ref.version());
                 grpc_object.set_object_id(object_ref.object_id().to_string());

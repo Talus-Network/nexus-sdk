@@ -21,7 +21,7 @@ pub(crate) async fn build_sui_grpc_client(
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
             message = "The Sui RPC URL is not configured. Please set it via the environment variable or the CLI configuration.",
-            command = "$ nexus conf --sui.rpc-url <url>".to_string().bold(),
+            command = "$ nexus conf set --sui.rpc-url <url>".to_string().bold(),
         )));
     };
 
@@ -93,7 +93,7 @@ pub(crate) async fn get_signing_key(
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
             message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf --sui.pk <base64_encoded_key>".to_string().bold(),
+            command = "$ nexus conf set --sui.pk <base64_encoded_key>".to_string().bold(),
         )));
     };
 
@@ -282,7 +282,7 @@ pub(crate) async fn get_nexus_client(
             "{message}\n\n{command}",
             message =
                 "The Sui GraphQL URL is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf --sui.gql-url <url>".to_string().bold(),
+            command = "$ nexus conf set --sui.gql-url <url>".to_string().bold(),
         )));
     };
 

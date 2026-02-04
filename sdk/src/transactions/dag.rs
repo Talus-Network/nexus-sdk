@@ -145,15 +145,11 @@ pub fn create_vertex(
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
-            // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
-        VertexKind::OnChain { tool_fqn } => workflow::Dag::on_chain_vertex_kind_from_fqn(
-            tx,
-            objects.workflow_pkg_id,
-            &objects.tool_registry,
-            tool_fqn,
-        )?,
+        VertexKind::OnChain { tool_fqn } => {
+            workflow::Dag::on_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
+        }
     };
 
     // `dag.with_vertex(name, kind)`

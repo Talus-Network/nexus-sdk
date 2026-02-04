@@ -642,25 +642,9 @@ impl Dag {
     pub fn on_chain_vertex_kind_from_fqn(
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
-        tool_registry_id: &sui::types::ObjectReference,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
-        let tool_registry_id = tx.input(sui::tx::Input::shared(
-            *tool_registry_id.object_id(),
-            tool_registry_id.version(),
-            false,
-        ));
-
-        let witness_id = tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.module,
-                ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.name,
-                vec![],
-            ),
-            vec![tool_registry_id, str],
-        );
 
         Ok(tx.move_call(
             sui::tx::Function::new(
@@ -669,7 +653,7 @@ impl Dag {
                 Self::VERTEX_ON_CHAIN.name,
                 vec![],
             ),
-            vec![str, witness_id],
+            vec![str],
         ))
     }
 
@@ -745,13 +729,12 @@ const TOOL_REGISTRY_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("tool_registry");
 
 impl ToolRegistry {
-    /// Add an address to the allowlist for tool registration.
-    /// Only callable by the holder of OverSlashing cap.
+    /// Claim collateral for a tool. The function call returns Balance<SUI>.
     ///
-    /// `nexus_workflow::tool_registry::add_allowed_owner`
-    pub const ADD_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::claim_collateral`
+    pub const CLAIM_COLLATERAL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("add_allowed_owner"),
+        name: sui::types::Identifier::from_static("claim_collateral"),
     };
     /// Claim collateral for a tool and transfer the balance to the tx sender.
     ///
@@ -759,20 +742,6 @@ impl ToolRegistry {
     pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("claim_collateral_for_self"),
-    };
-    /// Claim collateral for a tool. The function call returns Balance<SUI>.
-    ///
-    /// `nexus_workflow::tool_registry::claim_collateral_for_tool`
-    pub const CLAIM_COLLATERAL_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("claim_collateral_for_tool"),
-    };
-    /// Get the witness ID for an onchain tool.
-    ///
-    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
-    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("onchain_tool_witness_id"),
     };
     /// OverSlashing struct type. Used to fetch caps for slashing tools.
     ///
@@ -795,14 +764,6 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_off_chain_tool"),
     };
-    /// Register an off-chain tool and transfer the tool's owner cap to the ctx
-    /// sender.
-    ///
-    /// `nexus_workflow::tool_registry::register_off_chain_tool_for_self`
-    pub const REGISTER_OFF_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_off_chain_tool_for_self"),
-    };
     /// Register an on-chain tool. This returns the tool's owner cap.
     ///
     /// `nexus_workflow::tool_registry::register_on_chain_tool`
@@ -810,21 +771,12 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_on_chain_tool"),
     };
-    /// Register an on-chain tool and transfer the tool's owner cap to the ctx
-    /// sender.
+    /// Tool struct type. Used for fetching tool info.
     ///
-    /// `nexus_workflow::tool_registry::register_on_chain_tool_for_self`
-    pub const REGISTER_ON_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::Tool`
+    pub const TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_on_chain_tool_for_self"),
-    };
-    /// Remove an address from the allowlist for tool registration.
-    /// Only callable by the holder of OverSlashing cap.
-    ///
-    /// `nexus_workflow::tool_registry::remove_allowed_owner`
-    pub const REMOVE_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("remove_allowed_owner"),
+        name: sui::types::Identifier::from_static("Tool"),
     };
     /// The ToolRegistry struct type.
     ///
@@ -835,10 +787,10 @@ impl ToolRegistry {
     };
     /// Unregister a tool.
     ///
-    /// `nexus_workflow::tool_registry::unregister_tool`
-    pub const UNREGISTER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::unregister`
+    pub const UNREGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("unregister_tool"),
+        name: sui::types::Identifier::from_static("unregister"),
     };
 }
 
@@ -886,13 +838,6 @@ impl Gas {
     pub const CLAIM_LEADER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas"),
-    };
-    /// Claim leader gas against an invoker scope (no DAG execution object).
-    ///
-    /// `nexus_workflow::gas::claim_leader_gas_for_invoker`
-    pub const CLAIM_LEADER_GAS_FOR_INVOKER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("claim_leader_gas_for_invoker"),
     };
     /// Claim leader gas specifically for pre-key handshakes.
     ///

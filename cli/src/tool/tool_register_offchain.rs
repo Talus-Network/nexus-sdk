@@ -224,6 +224,11 @@ pub(crate) async fn register_off_chain_tool(
             id = over_gas_id.to_string().truecolor(100, 100, 100)
         );
 
+        notify_success!(
+            "Transaction digest: {digest}",
+            digest = response.digest.to_string().truecolor(100, 100, 100)
+        );
+
         // Save the owner caps to the CLI conf.
         if !no_save {
             let save_handle = loading!("Saving the owner caps to the CLI configuration...");

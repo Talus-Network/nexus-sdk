@@ -21,11 +21,7 @@ pub mod sui_framework;
 pub mod tap;
 pub mod workflow;
 
-use {
-    crate::sui,
-    base64::{prelude::BASE64_STANDARD as BASE64, Engine},
-    serde::Serialize,
-};
+use {crate::sui, serde::Serialize, sui::traits::ToBcs};
 
 /// This struct is used to define Nexus Move resources as `const`s.
 pub struct ModuleAndNameIdent {
@@ -43,7 +39,7 @@ impl ModuleAndNameIdent {
 /// Helper to create a pure [`sui::tx::Input`].
 pub fn pure_arg<T: Serialize>(value: &T) -> anyhow::Result<sui::tx::Input> {
     Ok(sui::tx::Input {
-        value: Some(sui::tx::Value::String(BASE64.encode(bcs::to_bytes(value)?))),
+        value: Some(sui::tx::Value::String(value.to_bcs_base64()?)),
         kind: Some(sui::tx::InputKind::Pure),
         ..Default::default()
     })

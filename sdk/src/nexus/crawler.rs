@@ -879,12 +879,6 @@ struct DynamicValue<V> {
     value: ValueOrWrapper<V>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DynamicPair<K, V> {
-    name: K,
-    value: ValueOrWrapper<V>,
-}
-
 // == Helper functions ==
 
 /// Helper function to transform [`prost_types::Value`] which is returned by the

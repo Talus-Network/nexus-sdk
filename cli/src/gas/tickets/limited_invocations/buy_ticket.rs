@@ -1,6 +1,6 @@
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
-    nexus_sdk::transactions::gas,
+    nexus_sdk::{transactions::gas, types::Tool},
 };
 
 /// Buy a limited invocations gas ticket to pay for the specified tool.
@@ -38,6 +38,27 @@ pub(crate) async fn buy_limited_invocations_gas_ticket(
             ))
         })?;
 
+    // Resolve the tool derived object.
+    let tool_handle = loading!("Resolving tool derived object for tool '{tool_fqn}'...");
+
+    let tool_id = Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+        .map_err(NexusCliError::Any)?;
+
+    let tool = match crawler.get_object_metadata(tool_id).await {
+        Ok(resp) => {
+            tool_handle.success();
+
+            resp.object_ref()
+        }
+        Err(e) => {
+            tool_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
+            )));
+        }
+    };
+
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
@@ -46,7 +67,7 @@ pub(crate) async fn buy_limited_invocations_gas_ticket(
     if let Err(e) = gas::buy_limited_invocations_gas_ticket(
         &mut tx,
         nexus_objects,
-        &tool_fqn,
+        &tool,
         &pay_with_coin,
         invocations,
     ) {

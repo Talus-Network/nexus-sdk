@@ -1,6 +1,6 @@
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
-    nexus_sdk::transactions::gas,
+    nexus_sdk::{transactions::gas, types::Tool},
 };
 
 /// Enable the expiry gas extension for the specified tool.
@@ -39,18 +39,33 @@ pub(crate) async fn enable_expiry_extension(
             ))
         })?;
 
+    // Resolve the tool derived object.
+    let tool_handle = loading!("Resolving tool derived object for tool '{tool_fqn}'...");
+
+    let tool_id = Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+        .map_err(NexusCliError::Any)?;
+
+    let tool = match crawler.get_object_metadata(tool_id).await {
+        Ok(resp) => {
+            tool_handle.success();
+
+            resp.object_ref()
+        }
+        Err(e) => {
+            tool_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
+            )));
+        }
+    };
+
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = gas::enable_expiry(
-        &mut tx,
-        nexus_objects,
-        &tool_fqn,
-        &owner_cap,
-        cost_per_minute,
-    ) {
+    if let Err(e) = gas::enable_expiry(&mut tx, nexus_objects, &tool, &owner_cap, cost_per_minute) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));
