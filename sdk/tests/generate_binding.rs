@@ -2233,7 +2233,7 @@ pub mod interface {
 }
 
 pub mod workflow {
-    use super::primitives;
+    use super::{interface, primitives};
 
     /// Package address (the on-chain package object id).
     pub const PACKAGE: sui_move::prelude::Address = sui_move::prelude::Address::from_static(
@@ -3734,12 +3734,10 @@ pub mod workflow {
             abilities = "key"
         )]
         pub struct DefaultTAP {
-        pub id: sm::types::UID,
-        pub witness: sm::bag::Bag,
-        pub iv: compile_error!(
-            "sui-move-codegen: unknown external type `0xd749533b00b57ed752a9ee4f530f4ae806fe0f48baf7faf36f07a4e6409b7a88::version::InterfaceVersion`; generate bindings for that package too"
-        ),
-    }
+            pub id: sm::types::UID,
+            pub witness: sm::bag::Bag,
+            pub iv: super::interface::InterfaceVersion,
+        }
         /// Move type: `0x64f81126f9e70d53754945dca42bb62d6a11cb26b2b61e32dd8a9ce0df202f06::default_tap::DefaultTAPV1Witness`.
         /// Abilities: `key, store`.
         #[sm::move_struct(
