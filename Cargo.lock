@@ -5489,11 +5489,17 @@ dependencies = [
  "serde_repr",
  "sha2 0.10.9",
  "subtle",
- "sui-crypto",
+ "sui-crypto 0.1.0",
+ "sui-move",
  "sui-move-build",
+ "sui-move-call",
+ "sui-move-codegen",
+ "sui-move-derive",
+ "sui-move-ptb",
+ "sui-move-runtime",
  "sui-package-management",
- "sui-rpc 0.1.0",
- "sui-sdk-types 0.1.0",
+ "sui-rpc 0.1.1",
+ "sui-sdk-types 0.1.1",
  "sui-transaction-builder 0.1.0",
  "tempfile",
  "testcontainers-modules",
@@ -6413,6 +6419,16 @@ checksum = "ce5f33f1e15ede98d6bf380779f1d4cd90ca3f0943c0aab6637c60fcdd7d9024"
 dependencies = [
  "insta",
  "once_cell",
+]
+
+[[package]]
+name = "prettyplease"
+version = "0.2.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.111",
 ]
 
 [[package]]
@@ -8320,7 +8336,16 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature 2.2.0",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
+]
+
+[[package]]
+name = "sui-crypto"
+version = "0.2.0"
+source = "git+https://github.com/mystenlabs/sui-rust-sdk#9b29d6040c3409de996d8b50d95961d9a660f14b"
+dependencies = [
+ "signature 2.2.0",
+ "sui-sdk-types 0.2.2",
 ]
 
 [[package]]
@@ -8488,6 +8513,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sui-move"
+version = "0.1.0"
+dependencies = [
+ "bcs",
+ "serde",
+ "serde_json",
+ "sui-move-derive",
+ "sui-sdk-types 0.2.2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "sui-move-build"
 version = "1.61.2"
 source = "git+https://github.com/MystenLabs/sui?tag=mainnet-v1.61.2#6c229fe6c04fb21ec98751c798e57e9a00e028e2"
@@ -8510,6 +8547,64 @@ dependencies = [
  "sui-types",
  "sui-verifier-latest",
  "tempfile",
+]
+
+[[package]]
+name = "sui-move-call"
+version = "0.1.0"
+dependencies = [
+ "bcs",
+ "serde",
+ "sui-move",
+ "sui-sdk-types 0.2.2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-codegen"
+version = "0.1.0"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sui-rpc 0.2.2",
+ "sui-sdk-types 0.2.2",
+ "syn 2.0.111",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
+
+[[package]]
+name = "sui-move-ptb"
+version = "0.1.0"
+dependencies = [
+ "sui-move-call",
+ "sui-sdk-types 0.2.2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-runtime"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sui-crypto 0.2.0",
+ "sui-move",
+ "sui-move-call",
+ "sui-move-ptb",
+ "sui-rpc 0.2.2",
+ "sui-sdk-types 0.2.2",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8636,9 +8731,9 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a931ef96b890a118f12b6fa1dda727b8b6df82af3bdb5568c5257078a54c5ba8"
+checksum = "3fc4ad1b61a39a50e1db91e33bc13048017cc1e329d6f3bd447d95138569e4eb"
 dependencies = [
  "base64 0.22.1",
  "bcs",
@@ -8649,7 +8744,28 @@ dependencies = [
  "prost-types",
  "serde",
  "serde_json",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
+ "tap",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+]
+
+[[package]]
+name = "sui-rpc"
+version = "0.2.2"
+source = "git+https://github.com/mystenlabs/sui-rust-sdk#9b29d6040c3409de996d8b50d95961d9a660f14b"
+dependencies = [
+ "base64 0.22.1",
+ "bcs",
+ "bytes",
+ "futures",
+ "http 1.4.0",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "sui-sdk-types 0.2.2",
  "tap",
  "tokio",
  "tonic",
@@ -8712,9 +8828,9 @@ dependencies = [
 
 [[package]]
 name = "sui-sdk-types"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9497600faf5a1fb07a2db85902515867ad30474abf959de1a7d1fa473c4a28"
+checksum = "35bf05a0b706993f705d37a775a5ad1deb1d65698431604676492695c563a1d9"
 dependencies = [
  "base64ct",
  "bcs",
@@ -8725,6 +8841,27 @@ dependencies = [
  "bytestring",
  "itertools 0.14.0",
  "rand_core 0.6.4",
+ "roaring 0.11.2",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "winnow",
+]
+
+[[package]]
+name = "sui-sdk-types"
+version = "0.2.2"
+source = "git+https://github.com/mystenlabs/sui-rust-sdk#9b29d6040c3409de996d8b50d95961d9a660f14b"
+dependencies = [
+ "base64ct",
+ "bcs",
+ "blake2",
+ "bnum",
+ "bs58 0.5.1",
+ "bytes",
+ "bytestring",
+ "itertools 0.14.0",
  "roaring 0.11.2",
  "serde",
  "serde_derive",
@@ -8761,7 +8898,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
  "thiserror 2.0.17",
 ]
 
