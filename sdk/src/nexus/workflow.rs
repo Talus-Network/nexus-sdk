@@ -171,17 +171,8 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let invoker_gas = self
-            .client
-            .fetch_invoker_gas()
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let tools_gas = self
-            .client
-            .fetch_tool_gas_for_dag(&dag.data)
-            .await
-            .map_err(NexusError::Rpc)?;
+        let invoker_gas = self.client.fetch_invoker_gas().await?;
+        let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 
