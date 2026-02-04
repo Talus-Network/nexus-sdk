@@ -1,14 +1,6 @@
 use {
-    crate::{
-        command_title,
-        display::json_output,
-        gas::{fetch_tool, fetch_tool_gas},
-        loading,
-        notify_success,
-        prelude::*,
-        sui::*,
-    },
-    nexus_sdk::transactions::gas,
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    nexus_sdk::ToolFqn,
 };
 
 /// Enable the expiry gas extension for the specified tool.
@@ -22,85 +14,35 @@ pub(crate) async fn enable_expiry_extension(
     command_title!("Enabling the expiry gas extension for tool '{tool_fqn}' with cost '{cost_per_minute}' MIST per minute");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let signer = nexus_client.signer();
-    let gas_config = nexus_client.gas_config();
-    let address = signer.get_active_address();
-    let nexus_objects = &*nexus_client.get_nexus_objects();
-    let crawler = nexus_client.crawler();
-
     let conf = CliConf::load().await.unwrap_or_default();
 
-    // Use the provided or saved `owner_cap` object ID and fetch the object.
     let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).and_then(|t| t.over_gas)) else {
         return Err(NexusCliError::Any(anyhow!(
             "No OwnerCap object ID found for tool '{tool_fqn}'."
         )));
     };
 
-    let owner_cap = crawler
-        .get_object_metadata(owner_cap)
+    let tx_handle = loading!("Crafting and executing transaction...");
+    let response = match nexus_client
+        .gas()
+        .enable_expiry_extension(tool_fqn, owner_cap, cost_per_minute)
         .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
-            ))
-        })?;
-
-    // Resolve derived objects.
-    let tool = fetch_tool(crawler, *nexus_objects.tool_registry.object_id(), &tool_fqn).await?;
-    let tool_gas =
-        fetch_tool_gas(crawler, *nexus_objects.gas_service.object_id(), &tool_fqn).await?;
-
-    // Craft the transaction.
-    let tx_handle = loading!("Crafting transaction...");
-
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    if let Err(e) = gas::enable_expiry(
-        &mut tx,
-        nexus_objects,
-        &tool_gas,
-        &tool,
-        &owner_cap,
-        cost_per_minute,
-    ) {
-        tx_handle.error();
-
-        return Err(NexusCliError::Any(e));
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Nexus(e));
+        }
     };
 
     tx_handle.success();
 
-    let mut gas_coin = gas_config.acquire_gas_coin().await;
-
-    tx.set_sender(address);
-    tx.set_gas_budget(gas_config.get_budget());
-    tx.set_gas_price(nexus_client.get_reference_gas_price());
-
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.finish().map_err(|e| NexusCliError::Any(e.into()))?;
-
-    let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
-
-    let response = signer
-        .execute_tx(tx, signature, &mut gas_coin)
-        .await
-        .map_err(NexusCliError::Nexus)?;
-
-    gas_config.release_gas_coin(gas_coin).await;
-
     notify_success!(
         "Transaction digest: {digest}",
-        digest = response.digest.to_string().truecolor(100, 100, 100)
+        digest = response.tx_digest.to_string().truecolor(100, 100, 100)
     );
 
-    json_output(&json!({ "digest": response.digest }))?;
+    json_output(&json!({ "digest": response.tx_digest }))?;
 
     Ok(())
 }

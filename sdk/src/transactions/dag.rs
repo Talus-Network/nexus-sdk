@@ -972,7 +972,7 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let sui::types::Command::MoveCall(call) = &commands.iter().nth(12).unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.get(12).unwrap() else {
             panic!("Expected last command to be a MoveCall to execute a DAG");
         };
 
