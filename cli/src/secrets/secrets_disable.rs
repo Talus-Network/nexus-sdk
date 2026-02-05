@@ -34,7 +34,7 @@ pub(crate) async fn secrets_disable(
     // Persist mode=off and rewrite any secrets as plaintext.
     conf.save_to_path(&conf_path)
         .await
-        .map_err(|e| NexusCliError::Any(e.into()))?;
+        .map_err(NexusCliError::Any)?;
 
     if let Some(crypto_conf) = crypto_conf {
         let rewrite_handle = loading!("Rewriting crypto config as plaintext...");
