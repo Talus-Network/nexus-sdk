@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - removed all `Tool*` types for a unified `Tool` type that supports both offchain and onchain tools and `ToolRef` type to differentiate
 - `NexusClient::workflow::execute` to work with derived gas service
 
+#### Fixed
+
+- bug where foreign `AnnounceInterfacePackageEvent` events could not be parsed because they did not originate from Nexus packages, which is however expected
+
 ### `nexus-cli`
 
 #### Added
