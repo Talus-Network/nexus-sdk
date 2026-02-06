@@ -925,7 +925,7 @@ mod tests {
             objects.clone(),
         );
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
         let page = receiver
             .recv()
             .await
