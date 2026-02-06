@@ -67,6 +67,14 @@ impl FromSuiGrpcEvent for NexusEvent {
 
         let event_name = normalize_event_name(event_type)?;
 
+        // Only accept inner events that come from Nexus packages.
+        if !is_nexus_package(*event_type.address(), objects) {
+            bail!(
+                "Inner event does not come from a Nexus package, it comes from '{}' instead",
+                event_type.address()
+            );
+        }
+
         // Only accept events that come from the Nexus packages unless the
         // event is marked as foreign.
         if !is_nexus_package(event.package_id, objects) && !is_foreign_event(&event_name) {
@@ -121,6 +129,14 @@ impl FromSuiGqlEvent for NexusEvent {
         };
 
         let event_name = normalize_event_name(event_type)?;
+
+        // Only accept inner events that come from Nexus packages.
+        if !is_nexus_package(*event_type.address(), objects) {
+            bail!(
+                "Inner event does not come from a Nexus package, it comes from '{}' instead",
+                event_type.address()
+            );
+        }
 
         // Only accept events that come from the Nexus packages unless the
         // event is marked as foreign.
@@ -290,6 +306,38 @@ mod tests {
 
         let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
         assert!(result.is_err(), "Should fail for non-Nexus package event");
+    }
+
+    #[test]
+    fn test_parse_from_grpc_non_nexus_package_inner_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            sui::types::Address::generate(&mut rng),
+            sui::types::Identifier::new("module").unwrap(),
+            sui::types::Identifier::new("EventName").unwrap(),
+            vec![],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+
+        let event = sui_mocks::mock_sui_event(
+            objects.workflow_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            vec![1, 2, 3],
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
+        assert!(
+            result.is_err(),
+            "Should fail for non-Nexus package inner event"
+        );
     }
 
     #[test]
@@ -650,6 +698,49 @@ mod tests {
         assert!(
             result.is_err(),
             "Should fail for non-Nexus package GQL event"
+        );
+    }
+
+    #[test]
+    fn test_parse_from_gql_non_nexus_package_inner_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
+        let event_type = sui::types::StructTag::new(
+            non_nexus_pkg_id,
+            sui::types::Identifier::new("dag").unwrap(),
+            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
+            vec![],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+        let dag_addr = sui::types::Address::generate(&mut rng);
+        let data = Wrapper {
+            event: DAGCreatedEvent { dag: dag_addr },
+        };
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(serde_json::to_value(&data).unwrap()),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: sui::types::StructTag::new(
+                    objects.primitives_pkg_id,
+                    primitives::Event::EVENT_WRAPPER.module,
+                    primitives::Event::EVENT_WRAPPER.name,
+                    vec![wrapper_type.clone()],
+                )
+                .to_string(),
+            }),
+        };
+        let result = NexusEvent::from_sui_gql_event(
+            index,
+            digest,
+            objects.workflow_pkg_id,
+            &gql_event,
+            &objects,
+        );
+        assert!(
+            result.is_err(),
+            "Should fail for non-Nexus package GQL inner event"
         );
     }
 
