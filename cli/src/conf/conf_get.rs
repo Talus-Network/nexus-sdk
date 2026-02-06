@@ -57,6 +57,7 @@ mod tests {
             sui: sui_conf.clone(),
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
+            secrets: SecretsConf::default(),
             data_storage: data_storage_conf.clone(),
         };
 

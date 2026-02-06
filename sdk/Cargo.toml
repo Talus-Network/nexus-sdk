@@ -30,8 +30,7 @@ crypto = [
     "ciborium", "aes-gcm", "bincode", "serde_json", "aes-siv", "serde_bytes", "hex", "blake3", "lru"
 ]
 
-# Secret core feature provides a generic secret type
-secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "zeroize"]
+secret_store = ["aes-gcm", "bincode", "base64", "rand", "thiserror", "zeroize"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
@@ -76,6 +75,7 @@ test_utils = [
     "types",
     "tempfile",
     "tokio-retry",
+    "tokio-stream",
     "sui_move_build",
     "sui_package_management",
     "move_package",
@@ -91,7 +91,7 @@ full = [
     "tool_fqn",
     "signed_http",
     "crypto",
-    "secret_core",
+    "secret_store",
     "sui_types",
     "sui_idents",
     "types",
@@ -270,6 +270,10 @@ optional = true
 [dependencies.tokio]
 workspace = true
 features = ["io-util"]
+optional = true
+
+[dependencies.tokio-stream]
+workspace = true
 optional = true
 
 [dependencies.tokio-retry]

@@ -58,9 +58,8 @@ pub(crate) async fn create_task(
     // Acquire a session for potential encryption/remote storage commits.
     let session = CryptoConf::get_active_session(None).await.map_err(|e| {
         NexusCliError::Any(anyhow!(
-            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
+            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{crypto_auth}",
             e,
-            init_key = "$ nexus crypto init-key --force",
             crypto_auth = "$ nexus crypto auth"
         ))
     })?;

@@ -48,9 +48,9 @@ pub mod walrus;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 
-/// Secret core provides a generic secret type that can be used to store
-#[cfg(feature = "secret_core")]
-pub mod secret_core;
+/// Secret store provides a minimal at-rest secret wrapper for config persistence.
+#[cfg(feature = "secret_store")]
+pub mod secret_store;
 
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
