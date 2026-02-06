@@ -1,8 +1,49 @@
-use crate::{
-    idents::{pure_arg, sui_framework, workflow},
-    sui,
-    types::NexusObjects,
+use {
+    crate::{
+        idents::{pure_arg, sui_framework, workflow},
+        sui,
+        types::NexusObjects,
+    },
+    sui_move::{coin::Coin, sui::SUI, MoveType},
+    sui_move_call::{CallSpec, MoveObject, ObjectArg, SharedMoveObject},
+    sui_move_codegen::Address,
+    sui_move_ptb::PtbBuilder,
+    sui_move_runtime::{Object, SharedObject},
 };
+
+/// PTB template to add gas budget to a transaction. If `None` is provided for
+/// `invoker_gas_ref`, a new `InvokerGas` object will be created and shared.
+pub fn _add_budget(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    invoker_address: Address,
+    coin: &sui::types::ObjectReference,
+    invoker_gas_ref: Option<&sui::types::ObjectReference>,
+) -> anyhow::Result<()> {
+    let mut ptb = PtbBuilder::new();
+
+    // use crate::idents::gen;
+
+    // let mut gas_service = SharedMoveObject::<gen::workflow::gas::GasService>::mutable(todo!());
+
+    // let scope = ptb.call(gen::workflow::gas::scope_invoker_address(invoker_address))?;
+
+    // let balance = ptb.call(gen::framework::coin::into_balance(
+    //     &MoveObject::<Coin<SUI>>::new(todo!()),
+    // ))?;
+
+    // ptb.call(gen::workflow::gas::add_gas_budget(
+    //     &mut gas_service,
+    //     gen::workflow::gas::Scope::try_from(scope)?,
+    //     balance,
+    // ))?;
+
+    // let sui  =
+
+    // gen::workflow::ptb.arg(value)
+
+    Ok(())
+}
 
 /// PTB template to add gas budget to a transaction. If `None` is provided for
 /// `invoker_gas_ref`, a new `InvokerGas` object will be created and shared.

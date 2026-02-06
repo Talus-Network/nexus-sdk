@@ -15,6 +15,7 @@
 //! assert!(matches!(vertex, Ok(sui::types::Argument::Result(_))));
 //! ```
 
+pub mod gen;
 pub mod move_std;
 pub mod primitives;
 pub mod sui_framework;
