@@ -335,43 +335,28 @@ fn load_signed_http_config(
     })
 }
 
-/// Env var to disable config file watching (hot-reload).
-pub const ENV_TOOLKIT_CONFIG_DISABLE_WATCH: &str = "NEXUS_TOOLKIT_CONFIG_DISABLE_WATCH";
-
-/// Thread-safe, reloadable toolkit configuration with file watching.
+/// Internal config holder with automatic file watching.
 ///
-/// This wrapper around [`ToolkitRuntimeConfig`] enables hot-reload of configuration
+/// This is used internally by the runtime to enable hot-reload of configuration
 /// without requiring a process restart. When the config file changes, the new
-/// configuration is automatically loaded and made available to request handlers.
-///
-/// # Usage
-///
-/// ```ignore
-/// let config = ReloadableToolkitConfig::from_env().await?;
-///
-/// // Get current config for request handling (cheap clone via Arc)
-/// let current = config.current();
-/// ```
-///
-/// # Kubernetes Integration
-///
-/// This is particularly useful for Kubernetes deployments where ConfigMaps are
-/// mounted as volumes. When the ConfigMap is updated, Kubernetes updates the
-/// mounted files, and the file watcher triggers a reload.
-pub struct ReloadableToolkitConfig {
+/// configuration is automatically loaded.
+#[doc(hidden)]
+pub struct ConfigWatcher {
     config: Arc<RwLock<Arc<ToolkitRuntimeConfig>>>,
-    path: Option<PathBuf>,
     #[allow(dead_code)]
     watcher: Option<RecommendedWatcher>,
 }
 
-impl ReloadableToolkitConfig {
-    /// Create a new reloadable config from the environment.
+impl ConfigWatcher {
+    /// Create a new config watcher from the environment.
     ///
     /// If [`ENV_TOOLKIT_CONFIG_PATH`] is set, starts a file watcher that reloads
-    /// config on changes (unless [`ENV_TOOLKIT_CONFIG_DISABLE_WATCH`] is set to "true").
-    pub async fn from_env() -> anyhow::Result<Self> {
-        let path = std::env::var(ENV_TOOLKIT_CONFIG_PATH).ok().map(PathBuf::from);
+    /// config on changes automatically.
+    #[doc(hidden)]
+    pub async fn from_env() -> anyhow::Result<Arc<Self>> {
+        let path = std::env::var(ENV_TOOLKIT_CONFIG_PATH)
+            .ok()
+            .map(PathBuf::from);
 
         let initial_config = match &path {
             Some(p) => ToolkitRuntimeConfig::from_path(p)?,
@@ -380,77 +365,19 @@ impl ReloadableToolkitConfig {
 
         let config = Arc::new(RwLock::new(Arc::new(initial_config)));
 
-        // Check if watching is disabled
-        let watch_disabled = std::env::var(ENV_TOOLKIT_CONFIG_DISABLE_WATCH)
-            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-            .unwrap_or(false);
-
         let watcher = if let Some(ref p) = path {
-            if watch_disabled {
-                tracing::info!(
-                    "Config file watching disabled via {}",
-                    ENV_TOOLKIT_CONFIG_DISABLE_WATCH
-                );
-                None
-            } else {
-                Some(Self::start_watcher(p.clone(), Arc::clone(&config))?)
-            }
+            Some(Self::start_watcher(p.clone(), Arc::clone(&config))?)
         } else {
             None
         };
 
-        Ok(Self {
-            config,
-            path,
-            watcher,
-        })
-    }
-
-    /// Get the current configuration.
-    ///
-    /// This returns an `Arc` clone which is very cheap. The returned config
-    /// is a snapshot; it won't change even if a reload happens.
-    pub fn current(&self) -> Arc<ToolkitRuntimeConfig> {
-        // Use blocking read for sync access - this is fast since we only hold
-        // the lock briefly
-        tokio::task::block_in_place(|| {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async { self.config.read().await.clone() })
-        })
+        Ok(Arc::new(Self { config, watcher }))
     }
 
     /// Get the current configuration (async version).
-    pub async fn current_async(&self) -> Arc<ToolkitRuntimeConfig> {
+    #[doc(hidden)]
+    pub async fn current(&self) -> Arc<ToolkitRuntimeConfig> {
         self.config.read().await.clone()
-    }
-
-    /// Manually trigger a config reload.
-    ///
-    /// Returns `Ok(true)` if config was reloaded, `Ok(false)` if no path is configured,
-    /// or an error if reload failed.
-    pub async fn reload(&self) -> anyhow::Result<bool> {
-        let Some(ref path) = self.path else {
-            return Ok(false);
-        };
-
-        let new_config = ToolkitRuntimeConfig::from_path(path)?;
-        let mut guard = self.config.write().await;
-        *guard = Arc::new(new_config);
-        tracing::info!("Reloaded toolkit config from {}", path.display());
-        Ok(true)
-    }
-
-    /// Subscribe to config reload events.
-    ///
-    /// The provided callback will be called after each successful config reload.
-    /// This can be used to update dependent state (like `ReloadableInvokeAuth`).
-    pub fn on_reload<F>(&self, callback: F) -> ReloadSubscription
-    where
-        F: Fn(Arc<ToolkitRuntimeConfig>) + Send + Sync + 'static,
-    {
-        ReloadSubscription {
-            callback: Arc::new(callback),
-        }
     }
 
     fn start_watcher(
@@ -459,15 +386,14 @@ impl ReloadableToolkitConfig {
     ) -> anyhow::Result<RecommendedWatcher> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
 
-        let mut watcher =
-            notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    if event.kind.is_modify() || event.kind.is_create() {
-                        // Non-blocking send - if channel is full, we'll catch the next event
-                        let _ = tx.try_send(());
-                    }
+        let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                if event.kind.is_modify() || event.kind.is_create() {
+                    // Non-blocking send - if channel is full, we'll catch the next event
+                    let _ = tx.try_send(());
                 }
-            })?;
+            }
+        })?;
 
         // Watch the parent directory for ConfigMap atomic updates
         let watch_path = path.parent().unwrap_or(&path);
@@ -492,10 +418,7 @@ impl ReloadableToolkitConfig {
                     Ok(new_config) => {
                         let mut guard = config.write().await;
                         *guard = Arc::new(new_config);
-                        tracing::info!(
-                            "Reloaded toolkit config from {}",
-                            reload_path.display()
-                        );
+                        tracing::info!("Reloaded toolkit config from {}", reload_path.display());
                     }
                     Err(e) => {
                         tracing::error!(
@@ -510,14 +433,6 @@ impl ReloadableToolkitConfig {
 
         Ok(watcher)
     }
-}
-
-/// Handle for a reload subscription.
-///
-/// Currently this is a placeholder for future callback support.
-#[allow(dead_code)]
-pub struct ReloadSubscription {
-    callback: Arc<dyn Fn(Arc<ToolkitRuntimeConfig>) + Send + Sync>,
 }
 
 #[cfg(test)]
@@ -693,16 +608,29 @@ mod tests {
         assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn reloadable_config_manual_reload() {
+    #[tokio::test]
+    async fn config_watcher_loads_default_without_env_var() {
+        // Ensure env var is not set
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+
+        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let config = watcher.current().await;
+
+        // Default config has no signed HTTP
+        assert!(!config.signed_http_is_required());
+        assert_eq!(config.invoke_max_body_bytes(), 10 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn config_watcher_loads_from_file() {
         let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_id = "xyz.demo.tool@1";
         let tool_sk_hex = hex::encode([9u8; 32]);
 
-        // Create initial config file
+        // Create config file
         let file_name = format!(
-            "nexus-reload-test-{}.json",
+            "nexus-watcher-test-{}.json",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -713,16 +641,50 @@ mod tests {
         let cfg_json = make_config_json(tool_id, &tool_sk_hex, "0x1111", &leader_pk_hex);
         fs::write(&path, &cfg_json).unwrap();
 
-        // Set env var and create reloadable config
+        // Set env var and create watcher
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
-        std::env::set_var(ENV_TOOLKIT_CONFIG_DISABLE_WATCH, "true"); // Disable watcher for test
 
-        let reloadable = ReloadableToolkitConfig::from_env().await.unwrap();
+        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let config = watcher.current().await;
+
+        // Verify config loaded correctly
+        assert_eq!(config.invoke_max_body_bytes(), 123);
+        assert!(config.signed_http_is_required());
+        assert!(config.has_tool(tool_id));
+
+        // Cleanup
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn config_watcher_reloads_on_file_change() {
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
+        let tool_id = "xyz.demo.tool@1";
+        let tool_sk_hex = hex::encode([9u8; 32]);
+
+        // Create initial config file
+        let file_name = format!(
+            "nexus-watcher-reload-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(&file_name);
+
+        let cfg_json = make_config_json(tool_id, &tool_sk_hex, "0x1111", &leader_pk_hex);
+        fs::write(&path, &cfg_json).unwrap();
+
+        // Set env var and create watcher
+        std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
+
+        let watcher = ConfigWatcher::from_env().await.unwrap();
 
         // Verify initial config
-        let current = reloadable.current();
-        assert_eq!(current.invoke_max_body_bytes(), 123);
-        assert!(current.has_tool(tool_id));
+        let config = watcher.current().await;
+        assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Update the config file with new values
         let new_cfg_json = serde_json::to_string(&json!({
@@ -751,23 +713,20 @@ mod tests {
         .unwrap();
         fs::write(&path, &new_cfg_json).unwrap();
 
-        // Manually trigger reload
-        let reloaded = reloadable.reload().await.unwrap();
-        assert!(reloaded);
+        // Wait for debounce (500ms) + some buffer
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
 
-        // Verify new config
-        let current = reloadable.current();
-        assert_eq!(current.invoke_max_body_bytes(), 456);
-        assert!(current.has_tool(tool_id));
+        // Verify config was reloaded
+        let config = watcher.current().await;
+        assert_eq!(config.invoke_max_body_bytes(), 456);
 
         // Cleanup
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
-        std::env::remove_var(ENV_TOOLKIT_CONFIG_DISABLE_WATCH);
         let _ = fs::remove_file(&path);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn reloadable_config_invalid_reload_keeps_old() {
+    async fn config_watcher_keeps_old_on_invalid_update() {
         let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_id = "xyz.demo.tool@1";
@@ -775,7 +734,7 @@ mod tests {
 
         // Create initial config file
         let file_name = format!(
-            "nexus-reload-invalid-test-{}.json",
+            "nexus-watcher-invalid-test-{}.json",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -786,30 +745,27 @@ mod tests {
         let cfg_json = make_config_json(tool_id, &tool_sk_hex, "0x1111", &leader_pk_hex);
         fs::write(&path, &cfg_json).unwrap();
 
-        // Set env var and create reloadable config
+        // Set env var and create watcher
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
-        std::env::set_var(ENV_TOOLKIT_CONFIG_DISABLE_WATCH, "true");
 
-        let reloadable = ReloadableToolkitConfig::from_env().await.unwrap();
+        let watcher = ConfigWatcher::from_env().await.unwrap();
 
         // Verify initial config
-        let current = reloadable.current();
-        assert_eq!(current.invoke_max_body_bytes(), 123);
+        let config = watcher.current().await;
+        assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Write invalid JSON to config file
         fs::write(&path, "{ invalid json }").unwrap();
 
-        // Reload should fail
-        let result = reloadable.reload().await;
-        assert!(result.is_err());
+        // Wait for debounce + buffer
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
 
-        // Config should still be the old one
-        let current = reloadable.current();
-        assert_eq!(current.invoke_max_body_bytes(), 123);
+        // Config should still be the old one (invalid reload is ignored)
+        let config = watcher.current().await;
+        assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Cleanup
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
-        std::env::remove_var(ENV_TOOLKIT_CONFIG_DISABLE_WATCH);
         let _ = fs::remove_file(&path);
     }
 }

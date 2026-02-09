@@ -2,10 +2,8 @@
 
 use {
     crate::{
-        config::{ReloadableToolkitConfig, ToolkitRuntimeConfig},
-        signed_http_warp::{
-            handle_invoke, handle_invoke_reloadable, InvokeAuthRuntime, ReloadableInvokeAuth,
-        },
+        config::{ConfigWatcher, ToolkitRuntimeConfig},
+        signed_http_warp::{handle_invoke, InvokeAuth, InvokeAuthRuntime},
         NexusTool,
     },
     nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
@@ -137,21 +135,19 @@ macro_rules! bootstrap {
             $crate::warp::{http::StatusCode, Filter},
         };
 
-        // Load reloadable toolkit config once per process (shared across all tool routes).
+        // Load toolkit config with file watcher (shared across all tool routes).
         // This enables hot-reload of config without process restart.
-        let toolkit_cfg = Arc::new(
-            $crate::ReloadableToolkitConfig::from_env()
-                .await
-                .expect("Failed to load Nexus toolkit config"),
-        );
+        let toolkit_cfg = $crate::config::ConfigWatcher::from_env()
+            .await
+            .expect("Failed to load Nexus toolkit config");
 
         // Create routes for each Tool in the bundle using reloadable config.
-        let routes = $crate::routes_for_with_reloadable_config_::<$tool>(toolkit_cfg.clone())
+        let routes = $crate::runtime::routes_for_with_watcher_::<$tool>(toolkit_cfg.clone())
             .await
             .expect("Failed to create routes for tool");
         $(
             let routes = routes.or(
-                $crate::routes_for_with_reloadable_config_::<$next_tool>(toolkit_cfg.clone())
+                $crate::runtime::routes_for_with_watcher_::<$next_tool>(toolkit_cfg.clone())
                     .await
                     .expect("Failed to create routes for tool")
             );
@@ -263,15 +259,12 @@ pub fn routes_for_with_config_<T: NexusTool>(
     health_route.or(meta_route).or(invoke_route)
 }
 
-/// This function generates routes for a given [NexusTool] using a [`ReloadableToolkitConfig`].
+/// Internal route builder with hot-reload support.
 ///
-/// This version supports hot-reload of configuration without requiring a process restart.
-/// When the config file changes, new requests will automatically use the updated configuration.
-///
-/// **This is an internal function used by [bootstrap!] macro and should not be used directly.**
+/// Used by bootstrap! macro. Supports automatic config reload.
 #[doc(hidden)]
-pub async fn routes_for_with_reloadable_config_<T: NexusTool>(
-    toolkit_cfg: Arc<ReloadableToolkitConfig>,
+pub async fn routes_for_with_watcher_<T: NexusTool>(
+    toolkit_cfg: Arc<ConfigWatcher>,
 ) -> anyhow::Result<impl Filter<Extract = impl Reply, Error = Rejection> + Clone> {
     // Force output schema to be an enum.
     let output_schema = json!(schemars::schema_for!(T::Output));
@@ -302,11 +295,11 @@ pub async fn routes_for_with_reloadable_config_<T: NexusTool>(
         .and(warp::path::full())
         .and_then(meta_handler::<T>);
 
-    let current_config = toolkit_cfg.current();
+    let current_config = toolkit_cfg.current().await;
     let invoke_max_body_bytes = current_config.invoke_max_body_bytes();
 
     let tool_id = T::fqn().to_string();
-    let invoke_auth = ReloadableInvokeAuth::new(toolkit_cfg, tool_id).await?;
+    let invoke_auth = InvokeAuth::new(toolkit_cfg, tool_id).await?;
 
     // Invoke path is tool base URL path and `/invoke`.
     let invoke_route = warp::post()
@@ -318,7 +311,7 @@ pub async fn routes_for_with_reloadable_config_<T: NexusTool>(
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
         .and(warp::any().map(move || invoke_auth.clone()))
-        .and_then(invoke_handler_reloadable::<T>);
+        .and_then(invoke_handler_::<T>);
 
     Ok(health_route.or(meta_route).or(invoke_route))
 }
@@ -522,12 +515,12 @@ async fn invoke_handler<T: NexusTool>(
     .await)
 }
 
-async fn invoke_handler_reloadable<T: NexusTool>(
+async fn invoke_handler_<T: NexusTool>(
     full_path: FullPath,
     raw_query: String,
     headers: HeaderMap,
     body: bytes::Bytes,
-    auth: ReloadableInvokeAuth,
+    auth: InvokeAuth,
 ) -> Result<warp::reply::Response, Rejection> {
     let body_bytes = body.to_vec();
 
@@ -537,8 +530,10 @@ async fn invoke_handler_reloadable<T: NexusTool>(
         query: &raw_query,
     };
 
-    Ok(handle_invoke_reloadable(
-        auth,
+    let current_auth = auth.current().await;
+
+    Ok(handle_invoke(
+        current_auth,
         http,
         headers,
         body_bytes,
