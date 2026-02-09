@@ -62,10 +62,20 @@ impl EventFetcher {
 
     /// Start polling for events and sending them over the given channel. Return
     /// the JoinHandle of the polling task as well as the channel receiver.
+    ///
+    /// The optional `inner_type` parameter allows filtering by a specific event
+    /// type wrapped in `EventWrapper<T>`. When `None`, all `EventWrapper<*>`
+    /// events are fetched. When `Some(type_tag)`, only events matching
+    /// `EventWrapper<type_tag>` are returned by the GraphQL query.
+    ///
+    /// This is useful for scenarios where multiple deployments share the same
+    /// `primitives_pkg_id` but have different `workflow_pkg_id` values, as it
+    /// allows precise filtering at the GraphQL level rather than client-side.
     pub fn poll_nexus_events(
         &self,
         from_cursor: Option<String>,
         from_checkpoint: Option<u64>,
+        inner_type: Option<sui::types::TypeTag>,
     ) -> (
         tokio::task::JoinHandle<()>,
         tokio::sync::mpsc::Receiver<anyhow::Result<EventPage>>,
@@ -90,7 +100,7 @@ impl EventFetcher {
                     nexus_objects.primitives_pkg_id,
                     primitives::Event::EVENT_WRAPPER.module,
                     primitives::Event::EVENT_WRAPPER.name,
-                    vec![],
+                    inner_type.map(|t| vec![t]).unwrap_or_default(),
                 );
 
                 loop {
@@ -266,7 +276,7 @@ mod tests {
 
         let fetcher = EventFetcher::new(&format!("{}/graphql", &server.url()), Arc::new(objects));
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
 
         if let Some(Ok(page)) = receiver.recv().await {
             assert_eq!(page.next_cursor, "12345".to_string());
@@ -304,7 +314,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let fetcher = EventFetcher::new("http://invalid.url", Arc::new(objects));
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
 
         if let Some(result) = receiver.recv().await {
             assert!(result.is_err());

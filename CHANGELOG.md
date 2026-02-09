@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NexusClient::workflow::execute` to work with derived gas service
 - replaced `secret_core` with `secret_store` for at-rest secrets.
 
+#### Fixed
+
+- bug where foreign `AnnounceInterfacePackageEvent` events could not be parsed because they did not originate from Nexus packages, which is however expected
+
 ### `nexus-cli`
 
 #### Added

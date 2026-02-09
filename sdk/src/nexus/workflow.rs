@@ -270,7 +270,7 @@ impl WorkflowActions {
 
             tokio::spawn(async move {
                 let (_poller, mut next_page) =
-                    fetcher.poll_nexus_events(None, Some(execution_checkpoint));
+                    fetcher.poll_nexus_events(None, Some(execution_checkpoint), None);
 
                 let timeout = tokio::time::sleep(timeout);
 

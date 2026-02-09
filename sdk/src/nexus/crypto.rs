@@ -138,7 +138,7 @@ impl CryptoActions {
         let fetcher = self.client.event_fetcher();
         let timeout = tokio::time::sleep(Duration::from_secs(20));
 
-        let (_poller, mut next_page) = fetcher.poll_nexus_events(None, Some(checkpoint));
+        let (_poller, mut next_page) = fetcher.poll_nexus_events(None, Some(checkpoint), None);
 
         tokio::pin!(timeout);
 
