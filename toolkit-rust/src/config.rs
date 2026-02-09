@@ -111,10 +111,9 @@ use {
         collections::BTreeMap,
         fs,
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{Arc, RwLock},
         time::Duration,
     },
-    tokio::sync::RwLock,
 };
 
 /// Env var read by the toolkit runtime to locate its JSON config file.
@@ -353,6 +352,7 @@ impl Config {
     /// If [`ENV_TOOLKIT_CONFIG_PATH`] is set, starts a file watcher that reloads
     /// config on changes automatically.
     #[doc(hidden)]
+    #[cfg(test)]
     pub async fn from_env() -> anyhow::Result<Arc<Self>> {
         let path = std::env::var(ENV_TOOLKIT_CONFIG_PATH)
             .ok()
@@ -374,10 +374,35 @@ impl Config {
         Ok(Arc::new(Self { config, watcher }))
     }
 
-    /// Get the current configuration (async version).
+    /// Wrap an existing config, watching its source file if it has one.
+    ///
+    /// If the config was loaded from a file (has a `source_path`), a file watcher
+    /// is set up for automatic hot-reload. Otherwise, the config is wrapped without
+    /// file watching.
     #[doc(hidden)]
-    pub async fn current(&self) -> Arc<ToolkitRuntimeConfig> {
-        self.config.read().await.clone()
+    pub fn from_config(config: Arc<ToolkitRuntimeConfig>) -> Arc<Self> {
+        let path = config.source_path().map(|p| p.to_path_buf());
+        let config_holder = Arc::new(RwLock::new(config));
+
+        let watcher = path.and_then(|p| {
+            Self::start_watcher(p, Arc::clone(&config_holder))
+                .map_err(|e| {
+                    tracing::warn!("Failed to start config file watcher: {e}");
+                    e
+                })
+                .ok()
+        });
+
+        Arc::new(Self {
+            config: config_holder,
+            watcher,
+        })
+    }
+
+    /// Get the current configuration.
+    #[doc(hidden)]
+    pub fn current(&self) -> Arc<ToolkitRuntimeConfig> {
+        self.config.read().unwrap().clone()
     }
 
     fn start_watcher(
@@ -416,7 +441,7 @@ impl Config {
 
                 match ToolkitRuntimeConfig::from_path(&reload_path) {
                     Ok(new_config) => {
-                        let mut guard = config.write().await;
+                        let mut guard = config.write().unwrap();
                         *guard = Arc::new(new_config);
                         tracing::info!("Reloaded toolkit config from {}", reload_path.display());
                     }
@@ -614,7 +639,7 @@ mod tests {
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
 
         let watcher = Config::from_env().await.unwrap();
-        let config = watcher.current().await;
+        let config = watcher.current();
 
         // Default config has no signed HTTP
         assert!(!config.signed_http_is_required());
@@ -645,7 +670,7 @@ mod tests {
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
 
         let watcher = Config::from_env().await.unwrap();
-        let config = watcher.current().await;
+        let config = watcher.current();
 
         // Verify config loaded correctly
         assert_eq!(config.invoke_max_body_bytes(), 123);
@@ -683,7 +708,7 @@ mod tests {
         let watcher = Config::from_env().await.unwrap();
 
         // Verify initial config
-        let config = watcher.current().await;
+        let config = watcher.current();
         assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Update the config file with new values
@@ -717,7 +742,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(700)).await;
 
         // Verify config was reloaded
-        let config = watcher.current().await;
+        let config = watcher.current();
         assert_eq!(config.invoke_max_body_bytes(), 456);
 
         // Cleanup
@@ -751,7 +776,7 @@ mod tests {
         let watcher = Config::from_env().await.unwrap();
 
         // Verify initial config
-        let config = watcher.current().await;
+        let config = watcher.current();
         assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Write invalid JSON to config file
@@ -761,7 +786,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(700)).await;
 
         // Config should still be the old one (invalid reload is ignored)
-        let config = watcher.current().await;
+        let config = watcher.current();
         assert_eq!(config.invoke_max_body_bytes(), 123);
 
         // Cleanup

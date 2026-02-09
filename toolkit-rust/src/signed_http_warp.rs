@@ -21,8 +21,10 @@ use {
         wire::HttpRequestMeta,
     },
     serde_json::json,
-    std::{future::Future, sync::Arc},
-    tokio::sync::RwLock,
+    std::{
+        future::Future,
+        sync::{Arc, RwLock},
+    },
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
 
@@ -92,9 +94,9 @@ struct InvokeAuthState {
 }
 
 impl InvokeAuth {
-    /// Create a new auth runtime with hot-reload support.
-    pub(crate) async fn new(config: Arc<Config>, tool_id: String) -> anyhow::Result<Self> {
-        let current_config = config.current().await;
+    /// Create a new auth runtime with hot-reload support (sync version).
+    pub(crate) fn new_sync(config: Arc<Config>, tool_id: String) -> anyhow::Result<Self> {
+        let current_config = config.current();
         let auth = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
         let config_ptr = Arc::as_ptr(&current_config) as usize;
 
@@ -107,19 +109,19 @@ impl InvokeAuth {
 
     /// Get the current auth runtime, reloading from config if needed.
     pub(crate) async fn current(&self) -> InvokeAuthRuntime {
-        let current_config = self.config.current().await;
+        let current_config = self.config.current();
         let current_ptr = Arc::as_ptr(&current_config) as usize;
 
         // Check if config has changed by comparing Arc pointers
         {
-            let guard = self.state.read().await;
+            let guard = self.state.read().unwrap();
             if guard.config_ptr == current_ptr {
                 return guard.auth.clone();
             }
         }
 
         // Config changed, rebuild auth runtime
-        let mut guard = self.state.write().await;
+        let mut guard = self.state.write().unwrap();
         // Double-check after acquiring write lock
         if guard.config_ptr != current_ptr {
             if let Ok(new_auth) =
