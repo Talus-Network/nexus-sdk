@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - removed all `Tool*` types for a unified `Tool` type that supports both offchain and onchain tools and `ToolRef` type to differentiate
 - `NexusClient::workflow::execute` to work with derived gas service
 - replaced `secret_core` with `secret_store` for at-rest secrets.
+- `signed_http` is agnostic to the leader that makes the request and can be used with any leader.
 
 ### `nexus-cli`
 

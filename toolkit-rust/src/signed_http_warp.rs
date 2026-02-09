@@ -60,6 +60,7 @@ impl InvokeAuthRuntime {
         let engine = SignedHttpEngineV1::new(SignedHttpPolicyV1 {
             max_clock_skew_ms: signed_http.max_clock_skew_ms,
             max_validity_ms: signed_http.max_validity_ms,
+            ..Default::default()
         });
 
         Ok(Self::Signed(engine.responder_with_in_memory_replay(
@@ -104,12 +105,15 @@ where
             match decision {
                 ResponderDecisionV1::Return(resp) => signed_response(resp),
                 ResponderDecisionV1::Reject(rej) => {
+                    let owner_leader_id = rej.owner_leader_id.clone();
+                    let lease_until_ms = rej.lease_until_ms;
                     let (status, body) = match rej.kind {
                         ResponderRejectionKindV1::ReplayConflict => json_bytes_or_fallback(
                             StatusCode::UNAUTHORIZED,
                             json!({
                                 "error": "replay_rejected",
                                 "details": "nonce already used with different request",
+                                "owner_leader_id": owner_leader_id,
                             }),
                         ),
                         ResponderRejectionKindV1::InFlight => json_bytes_or_fallback(
@@ -117,6 +121,8 @@ where
                             json!({
                                 "error": "request_in_flight",
                                 "details": "request with same nonce is still processing",
+                                "owner_leader_id": owner_leader_id,
+                                "lease_until_ms": lease_until_ms,
                             }),
                         ),
                     };
@@ -307,6 +313,7 @@ mod tests {
         let engine = SignedHttpEngineV1::new(SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         });
         let responder =
             engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
@@ -346,6 +353,7 @@ mod tests {
         let engine = SignedHttpEngineV1::new(SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         });
         let invoker = build_invoker(&engine, leader_id, &leader_sk);
         let responder =

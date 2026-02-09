@@ -89,9 +89,9 @@
 //! their deployment.
 //!
 //! A recommended model (implemented in `nexus-toolkit`) is:
-//! - key nonce state by `(leader_id, nonce)`
-//! - accept an identical retry (same `(leader_id, nonce)` and same request hash)
-//! - reject a conflicting replay (same nonce, different request hash)
+//! - key nonce state by `(tool_id, nonce)`
+//! - accept an identical retry when the request identity matches (`method`, `path`, `query`, `body_sha256`)
+//! - reject a conflicting replay (same nonce, different request identity)
 //!
 //! # Example: sign and verify a request + response
 //! ```
@@ -176,6 +176,7 @@
 //! let resp_claims = InvokeResponseClaimsV1 {
 //!     tool_id: tool_id.to_string(),
 //!     tool_kid: 0,
+//!     owner_leader_id: verified_req.claims.leader_id.clone(),
 //!     iat_ms: 1500,
 //!     exp_ms: 2500,
 //!     nonce: verified_req.claims.nonce.clone(),
