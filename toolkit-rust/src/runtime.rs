@@ -2,8 +2,8 @@
 
 use {
     crate::{
-        config::{ConfigWatcher, ToolkitRuntimeConfig},
-        signed_http_warp::{handle_invoke, InvokeAuth, InvokeAuthRuntime},
+        config::Config,
+        signed_http_warp::{handle_invoke, InvokeAuth},
         NexusTool,
     },
     nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
@@ -24,8 +24,8 @@ use {
 /// **This is an internal function used by [bootstrap!] macro and should not be
 /// used directly.**
 #[doc(hidden)]
-pub async fn load_config_() -> anyhow::Result<Arc<ConfigWatcher>> {
-    ConfigWatcher::from_env().await
+pub async fn load_config_() -> anyhow::Result<Arc<Config>> {
+    Config::from_env().await
 }
 
 fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (StatusCode, Vec<u8>) {
@@ -149,13 +149,13 @@ macro_rules! bootstrap {
             .await
             .expect("Failed to load Nexus toolkit config");
 
-        // Create routes for each Tool in the bundle using reloadable config.
-        let routes = $crate::runtime::routes_for_with_watcher_::<$tool>(toolkit_cfg.clone())
+        // Create routes for each Tool in the bundle.
+        let routes = $crate::runtime::routes_for_with_config_::<$tool>(toolkit_cfg.clone())
             .await
             .expect("Failed to create routes for tool");
         $(
             let routes = routes.or(
-                $crate::runtime::routes_for_with_watcher_::<$next_tool>(toolkit_cfg.clone())
+                $crate::runtime::routes_for_with_config_::<$next_tool>(toolkit_cfg.clone())
                     .await
                     .expect("Failed to create routes for tool")
             );
@@ -197,82 +197,10 @@ macro_rules! bootstrap {
     }};
 }
 
-/// This function generates the necessary routes for a given [NexusTool].
-///
-/// **This is an internal function used by [bootstrap!] macro and should not be
-/// used directly.**
+/// Internal route builder used by bootstrap! macro.
 #[doc(hidden)]
-pub fn routes_for_<T: NexusTool>() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let toolkit_cfg =
-        Arc::new(ToolkitRuntimeConfig::from_env().expect("Failed to load Nexus toolkit config"));
-    routes_for_with_config_::<T>(toolkit_cfg)
-}
-
-/// This function generates the necessary routes for a given [NexusTool] using an already-loaded
-/// [`ToolkitRuntimeConfig`].
-///
-/// This exists so callers (like [`bootstrap!`]) can load and validate config once per process and
-/// share it across multiple tool route bundles.
-#[doc(hidden)]
-pub fn routes_for_with_config_<T: NexusTool>(
-    toolkit_cfg: Arc<ToolkitRuntimeConfig>,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    // Force output schema to be an enum.
-    let output_schema = json!(schemars::schema_for!(T::Output));
-
-    if output_schema["oneOf"].is_null() {
-        panic!("The output type must be an enum to generate the correct output schema.");
-    }
-
-    let base_path = T::path()
-        .split("/")
-        .filter(|s| !s.is_empty())
-        .fold(warp::any().boxed(), |filter, segment| {
-            filter.and(warp::path(segment.to_string())).boxed()
-        });
-
-    let health_route = warp::get()
-        .and(base_path.clone())
-        .and(warp::path("health"))
-        .and_then(health_handler::<T>);
-
-    // Meta path is tool base URL path and `/meta`.
-    let meta_route = warp::get()
-        .and(base_path.clone())
-        .and(warp::path("meta"))
-        .and(warp::header::optional::<Authority>("X-Forwarded-Host"))
-        .and(warp::header::optional::<String>("X-Forwarded-Proto"))
-        .and(warp::filters::host::optional())
-        .and(warp::path::full())
-        .and_then(meta_handler::<T>);
-
-    let invoke_max_body_bytes = toolkit_cfg.invoke_max_body_bytes();
-
-    let tool_id = T::fqn().to_string();
-    let invoke_auth = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&toolkit_cfg, &tool_id)
-        .expect("Failed to load signed HTTP configuration");
-
-    // Invoke path is tool base URL path and `/invoke`.
-    let invoke_route = warp::post()
-        .and(base_path)
-        .and(warp::path("invoke"))
-        .and(warp::path::full())
-        .and(warp::query::raw().or(warp::any().map(String::new)).unify())
-        .and(warp::header::headers_cloned())
-        .and(warp::body::content_length_limit(invoke_max_body_bytes))
-        .and(warp::body::bytes())
-        .and(warp::any().map(move || invoke_auth.clone()))
-        .and_then(invoke_handler::<T>);
-
-    health_route.or(meta_route).or(invoke_route)
-}
-
-/// Internal route builder with hot-reload support.
-///
-/// Used by bootstrap! macro. Supports automatic config reload.
-#[doc(hidden)]
-pub async fn routes_for_with_watcher_<T: NexusTool>(
-    toolkit_cfg: Arc<ConfigWatcher>,
+pub async fn routes_for_with_config_<T: NexusTool>(
+    toolkit_cfg: Arc<Config>,
 ) -> anyhow::Result<impl Filter<Extract = impl Reply, Error = Rejection> + Clone> {
     // Force output schema to be an enum.
     let output_schema = json!(schemars::schema_for!(T::Output));
@@ -319,7 +247,7 @@ pub async fn routes_for_with_watcher_<T: NexusTool>(
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
         .and(warp::any().map(move || invoke_auth.clone()))
-        .and_then(invoke_handler_::<T>);
+        .and_then(invoke_handler::<T>);
 
     Ok(health_route.or(meta_route).or(invoke_route))
 }
@@ -500,34 +428,6 @@ async fn invoke_handler<T: NexusTool>(
     raw_query: String,
     headers: HeaderMap,
     body: bytes::Bytes,
-    auth: InvokeAuthRuntime,
-) -> Result<warp::reply::Response, Rejection> {
-    let body_bytes = body.to_vec();
-
-    let http = HttpRequestMeta {
-        method: "POST",
-        path: full_path.as_str(),
-        query: &raw_query,
-    };
-
-    Ok(handle_invoke(
-        auth,
-        http,
-        headers,
-        body_bytes,
-        |auth_ctx, body_bytes| async move {
-            let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
-            (pipeline.status, pipeline.body)
-        },
-    )
-    .await)
-}
-
-async fn invoke_handler_<T: NexusTool>(
-    full_path: FullPath,
-    raw_query: String,
-    headers: HeaderMap,
-    body: bytes::Bytes,
     auth: InvokeAuth,
 ) -> Result<warp::reply::Response, Rejection> {
     let body_bytes = body.to_vec();
@@ -557,6 +457,7 @@ async fn invoke_handler_<T: NexusTool>(
 mod tests {
     use {
         super::*,
+        crate::config::ENV_TOOLKIT_CONFIG_PATH,
         nexus_sdk::{
             fqn,
             signed_http::v1::wire::{
@@ -578,9 +479,9 @@ mod tests {
         },
         schemars::JsonSchema,
         serde::{Deserialize, Serialize},
-        std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
+        std::{
+            fs,
+            sync::atomic::{AtomicUsize, Ordering},
         },
     };
 
@@ -749,9 +650,15 @@ mod tests {
         let tool_pk = tool_sk.verifying_key().to_bytes();
         let tool_sk_hex = hex::encode(tool_sk.to_bytes());
 
+        // Write config to temp file and load via Config
+        let file_name = format!("test_config_signed_error_{}.json", std::process::id());
+        let path = std::env::temp_dir().join(&file_name);
         let cfg_json = make_config_json(&tool_id, &tool_sk_hex, leader_id, &leader_pk_hex);
-        let cfg = Arc::new(ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap());
-        let routes = routes_for_with_config_::<DenyTool>(cfg);
+        fs::write(&path, &cfg_json).unwrap();
+        std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
+
+        let cfg = Config::from_env().await.unwrap();
+        let routes = routes_for_with_config_::<DenyTool>(cfg).await.unwrap();
 
         let body = br#"{"message":"hi"}"#;
         let (req, req_hash) = build_signed_request(leader_id, &leader_sk, &tool_id, "abc", body);
@@ -794,6 +701,10 @@ mod tests {
             resp1.headers().get(HEADER_SIG)
         );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
+
+        // Cleanup
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+        let _ = fs::remove_file(&path);
     }
 
     #[tokio::test]
@@ -810,9 +721,15 @@ mod tests {
         let tool_pk = tool_sk.verifying_key().to_bytes();
         let tool_sk_hex = hex::encode(tool_sk.to_bytes());
 
+        // Write config to temp file and load via Config
+        let file_name = format!("test_config_replay_{}.json", std::process::id());
+        let path = std::env::temp_dir().join(&file_name);
         let cfg_json = make_config_json(&tool_id, &tool_sk_hex, leader_id, &leader_pk_hex);
-        let cfg = Arc::new(ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap());
-        let routes = routes_for_with_config_::<DenyTool>(cfg);
+        fs::write(&path, &cfg_json).unwrap();
+        std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
+
+        let cfg = Config::from_env().await.unwrap();
+        let routes = routes_for_with_config_::<DenyTool>(cfg).await.unwrap();
 
         let body1 = br#"{"message":"hi"}"#;
         let (req1, req_hash1) = build_signed_request(leader_id, &leader_sk, &tool_id, "abc", body1);
@@ -874,5 +791,9 @@ mod tests {
             resp1.headers().get(HEADER_SIG)
         );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
+
+        // Cleanup
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+        let _ = fs::remove_file(&path);
     }
 }

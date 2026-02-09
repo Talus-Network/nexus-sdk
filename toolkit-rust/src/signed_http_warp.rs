@@ -6,7 +6,7 @@
 //! Most tool developers should use [`crate::bootstrap!`] and not interact with this module.
 
 use {
-    crate::{config::ConfigWatcher, AuthContext, ToolkitRuntimeConfig},
+    crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
     nexus_sdk::signed_http::v1::{
         engine::{
             ResponderDecisionV1,
@@ -79,19 +79,27 @@ impl InvokeAuthRuntime {
 /// Used by bootstrap! macro. Automatically updates auth runtime when config changes.
 #[derive(Clone)]
 pub(crate) struct InvokeAuth {
-    state: Arc<RwLock<InvokeAuthRuntime>>,
+    state: Arc<RwLock<InvokeAuthState>>,
     tool_id: String,
-    config: Arc<ConfigWatcher>,
+    config: Arc<Config>,
+}
+
+/// Internal state for InvokeAuth, tracking both the runtime and which config version built it.
+struct InvokeAuthState {
+    auth: InvokeAuthRuntime,
+    /// Pointer to the config that built this auth, used to detect config changes.
+    config_ptr: usize,
 }
 
 impl InvokeAuth {
     /// Create a new auth runtime with hot-reload support.
-    pub(crate) async fn new(config: Arc<ConfigWatcher>, tool_id: String) -> anyhow::Result<Self> {
+    pub(crate) async fn new(config: Arc<Config>, tool_id: String) -> anyhow::Result<Self> {
         let current_config = config.current().await;
-        let state = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
+        let auth = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
+        let config_ptr = Arc::as_ptr(&current_config) as usize;
 
         Ok(Self {
-            state: Arc::new(RwLock::new(state)),
+            state: Arc::new(RwLock::new(InvokeAuthState { auth, config_ptr })),
             tool_id,
             config,
         })
@@ -99,15 +107,29 @@ impl InvokeAuth {
 
     /// Get the current auth runtime, reloading from config if needed.
     pub(crate) async fn current(&self) -> InvokeAuthRuntime {
-        // Check if config has changed and reload auth if needed
         let current_config = self.config.current().await;
-        if let Ok(new_auth) =
-            InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &self.tool_id)
+        let current_ptr = Arc::as_ptr(&current_config) as usize;
+
+        // Check if config has changed by comparing Arc pointers
         {
-            let mut guard = self.state.write().await;
-            *guard = new_auth;
+            let guard = self.state.read().await;
+            if guard.config_ptr == current_ptr {
+                return guard.auth.clone();
+            }
         }
-        self.state.read().await.clone()
+
+        // Config changed, rebuild auth runtime
+        let mut guard = self.state.write().await;
+        // Double-check after acquiring write lock
+        if guard.config_ptr != current_ptr {
+            if let Ok(new_auth) =
+                InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &self.tool_id)
+            {
+                guard.auth = new_auth;
+                guard.config_ptr = current_ptr;
+            }
+        }
+        guard.auth.clone()
     }
 }
 

@@ -341,13 +341,13 @@ fn load_signed_http_config(
 /// without requiring a process restart. When the config file changes, the new
 /// configuration is automatically loaded.
 #[doc(hidden)]
-pub struct ConfigWatcher {
+pub struct Config {
     config: Arc<RwLock<Arc<ToolkitRuntimeConfig>>>,
     #[allow(dead_code)]
     watcher: Option<RecommendedWatcher>,
 }
 
-impl ConfigWatcher {
+impl Config {
     /// Create a new config watcher from the environment.
     ///
     /// If [`ENV_TOOLKIT_CONFIG_PATH`] is set, starts a file watcher that reloads
@@ -613,7 +613,7 @@ mod tests {
         // Ensure env var is not set
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
 
-        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let watcher = Config::from_env().await.unwrap();
         let config = watcher.current().await;
 
         // Default config has no signed HTTP
@@ -644,7 +644,7 @@ mod tests {
         // Set env var and create watcher
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
 
-        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let watcher = Config::from_env().await.unwrap();
         let config = watcher.current().await;
 
         // Verify config loaded correctly
@@ -680,7 +680,7 @@ mod tests {
         // Set env var and create watcher
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
 
-        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let watcher = Config::from_env().await.unwrap();
 
         // Verify initial config
         let config = watcher.current().await;
@@ -748,7 +748,7 @@ mod tests {
         // Set env var and create watcher
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
 
-        let watcher = ConfigWatcher::from_env().await.unwrap();
+        let watcher = Config::from_env().await.unwrap();
 
         // Verify initial config
         let config = watcher.current().await;
