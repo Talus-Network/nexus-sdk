@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - replaced `secret_core` with `secret_store` for at-rest secrets.
 - `signed_http` is agnostic to the leader that makes the request and can be used with any leader.
 
+#### Fixed
+
+- bug where foreign `AnnounceInterfacePackageEvent` events could not be parsed because they did not originate from Nexus packages, which is however expected
+
 ### `nexus-cli`
 
 #### Added

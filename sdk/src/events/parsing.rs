@@ -48,14 +48,6 @@ impl FromSuiGrpcEvent for NexusEvent {
         event: &sui::types::Event,
         objects: &NexusObjects,
     ) -> anyhow::Result<NexusEvent> {
-        // Only accept events that come from the Nexus packages.
-        if !is_nexus_package(event.package_id, objects) {
-            bail!(
-                "Event does not come from a Nexus package, it comes from '{}' instead",
-                event.package_id
-            );
-        }
-
         // Only accept events that are wrapped in `nexus_primitives::event::EventWrapper`.
         if !is_event_wrapper(&event.type_, objects) {
             bail!(
@@ -75,6 +67,23 @@ impl FromSuiGrpcEvent for NexusEvent {
 
         let event_name = normalize_event_name(event_type)?;
 
+        // Only accept inner events that come from Nexus packages.
+        if !is_nexus_package(*event_type.address(), objects) {
+            bail!(
+                "Inner event does not come from a Nexus package, it comes from '{}' instead",
+                event_type.address()
+            );
+        }
+
+        // Only accept events that come from the Nexus packages unless the
+        // event is marked as foreign.
+        if !is_nexus_package(event.package_id, objects) && !is_foreign_event(&event_name) {
+            bail!(
+                "Event does not come from a Nexus package, it comes from '{}' instead",
+                event.package_id
+            );
+        }
+
         Ok(NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
@@ -91,11 +100,6 @@ impl FromSuiGqlEvent for NexusEvent {
         event: &EventsQueryEventsNodesContents,
         objects: &NexusObjects,
     ) -> anyhow::Result<NexusEvent> {
-        // Only accept events that come from the Nexus packages.
-        if !is_nexus_package(package_id, objects) {
-            bail!("Event does not come from a Nexus package, it comes from '{package_id}' instead");
-        }
-
         let struct_tag: sui::types::StructTag = event
             .type_
             .as_ref()
@@ -125,6 +129,20 @@ impl FromSuiGqlEvent for NexusEvent {
         };
 
         let event_name = normalize_event_name(event_type)?;
+
+        // Only accept inner events that come from Nexus packages.
+        if !is_nexus_package(*event_type.address(), objects) {
+            bail!(
+                "Inner event does not come from a Nexus package, it comes from '{}' instead",
+                event_type.address()
+            );
+        }
+
+        // Only accept events that come from the Nexus packages unless the
+        // event is marked as foreign.
+        if !is_nexus_package(package_id, objects) && !is_foreign_event(&event_name) {
+            bail!("Event does not come from a Nexus package, it comes from '{package_id}' instead");
+        }
 
         let Some(json) = event
             .json
@@ -180,6 +198,15 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
         || address == objects.workflow_pkg_id
 }
 
+/// Helper function to determine whether the event name corresponds to a foreign
+/// event.
+fn is_foreign_event(event_name: &str) -> bool {
+    match event_name {
+        "AnnounceInterfacePackageEvent" => true,
+        _ => false,
+    }
+}
+
 /// Helper function to determine whether the provided struct tag corresponds to
 /// `nexus_primitives::event::EventWrapper`.
 fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
@@ -193,37 +220,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            events::{
-                events_query::events_query::EventsQueryEventsNodesContentsType,
-                AnnounceInterfacePackageEvent,
-                DAGCreatedEvent,
-                EndStateReachedEvent,
-                ExecutionFinishedEvent,
-                FoundingLeaderCapCreatedEvent,
-                GasSettlementUpdateEvent,
-                MissedOccurrenceEvent,
-                NexusEventKind,
-                OccurrenceConsumedEvent,
-                OccurrenceScheduledEvent,
-                PeriodicScheduleConfiguredEvent,
-                PreKeyAssociatedEvent,
-                PreKeyFulfilledEvent,
-                PreKeyRequestedEvent,
-                PreKeyVaultCreatedEvent,
-                RequestScheduledOccurrenceEvent,
-                RequestScheduledWalkEvent,
-                RequestWalkExecutionEvent,
-                RuntimeVertex,
-                TaskCanceledEvent,
-                TaskCreatedEvent,
-                TaskPausedEvent,
-                TaskResumedEvent,
-                ToolRegisteredEvent,
-                ToolUnregisteredEvent,
-                TypeName,
-                WalkAdvancedEvent,
-                WalkFailedEvent,
-            },
+            events::{events_query::events_query::EventsQueryEventsNodesContentsType, *},
             fqn,
             idents::primitives,
             test_utils::sui_mocks,
@@ -309,6 +306,83 @@ mod tests {
 
         let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
         assert!(result.is_err(), "Should fail for non-Nexus package event");
+    }
+
+    #[test]
+    fn test_parse_from_grpc_non_nexus_package_inner_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            sui::types::Address::generate(&mut rng),
+            sui::types::Identifier::new("module").unwrap(),
+            sui::types::Identifier::new("EventName").unwrap(),
+            vec![],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+
+        let event = sui_mocks::mock_sui_event(
+            objects.workflow_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            vec![1, 2, 3],
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
+        assert!(
+            result.is_err(),
+            "Should fail for non-Nexus package inner event"
+        );
+    }
+
+    #[test]
+    fn test_parse_from_grpc_non_nexus_package_event_foreign_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            objects.interface_pkg_id,
+            sui::types::Identifier::from_static("v1"),
+            sui::types::Identifier::from_static("AnnounceInterfacePackageEvent"),
+            vec![sui::types::TypeTag::Address],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+
+        let data = Wrapper {
+            event: AnnounceInterfacePackageEvent {
+                shared_objects: vec![SharedObjectRef::new_imm(sui::types::Address::generate(
+                    &mut rng,
+                ))],
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+        let event = sui_mocks::mock_sui_event(
+            sui::types::Address::generate(&mut rng),
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects)
+            .expect("Should parse foreign event from non-Nexus package");
+
+        assert_eq!(result.id, (digest, index));
+        assert!(matches!(
+            result.data,
+            crate::events::NexusEventKind::AnnounceInterfacePackage(
+                AnnounceInterfacePackageEvent { shared_objects }
+            ) if shared_objects == data.event.shared_objects
+        ));
     }
 
     #[test]
@@ -628,6 +702,95 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_from_gql_non_nexus_package_inner_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
+        let event_type = sui::types::StructTag::new(
+            non_nexus_pkg_id,
+            sui::types::Identifier::new("dag").unwrap(),
+            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
+            vec![],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+        let dag_addr = sui::types::Address::generate(&mut rng);
+        let data = Wrapper {
+            event: DAGCreatedEvent { dag: dag_addr },
+        };
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(serde_json::to_value(&data).unwrap()),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: sui::types::StructTag::new(
+                    objects.primitives_pkg_id,
+                    primitives::Event::EVENT_WRAPPER.module,
+                    primitives::Event::EVENT_WRAPPER.name,
+                    vec![wrapper_type.clone()],
+                )
+                .to_string(),
+            }),
+        };
+        let result = NexusEvent::from_sui_gql_event(
+            index,
+            digest,
+            objects.workflow_pkg_id,
+            &gql_event,
+            &objects,
+        );
+        assert!(
+            result.is_err(),
+            "Should fail for non-Nexus package GQL inner event"
+        );
+    }
+
+    #[test]
+    fn test_parse_from_gql_non_nexus_package_event_foreign_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
+        let event_type = sui::types::StructTag::new(
+            objects.interface_pkg_id,
+            sui::types::Identifier::from_static("v1"),
+            sui::types::Identifier::from_static("AnnounceInterfacePackageEvent"),
+            vec![],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+        let data = Wrapper {
+            event: AnnounceInterfacePackageEvent {
+                shared_objects: vec![SharedObjectRef::new_imm(sui::types::Address::generate(
+                    &mut rng,
+                ))],
+            },
+        };
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(serde_json::to_value(&data).unwrap()),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: sui::types::StructTag::new(
+                    objects.primitives_pkg_id,
+                    primitives::Event::EVENT_WRAPPER.module,
+                    primitives::Event::EVENT_WRAPPER.name,
+                    vec![wrapper_type.clone()],
+                )
+                .to_string(),
+            }),
+        };
+        let result =
+            NexusEvent::from_sui_gql_event(index, digest, non_nexus_pkg_id, &gql_event, &objects)
+                .expect("Should parse foreign event from non-Nexus package");
+
+        assert_eq!(result.id, (digest, index));
+        assert!(matches!(
+            result.data,
+            crate::events::NexusEventKind::AnnounceInterfacePackage(
+                AnnounceInterfacePackageEvent { shared_objects }
+            ) if shared_objects == data.event.shared_objects
+        ));
+    }
+
+    #[test]
     fn test_parse_from_gql_non_event_wrapper_gql_type() {
         let mut rng = rand::thread_rng();
         let index = 0u64;
@@ -762,7 +925,7 @@ mod tests {
             objects.clone(),
         );
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None);
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
         let page = receiver
             .recv()
             .await
