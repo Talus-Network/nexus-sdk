@@ -14,11 +14,15 @@ mod signed_http_warp;
 
 pub use {
     anyhow::Result as AnyResult,
-    config::{SignedHttpMode, ToolkitRuntimeConfig, ENV_TOOLKIT_CONFIG_PATH},
+    config::{
+        ReloadableToolkitConfig, SignedHttpMode, ToolkitRuntimeConfig,
+        ENV_TOOLKIT_CONFIG_DISABLE_WATCH, ENV_TOOLKIT_CONFIG_PATH,
+    },
     env_logger,
     log::debug,
     nexus_tool::{AuthContext, NexusTool},
-    runtime::{routes_for_, routes_for_with_config_},
+    runtime::{routes_for_, routes_for_with_config_, routes_for_with_reloadable_config_},
+    signed_http_warp::ReloadableInvokeAuth,
     serde_tracked::*,
     warp::{self, http::StatusCode},
 };

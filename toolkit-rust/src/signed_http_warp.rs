@@ -6,7 +6,7 @@
 //! Most tool developers should use [`crate::bootstrap!`] and not interact with this module.
 
 use {
-    crate::{AuthContext, ToolkitRuntimeConfig},
+    crate::{config::ReloadableToolkitConfig, AuthContext, ToolkitRuntimeConfig},
     nexus_sdk::signed_http::v1::{
         engine::{
             ResponderDecisionV1,
@@ -21,7 +21,8 @@ use {
         wire::HttpRequestMeta,
     },
     serde_json::json,
-    std::future::Future,
+    std::{future::Future, sync::Arc},
+    tokio::sync::RwLock,
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
 
@@ -69,6 +70,108 @@ impl InvokeAuthRuntime {
             signed_http.allowed_leaders.clone(),
         )))
     }
+}
+
+/// Auth runtime that supports config hot-reload.
+///
+/// This wrapper around [`InvokeAuthRuntime`] integrates with [`ReloadableToolkitConfig`]
+/// to automatically update the auth runtime when the config file changes.
+///
+/// # Thread Safety
+///
+/// This type is designed for concurrent access. The internal auth runtime is protected
+/// by an `RwLock`, allowing multiple readers during normal request handling with
+/// brief write locks during config reloads.
+///
+/// # Usage
+///
+/// ```ignore
+/// let config = Arc::new(ReloadableToolkitConfig::from_env().await?);
+/// let auth = ReloadableInvokeAuth::new(config, "xyz.tool@1".to_string()).await?;
+///
+/// // In request handler:
+/// let current_auth = auth.current().await;
+/// handle_invoke(current_auth, ...).await
+/// ```
+#[derive(Clone)]
+pub struct ReloadableInvokeAuth {
+    inner: Arc<RwLock<InvokeAuthRuntime>>,
+    tool_id: String,
+    config: Arc<ReloadableToolkitConfig>,
+}
+
+impl ReloadableInvokeAuth {
+    /// Create a new reloadable auth runtime.
+    ///
+    /// The auth runtime is initialized from the current config. When config changes,
+    /// call [`reload`](Self::reload) to update the auth runtime.
+    pub async fn new(
+        config: Arc<ReloadableToolkitConfig>,
+        tool_id: String,
+    ) -> anyhow::Result<Self> {
+        let current_config = config.current_async().await;
+        let inner = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
+
+        Ok(Self {
+            inner: Arc::new(RwLock::new(inner)),
+            tool_id,
+            config,
+        })
+    }
+
+    /// Reload the auth runtime from the current config.
+    ///
+    /// This should be called when the config has been updated. It acquires a write
+    /// lock briefly to swap in the new auth runtime.
+    ///
+    /// If the reload fails (e.g., tool not found in new config), the old auth
+    /// runtime is preserved and an error is returned.
+    pub async fn reload(&self) -> anyhow::Result<()> {
+        let current_config = self.config.current_async().await;
+        let new_auth =
+            InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &self.tool_id)?;
+
+        let mut guard = self.inner.write().await;
+        *guard = new_auth;
+
+        tracing::info!("Reloaded signed HTTP auth for tool '{}'", self.tool_id);
+        Ok(())
+    }
+
+    /// Get the current auth runtime for request handling.
+    ///
+    /// This clones the current auth runtime, which is cheap for the `Unsigned` variant
+    /// and involves an `Arc` clone for the `Signed` variant.
+    pub async fn current(&self) -> InvokeAuthRuntime {
+        self.inner.read().await.clone()
+    }
+
+    /// Get the tool ID this auth runtime is configured for.
+    pub fn tool_id(&self) -> &str {
+        &self.tool_id
+    }
+}
+
+/// Handle a single `/invoke` request using a reloadable auth runtime.
+///
+/// This is the hot-reload-aware version of [`handle_invoke`]. It fetches the
+/// current auth configuration before processing the request.
+pub async fn handle_invoke_reloadable<F, Fut>(
+    auth: ReloadableInvokeAuth,
+    http: HttpRequestMeta<'_>,
+    headers: HeaderMap,
+    body_bytes: Vec<u8>,
+    run: F,
+) -> warp::reply::Response
+where
+    F: FnOnce(Option<AuthContext>, Vec<u8>) -> Fut,
+    Fut: Future<Output = (StatusCode, Vec<u8>)> + Send,
+{
+    // Get current auth config (cheap clone via Arc)
+    let current_auth = auth.current().await;
+
+    // Use existing handle_invoke logic
+    handle_invoke(current_auth, http, headers, body_bytes, run).await
 }
 
 /// Handle a single `/invoke` request using the configured auth mode.

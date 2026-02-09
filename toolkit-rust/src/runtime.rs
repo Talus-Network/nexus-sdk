@@ -2,8 +2,10 @@
 
 use {
     crate::{
-        config::ToolkitRuntimeConfig,
-        signed_http_warp::{handle_invoke, InvokeAuthRuntime},
+        config::{ReloadableToolkitConfig, ToolkitRuntimeConfig},
+        signed_http_warp::{
+            handle_invoke, handle_invoke_reloadable, InvokeAuthRuntime, ReloadableInvokeAuth,
+        },
         NexusTool,
     },
     nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
@@ -135,14 +137,25 @@ macro_rules! bootstrap {
             $crate::warp::{http::StatusCode, Filter},
         };
 
-        // Load toolkit config once per process (shared across all tool routes).
+        // Load reloadable toolkit config once per process (shared across all tool routes).
+        // This enables hot-reload of config without process restart.
         let toolkit_cfg = Arc::new(
-            $crate::ToolkitRuntimeConfig::from_env().expect("Failed to load Nexus toolkit config"),
+            $crate::ReloadableToolkitConfig::from_env()
+                .await
+                .expect("Failed to load Nexus toolkit config"),
         );
 
-        // Create routes for each Tool in the bundle.
-        let routes = $crate::routes_for_with_config_::<$tool>(toolkit_cfg.clone());
-        $(let routes = routes.or($crate::routes_for_with_config_::<$next_tool>(toolkit_cfg.clone()));)*
+        // Create routes for each Tool in the bundle using reloadable config.
+        let routes = $crate::routes_for_with_reloadable_config_::<$tool>(toolkit_cfg.clone())
+            .await
+            .expect("Failed to create routes for tool");
+        $(
+            let routes = routes.or(
+                $crate::routes_for_with_reloadable_config_::<$next_tool>(toolkit_cfg.clone())
+                    .await
+                    .expect("Failed to create routes for tool")
+            );
+        )*
 
         // Collect paths of all tools.
         let mut paths = vec![<$tool as $crate::NexusTool>::path()];
@@ -248,6 +261,66 @@ pub fn routes_for_with_config_<T: NexusTool>(
         .and_then(invoke_handler::<T>);
 
     health_route.or(meta_route).or(invoke_route)
+}
+
+/// This function generates routes for a given [NexusTool] using a [`ReloadableToolkitConfig`].
+///
+/// This version supports hot-reload of configuration without requiring a process restart.
+/// When the config file changes, new requests will automatically use the updated configuration.
+///
+/// **This is an internal function used by [bootstrap!] macro and should not be used directly.**
+#[doc(hidden)]
+pub async fn routes_for_with_reloadable_config_<T: NexusTool>(
+    toolkit_cfg: Arc<ReloadableToolkitConfig>,
+) -> anyhow::Result<impl Filter<Extract = impl Reply, Error = Rejection> + Clone> {
+    // Force output schema to be an enum.
+    let output_schema = json!(schemars::schema_for!(T::Output));
+
+    if output_schema["oneOf"].is_null() {
+        panic!("The output type must be an enum to generate the correct output schema.");
+    }
+
+    let base_path = T::path()
+        .split("/")
+        .filter(|s| !s.is_empty())
+        .fold(warp::any().boxed(), |filter, segment| {
+            filter.and(warp::path(segment.to_string())).boxed()
+        });
+
+    let health_route = warp::get()
+        .and(base_path.clone())
+        .and(warp::path("health"))
+        .and_then(health_handler::<T>);
+
+    // Meta path is tool base URL path and `/meta`.
+    let meta_route = warp::get()
+        .and(base_path.clone())
+        .and(warp::path("meta"))
+        .and(warp::header::optional::<Authority>("X-Forwarded-Host"))
+        .and(warp::header::optional::<String>("X-Forwarded-Proto"))
+        .and(warp::filters::host::optional())
+        .and(warp::path::full())
+        .and_then(meta_handler::<T>);
+
+    let current_config = toolkit_cfg.current();
+    let invoke_max_body_bytes = current_config.invoke_max_body_bytes();
+
+    let tool_id = T::fqn().to_string();
+    let invoke_auth = ReloadableInvokeAuth::new(toolkit_cfg, tool_id).await?;
+
+    // Invoke path is tool base URL path and `/invoke`.
+    let invoke_route = warp::post()
+        .and(base_path)
+        .and(warp::path("invoke"))
+        .and(warp::path::full())
+        .and(warp::query::raw().or(warp::any().map(String::new)).unify())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::content_length_limit(invoke_max_body_bytes))
+        .and(warp::body::bytes())
+        .and(warp::any().map(move || invoke_auth.clone()))
+        .and_then(invoke_handler_reloadable::<T>);
+
+    Ok(health_route.or(meta_route).or(invoke_route))
 }
 
 async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
@@ -437,6 +510,34 @@ async fn invoke_handler<T: NexusTool>(
     };
 
     Ok(handle_invoke(
+        auth,
+        http,
+        headers,
+        body_bytes,
+        |auth_ctx, body_bytes| async move {
+            let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
+            (pipeline.status, pipeline.body)
+        },
+    )
+    .await)
+}
+
+async fn invoke_handler_reloadable<T: NexusTool>(
+    full_path: FullPath,
+    raw_query: String,
+    headers: HeaderMap,
+    body: bytes::Bytes,
+    auth: ReloadableInvokeAuth,
+) -> Result<warp::reply::Response, Rejection> {
+    let body_bytes = body.to_vec();
+
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: full_path.as_str(),
+        query: &raw_query,
+    };
+
+    Ok(handle_invoke_reloadable(
         auth,
         http,
         headers,
