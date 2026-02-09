@@ -440,10 +440,8 @@ async fn invoke_handler<T: NexusTool>(
         query: &raw_query,
     };
 
-    let current_auth = auth.current().await;
-
     Ok(handle_invoke(
-        current_auth,
+        auth.current().await,
         http,
         headers,
         body_bytes,

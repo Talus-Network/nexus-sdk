@@ -475,4 +475,108 @@ mod tests {
         assert_eq!(resp_two.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(run_calls.load(Ordering::SeqCst), 1);
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn invoke_auth_reloads_on_config_change() {
+        use {
+            crate::{
+                config::{Config, ENV_TOOLKIT_CONFIG_PATH},
+                test_utils::ENV_VAR_LOCK,
+            },
+            std::fs,
+        };
+
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
+        let leader_id = "0x1111";
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk = leader_sk.verifying_key().to_bytes();
+        let leader_pk_hex = hex::encode(leader_pk);
+        let tool_id = "demo::tool::1.0.0";
+        let tool_sk = SigningKey::from_bytes(&[9u8; 32]);
+        let tool_sk_hex = hex::encode(tool_sk.to_bytes());
+
+        // Create config file
+        let file_name = format!(
+            "invoke-auth-reload-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(&file_name);
+
+        let cfg_json = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "invoke_max_body_bytes": 100,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": leader_id,
+                        "keys": [{"kid": 0, "public_key": leader_pk_hex}]
+                    }]
+                },
+                "tools": {
+                    "demo::tool::1.0.0": {
+                        "tool_kid": 0,
+                        "tool_signing_key": tool_sk_hex.clone()
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        fs::write(&path, &cfg_json).unwrap();
+
+        // Set env var and create Config
+        std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
+        let config = Config::from_env().await.unwrap();
+
+        // Create InvokeAuth
+        let invoke_auth = InvokeAuth::new_sync(config.clone(), tool_id.to_string()).unwrap();
+
+        // Verify initial auth works
+        let auth1 = invoke_auth.current().await;
+        assert!(matches!(auth1, InvokeAuthRuntime::Signed(_)));
+
+        // Update config file with different max body bytes (to verify reload happened)
+        let new_cfg_json = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "invoke_max_body_bytes": 200,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": leader_id,
+                        "keys": [{"kid": 0, "public_key": leader_pk_hex}]
+                    }]
+                },
+                "tools": {
+                    "demo::tool::1.0.0": {
+                        "tool_kid": 0,
+                        "tool_signing_key": tool_sk_hex
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        fs::write(&path, &new_cfg_json).unwrap();
+
+        // Wait for debounce (500ms) + buffer
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+
+        // Call current() again - this should trigger reload path
+        let auth2 = invoke_auth.current().await;
+        assert!(matches!(auth2, InvokeAuthRuntime::Signed(_)));
+
+        // Verify config was actually reloaded by checking the underlying config
+        let current_cfg = config.current();
+        assert_eq!(current_cfg.invoke_max_body_bytes(), 200);
+
+        // Cleanup
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+        let _ = fs::remove_file(&path);
+    }
 }

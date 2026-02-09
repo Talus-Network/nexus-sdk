@@ -464,6 +464,7 @@ impl Config {
 mod tests {
     use {
         super::*,
+        crate::test_utils::ENV_VAR_LOCK,
         serde_json::{json, Map},
     };
 
@@ -633,8 +634,80 @@ mod tests {
         assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
     }
 
+    #[test]
+    fn from_path_sets_source_path() {
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
+        let tool_id = "xyz.demo.tool@1";
+        let tool_sk_hex = hex::encode([9u8; 32]);
+
+        let file_name = format!(
+            "nexus-source-path-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(&file_name);
+
+        let cfg_json = make_config_json(tool_id, &tool_sk_hex, "0x1111", &leader_pk_hex);
+        fs::write(&path, &cfg_json).unwrap();
+
+        let cfg = ToolkitRuntimeConfig::from_path(&path).unwrap();
+
+        // Verify source_path is set correctly
+        assert_eq!(cfg.source_path(), Some(path.as_path()));
+
+        // Cleanup
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn from_path_error_on_missing_file() {
+        let result = ToolkitRuntimeConfig::from_path("/nonexistent/path/config.json");
+        assert!(result.is_err());
+        let err = format!("{:?}", result.err().unwrap());
+        assert!(err.contains("failed to read"));
+    }
+
+    #[test]
+    fn from_path_error_on_invalid_json() {
+        let file_name = format!(
+            "nexus-invalid-json-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(&file_name);
+
+        fs::write(&path, "{ not valid json }").unwrap();
+
+        let result = ToolkitRuntimeConfig::from_path(&path);
+        assert!(result.is_err());
+        let err = format!("{:?}", result.err().unwrap());
+        assert!(err.contains("failed to parse"));
+
+        // Cleanup
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn from_json_str_has_no_source_path() {
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
+        }))
+        .unwrap();
+        let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
+
+        // Config loaded from string has no source path
+        assert!(cfg.source_path().is_none());
+    }
+
     #[tokio::test]
     async fn config_watcher_loads_default_without_env_var() {
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
         // Ensure env var is not set
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
 
@@ -648,6 +721,8 @@ mod tests {
 
     #[tokio::test]
     async fn config_watcher_loads_from_file() {
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
         let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_id = "xyz.demo.tool@1";
@@ -684,6 +759,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn config_watcher_reloads_on_file_change() {
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
         let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_id = "xyz.demo.tool@1";
@@ -752,6 +829,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn config_watcher_keeps_old_on_invalid_update() {
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
         let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
         let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
         let tool_id = "xyz.demo.tool@1";
