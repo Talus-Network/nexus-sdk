@@ -19,6 +19,15 @@ use {
     },
 };
 
+/// Load toolkit configuration from environment.
+///
+/// **This is an internal function used by [bootstrap!] macro and should not be
+/// used directly.**
+#[doc(hidden)]
+pub async fn load_config_() -> anyhow::Result<Arc<ConfigWatcher>> {
+    ConfigWatcher::from_env().await
+}
+
 fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (StatusCode, Vec<u8>) {
     match serde_json::to_vec(&value) {
         Ok(body) => (status, body),
@@ -135,9 +144,8 @@ macro_rules! bootstrap {
             $crate::warp::{http::StatusCode, Filter},
         };
 
-        // Load toolkit config with file watcher (shared across all tool routes).
-        // This enables hot-reload of config without process restart.
-        let toolkit_cfg = $crate::config::ConfigWatcher::from_env()
+        // Load toolkit config (shared across all tool routes).
+        let toolkit_cfg = $crate::runtime::load_config_()
             .await
             .expect("Failed to load Nexus toolkit config");
 

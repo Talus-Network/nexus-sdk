@@ -6,8 +6,7 @@
 //!
 //! See more documentation at <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
-#[doc(hidden)]
-pub mod config;
+mod config;
 mod nexus_tool;
 #[doc(hidden)]
 pub mod runtime;
