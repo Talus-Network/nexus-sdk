@@ -342,8 +342,7 @@ fn load_signed_http_config(
 #[doc(hidden)]
 pub struct Config {
     config: Arc<RwLock<Arc<ToolkitRuntimeConfig>>>,
-    #[allow(dead_code)]
-    watcher: Option<RecommendedWatcher>,
+    _watcher: Option<RecommendedWatcher>,
 }
 
 impl Config {
@@ -371,7 +370,7 @@ impl Config {
             None
         };
 
-        Ok(Arc::new(Self { config, watcher }))
+        Ok(Arc::new(Self { config, _watcher: watcher }))
     }
 
     /// Wrap an existing config, watching its source file if it has one.
@@ -395,7 +394,7 @@ impl Config {
 
         Arc::new(Self {
             config: config_holder,
-            watcher,
+            _watcher: watcher,
         })
     }
 
