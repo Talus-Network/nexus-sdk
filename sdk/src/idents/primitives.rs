@@ -189,6 +189,24 @@ impl Event {
     };
 }
 
+// == `nexus_primitives::distributed_event` ==
+
+pub struct DistributedEvent;
+
+const DISTRIBUTED_EVENT_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("distributed_event");
+
+impl DistributedEvent {
+    /// All distributed events fired by the on-chain part of Nexus are wrapped
+    /// in the generic argument of this struct.
+    ///
+    /// `nexus_primitives::distributed_event::DistributedEventWrapper`
+    pub const DISTRIBUTED_EVENT_WRAPPER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DISTRIBUTED_EVENT_MODULE,
+        name: sui::types::Identifier::from_static("DistributedEventWrapper"),
+    };
+}
+
 // == `nexus_primitives::owner_cap` ==
 
 pub struct OwnerCap;

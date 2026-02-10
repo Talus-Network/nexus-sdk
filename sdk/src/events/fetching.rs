@@ -80,14 +80,64 @@ impl EventFetcher {
         tokio::task::JoinHandle<()>,
         tokio::sync::mpsc::Receiver<anyhow::Result<EventPage>>,
     ) {
+        let nexus_objects = self.nexus_objects.clone();
+
+        let wrapper = sui::types::StructTag::new(
+            nexus_objects.primitives_pkg_id,
+            primitives::Event::EVENT_WRAPPER.module,
+            primitives::Event::EVENT_WRAPPER.name,
+            inner_type.map(|t| vec![t]).unwrap_or_default(),
+        );
+
+        self.poll_events_by_wrapper(wrapper, from_cursor, from_checkpoint)
+    }
+
+    /// Start polling for events and sending them over the given channel. Return
+    /// the JoinHandle of the polling task as well as the channel receiver.
+    ///
+    /// This poller fetches events wrapped in `DistributedEventWrapper<T>`,
+    /// which is used for distributed events.
+    ///
+    /// This is useful for scenarios where multiple deployments share the same
+    /// `primitives_pkg_id` but have different `workflow_pkg_id` values, as it
+    /// allows precise filtering at the GraphQL level rather than client-side.
+    pub fn poll_distributed_nexus_events(
+        &self,
+        from_cursor: Option<String>,
+        from_checkpoint: Option<u64>,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        tokio::sync::mpsc::Receiver<anyhow::Result<EventPage>>,
+    ) {
+        let nexus_objects = self.nexus_objects.clone();
+
+        let wrapper = sui::types::StructTag::new(
+            nexus_objects.primitives_pkg_id,
+            primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+            primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
+            vec![],
+        );
+
+        self.poll_events_by_wrapper(wrapper, from_cursor, from_checkpoint)
+    }
+
+    fn poll_events_by_wrapper(
+        &self,
+        wrapper: sui::types::StructTag,
+        from_cursor: Option<String>,
+        from_checkpoint: Option<u64>,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        tokio::sync::mpsc::Receiver<anyhow::Result<EventPage>>,
+    ) {
         let (notify_about_events, next_page) =
             tokio::sync::mpsc::channel::<anyhow::Result<EventPage>>(self.channel_capacity);
 
         let poller = {
-            let nexus_objects = self.nexus_objects.clone();
             let url = self.url.clone();
             let mut cursor = from_cursor;
             let after_checkpoint = from_checkpoint;
+            let nexus_objects = self.nexus_objects.clone();
 
             // Polling intervals.
             let mut poll_interval = tokio::time::Duration::from_millis(100);
@@ -96,18 +146,11 @@ impl EventFetcher {
             // NOTE: that the poller process is infallible. RPC errors result
             // in backoff and retry. Events that cannot be parsed are ignored.
             tokio::spawn(async move {
-                let event_wrapper = sui::types::StructTag::new(
-                    nexus_objects.primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    inner_type.map(|t| vec![t]).unwrap_or_default(),
-                );
-
                 loop {
                     let request = events_query::Variables {
                         after: cursor.clone(),
                         filter: events_query::EventFilter {
-                            type_: Some(event_wrapper.to_string()),
+                            type_: Some(wrapper.to_string()),
                             sender: None,
                             after_checkpoint,
                             at_checkpoint: None,
@@ -267,6 +310,66 @@ mod tests {
         let digest = sui::types::Digest::generate(&mut rng);
 
         let mock = sui_mocks::gql::mock_event_query(
+            &mut server,
+            primitives_pkg_id,
+            events.clone(),
+            Some(digest),
+            Some("12345"),
+        );
+
+        let fetcher = EventFetcher::new(&format!("{}/graphql", &server.url()), Arc::new(objects));
+
+        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
+
+        if let Some(Ok(page)) = receiver.recv().await {
+            assert_eq!(page.next_cursor, "12345".to_string());
+            assert_eq!(page.events.len(), 3);
+
+            let first_event = &page.events[0];
+            assert_eq!(first_event.id, (digest, 0));
+            assert!(matches!(
+                first_event.data,
+                NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_id_1
+            ));
+
+            let second_event = &page.events[1];
+            assert_eq!(second_event.id, (digest, 1));
+            assert!(matches!(
+                second_event.data,
+                NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_id_2
+            ));
+
+            let third_event = &page.events[2];
+            assert_eq!(third_event.id, (digest, 2));
+            assert!(matches!(
+                third_event.data,
+                NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_id_3
+            ));
+        } else {
+            panic!("Did not receive any events from the fetcher.");
+        }
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_distributed_event_fetcher_polling() {
+        let mut rng = rand::thread_rng();
+        let mut server = Server::new_async().await;
+        let objects = sui_mocks::mock_nexus_objects();
+        let primitives_pkg_id = objects.primitives_pkg_id;
+
+        let dag_id_1 = sui::types::Address::generate(&mut rng);
+        let dag_id_2 = sui::types::Address::generate(&mut rng);
+        let dag_id_3 = sui::types::Address::generate(&mut rng);
+        let events = vec![
+            NexusEventKind::DAGCreated(DAGCreatedEvent { dag: dag_id_1 }),
+            NexusEventKind::DAGCreated(DAGCreatedEvent { dag: dag_id_2 }),
+            NexusEventKind::DAGCreated(DAGCreatedEvent { dag: dag_id_3 }),
+        ];
+        let digest = sui::types::Digest::generate(&mut rng);
+
+        let mock = sui_mocks::gql::mock_distributed_event_query(
             &mut server,
             primitives_pkg_id,
             events.clone(),

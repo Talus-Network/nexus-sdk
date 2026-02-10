@@ -211,8 +211,10 @@ fn is_foreign_event(event_name: &str) -> bool {
 /// `nexus_primitives::event::EventWrapper`.
 fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
     *tag.address() == objects.primitives_pkg_id
-        && *tag.module() == primitives::Event::EVENT_WRAPPER.module
-        && *tag.name() == primitives::Event::EVENT_WRAPPER.name
+        && (*tag.module() == primitives::Event::EVENT_WRAPPER.module
+            || *tag.module() == primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module)
+        && (*tag.name() == primitives::Event::EVENT_WRAPPER.name
+            || *tag.name() == primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name)
 }
 
 #[cfg(all(test, feature = "test_utils"))]

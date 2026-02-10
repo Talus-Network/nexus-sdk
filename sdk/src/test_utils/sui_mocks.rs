@@ -632,4 +632,71 @@ pub mod gql {
             .expect(1)
             .create()
     }
+
+    pub fn mock_distributed_event_query(
+        server: &mut ServerGuard,
+        primitives_pkg_id: sui::types::Address,
+        events: Vec<NexusEventKind>,
+        digest: Option<sui::types::Digest>,
+        end_cursor: Option<&str>,
+    ) -> Mock {
+        let mut rng = rand::thread_rng();
+
+        let mock_events = events
+            .iter()
+            .enumerate()
+            .map(|(id, event)| {
+                json!({
+                    "sequenceNumber": id,
+                    "transaction": {
+                        "digest": digest.unwrap_or_else(|| sui::types::Digest::generate(&mut rng)),
+                    },
+                    "transactionModule": {
+                        "package": {
+                            "address": primitives_pkg_id,
+                        }
+                    },
+                    "contents": {
+                        "json": serde_json::to_value(event).unwrap(),
+                        "type": {
+                            "repr": sui::types::StructTag::new(
+                                primitives_pkg_id,
+                                sui::types::Identifier::from_static("distributed_event"),
+                                sui::types::Identifier::from_static("DistributedEventWrapper"),
+                                vec![
+                                    sui::types::TypeTag::Struct(
+                                        Box::new(sui::types::StructTag::new(
+                                            primitives_pkg_id,
+                                            sui::types::Identifier::from_static("test"),
+                                            event.name().parse().unwrap(),
+                                            vec![],
+                                        )),
+                                    ),
+                                ],
+                            )
+                        }
+                    }
+                })
+            })
+            .collect::<Vec<serde_json::Value>>();
+
+        server
+            .mock("POST", "/graphql")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "data": {
+                        "events": {
+                            "nodes": mock_events,
+                            "pageInfo": {
+                                "endCursor": end_cursor.unwrap_or("12345"),
+                            }
+                        },
+                    },
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create()
+    }
 }
