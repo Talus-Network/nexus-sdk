@@ -529,6 +529,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &cfg_json).unwrap();
 
+        // Set env var and create Config
         std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
         let config = Config::from_env().await.unwrap();
 
