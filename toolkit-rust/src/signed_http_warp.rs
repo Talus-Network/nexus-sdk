@@ -6,7 +6,7 @@
 //! Most tool developers should use [`crate::bootstrap!`] and not interact with this module.
 
 use {
-    crate::{AuthContext, ToolkitRuntimeConfig},
+    crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
     nexus_sdk::signed_http::v1::{
         engine::{
             ResponderDecisionV1,
@@ -21,7 +21,10 @@ use {
         wire::HttpRequestMeta,
     },
     serde_json::json,
-    std::future::Future,
+    std::{
+        future::Future,
+        sync::{Arc, RwLock},
+    },
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
 
@@ -34,7 +37,7 @@ pub enum InvokeAuthRuntime {
     /// Signed HTTP disabled (tool accepts unsigned requests).
     Unsigned,
     /// Signed HTTP enabled and required (tool rejects unsigned requests).
-    Signed(SignedHttpResponderV1),
+    Signed(Box<SignedHttpResponderV1>),
 }
 
 impl InvokeAuthRuntime {
@@ -62,12 +65,76 @@ impl InvokeAuthRuntime {
             max_validity_ms: signed_http.max_validity_ms,
         });
 
-        Ok(Self::Signed(engine.responder_with_in_memory_replay(
-            tool_id.to_string(),
-            tool.tool_kid,
-            tool.tool_signing_key.clone(),
-            signed_http.allowed_leaders.clone(),
+        Ok(Self::Signed(Box::new(
+            engine.responder_with_in_memory_replay(
+                tool_id.to_string(),
+                tool.tool_kid,
+                tool.tool_signing_key.clone(),
+                signed_http.allowed_leaders.clone(),
+            ),
         )))
+    }
+}
+
+/// Internal auth runtime with hot-reload support.
+///
+/// Used by bootstrap! macro. Automatically updates auth runtime when config changes.
+#[derive(Clone)]
+pub(crate) struct InvokeAuth {
+    state: Arc<RwLock<InvokeAuthState>>,
+    tool_id: String,
+    config: Arc<Config>,
+}
+
+/// Internal state for InvokeAuth, tracking both the runtime and which config version built it.
+struct InvokeAuthState {
+    auth: Arc<InvokeAuthRuntime>,
+    /// Pointer to the config that built this auth, used to detect config changes.
+    config_ptr: usize,
+}
+
+impl InvokeAuth {
+    /// Create a new auth runtime with hot-reload support (sync version).
+    pub(crate) fn new_sync(config: Arc<Config>, tool_id: String) -> anyhow::Result<Self> {
+        let current_config = config.current();
+        let auth = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
+        let config_ptr = Arc::as_ptr(&current_config) as usize;
+
+        Ok(Self {
+            state: Arc::new(RwLock::new(InvokeAuthState {
+                auth: Arc::new(auth),
+                config_ptr,
+            })),
+            tool_id,
+            config,
+        })
+    }
+
+    /// Get the current auth runtime, reloading from config if needed.
+    pub(crate) async fn current(&self) -> Arc<InvokeAuthRuntime> {
+        let current_config = self.config.current();
+        let current_ptr = Arc::as_ptr(&current_config) as usize;
+
+        // Check if config has changed by comparing Arc pointers
+        {
+            let guard = self.state.read().unwrap();
+            if guard.config_ptr == current_ptr {
+                return Arc::clone(&guard.auth);
+            }
+        }
+
+        // Config changed, rebuild auth runtime
+        let mut guard = self.state.write().unwrap();
+        // Double-check after acquiring write lock
+        if guard.config_ptr != current_ptr {
+            if let Ok(new_auth) =
+                InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &self.tool_id)
+            {
+                guard.auth = Arc::new(new_auth);
+                guard.config_ptr = current_ptr;
+            }
+        }
+        Arc::clone(&guard.auth)
     }
 }
 
@@ -78,7 +145,7 @@ impl InvokeAuthRuntime {
 /// - signed HTTP authentication + replay rules (when enabled), and
 /// - signed response production (including post-auth error responses).
 pub async fn handle_invoke<F, Fut>(
-    auth: InvokeAuthRuntime,
+    auth: &InvokeAuthRuntime,
     http: HttpRequestMeta<'_>,
     headers: HeaderMap,
     body_bytes: Vec<u8>,
@@ -93,7 +160,7 @@ where
             let (status, body) = run(None, body_bytes).await;
             json_bytes(status, body)
         }
-        InvokeAuthRuntime::Signed(responder) => {
+        InvokeAuthRuntime::Signed(ref responder) => {
             let sig_headers = SignatureHeadersRef::from_getter(|name| header_str(&headers, name));
 
             let decision = match responder.authenticate_invoke(http, &body_bytes, sig_headers) {
@@ -278,7 +345,7 @@ mod tests {
         };
 
         let resp = handle_invoke(
-            InvokeAuthRuntime::Unsigned,
+            &InvokeAuthRuntime::Unsigned,
             http,
             HeaderMap::new(),
             br#"{"hello":"world"}"#.to_vec(),
@@ -317,8 +384,9 @@ mod tests {
             query: "",
         };
 
+        let auth = InvokeAuthRuntime::Signed(Box::new(responder));
         let resp = handle_invoke(
-            InvokeAuthRuntime::Signed(responder),
+            &auth,
             http,
             HeaderMap::new(),
             br#"{"hello":"world"}"#.to_vec(),
@@ -370,8 +438,9 @@ mod tests {
 
         let run_calls = Arc::new(AtomicUsize::new(0));
         let run_calls_inner = Arc::clone(&run_calls);
+        let auth_one = InvokeAuthRuntime::Signed(Box::new(responder.clone()));
         let resp_one = handle_invoke(
-            InvokeAuthRuntime::Signed(responder.clone()),
+            &auth_one,
             http.clone(),
             headers_one,
             body_one.clone(),
@@ -399,8 +468,9 @@ mod tests {
             .unwrap();
         let headers_two = request_headers(outbound_two.request_headers());
 
+        let auth_two = InvokeAuthRuntime::Signed(Box::new(responder));
         let resp_two = handle_invoke(
-            InvokeAuthRuntime::Signed(responder),
+            &auth_two,
             http,
             headers_two,
             body_two,
@@ -410,5 +480,109 @@ mod tests {
 
         assert_eq!(resp_two.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(run_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn invoke_auth_reloads_on_config_change() {
+        use {
+            crate::{
+                config::{Config, ENV_TOOLKIT_CONFIG_PATH},
+                test_utils::ENV_VAR_LOCK,
+            },
+            std::fs,
+        };
+
+        let _guard = ENV_VAR_LOCK.lock().unwrap();
+
+        let leader_id = "0x1111";
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk = leader_sk.verifying_key().to_bytes();
+        let leader_pk_hex = hex::encode(leader_pk);
+        let tool_id = "demo::tool::1.0.0";
+        let tool_sk = SigningKey::from_bytes(&[9u8; 32]);
+        let tool_sk_hex = hex::encode(tool_sk.to_bytes());
+
+        // Create config file
+        let file_name = format!(
+            "invoke-auth-reload-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(&file_name);
+
+        let cfg_json = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "invoke_max_body_bytes": 100,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": leader_id,
+                        "keys": [{"kid": 0, "public_key": leader_pk_hex}]
+                    }]
+                },
+                "tools": {
+                    "demo::tool::1.0.0": {
+                        "tool_kid": 0,
+                        "tool_signing_key": tool_sk_hex.clone()
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        fs::write(&path, &cfg_json).unwrap();
+
+        // Set env var and create Config
+        std::env::set_var(ENV_TOOLKIT_CONFIG_PATH, path.display().to_string());
+        let config = Config::from_env().await.unwrap();
+
+        // Create InvokeAuth
+        let invoke_auth = InvokeAuth::new_sync(config.clone(), tool_id.to_string()).unwrap();
+
+        // Verify initial auth works
+        let auth1 = invoke_auth.current().await;
+        assert!(matches!(*auth1, InvokeAuthRuntime::Signed(_)));
+
+        // Update config file with different max body bytes (to verify reload happened)
+        let new_cfg_json = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "invoke_max_body_bytes": 200,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": leader_id,
+                        "keys": [{"kid": 0, "public_key": leader_pk_hex}]
+                    }]
+                },
+                "tools": {
+                    "demo::tool::1.0.0": {
+                        "tool_kid": 0,
+                        "tool_signing_key": tool_sk_hex
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        fs::write(&path, &new_cfg_json).unwrap();
+
+        // Wait for debounce (500ms) + buffer
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+
+        // Call current() again - this should trigger reload path
+        let auth2 = invoke_auth.current().await;
+        assert!(matches!(*auth2, InvokeAuthRuntime::Signed(_)));
+
+        // Verify config was actually reloaded by checking the underlying config
+        let current_cfg = config.current();
+        assert_eq!(current_cfg.invoke_max_body_bytes(), 200);
+
+        // Cleanup
+        std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
+        let _ = fs::remove_file(&path);
     }
 }
