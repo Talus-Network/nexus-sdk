@@ -88,7 +88,7 @@ pub(crate) struct InvokeAuth {
 
 /// Internal state for InvokeAuth, tracking both the runtime and which config version built it.
 struct InvokeAuthState {
-    auth: InvokeAuthRuntime,
+    auth: Arc<InvokeAuthRuntime>,
     /// Pointer to the config that built this auth, used to detect config changes.
     config_ptr: usize,
 }
@@ -101,14 +101,17 @@ impl InvokeAuth {
         let config_ptr = Arc::as_ptr(&current_config) as usize;
 
         Ok(Self {
-            state: Arc::new(RwLock::new(InvokeAuthState { auth, config_ptr })),
+            state: Arc::new(RwLock::new(InvokeAuthState {
+                auth: Arc::new(auth),
+                config_ptr,
+            })),
             tool_id,
             config,
         })
     }
 
     /// Get the current auth runtime, reloading from config if needed.
-    pub(crate) async fn current(&self) -> InvokeAuthRuntime {
+    pub(crate) async fn current(&self) -> Arc<InvokeAuthRuntime> {
         let current_config = self.config.current();
         let current_ptr = Arc::as_ptr(&current_config) as usize;
 
@@ -116,7 +119,7 @@ impl InvokeAuth {
         {
             let guard = self.state.read().unwrap();
             if guard.config_ptr == current_ptr {
-                return guard.auth.clone();
+                return Arc::clone(&guard.auth);
             }
         }
 
@@ -127,11 +130,11 @@ impl InvokeAuth {
             if let Ok(new_auth) =
                 InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &self.tool_id)
             {
-                guard.auth = new_auth;
+                guard.auth = Arc::new(new_auth);
                 guard.config_ptr = current_ptr;
             }
         }
-        guard.auth.clone()
+        Arc::clone(&guard.auth)
     }
 }
 
@@ -142,7 +145,7 @@ impl InvokeAuth {
 /// - signed HTTP authentication + replay rules (when enabled), and
 /// - signed response production (including post-auth error responses).
 pub async fn handle_invoke<F, Fut>(
-    auth: InvokeAuthRuntime,
+    auth: &InvokeAuthRuntime,
     http: HttpRequestMeta<'_>,
     headers: HeaderMap,
     body_bytes: Vec<u8>,
@@ -157,7 +160,7 @@ where
             let (status, body) = run(None, body_bytes).await;
             json_bytes(status, body)
         }
-        InvokeAuthRuntime::Signed(responder) => {
+        InvokeAuthRuntime::Signed(ref responder) => {
             let sig_headers = SignatureHeadersRef::from_getter(|name| header_str(&headers, name));
 
             let decision = match responder.authenticate_invoke(http, &body_bytes, sig_headers) {
@@ -342,7 +345,7 @@ mod tests {
         };
 
         let resp = handle_invoke(
-            InvokeAuthRuntime::Unsigned,
+            &InvokeAuthRuntime::Unsigned,
             http,
             HeaderMap::new(),
             br#"{"hello":"world"}"#.to_vec(),
@@ -381,8 +384,9 @@ mod tests {
             query: "",
         };
 
+        let auth = InvokeAuthRuntime::Signed(Box::new(responder));
         let resp = handle_invoke(
-            InvokeAuthRuntime::Signed(Box::new(responder)),
+            &auth,
             http,
             HeaderMap::new(),
             br#"{"hello":"world"}"#.to_vec(),
@@ -434,8 +438,9 @@ mod tests {
 
         let run_calls = Arc::new(AtomicUsize::new(0));
         let run_calls_inner = Arc::clone(&run_calls);
+        let auth_one = InvokeAuthRuntime::Signed(Box::new(responder.clone()));
         let resp_one = handle_invoke(
-            InvokeAuthRuntime::Signed(Box::new(responder.clone())),
+            &auth_one,
             http.clone(),
             headers_one,
             body_one.clone(),
@@ -463,8 +468,9 @@ mod tests {
             .unwrap();
         let headers_two = request_headers(outbound_two.request_headers());
 
+        let auth_two = InvokeAuthRuntime::Signed(Box::new(responder));
         let resp_two = handle_invoke(
-            InvokeAuthRuntime::Signed(Box::new(responder)),
+            &auth_two,
             http,
             headers_two,
             body_two,
@@ -538,7 +544,7 @@ mod tests {
 
         // Verify initial auth works
         let auth1 = invoke_auth.current().await;
-        assert!(matches!(auth1, InvokeAuthRuntime::Signed(_)));
+        assert!(matches!(*auth1, InvokeAuthRuntime::Signed(_)));
 
         // Update config file with different max body bytes (to verify reload happened)
         let new_cfg_json = serde_json::to_string(&serde_json::json!({
@@ -569,7 +575,7 @@ mod tests {
 
         // Call current() again - this should trigger reload path
         let auth2 = invoke_auth.current().await;
-        assert!(matches!(auth2, InvokeAuthRuntime::Signed(_)));
+        assert!(matches!(*auth2, InvokeAuthRuntime::Signed(_)));
 
         // Verify config was actually reloaded by checking the underlying config
         let current_cfg = config.current();
