@@ -370,7 +370,10 @@ impl Config {
             None
         };
 
-        Ok(Arc::new(Self { config, _watcher: watcher }))
+        Ok(Arc::new(Self {
+            config,
+            _watcher: watcher,
+        }))
     }
 
     /// Wrap an existing config, watching its source file if it has one.
