@@ -10,6 +10,24 @@ mod parsing;
 
 pub use {fetching::*, graphql::*, parsing::*};
 
+/// Distribution metadata for distributed events. This contains metadata about
+/// the event deadline as well as the priority in which leaders should attempt
+/// to execute the event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DistributedEventMetadata {
+    /// The timestamp by which the event should be executed.
+    #[serde(
+        rename = "deadline_ms",
+        deserialize_with = "deserialize_sui_u64_to_datetime",
+        serialize_with = "serialize_datetime_to_sui_u64"
+    )]
+    pub deadline: chrono::DateTime<chrono::Utc>,
+    /// The priority list of leader addresses.
+    pub leaders: Vec<sui::types::Address>,
+    /// The task ID.
+    pub task_id: sui::types::Address,
+}
+
 /// Struct holding the Sui event ID, the event generic arguments and the data
 /// as one of [NexusEventKind].
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,6 +39,9 @@ pub struct NexusEvent {
     pub generics: Vec<sui::types::TypeTag>,
     /// The event data.
     pub data: NexusEventKind,
+    /// If the event is a distributed event, this field holds the distribution
+    /// metadata.
+    pub distribution: Option<DistributedEventMetadata>,
 }
 
 macro_rules! events {

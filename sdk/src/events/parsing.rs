@@ -8,6 +8,7 @@ use {
         events::{
             events_query::events_query::EventsQueryEventsNodesContents,
             parse_bcs,
+            DistributedEventMetadata,
             NexusEvent,
         },
         idents::primitives,
@@ -88,6 +89,7 @@ impl FromSuiGrpcEvent for NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
             data: parse_bcs(&event_name, &event.contents)?,
+            distribution: None,
         })
     }
 }
@@ -144,6 +146,11 @@ impl FromSuiGqlEvent for NexusEvent {
             bail!("Event does not come from a Nexus package, it comes from '{package_id}' instead");
         }
 
+        let distribution = event
+            .json
+            .as_ref()
+            .and_then(|j| serde_json::from_value::<DistributedEventMetadata>(j.clone()).ok());
+
         let Some(json) = event
             .json
             .as_ref()
@@ -162,6 +169,7 @@ impl FromSuiGqlEvent for NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
             data: serde_json::from_value(data)?,
+            distribution,
         })
     }
 }
@@ -236,6 +244,14 @@ mod tests {
     #[derive(Clone, Debug, Serialize, Deserialize)]
     struct Wrapper<T> {
         event: T,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DistributedWrapper<T> {
+        event: T,
+        deadline_ms: String,
+        leaders: Vec<sui::types::Address>,
+        task_id: sui::types::Address,
     }
 
     #[test]
@@ -904,6 +920,65 @@ mod tests {
             nexus_event.data,
             crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
         ));
+    }
+
+    #[test]
+    fn test_parse_from_gql_valid_distributed_nexus_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let primitives_pkg_id = objects.primitives_pkg_id;
+        let event_type = sui::types::StructTag::new(
+            primitives_pkg_id,
+            sui::types::Identifier::new("dag").unwrap(),
+            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
+            vec![sui::types::TypeTag::U64],
+        );
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+        let dag_addr = sui::types::Address::generate(&mut rng);
+        let data = DistributedWrapper {
+            event: DAGCreatedEvent { dag: dag_addr },
+            deadline_ms: "100".to_string(),
+            leaders: vec![sui::types::Address::ZERO, sui::types::Address::ZERO],
+            task_id: sui::types::Address::ZERO,
+        };
+        let gql_event = EventsQueryEventsNodesContents {
+            json: Some(serde_json::to_value(&data).unwrap()),
+            type_: Some(EventsQueryEventsNodesContentsType {
+                repr: sui::types::StructTag::new(
+                    primitives_pkg_id,
+                    primitives::Event::EVENT_WRAPPER.module,
+                    primitives::Event::EVENT_WRAPPER.name,
+                    vec![wrapper_type.clone()],
+                )
+                .to_string(),
+            }),
+        };
+
+        let result =
+            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
+        assert!(
+            result.is_ok(),
+            "Should parse valid Nexus GQL event with generics"
+        );
+        let nexus_event = result.unwrap();
+        assert_eq!(nexus_event.generics, vec![sui::types::TypeTag::U64]);
+        assert_eq!(nexus_event.id, (digest, index));
+        assert!(matches!(
+            nexus_event.data,
+            crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
+        ));
+        let distribution = nexus_event
+            .distribution
+            .as_ref()
+            .expect("Distribution should be present");
+        assert_eq!(
+            distribution.deadline,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 100_000_000).unwrap()
+        );
+        assert_eq!(distribution.leaders.len(), 2);
+        assert_eq!(distribution.task_id, sui::types::Address::ZERO);
     }
 
     #[tokio::test]
