@@ -169,12 +169,12 @@ mod tests {
                 .expect("Could not create gRPC client"),
         ));
 
-        // Generate input schema for the onchain_tool::execute function.
+        // Generate input schema for the onchain_tool::execute_v1 function.
         let schema_str = generate_input_schema(
             client,
             pkg_id.to_string().parse().unwrap(),
             "onchain_tool",
-            "execute",
+            "execute_v1",
         )
         .await
         .expect("Failed to generate input schema");
@@ -185,7 +185,7 @@ mod tests {
 
         // Verify schema structure.
         // The execute function has signature:
-        // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
+        // execute_v1(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
         // After skipping ProofOfUID (first) and TxContext (last), we should have:
         // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
         // - Parameter 1: increase_with (u64).

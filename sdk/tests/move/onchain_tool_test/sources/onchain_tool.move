@@ -73,7 +73,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 /// We can do this in various ways, one being by simply returning the data directly
 /// from the execute function call. When we do this, we need to consume this output
 /// data for the next call, so we make it a hot potato that is being consumed in submit_on_chain_tool_eval_for_walk.
-public fun execute(
+public fun execute_v1(
     worksheet: &mut ProofOfUID,
     counter: &mut RandomCounter,
     increase_with: u64,

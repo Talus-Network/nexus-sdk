@@ -152,7 +152,7 @@ This is the core of your tool, the function that performs the actual execution:
 /// 2. Last parameter: ctx: &mut TxContext
 /// 3. Return type: TaggedOutput
 /// 4. Must stamp worksheet with witness ID
-public fun execute(
+public fun execute_v1(
     worksheet: &mut ProofOfUID,
     state: &mut MyToolState,
     // Add your custom parameters here
