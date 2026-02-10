@@ -5553,8 +5553,8 @@ dependencies = [
  "sui-crypto",
  "sui-move-build",
  "sui-package-management",
- "sui-rpc 0.1.0",
- "sui-sdk-types 0.1.0",
+ "sui-rpc 0.1.1",
+ "sui-sdk-types 0.1.1",
  "sui-transaction-builder 0.1.0",
  "tempfile",
  "testcontainers-modules",
@@ -8402,7 +8402,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature 2.2.0",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
 ]
 
 [[package]]
@@ -8718,9 +8718,9 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a931ef96b890a118f12b6fa1dda727b8b6df82af3bdb5568c5257078a54c5ba8"
+checksum = "3fc4ad1b61a39a50e1db91e33bc13048017cc1e329d6f3bd447d95138569e4eb"
 dependencies = [
  "base64 0.22.1",
  "bcs",
@@ -8731,7 +8731,7 @@ dependencies = [
  "prost-types",
  "serde",
  "serde_json",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
  "tap",
  "tokio",
  "tonic",
@@ -8794,9 +8794,9 @@ dependencies = [
 
 [[package]]
 name = "sui-sdk-types"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9497600faf5a1fb07a2db85902515867ad30474abf959de1a7d1fa473c4a28"
+checksum = "35bf05a0b706993f705d37a775a5ad1deb1d65698431604676492695c563a1d9"
 dependencies = [
  "base64ct",
  "bcs",
@@ -8843,7 +8843,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
  "thiserror 2.0.17",
 ]
 
