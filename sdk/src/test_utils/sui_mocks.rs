@@ -39,6 +39,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
         pre_key_vault: mock_sui_object_ref(),
+        leader_registry: mock_sui_object_ref(),
     }
 }
 

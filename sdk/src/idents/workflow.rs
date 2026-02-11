@@ -1016,10 +1016,6 @@ impl GasExtension {
     };
 }
 
-// == `nexus_workflow::pre_key_vault` ==
-
-pub struct PreKeyVault;
-
 // == `nexus_workflow::network_auth` ==
 
 pub struct NetworkAuth;
@@ -1077,6 +1073,10 @@ impl NetworkAuth {
     };
 }
 
+// == `nexus_workflow::pre_key_vault` ==
+
+pub struct PreKeyVault;
+
 const PRE_KEY_VAULT_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("pre_key_vault");
 
@@ -1115,6 +1115,22 @@ impl PreKeyVault {
     pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: PRE_KEY_VAULT_MODULE,
         name: sui::types::Identifier::from_static("PreKeyVault"),
+    };
+}
+
+// == `nexus_workflow::leader` ==
+
+pub struct Leader;
+
+const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
+
+impl Leader {
+    /// LeaderRegistry type for lookups.
+    ///
+    /// `nexus_workflow::leader::LeaderRegistry`
+    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderRegistry"),
     };
 }
 

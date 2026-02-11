@@ -655,6 +655,13 @@ pub fn execute(
         ticket,
     );
 
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
     // `nexus_workflow::dag::request_network_to_execute_walks()`
     tx.move_call(
         sui::tx::Function::new(
@@ -663,7 +670,7 @@ pub fn execute(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![dag, execution, ticket, clock],
+        vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
