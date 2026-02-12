@@ -20,13 +20,13 @@ Set of commands for managing Tools.
 
 ---
 
-**`nexus tool new <name> --template <template>`**
+**`nexus tool new --name <name> --template <template>`**
 
 Create a new Tool scaffolding in a folder called `<name>`. Which files are generated is determined by the `--template` flag. I propose having `templates/tools/<template>.template` files that contain the Tool skeleton files. For example for `rust` it'd be a `Cargo.toml` with the `nexus-toolkit` dependency, and a `src/main.rs` file that shows a basic use case of the crate.
 
 ---
 
-**`nexus tool validate --off-chain <url>`**
+**`nexus tool validate off-chain --url <url>`**
 
 Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
 
@@ -42,7 +42,7 @@ This command should also check that the URL is accessible by the Leader node. It
 
 ---
 
-**`nexus tool validate --on-chain <ident>`**
+**`nexus tool validate on-chain --ident <ident>`**
 
 {% hint style="warning" %}
 The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.
@@ -50,7 +50,7 @@ The specific design for onchain tools is still in progress and as a result the i
 
 ---
 
-**`nexus tool register --off-chain <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
+**`nexus tool register offchain --url <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
 
 Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
 
@@ -70,7 +70,7 @@ Tool registration is currently restricted during the beta phase. To register you
 
 ---
 
-**`nexus tool register --on-chain <ident>`**
+**`nexus tool register on-chain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --witness-id <OBJECT_ID>`**
 
 {% hint style="warning" %}
 The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.
@@ -162,7 +162,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] --remote [field1,field2,...] [--inspect]`**
+**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] --remote [field1,field2,...] [--priority-fee-per-gas-unit <mist>] [--inspect]`**
 
 Execute a DAG with the provided `<id>`. This command also accepts an entry `<group>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry `<group>` defaults to a starndardized `_default_group` string.
 
@@ -191,6 +191,146 @@ This command requires that a wallet is connected to the CLI...
 **`nexus dag inspect-execution --dag-execution-id <id> --execution-digest <digest>`**
 
 Inspects a DAG execution process based on the provided `DAGExecution` object ID and the transaction digest from submitting the execution transaction.
+
+---
+
+### `nexus scheduler`
+
+Manage scheduler tasks, occurrences, and periodic schedules.
+
+#### Concepts
+
+- **Task**: owned on-chain object that bundles metadata, policies, and lifecycle state (active/paused/canceled):
+  - an **execution policy** (“what to do”): today this is “begin DAG execution”, but tasks are designed to support additional execution types in the future
+  - a **constraints policy** (“when it may run”): defines when the task is eligible to execute. In the current scheduler this eligibility is time-based and expressed via **occurrences** (start + optional deadline windows) produced by either queue-based scheduling or periodic scheduling
+- In other words: the scheduler is task/schedule/occurrence oriented; DAG execution is just the current default execution policy.
+- **Queue-based scheduling**: you enqueue one-off **occurrences** for a task (as many as you want). This is intentionally generic: by enqueueing occurrences at different times (and with different priorities), you can implement custom strategies such as delayed runs, retries, backoff, and more.
+- **Periodic scheduling**: you configure a repeating schedule (first start + period, plus optional deadline window and max iterations). The scheduler produces occurrences automatically based on that config.
+- **Occurrence**: an eligibility window for a single task run. An occurrence carries a start time (or start offset), optional deadline window, and `priority_fee_per_gas_unit` (ordering/pricing signal). When the window is open and the occurrence is consumed, the task’s execution policy runs once. Ordering is deterministic: earlier start wins; ties break on higher `priority_fee_per_gas_unit`; then FIFO.
+- Each eligible (consumed) occurrence triggers one run of the task’s execution policy: periodic tasks run the same execution periodically, and queue tasks run it once per enqueued occurrence.
+- Each run is independent: the scheduler does not automatically pass outputs/data from one run to the next. If you need stateful behavior across runs, persist and manage that state externally.
+
+---
+
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-priority-fee-per-gas-unit <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-priority-fee-per-gas-unit <mist>] [--generator queue|periodic]`**
+
+Creates a new scheduler task tied to the specified DAG. Key options:
+
+- `--entry-group` points to the DAG entry function and defaults to `_default_group`.
+- `--input-json` provides inline input data; `--remote vertex.port,...` forces specific inputs to be uploaded to the configured remote storage instead of inlining them on-chain.
+- `--metadata key=value` attaches arbitrary metadata entries and replaces any existing entries if the command is re-run.
+- `--execution-priority-fee-per-gas-unit` sets the priority fee for future DAG executions launched by the task.
+- `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
+- `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-priority-fee-per-gas-unit` sets the priority fee for that initial occurrence.
+- `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+
+Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
+
+Data for encrypted entry ports is automatically encrypted when a session is available.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task inspect --task-id <id>`**
+
+Fetches the on-chain task object, prints high-level metadata (owner, metadata entries, payload sizes), and emits a JSON payload containing the raw task structure for tooling.
+
+---
+
+**`nexus scheduler task metadata --task-id <id> --metadata key=value [...]`**
+
+Replaces all task metadata entries with the provided key/value pairs.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler task pause|resume|cancel --task-id <id>`**
+
+Mutates the scheduling state for a task. `pause` and `resume` toggle consumption of occurrences, while `cancel` clears pending occurrences and permanently disables scheduling.
+
+{% hint style="info" %}
+These commands require that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler occurrence add --task-id <id> [--start-ms <ms> | --start-offset-ms <ms>] [--deadline-offset-ms <ms>] [--priority-fee-per-gas-unit <mist>]`**
+
+Schedules a one-off occurrence for the task. `--start-ms` and `--start-offset-ms` are mutually exclusive and control when the occurrence enters the queue (absolute milliseconds or an offset from the current Sui clock). Deadlines are expressed only as offsets from that start time, and `--priority-fee-per-gas-unit` adjusts the priority fee applied to the queued occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic set --task-id <id> --first-start-ms <ms> --period-ms <ms> [--deadline-offset-ms <ms>] [--max-iterations <count>] [--priority-fee-per-gas-unit <mist>]`**
+
+Configures or updates a periodic schedule for the task. `--first-start-ms` pins the next execution to an absolute timestamp (milliseconds since epoch), `--period-ms` defines the spacing between subsequent occurrences, `--deadline-offset-ms` applies the same completion window after every generated start, `--max-iterations` limits how many future occurrences may be emitted automatically (omit for infinite), and `--priority-fee-per-gas-unit` sets the priority fee charged for each periodic occurrence.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus scheduler periodic disable --task-id <id>`**
+
+Removes the periodic schedule while leaving any existing sporadic occurrences untouched.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+### `nexus crypto`
+
+Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
+
+---
+
+**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
+
+Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
+
+Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
+{% endhint %}
+
+---
+
+**`nexus crypto generate-identity-key`**
+
+Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
+
+---
+
+**`nexus crypto init-key [--force]`**
+
+Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
+
+Use `--force` to overwrite an existing raw key or stored passphrase; doing so deletes all saved sessions and identity material because it can no longer be decrypted.
+
+---
+
+**`nexus crypto set-passphrase [--stdin] [--force]`**
+
+Stores a user-provided passphrase in the OS keyring (`nexus-cli-store/passphrase`) and derives the same 32‑byte master key via Argon2id whenever secrets need to be decrypted. By default the command prompts interactively; `--stdin` allows piping from scripts or CI.
+
+Like `init-key`, it refuses to overwrite an existing persistent key unless `--force`. Empty or whitespace-only passphrases are rejected to avoid unusable configs.
+
+---
+
+**`nexus crypto key-status`**
+
+Reports where the current master key will be loaded from, following the same priority order as the runtime resolver: `NEXUS_CLI_STORE_PASSPHRASE` environment variable, keyring passphrase entry, or raw key entry. If a raw key is in use the CLI prints the first 8 hex characters so you can distinguish multiple installations; otherwise it notes the source or that no persistent key exists yet.
 
 ---
 

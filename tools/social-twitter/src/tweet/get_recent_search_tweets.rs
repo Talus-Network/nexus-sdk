@@ -25,7 +25,6 @@ use {
     nexus_toolkit::*,
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
-    serde_json,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -135,6 +134,7 @@ fn is_valid_timestamp_format(timestamp: &str) -> bool {
     DateTime::parse_from_rfc3339(timestamp).is_ok()
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

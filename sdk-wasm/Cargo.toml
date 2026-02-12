@@ -40,7 +40,7 @@ argon2.workspace = true
 aes-gcm.workspace = true
 zeroize.workspace = true
 
-# Web API bindings
+# Web API bindings (includes fetch for Walrus upload)
 [dependencies.web-sys]
 version = "0.3"
 features = [
@@ -51,6 +51,7 @@ features = [
   "Storage",
   "Request",
   "RequestInit",
+  "RequestMode",
   "Response",
   "Headers",
   "Crypto",

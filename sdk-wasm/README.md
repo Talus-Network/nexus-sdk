@@ -5,6 +5,8 @@ WebAssembly bindings for Nexus CLI functionality, enabling DAG validation and ot
 ## Features
 
 - **DAG Validation**: Validate Nexus DAG structures from JSON in the browser
+- **DAG Execute**: Build DAG execution transactions (CLI-compatible)
+- **Walrus Storage**: Upload data to Walrus for remote port storage (CLI `--remote` parity)
 - **Zero Dependencies**: All functionality bundled in WASM for web usage
 - **Multiple Targets**: Supports web, Node.js, and bundler environments
 
@@ -86,6 +88,42 @@ Validates a DAG from a JSON string.
 - `ValidationResult` object with:
   - `is_valid`: boolean indicating if the DAG is valid
   - `error_message`: optional string with error details if validation fails
+
+### Walrus (Remote Storage)
+
+To store port data in Walrus instead of inline (CLI `--remote` parity):
+
+1. **Upload data** for each remote port:
+
+```javascript
+const blobId = await upload_json_to_walrus(
+  "https://publisher.walrus-testnet.walrus.space",
+  JSON.stringify(portValue),
+  2  // save_for_epochs (1-53)
+);
+```
+
+2. **Build the transaction** with remote ports:
+
+```javascript
+const result = build_dag_execution_transaction(
+  dagId,
+  "default",
+  inputJson,
+  "{}",
+  "10000000",
+  "0",
+  '["vertex.port"]',           // remote_ports_json
+  `{"vertex.port": "${blobId}"}`,  // remote_ports_blob_ids_json
+  "2"                         // walrus_save_for_epochs
+);
+```
+
+**Parameters** (Walrus, optional):
+
+- `remote_ports_json`: JSON array of `"vertex.port"` strings
+- `remote_ports_blob_ids_json`: JSON object mapping `"vertex.port"` → blob ID
+- `walrus_save_for_epochs`: Number of epochs (1-53). Required when using remote ports.
 
 ## Development
 

@@ -43,6 +43,7 @@ pub(crate) struct Input {
     tweet_id: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Output {

@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![allow(clippy::large_enum_variant)]
 
 use nexus_toolkit::bootstrap;
 

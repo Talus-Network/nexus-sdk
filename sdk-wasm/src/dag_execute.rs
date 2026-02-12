@@ -67,6 +67,14 @@ impl ExecutionResult {
 }
 
 /// ✅ Build DAG execution transaction using SDK (CLI-compatible with auto-encryption)
+///
+/// # Walrus (remote storage) parameters
+/// When using remote storage, call `upload_json_to_walrus` for each remote port first,
+/// then pass the blob IDs here.
+///
+/// * `remote_ports_json` - JSON array of "vertex.port" strings, e.g. `["add-vertex.a"]`
+/// * `remote_ports_blob_ids_json` - JSON object mapping "vertex.port" to blob IDs
+/// * `walrus_save_for_epochs` - Number of epochs (1-53) when using Walrus. Required when remote_ports are provided.
 #[wasm_bindgen]
 pub fn build_dag_execution_transaction(
     dag_id: &str,
@@ -74,6 +82,10 @@ pub fn build_dag_execution_transaction(
     input_json: &str,
     encrypted_ports_json: &str,
     gas_budget: &str,
+    priority_fee_per_gas_unit: Option<String>,
+    remote_ports_json: Option<String>,
+    remote_ports_blob_ids_json: Option<String>,
+    walrus_save_for_epochs: Option<String>,
 ) -> ExecutionResult {
     use web_sys::console;
 
@@ -139,6 +151,36 @@ pub fn build_dag_execution_transaction(
             }
         } else {
             console::log_1(&"No encrypted ports, using plaintext input (CLI-parity)".into());
+        }
+
+        // Parse Walrus remote ports (CLI --remote parity)
+        let remote_ports: std::collections::HashSet<String> = remote_ports_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let remote_ports_blob_ids: std::collections::HashMap<String, String> =
+            remote_ports_blob_ids_json
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+        let walrus_epochs: u8 = walrus_save_for_epochs
+            .as_ref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        if !remote_ports.is_empty() {
+            if walrus_epochs == 0 {
+                return Err("walrus_save_for_epochs is required when using remote ports".into());
+            }
+            for rp in &remote_ports {
+                if !remote_ports_blob_ids.contains_key(rp) {
+                    return Err(format!(
+                        "Missing blob ID for remote port '{}'. Call upload_json_to_walrus first.",
+                        rp
+                    )
+                    .into());
+                }
+            }
         }
 
         // Build transaction commands that mirror CLI's dag::execute function
@@ -213,21 +255,39 @@ pub fn build_dag_execution_transaction(
                 let port_result_index = command_index;
                 command_index += 1;
 
-                let json_string = serde_json::to_string(port_value)?;
-                let json_bytes = json_string.as_bytes().to_vec();
+                let remote_handle = format!("{}.{}", vertex_name, port_name);
+                let is_remote = remote_ports.contains(&remote_handle);
 
-                // Use appropriate NexusData function based on encryption status (like CLI)
-                let data_target = if is_encrypted {
-                    "{{primitives_pkg_id}}::data::inline_one_encrypted" // Use inline_one_encrypted for encrypted data
+                let (data_target, data_bytes) = if is_remote {
+                    // Walrus: use blob_id bytes (JSON serialization of the string)
+                    let blob_id = remote_ports_blob_ids.get(&remote_handle).ok_or_else(|| {
+                        format!("Missing blob ID for remote port '{}'", remote_handle)
+                    })?;
+                    let blob_id_bytes =
+                        serde_json::to_vec(&serde_json::Value::String(blob_id.clone()))?;
+                    let target = if is_encrypted {
+                        "{{primitives_pkg_id}}::data::walrus_one_encrypted"
+                    } else {
+                        "{{primitives_pkg_id}}::data::walrus_one"
+                    };
+                    (target, blob_id_bytes)
                 } else {
-                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for regular data
+                    // Inline: use port value bytes
+                    let json_string = serde_json::to_string(port_value)?;
+                    let bytes = json_string.as_bytes().to_vec();
+                    let target = if is_encrypted {
+                        "{{primitives_pkg_id}}::data::inline_one_encrypted"
+                    } else {
+                        "{{primitives_pkg_id}}::data::inline_one"
+                    };
+                    (target, bytes)
                 };
 
                 commands.push(serde_json::json!({
                     "type": "moveCall",
                     "target": data_target,
                     "arguments": [
-                        {"type": "pure", "pure_type": "vector_u8", "value": json_bytes}
+                        {"type": "pure", "pure_type": "vector_u8", "value": data_bytes}
                     ],
                     "result_index": command_index
                 }));
@@ -280,7 +340,14 @@ pub fn build_dag_execution_transaction(
         let entry_group_result_index = command_index;
         command_index += 1;
 
-        // Step 4: Final DAG execution call (exactly like CLI)
+        // Parse priority fee (v0.5.0 feature)
+        let priority_fee: u64 = priority_fee_per_gas_unit
+            .as_ref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        // Step 4: Final DAG execution call (exactly like CLI/SDK)
+        // Arguments order matches SDK: default_tap, dag, gas_service, network, entry_group, inputs, priority_fee, clock
         commands.push(serde_json::json!({
             "type": "moveCall",
             "target": "{{workflow_pkg_id}}::default_tap::begin_dag_execution",
@@ -291,6 +358,7 @@ pub fn build_dag_execution_transaction(
                 {"type": "pure", "pure_type": "id", "value": "{{network_id}}"},
                 {"type": "result", "index": entry_group_result_index},
                 {"type": "result", "index": 0},
+                {"type": "pure", "pure_type": "u64", "value": priority_fee},
                 {"type": "clock_object"}
             ],
             "result_index": command_index
@@ -299,9 +367,12 @@ pub fn build_dag_execution_transaction(
         let transaction_data = serde_json::json!({
             "commands": commands,
             "gas_budget": gas_budget_u64,
+            "priority_fee_per_gas_unit": priority_fee,
             "encrypted_ports_count": encrypted_ports.len(),
             "vertices_count": input_data.as_object().map_or(0, |obj| obj.len()),
-            "auto_encrypted": !encrypted_ports.is_empty()
+            "auto_encrypted": !encrypted_ports.is_empty(),
+            "remote_ports_count": remote_ports.len(),
+            "walrus_save_for_epochs": if remote_ports.is_empty() { None::<u8> } else { Some(walrus_epochs) }
         });
 
         Ok(serde_json::json!({
