@@ -15,13 +15,20 @@ pub use {fetching::*, graphql::*, parsing::*};
 /// to execute the event.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DistributedEventMetadata {
-    /// The timestamp by which the event should be executed.
+    /// The execution window duration.
     #[serde(
         rename = "deadline_ms",
+        deserialize_with = "deserialize_sui_u64_to_duration",
+        serialize_with = "serialize_duration_to_sui_u64"
+    )]
+    pub deadline: chrono::Duration,
+    /// The timestamp by which the event was requested.
+    #[serde(
+        rename = "requested_at_ms",
         deserialize_with = "deserialize_sui_u64_to_datetime",
         serialize_with = "serialize_datetime_to_sui_u64"
     )]
-    pub deadline: chrono::DateTime<chrono::Utc>,
+    pub requested_at: chrono::DateTime<chrono::Utc>,
     /// The priority list of leader addresses.
     pub leaders: Vec<sui::types::Address>,
     /// The task ID.

@@ -192,6 +192,31 @@ where
     serialize_sui_u64(&timestamp, serializer)
 }
 
+/// Deserialize a duration in milliseconds stored as a string.
+pub fn deserialize_sui_u64_to_duration<'de, D>(
+    deserializer: D,
+) -> Result<chrono::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let millis = deserialize_sui_u64(deserializer)?;
+
+    Ok(chrono::Duration::milliseconds(millis as i64))
+}
+
+/// Inverse of [deserialize_sui_u64_to_duration].
+pub fn serialize_duration_to_sui_u64<S>(
+    value: &chrono::Duration,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let millis = value.num_milliseconds() as u64;
+
+    serialize_sui_u64(&millis, serializer)
+}
+
 /// Deserialize a timestamp in milliseconds since epoch stored as a string
 pub fn deserialize_option_sui_u64_to_datetime<'de, D>(
     deserializer: D,

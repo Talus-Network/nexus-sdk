@@ -250,6 +250,7 @@ mod tests {
     struct DistributedWrapper<T> {
         event: T,
         deadline_ms: String,
+        requested_at_ms: String,
         leaders: Vec<sui::types::Address>,
         task_id: sui::types::Address,
     }
@@ -940,6 +941,7 @@ mod tests {
         let data = DistributedWrapper {
             event: DAGCreatedEvent { dag: dag_addr },
             deadline_ms: "100".to_string(),
+            requested_at_ms: "1000".to_string(),
             leaders: vec![sui::types::Address::ZERO, sui::types::Address::ZERO],
             task_id: sui::types::Address::ZERO,
         };
@@ -973,9 +975,10 @@ mod tests {
             .distribution
             .as_ref()
             .expect("Distribution should be present");
+        assert_eq!(distribution.deadline, chrono::Duration::milliseconds(100),);
         assert_eq!(
-            distribution.deadline,
-            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 100_000_000).unwrap()
+            distribution.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 0).unwrap()
         );
         assert_eq!(distribution.leaders.len(), 2);
         assert_eq!(distribution.task_id, sui::types::Address::ZERO);
