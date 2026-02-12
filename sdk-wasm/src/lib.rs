@@ -5,8 +5,9 @@ mod dag_execute;
 mod dag_publish;
 mod dag_validate;
 mod scheduler;
+mod walrus;
 
-pub use {crypto::*, dag_execute::*, dag_publish::*, dag_validate::*, scheduler::*};
+pub use {crypto::*, dag_execute::*, dag_publish::*, dag_validate::*, scheduler::*, walrus::*};
 
 // Called when the wasm module is instantiated
 #[wasm_bindgen(start)]
@@ -18,17 +19,18 @@ pub fn main() {
 /// Updated to v0.5.0 with scheduler and tool registration support
 #[wasm_bindgen]
 pub fn get_sdk_version() -> String {
-    serde_json::json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "features": [
-            "dag_validation",
-            "dag_publish",
-            "dag_execute",
-            "crypto",
-            "scheduler"
-        ],
-        "cli_compatible_version": "0.5.0"
-    })
+        serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "features": [
+                "dag_validation",
+                "dag_publish",
+                "dag_execute",
+                "crypto",
+                "scheduler",
+                "walrus"
+            ],
+            "cli_compatible_version": "0.5.0"
+        })
     .to_string()
 }
 
