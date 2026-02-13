@@ -209,6 +209,11 @@ executable-scripts:
     cd $(git rev-parse --show-toplevel)
 
     for f in $(git ls-files); do
+        # `git ls-files` includes files that are staged for deletion; skip them.
+        if [[ ! -f "$f" ]]; then
+            continue
+        fi
+
         first_line=$(head -n 1 "$f")
 
         # see if the first line is a shell shebang

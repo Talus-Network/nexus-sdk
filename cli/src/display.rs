@@ -9,7 +9,8 @@ pub(crate) fn separator() -> ColoredString {
 #[macro_export]
 macro_rules! command_title {
     ($($args:tt)*) => {
-        if !JSON_MODE.load(Ordering::Relaxed) {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            use colored::Colorize as _;
             println!(
                 "\n{arrow} {title}{separator}",
                 arrow = "▶".bold().purple(),
@@ -25,8 +26,9 @@ macro_rules! command_title {
 macro_rules! confirm {
     ($($args:tt)*) => {
         {
-            if !JSON_MODE.load(Ordering::Relaxed) {
+            if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
                 use std::io::{self, Write};
+                use colored::Colorize as _;
 
                 print!("{warning} {message} {yn}: ", warning = "⚠".bold().yellow(), message = format!($($args)*).bold(), yn = "[y/N]".truecolor(100, 100, 100));
 
@@ -48,10 +50,26 @@ macro_rules! confirm {
 #[macro_export]
 macro_rules! notify_success {
     ($($args:tt)*) => {
-        if !JSON_MODE.load(Ordering::Relaxed) {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            use colored::Colorize as _;
             println!(
                 "[{check}] {msg}",
                 check = "✓".green().bold(),
+                msg = format!($($args)*)
+            );
+        }
+    };
+}
+
+/// Similar to [`notify_success!`] but for warnings.
+#[macro_export]
+macro_rules! notify_warning {
+    ($($args:tt)*) => {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            use colored::Colorize as _;
+            eprintln!(
+                "[{warning}] {msg}",
+                warning = "⚠".yellow().bold(),
                 msg = format!($($args)*)
             );
         }
@@ -62,7 +80,8 @@ macro_rules! notify_success {
 #[macro_export]
 macro_rules! notify_error {
     ($($args:tt)*) => {
-        if !JSON_MODE.load(Ordering::Relaxed) {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            use colored::Colorize as _;
             eprintln!(
                 "[{ballot}] {msg}",
                 ballot = "X".red().bold(),
@@ -76,7 +95,8 @@ macro_rules! notify_error {
 #[macro_export]
 macro_rules! item {
     ($($args:tt)*) => {
-        if !JSON_MODE.load(Ordering::Relaxed) {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+            use colored::Colorize as _;
             println!(
                 "    {arrow} {item}",
                 arrow = "▶".truecolor(100, 100, 100),
@@ -98,7 +118,7 @@ macro_rules! loading {
 
         let pb = ProgressBar::new_spinner();
 
-        if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        if !$crate::prelude::JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
             pb.set_style(
                 ProgressStyle::default_spinner()
                     .template("[{spinner}] {msg}")

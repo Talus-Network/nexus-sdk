@@ -143,24 +143,23 @@ Note that this coin can only be used to pay for Nexus and tool invocation fees o
 
 ## Configure Encryption for Nexus workflows
 
-Nexus encrypts every sensitive value in your CLI config and every DAG payload using a [Signal-inspired](https://signal.org/docs/) stack: a persistent master key protects secrets at rest, an [X3DH](https://signal.org/docs/specifications/x3dh/) identity key authenticates you to the network, and a [Double-Ratchet](https://signal.org/docs/specifications/doubleratchet/) session derived from an on-chain pre-key encrypts runtime traffic. Follow the steps below in order; each one builds on the previous.
+Nexus encrypts every DAG payload using a [Signal-inspired](https://signal.org/docs/) stack: an [X3DH](https://signal.org/docs/specifications/x3dh/) identity key authenticates you to the network, and a [Double-Ratchet](https://signal.org/docs/specifications/doubleratchet/) session derived from an on-chain pre-key encrypts runtime traffic. The CLI can also optionally encrypt its locally stored crypto state at rest using a master key in your OS keyring. Follow the steps below in order; each one builds on the previous.
 
 ### 1. Initialize the CLI master key
 
-The CLI stores encrypted blobs (identity key, sessions, Walrus credentials, etc.) in `~/.nexus/*.toml`. Those blobs are decrypted using a 32-byte master key that lives either in your OS keyring or is derived from a passphrase via [Argon2id](https://en.wikipedia.org/wiki/Argon2).
+The CLI stores its local crypto state (identity key, sessions, etc.) in `~/.nexus/crypto.toml`. By default, the CLI will **auto-enable** at-rest encryption the first time it needs to persist secret state by creating a 32-byte master key in your OS keyring. If the keyring is unavailable (common in headless/CI environments), the CLI will warn and store secrets in plaintext so it can continue to work.
+
+Note: your Sui private key (configured via `nexus conf set --sui.pk`) is stored in `~/.nexus/conf.toml` as plaintext, so treat that file as sensitive.
 
 ```bash
-# Option A: generate a raw master key inside the OS keyring
-nexus crypto init-key
-
-# Option B: store a passphrase (useful for headless or CI)
-printf "my-strong-passphrase" | nexus crypto set-passphrase --stdin
+# Optional: check whether secrets will be encrypted at rest
+nexus secrets status
 ```
 
-Both commands refuse to overwrite existing credentials unless you add `--force`, because rotating the master key invalidates every encrypted entry. You can confirm which source will be used by running:
+If you want to enable encryption proactively (instead of waiting for the first secret write), run:
 
 ```bash
-nexus crypto key-status
+nexus secrets enable
 ```
 
 ### 2. Generate an identity key
@@ -171,7 +170,7 @@ Your long-term identity key represents the "public face" of the CLI in the Signa
 nexus crypto generate-identity-key
 ```
 
-This writes a freshly generated X25519 key pair into `~/.nexus/crypto.toml`, encrypted with the master key from Step 1.
+This writes a freshly generated X25519 key pair into `~/.nexus/crypto.toml` (encrypted if secrets encryption is enabled and the keyring is available).
 
 ### 3. Establish a Signal-style session
 
@@ -185,7 +184,7 @@ Behind the scenes the command:
 
 1. Submits a programmable transaction that calls `pre_key_vault::claim_pre_key_for_self`, emitting the pre-key bundle bytes for your Sui address.
 1. Runs the X3DH sender flow locally using your identity key and that bundle, deriving shared secrets and the first Double-Ratchet message.
-1. Persists the resulting session (encrypted) to `~/.nexus/crypto.toml`.
+1. Persists the resulting session to `~/.nexus/crypto.toml` (encrypted if a master key is configured).
 1. Sends a second programmable transaction that associates the claimed pre-key object with your address and delivers the initial encrypted message to the network.
 
 Every `nexus dag execute` / `inspect-execution` call now loads this session to encrypt entry ports and decrypt remote-hosted outputs. If you delete the session or rotate keys, simply rerun `nexus crypto auth` to mint a replacement.
