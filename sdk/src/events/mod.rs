@@ -10,6 +10,31 @@ mod parsing;
 
 pub use {fetching::*, graphql::*, parsing::*};
 
+/// Distribution metadata for distributed events. This contains metadata about
+/// the event deadline as well as the priority in which leaders should attempt
+/// to execute the event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DistributedEventMetadata {
+    /// The execution window duration.
+    #[serde(
+        rename = "deadline_ms",
+        deserialize_with = "deserialize_sui_u64_to_duration",
+        serialize_with = "serialize_duration_to_sui_u64"
+    )]
+    pub deadline: chrono::Duration,
+    /// The timestamp by which the event was requested.
+    #[serde(
+        rename = "requested_at_ms",
+        deserialize_with = "deserialize_sui_u64_to_datetime",
+        serialize_with = "serialize_datetime_to_sui_u64"
+    )]
+    pub requested_at: chrono::DateTime<chrono::Utc>,
+    /// The priority list of leader addresses.
+    pub leaders: Vec<sui::types::Address>,
+    /// The task ID.
+    pub task_id: sui::types::Address,
+}
+
 /// Struct holding the Sui event ID, the event generic arguments and the data
 /// as one of [NexusEventKind].
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,6 +46,9 @@ pub struct NexusEvent {
     pub generics: Vec<sui::types::TypeTag>,
     /// The event data.
     pub data: NexusEventKind,
+    /// If the event is a distributed event, this field holds the distribution
+    /// metadata.
+    pub distribution: Option<DistributedEventMetadata>,
 }
 
 macro_rules! events {
@@ -54,17 +82,43 @@ macro_rules! events {
 
         // == Parsing from BCS ==
 
-        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<NexusEventKind> {
+        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<(NexusEventKind, Option<DistributedEventMetadata>)> {
             #[derive(Deserialize)]
             struct Wrapper<T> {
                 event: T,
             }
 
+            #[derive(Deserialize)]
+            struct DistributedWrapper<T> {
+                event: T,
+                deadline_ms: u64,
+                requested_at_ms: u64,
+                task_id: sui::types::Address,
+                leaders: Vec<sui::types::Address>,
+            }
+
+
             match name {
                 $(
                     stringify!($struct_name) => {
-                        let obj: Wrapper<$struct_name> = bcs::from_bytes(bytes)?;
-                        Ok(NexusEventKind::$variant(obj.event))
+                        match bcs::from_bytes::<DistributedWrapper<$struct_name>>(bytes) {
+                            Ok(distributed) => {
+                                let metadata = DistributedEventMetadata {
+                                    deadline: chrono::Duration::milliseconds(distributed.deadline_ms as i64),
+                                    requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(distributed.requested_at_ms as i64)
+                                        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
+                                    task_id: distributed.task_id,
+                                    leaders: distributed.leaders,
+                                };
+
+                                Ok((NexusEventKind::$variant(distributed.event), Some(metadata)))
+                            }
+                            Err(_) => {
+                                 let obj: Wrapper<$struct_name> = bcs::from_bytes(bytes)?;
+
+                                 Ok((NexusEventKind::$variant(obj.event), None))
+                            }
+                        }
                     }
                 )*
                 _ => bail!("Unknown event: {}", name),
@@ -521,6 +575,20 @@ mod tests {
         pub text: String,
     }
 
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    struct Wrapper<T> {
+        event: T,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    struct DistributedWrapper<T> {
+        event: T,
+        deadline_ms: u64,
+        requested_at_ms: u64,
+        task_id: sui::types::Address,
+        leaders: Vec<sui::types::Address>,
+    }
+
     #[test]
     fn test_nexus_event_kind_name_helper() {
         let dummy = DummyEvent { value: 42 };
@@ -558,31 +626,95 @@ mod tests {
 
     #[test]
     fn test_nexus_event_kind_bcs_deser() {
-        let dummy = DummyEvent { value: 99 };
-        let another = AnotherEvent {
-            text: "xyz".to_string(),
+        let dummy = Wrapper {
+            event: DummyEvent { value: 99 },
+        };
+        let another = Wrapper {
+            event: AnotherEvent {
+                text: "xyz".to_string(),
+            },
         };
 
         let dummy_bytes = bcs::to_bytes(&dummy).unwrap();
         let another_bytes = bcs::to_bytes(&another).unwrap();
 
-        let parsed_dummy = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
-        let parsed_another = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+        let (parsed_dummy, dis1) = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
+        let (parsed_another, dis2) = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+
+        assert!(dis1.is_none());
+        assert!(dis2.is_none());
 
         match parsed_dummy {
-            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy),
+            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy.event),
             _ => panic!("Expected Dummy variant"),
         }
 
         match parsed_another {
-            NexusEventKind::Another(ev) => assert_eq!(ev, another),
+            NexusEventKind::Another(ev) => assert_eq!(ev, another.event),
+            _ => panic!("Expected Another variant"),
+        }
+    }
+
+    #[test]
+    fn test_distributed_nexus_event_kind_bcs_deser() {
+        let dummy = DistributedWrapper {
+            event: DummyEvent { value: 99 },
+            deadline_ms: 0,
+            requested_at_ms: 0,
+            task_id: sui::types::Address::TWO,
+            leaders: vec![sui::types::Address::TWO],
+        };
+        let another = DistributedWrapper {
+            event: AnotherEvent {
+                text: "xyz".to_string(),
+            },
+            deadline_ms: 100,
+            requested_at_ms: 1500,
+            task_id: sui::types::Address::ZERO,
+            leaders: vec![sui::types::Address::ZERO],
+        };
+
+        let dummy_bytes = bcs::to_bytes(&dummy).unwrap();
+        let another_bytes = bcs::to_bytes(&another).unwrap();
+
+        let (parsed_dummy, dis1) = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
+        let (parsed_another, dis2) = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+
+        let dis1 = dis1.expect("Expected distribution metadata for dummy event");
+        let dis2 = dis2.expect("Expected distribution metadata for another event");
+
+        assert_eq!(dis1.leaders, vec![sui::types::Address::TWO]);
+        assert_eq!(dis1.task_id, sui::types::Address::TWO);
+        assert_eq!(dis1.deadline, chrono::Duration::milliseconds(0));
+        assert_eq!(
+            dis1.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
+        );
+
+        assert_eq!(dis2.leaders, vec![sui::types::Address::ZERO]);
+        assert_eq!(dis2.task_id, sui::types::Address::ZERO);
+        assert_eq!(dis2.deadline, chrono::Duration::milliseconds(100));
+        assert_eq!(
+            dis2.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
+        );
+
+        match parsed_dummy {
+            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy.event),
+            _ => panic!("Expected Dummy variant"),
+        }
+
+        match parsed_another {
+            NexusEventKind::Another(ev) => assert_eq!(ev, another.event),
             _ => panic!("Expected Another variant"),
         }
     }
 
     #[test]
     fn test_parse_bcs_unknown_event() {
-        let dummy = DummyEvent { value: 123 };
+        let dummy = Wrapper {
+            event: DummyEvent { value: 123 },
+        };
         let bytes = bcs::to_bytes(&dummy).unwrap();
         let result = parse_bcs("UnknownEvent", &bytes);
         assert!(result.is_err());

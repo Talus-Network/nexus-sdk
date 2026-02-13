@@ -559,6 +559,13 @@ pub fn add_occurrence_absolute_for_task(
     // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -578,6 +585,7 @@ pub fn add_occurrence_absolute_for_task(
             start_time_ms,
             deadline_offset_ms,
             priority_fee_per_gas_unit,
+            leader_registry,
             clock,
         ],
     ))
@@ -604,6 +612,13 @@ pub fn add_occurrence_relative_for_task(
     // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -623,6 +638,7 @@ pub fn add_occurrence_relative_for_task(
             start_offset_ms,
             deadline_offset_ms,
             priority_fee_per_gas_unit,
+            leader_registry,
             clock,
         ],
     ))
@@ -664,6 +680,13 @@ pub fn new_or_modify_periodic_for_task(
     // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -685,6 +708,7 @@ pub fn new_or_modify_periodic_for_task(
             deadline_offset_ms,
             max_iterations,
             priority_fee_per_gas_unit,
+            leader_registry,
             clock,
         ],
     ))
@@ -882,6 +906,13 @@ pub fn execute_scheduled_occurrence(
     // Create shared inputs once so subsequent commands reuse the same arguments.
     let task = shared_task_arg(tx, task)?;
 
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
@@ -897,7 +928,7 @@ pub fn execute_scheduled_occurrence(
                 workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
                 vec![],
             ),
-            vec![task, clock],
+            vec![task, leader_registry, clock],
         ),
         OccurrenceGenerator::Periodic => tx.move_call(
             sui::tx::Function::new(
@@ -906,7 +937,7 @@ pub fn execute_scheduled_occurrence(
                 workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
                 vec![],
             ),
-            vec![task, clock],
+            vec![task, leader_registry, clock],
         ),
     };
 
@@ -1009,7 +1040,7 @@ pub fn execute_scheduled_occurrence(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![dag, execution, ticket, clock],
+        vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -1434,12 +1465,13 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_time);
         inspector.expect_option_u64(&call.arguments[2], deadline);
         inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
-        inspector.expect_clock(&call.arguments[4]);
+        inspector.expect_shared_object(&call.arguments[4], &objects.leader_registry, false);
+        inspector.expect_clock(&call.arguments[5]);
     }
 
     #[test]
@@ -1464,12 +1496,13 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_offset);
         inspector.expect_option_u64(&call.arguments[2], deadline_offset);
         inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
-        inspector.expect_clock(&call.arguments[4]);
+        inspector.expect_shared_object(&call.arguments[4], &objects.leader_registry, false);
+        inspector.expect_clock(&call.arguments[5]);
     }
 
     #[test]
@@ -1500,14 +1533,15 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
-        assert_eq!(call.arguments.len(), 7);
+        assert_eq!(call.arguments.len(), 8);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], first_start);
         inspector.expect_u64(&call.arguments[2], period);
         inspector.expect_option_u64(&call.arguments[3], deadline_offset);
         inspector.expect_option_u64(&call.arguments[4], max_iterations);
         inspector.expect_u64(&call.arguments[5], priority_fee_per_gas_unit);
-        inspector.expect_clock(&call.arguments[6]);
+        inspector.expect_shared_object(&call.arguments[6], &objects.leader_registry, false);
+        inspector.expect_clock(&call.arguments[7]);
     }
 
     #[test]
@@ -1668,9 +1702,14 @@ mod tests {
             scheduler_call.function,
             workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
         );
-        assert_eq!(scheduler_call.arguments.len(), 2);
+        assert_eq!(scheduler_call.arguments.len(), 3);
         inspector.expect_shared_object(&scheduler_call.arguments[0], &task, true);
-        inspector.expect_clock(&scheduler_call.arguments[1]);
+        inspector.expect_shared_object(
+            &scheduler_call.arguments[1],
+            &objects.leader_registry,
+            false,
+        );
+        inspector.expect_clock(&scheduler_call.arguments[2]);
 
         let tap_call = inspector.move_call(1);
         assert_eq!(

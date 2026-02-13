@@ -192,6 +192,31 @@ where
     serialize_sui_u64(&timestamp, serializer)
 }
 
+/// Deserialize a duration in milliseconds stored as a string.
+pub fn deserialize_sui_u64_to_duration<'de, D>(
+    deserializer: D,
+) -> Result<chrono::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let millis = deserialize_sui_u64(deserializer)?;
+
+    Ok(chrono::Duration::milliseconds(millis as i64))
+}
+
+/// Inverse of [deserialize_sui_u64_to_duration].
+pub fn serialize_duration_to_sui_u64<S>(
+    value: &chrono::Duration,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let millis = value.num_milliseconds() as u64;
+
+    serialize_sui_u64(&millis, serializer)
+}
+
 /// Deserialize a timestamp in milliseconds since epoch stored as a string
 pub fn deserialize_option_sui_u64_to_datetime<'de, D>(
     deserializer: D,
@@ -279,7 +304,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use {super::*, serde::Deserialize};
+    use {super::*, chrono::TimeZone, serde::Deserialize};
 
     #[derive(Deserialize, Serialize)]
     struct TestUrlStruct {
@@ -297,6 +322,78 @@ mod tests {
             serialize_with = "serialize_sui_u64"
         )]
         value: u64,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestSuiOptionU64Struct {
+        #[serde(
+            deserialize_with = "deserialize_sui_option_u64",
+            serialize_with = "serialize_sui_option_u64"
+        )]
+        value: Option<u64>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestStringStruct {
+        #[serde(
+            deserialize_with = "deserialize_bytes_to_string",
+            serialize_with = "serialize_string_to_bytes"
+        )]
+        value: String,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestDatetimeStruct {
+        #[serde(
+            deserialize_with = "deserialize_sui_u64_to_datetime",
+            serialize_with = "serialize_datetime_to_sui_u64"
+        )]
+        value: chrono::DateTime<chrono::Utc>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestDurationStruct {
+        #[serde(
+            deserialize_with = "deserialize_sui_u64_to_duration",
+            serialize_with = "serialize_duration_to_sui_u64"
+        )]
+        value: chrono::Duration,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestOptionDatetimeStruct {
+        #[serde(
+            deserialize_with = "deserialize_option_sui_u64_to_datetime",
+            serialize_with = "serialize_option_datetime_to_sui_u64"
+        )]
+        value: Option<chrono::DateTime<chrono::Utc>>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestEncodedBytesStruct {
+        #[serde(
+            deserialize_with = "deserialize_encoded_bytes",
+            serialize_with = "serialize_encoded_bytes"
+        )]
+        value: Vec<u8>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestEncodedBytesVecStruct {
+        #[serde(
+            deserialize_with = "deserialize_encoded_bytes_vec",
+            serialize_with = "serialize_encoded_bytes_vec"
+        )]
+        value: Vec<Vec<u8>>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestJsonValueStruct {
+        #[serde(
+            deserialize_with = "deserialize_bytes_to_json_value",
+            serialize_with = "serialize_json_value_to_bytes"
+        )]
+        value: serde_json::Value,
     }
 
     #[test]
@@ -320,6 +417,131 @@ mod tests {
         let input = r#"{"value":"123"}"#;
         let result: TestSuiU64Struct = serde_json::from_str(input).unwrap();
         assert_eq!(result.value, 123);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_json_value_deser_ser() {
+        let json = serde_json::json!({"foo": "bar"});
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(serde_json::to_string(&json).unwrap());
+        let input = format!(
+            r#"{{"value":{}}}"#,
+            serde_json::to_string(&encoded).unwrap()
+        );
+        let result: TestJsonValueStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, json);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_sui_option_u64_deser_ser_some() {
+        let input = r#"{"value":"456"}"#;
+        let result: TestSuiOptionU64Struct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, Some(456));
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_sui_option_u64_deser_ser_none() {
+        let input = r#"{"value":null}"#;
+        let result: TestSuiOptionU64Struct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, None);
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_bytes_to_string_deser_ser() {
+        let s = "hello world";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(s.as_bytes());
+        let input = format!(
+            r#"{{"value":{}}}"#,
+            serde_json::to_string(&encoded).unwrap()
+        );
+        let result: TestStringStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, s);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_datetime_deser_ser() {
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
+        let input = format!(r#"{{"value":"1600000000000"}}"#);
+        let result: TestDatetimeStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, dt);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_duration_deser_ser() {
+        let dur = chrono::Duration::milliseconds(12345);
+        let input = format!(r#"{{"value":"12345"}}"#);
+        let result: TestDurationStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, dur);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_option_datetime_deser_ser_some() {
+        let dt = chrono::Utc.timestamp_millis_opt(1_600_000_000_000).unwrap();
+        let input = format!(r#"{{"value":"1600000000000"}}"#);
+        let result: TestOptionDatetimeStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, Some(dt));
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_option_datetime_deser_ser_none() {
+        let input = r#"{"value":null}"#;
+        let result: TestOptionDatetimeStruct = serde_json::from_str(input).unwrap();
+        assert_eq!(result.value, None);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_encoded_bytes_deser_ser() {
+        let bytes = b"test bytes";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let input = format!(
+            r#"{{"value":{}}}"#,
+            serde_json::to_string(&encoded).unwrap()
+        );
+        let result: TestEncodedBytesStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, bytes);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_encoded_bytes_vec_deser_ser() {
+        let vec = vec![b"foo".to_vec(), b"bar".to_vec()];
+        let encoded_vec: Vec<String> = vec
+            .iter()
+            .map(|b| base64::engine::general_purpose::STANDARD.encode(b))
+            .collect();
+        let input = format!(
+            r#"{{"value":{}}}"#,
+            serde_json::to_string(&encoded_vec).unwrap()
+        );
+        let result: TestEncodedBytesVecStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, vec);
 
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);
