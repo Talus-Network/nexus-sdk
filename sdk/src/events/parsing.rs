@@ -85,11 +85,13 @@ impl FromSuiGrpcEvent for NexusEvent {
             );
         }
 
+        let (data, distribution) = parse_bcs(&event_name, &event.contents)?;
+
         Ok(NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
-            data: parse_bcs(&event_name, &event.contents)?,
-            distribution: None,
+            data,
+            distribution,
         })
     }
 }
@@ -255,6 +257,15 @@ mod tests {
         task_id: sui::types::Address,
     }
 
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DistributedWrapperBcs<T> {
+        event: T,
+        deadline_ms: u64,
+        requested_at_ms: u64,
+        leaders: Vec<sui::types::Address>,
+        task_id: sui::types::Address,
+    }
+
     #[test]
     fn test_parse_from_grpc_valid_nexus_event() {
         let mut rng = rand::thread_rng();
@@ -296,6 +307,64 @@ mod tests {
             nexus_event.data,
             crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
         ));
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_distributed_nexus_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("dag").unwrap(),
+            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+        // Manually craft a valid event kind and serialize as BCS
+        let dag_addr = sui::types::Address::generate(&mut rng);
+        let data = DistributedWrapperBcs {
+            event: DAGCreatedEvent { dag: dag_addr },
+            deadline_ms: 30,
+            requested_at_ms: 10,
+            leaders: vec![sui::types::Address::ZERO],
+            task_id: sui::types::Address::ZERO,
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type.clone()],
+            ),
+            bcs,
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
+        assert!(result.is_ok(), "Should parse valid Nexus event");
+        let nexus_event = result.unwrap();
+        assert_eq!(nexus_event.generics, vec![]);
+        assert_eq!(nexus_event.id, (digest, index));
+        assert!(matches!(
+            nexus_event.data,
+            crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
+        ));
+        let distribution = nexus_event
+            .distribution
+            .as_ref()
+            .expect("Distribution should be present");
+        assert_eq!(distribution.deadline, chrono::Duration::milliseconds(30));
+        assert_eq!(
+            distribution.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(10 / 1000, 0).unwrap()
+        );
+        assert_eq!(distribution.leaders.len(), 1);
+        assert_eq!(distribution.task_id, sui::types::Address::ZERO);
     }
 
     #[test]
