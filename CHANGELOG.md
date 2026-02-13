@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `signed_http` feature and module for application layer HTTP request/response signatures.
 - `network_auth` helpers, types, and PTB templates for tool key registration and leader allowlists.
 - derived gas service identifiers and PTB templates
+- `secret_store` module providing a minimal at-rest secret wrapper with optional encryption.
 - `NexusClient` code for gas tickets
 - support for distribution by fetching `DistributedEventWrapper` events
 - `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - adjusted transaction templates and events to support tools as derived objects
 - removed all `Tool*` types for a unified `Tool` type that supports both offchain and onchain tools and `ToolRef` type to differentiate
 - `NexusClient::workflow::execute` to work with derived gas service
+- replaced `secret_core` with `secret_store` for at-rest secrets.
 
 #### Fixed
 
@@ -36,15 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SharedObjectRef` type to represent shared object references with mutability information
 - `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
 - added support for tagged_output in sdk
+- `nexus secrets` command group for local at-rest secrets:
+  - `nexus secrets status` / `enable` / `disable` / `rotate` / `wipe`
 
 #### Changed
 
 - `nexus tool list` now works with derived objects
-- extracted gas tickets related logic to the `NexusClient`
+- at-rest secret storage now auto-creates a master key in the OS keyring on first secret write (when possible); if the keyring is unavailable, it warns and writes plaintext.
 
 #### Removed
 
-- `nexus network create` as it was outdated and no longer relevant
+- `nexus crypto set-passphrase` command (passphrase-based encryption).
+- `nexus crypto init-key` and `nexus crypto key-status` (moved to `nexus secrets`).
 
 ### `nexus-toolkit-rust`
 

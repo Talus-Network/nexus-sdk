@@ -253,9 +253,16 @@ pub mod grpc {
     }
 
     pub fn mock_server(mocks: ServerMocks) -> String {
-        let port = portpicker::pick_unused_port().expect("No ports free");
-        let addr = format!("127.0.0.1:{}", port);
-        let thread_addr = addr.clone();
+        // Bind a listener first so the returned URL is immediately connectable.
+        //
+        // This avoids flaky tests under parallel execution where `pick_unused_port` can race and
+        // where the server may not yet be bound by the time the client connects.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("local addr");
+        listener.set_nonblocking(true).expect("set nonblocking");
+        let listener =
+            tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
         let ledger_service = mocks.ledger_service_mock.map(LedgerServiceServer::new);
         let execution_service = mocks
@@ -272,7 +279,7 @@ pub mod grpc {
                 .add_optional_service(execution_service)
                 .add_optional_service(subscription_service)
                 .add_optional_service(state_service)
-                .serve(thread_addr.parse().unwrap())
+                .serve_with_incoming(incoming)
                 .await
                 .unwrap();
         });

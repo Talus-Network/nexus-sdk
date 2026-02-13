@@ -339,9 +339,45 @@ Removes the periodic schedule while leaving any existing sporadic occurrences un
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
 {% endhint %}
 
+### `nexus secrets`
+
+Commands for managing the CLI’s local at-rest secret storage (master key + encryption behavior for data stored in `~/.nexus/crypto.toml`).
+
+---
+
+**`nexus secrets status`**
+
+Reports whether secrets will be written encrypted or plaintext, and whether the OS keyring is available.
+
+---
+
+**`nexus secrets enable`**
+
+Ensures a master key exists in the OS keyring and rewrites `~/.nexus/crypto.toml` so secret fields are stored encrypted.
+
+---
+
+**`nexus secrets disable [--yes]`**
+
+Rewrites local secret state as plaintext and deletes the master key from the OS keyring.
+
+---
+
+**`nexus secrets rotate [--yes]`**
+
+Rotates the master key and re-encrypts local secret state. Use when you want a new master key but can still decrypt existing data.
+
+---
+
+**`nexus secrets wipe [--yes]`**
+
+Deletes the master key and deletes `~/.nexus/crypto.toml`. Use when you lost the master key (e.g., moved machines) and want a clean slate.
+
+---
+
 ### `nexus crypto`
 
-Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
+Set of commands for establishing secure sessions that power DAG data encryption (X3DH identity key + Double Ratchet sessions).
 
 ---
 
@@ -359,29 +395,7 @@ This command requires that a wallet is connected to the CLI and spends gas for *
 
 **`nexus crypto generate-identity-key`**
 
-Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
-
----
-
-**`nexus crypto init-key [--force]`**
-
-Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
-
-Use `--force` to overwrite an existing raw key or stored passphrase; doing so deletes all saved sessions and identity material because it can no longer be decrypted.
-
----
-
-**`nexus crypto set-passphrase [--stdin] [--force]`**
-
-Stores a user-provided passphrase in the OS keyring (`nexus-cli-store/passphrase`) and derives the same 32‑byte master key via Argon2id whenever secrets need to be decrypted. By default the command prompts interactively; `--stdin` allows piping from scripts or CI.
-
-Like `init-key`, it refuses to overwrite an existing persistent key unless `--force`. Empty or whitespace-only passphrases are rejected to avoid unusable configs.
-
----
-
-**`nexus crypto key-status`**
-
-Reports where the current master key will be loaded from, following the same priority order as the runtime resolver: `NEXUS_CLI_STORE_PASSPHRASE` environment variable, keyring passphrase entry, or raw key entry. If a raw key is in use the CLI prints the first 8 hex characters so you can distinguish multiple installations; otherwise it notes the source or that no persistent key exists yet.
+Creates a brand-new long-term identity key and stores it inside `~/.nexus/crypto.toml` (encrypted if at-rest encryption is enabled). Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
 
 ---
 
