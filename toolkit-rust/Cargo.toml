@@ -26,7 +26,7 @@ hex.workspace = true
 warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
-notify = "6.1"
+notify = "8.2.0"
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread"] }
 tracing = "0.1"
 # === Nexus deps ===

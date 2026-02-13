@@ -3821,11 +3821,11 @@ checksum = "dc1804bdb6a9784758b200007273a8b84e2b0b0b97a8f1e18e763eceb3e9f98a"
 
 [[package]]
 name = "inotify"
-version = "0.9.6"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8069d3ec154eb856955c1c0fbffefbf5f3c40a104ec912d4797314c1801abff"
+checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.10.0",
  "inotify-sys",
  "libc",
 ]
@@ -4652,23 +4652,12 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.8.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
-dependencies = [
- "libc",
- "log",
- "wasi",
- "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "mio"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a69bcab0ad47271a0234d9422b131806bf3968021e5dc9328caf2d4cd58557fc"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -5514,8 +5503,8 @@ dependencies = [
  "sui-crypto",
  "sui-move-build",
  "sui-package-management",
- "sui-rpc 0.1.0",
- "sui-sdk-types 0.1.0",
+ "sui-rpc 0.1.1",
+ "sui-sdk-types 0.1.1",
  "sui-transaction-builder 0.1.0",
  "tempfile",
  "testcontainers-modules",
@@ -5610,21 +5599,29 @@ checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 
 [[package]]
 name = "notify"
-version = "6.1.1"
+version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6205bd8bb1e454ad2e27422015fb5e4f2bcc7e08fa8f27058670d208324a4d2d"
+checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
 dependencies = [
  "bitflags 2.10.0",
- "crossbeam-channel",
- "filetime",
  "fsevent-sys",
  "inotify",
  "kqueue",
  "libc",
  "log",
- "mio 0.8.11",
+ "mio",
+ "notify-types",
  "walkdir",
- "windows-sys 0.48.0",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "notify-types"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
+dependencies = [
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -8326,7 +8323,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature 2.2.0",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
 ]
 
 [[package]]
@@ -8642,9 +8639,9 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a931ef96b890a118f12b6fa1dda727b8b6df82af3bdb5568c5257078a54c5ba8"
+checksum = "3fc4ad1b61a39a50e1db91e33bc13048017cc1e329d6f3bd447d95138569e4eb"
 dependencies = [
  "base64 0.22.1",
  "bcs",
@@ -8655,7 +8652,7 @@ dependencies = [
  "prost-types",
  "serde",
  "serde_json",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
  "tap",
  "tokio",
  "tonic",
@@ -8718,9 +8715,9 @@ dependencies = [
 
 [[package]]
 name = "sui-sdk-types"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9497600faf5a1fb07a2db85902515867ad30474abf959de1a7d1fa473c4a28"
+checksum = "35bf05a0b706993f705d37a775a5ad1deb1d65698431604676492695c563a1d9"
 dependencies = [
  "base64ct",
  "bcs",
@@ -8767,7 +8764,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sui-sdk-types 0.1.0",
+ "sui-sdk-types 0.1.1",
  "thiserror 2.0.17",
 ]
 
@@ -9212,7 +9209,7 @@ checksum = "ff360e02eab121e0bc37a2d3b4d4dc622e6eda3a8e5253d5435ecf5bd4c68408"
 dependencies = [
  "bytes",
  "libc",
- "mio 1.1.1",
+ "mio",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
