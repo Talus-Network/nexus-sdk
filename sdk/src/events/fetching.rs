@@ -379,7 +379,7 @@ mod tests {
 
         let fetcher = EventFetcher::new(&format!("{}/graphql", &server.url()), Arc::new(objects));
 
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
+        let (_poller, mut receiver) = fetcher.poll_distributed_nexus_events(None, None);
 
         if let Some(Ok(page)) = receiver.recv().await {
             assert_eq!(page.next_cursor, "12345".to_string());
