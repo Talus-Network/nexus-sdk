@@ -35,6 +35,11 @@ pub struct Object;
 const OBJECT_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("object");
 
 impl Object {
+    /// `sui::object::ID`
+    pub const ID: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OBJECT_MODULE,
+        name: sui::types::Identifier::from_static("ID"),
+    };
     /// `sui::object::id_from_address`
     pub const ID_FROM_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: OBJECT_MODULE,

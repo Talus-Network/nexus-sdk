@@ -63,7 +63,7 @@ pub async fn publish_move_package_with_overrides(
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing_replace_addresses(
         overrides
-            .into_iter()
+            .iter()
             .map(|(k, v)| (k.to_string(), v.to_string().parse().unwrap()))
             .collect::<Vec<_>>(),
     );

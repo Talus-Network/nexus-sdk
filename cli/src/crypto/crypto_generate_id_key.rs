@@ -29,31 +29,21 @@ pub(crate) async fn crypto_generate_identity_key(
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::utils::secrets::master_key::{SERVICE, USER},
-        keyring::{mock, set_default_credential_builder, Entry},
-        std::env,
-        tempfile::TempDir,
-    };
+    use {super::*, crate::secrets::store::master_key, keyring::Entry, tempfile::TempDir};
 
     #[tokio::test]
     #[serial_test::serial(master_key_env)]
     async fn test_crypto_generate_identity_key() {
-        // Use in-memory mock keyring to avoid needing a system keychain
-        set_default_credential_builder(mock::default_credential_builder());
-
-        // Isolate XDG config so salt lives under the temp dir
-        let tmp_xdg = TempDir::new().expect("temp xdg");
-
-        env::set_var("XDG_CONFIG_HOME", tmp_xdg.path());
+        master_key::test_keyring::reset();
 
         // Ensure no lingering keyring entries
-        let _ = Entry::new(SERVICE, USER).and_then(|e| e.delete_credential());
-        let _ = Entry::new(SERVICE, "passphrase").and_then(|e| e.delete_credential());
-
-        // Provide a passphrase-based key so we can serialize an encrypted crypto section
-        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test-passphrase-clear-crypto");
+        let _ =
+            Entry::new(master_key::SERVICE, master_key::USER).and_then(|e| e.delete_credential());
+        // Seed a key so the generated identity key is stored encrypted.
+        Entry::new(master_key::SERVICE, master_key::USER)
+            .expect("create keyring entry")
+            .set_password(&"11".repeat(master_key::KEY_LEN))
+            .expect("seed keyring key");
 
         let tmp = TempDir::new().expect("temp home");
         let conf_path = tmp.path().join("crypto.toml");

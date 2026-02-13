@@ -1,6 +1,6 @@
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
-    nexus_sdk::transactions::tool,
+    nexus_sdk::{transactions::tool, types::Tool},
 };
 
 /// Set the invocation cost in MIST for a tool based on its FQN.
@@ -39,18 +39,35 @@ pub(crate) async fn set_tool_invocation_cost(
             ))
         })?;
 
+    // Resolve the tool derived object.
+    let tool_handle = loading!("Resolving tool derived object for tool '{tool_fqn}'...");
+
+    let tool_id = Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+        .map_err(NexusCliError::Any)?;
+
+    let tool = match crawler.get_object_metadata(tool_id).await {
+        Ok(resp) => {
+            tool_handle.success();
+
+            resp.object_ref()
+        }
+        Err(e) => {
+            tool_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
+            )));
+        }
+    };
+
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = tool::set_invocation_cost(
-        &mut tx,
-        nexus_objects,
-        &tool_fqn,
-        &owner_cap,
-        invocation_cost,
-    ) {
+    if let Err(e) =
+        tool::set_invocation_cost(&mut tx, nexus_objects, &tool, &owner_cap, invocation_cost)
+    {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

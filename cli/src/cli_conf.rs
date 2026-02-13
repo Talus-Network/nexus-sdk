@@ -1,5 +1,5 @@
 use {
-    crate::prelude::*,
+    crate::{prelude::*, secrets::store::policy},
     nexus_sdk::types::{SecretValue, StorageConf, StorageKind},
     std::sync::Arc,
     tokio::sync::Mutex,
@@ -12,6 +12,8 @@ pub(crate) struct CliConf {
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
+    #[serde(default)]
+    pub(crate) secrets: SecretsConf,
     #[serde(default)]
     pub(crate) data_storage: DataStorageConf,
 }
@@ -57,6 +59,40 @@ pub(crate) struct SuiConf {
     pub(crate) gql_url: Option<reqwest::Url>,
 }
 
+/// Local secrets configuration.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SecretsConf {
+    #[serde(default)]
+    pub(crate) mode: SecretsMode,
+}
+
+impl Default for SecretsConf {
+    fn default() -> Self {
+        Self {
+            mode: SecretsMode::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SecretsMode {
+    #[default]
+    Auto,
+    Require,
+    Off,
+}
+
+impl std::fmt::Display for SecretsMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SecretsMode::Auto => write!(f, "auto"),
+            SecretsMode::Require => write!(f, "require"),
+            SecretsMode::Off => write!(f, "off"),
+        }
+    }
+}
+
 /// Remote data storage configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DataStorageConf {
@@ -95,13 +131,14 @@ impl std::fmt::Debug for CryptoConf {
         f.debug_struct("CryptoConf")
             // Avoid printing sensitive material.
             .field("Key exists: ", &self.identity_key.is_some())
-            .field("# of sessions: ", &self.sessions.value.len())
+            .field("# of sessions: ", &self.sessions.len())
             .finish()
     }
 }
 
 impl CryptoConf {
     /// Truncate the configuration (remove identity key and all sessions).
+    #[cfg(test)]
     pub(crate) async fn truncate(path: Option<&PathBuf>) -> AnyResult<()> {
         let default_path = expand_tilde(CRYPTO_CONF_PATH)?;
         let conf_path = path.unwrap_or(&default_path);
@@ -193,14 +230,16 @@ impl CryptoConf {
     }
 
     /// Helper to load from a specific path.
-    async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
+    pub(crate) async fn load_from_path(path: &PathBuf) -> AnyResult<Self> {
         let conf = tokio::fs::read_to_string(path).await?;
 
         Ok(toml::from_str(&conf)?)
     }
 
     /// Helper to save to a specific path.
-    async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
+    pub(crate) async fn save_to_path(&self, path: &PathBuf) -> AnyResult<()> {
+        policy::prepare_for_secret_write()?;
+
         let parent_folder = path.parent().expect("Parent folder must exist.");
         let conf = toml::to_string_pretty(&self)?;
 
@@ -212,12 +251,21 @@ impl CryptoConf {
 }
 
 #[cfg(test)]
-#[allow(clippy::single_component_path_imports)]
 mod tests {
-    use {super::*, nexus_sdk::crypto::x3dh::PreKeyBundle, serial_test::serial, std::fs};
+    use {
+        super::*,
+        crate::secrets::store::master_key,
+        nexus_sdk::crypto::x3dh::PreKeyBundle,
+        serial_test::serial,
+        std::fs,
+    };
 
     fn setup_env() -> tempfile::TempDir {
-        std::env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "test_passphrase");
+        master_key::test_keyring::reset();
+        keyring::Entry::new(master_key::SERVICE, master_key::USER)
+            .expect("create keyring entry")
+            .set_password(&"11".repeat(master_key::KEY_LEN))
+            .expect("seed keyring key");
         let secret_home = tempfile::tempdir().unwrap();
 
         // Use dedicated sub-directories to avoid interfering with the caller's real home.
@@ -236,10 +284,11 @@ mod tests {
     }
 
     fn cleanup_env() {
-        std::env::remove_var("NEXUS_CLI_STORE_PASSPHRASE");
         std::env::remove_var("HOME");
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("XDG_DATA_HOME");
+        let _ = keyring::Entry::new(master_key::SERVICE, master_key::USER)
+            .and_then(|e| e.delete_credential());
     }
 
     fn create_test_session() -> Session {
@@ -288,8 +337,8 @@ mod tests {
         let loaded = CryptoConf::load_from_path(&path).await.unwrap();
 
         assert!(loaded.identity_key.is_some());
-        assert_eq!(loaded.sessions.value.len(), 1);
-        assert!(loaded.sessions.value.contains_key(&[1u8; 32]));
+        assert_eq!(loaded.sessions.len(), 1);
+        assert!(loaded.sessions.contains_key(&[1u8; 32]));
 
         cleanup_env();
         drop(secret_home);
@@ -303,7 +352,7 @@ mod tests {
         let path = expand_tilde(CRYPTO_CONF_PATH).unwrap();
         let conf = CryptoConf::load_from_path(&path).await.unwrap_or_default();
         assert!(conf.identity_key.is_none());
-        assert_eq!(conf.sessions.value.len(), 0);
+        assert_eq!(conf.sessions.len(), 0);
 
         cleanup_env();
         drop(secret_home);
@@ -412,7 +461,7 @@ mod tests {
         // Load and check that identity_key and sessions are cleared
         let loaded = CryptoConf::load_from_path(&path).await.unwrap();
         assert!(loaded.identity_key.is_none());
-        assert_eq!(loaded.sessions.value.len(), 0);
+        assert_eq!(loaded.sessions.len(), 0);
 
         cleanup_env();
         drop(secret_home);

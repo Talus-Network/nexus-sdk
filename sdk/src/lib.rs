@@ -8,13 +8,6 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
-/// The ToolRef type represents the reference of a tool, either as an HTTP
-/// URL for offchain tools or as a Sui module identifier for onchain tools.
-#[cfg(feature = "tool_ref")]
-mod tool_ref;
-#[cfg(feature = "tool_ref")]
-pub use tool_ref::*;
-
 /// Ubiquitously used resource identifiers for on-chain types and functions.
 /// This includes workflow, primitives and interface Nexus modules but also
 /// some Sui framework and Sui move std modules that we use.
@@ -55,9 +48,9 @@ pub mod walrus;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 
-/// Secret core provides a generic secret type that can be used to store
-#[cfg(feature = "secret_core")]
-pub mod secret_core;
+/// Secret store provides a minimal at-rest secret wrapper for config persistence.
+#[cfg(feature = "secret_store")]
+pub mod secret_store;
 
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]

@@ -57,6 +57,8 @@ pub(crate) async fn crypto_auth(gas: GasArgs) -> AnyResult<(), NexusCliError> {
 mod tests {
     use {
         super::*,
+        crate::secrets::store::master_key,
+        keyring::Entry,
         nexus_sdk::crypto::x3dh::PreKeyBundle,
         rand::rngs::OsRng,
         std::env,
@@ -71,14 +73,16 @@ mod tests {
         // Isolate the filesystem & environment so the test is self-contained.
         let tmp = TempDir::new().expect("temp dir");
 
-        env::set_var("XDG_CONFIG_HOME", tmp.path());
+        master_key::test_keyring::reset();
+        env::set_var("HOME", tmp.path());
 
-        // Supply the master-key via environment variable.
-        env::set_var("NEXUS_CLI_STORE_PASSPHRASE", "offline-test-passphrase");
+        // Seed the master key in the mock keyring so secrets are stored encrypted.
+        Entry::new(master_key::SERVICE, master_key::USER)
+            .expect("create keyring entry")
+            .set_password(&"11".repeat(master_key::KEY_LEN))
+            .expect("seed keyring key");
 
-        // Sanity-check that the master key can now be derived.
-        crate::utils::secrets::master_key::get_master_key()
-            .expect("master key should be available");
+        master_key::require_master_key().expect("master key should be available");
 
         // Generate Receiver (network side) pre-key material.
         let receiver_identity = IdentityKey::generate();
@@ -108,6 +112,6 @@ mod tests {
         assert_eq!(saved_session.lock().await.id(), &session_id);
 
         // Clean-up env so other tests are unaffected.
-        env::remove_var("XDG_CONFIG_HOME");
+        env::remove_var("HOME");
     }
 }

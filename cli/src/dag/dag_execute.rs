@@ -36,16 +36,13 @@ pub(crate) async fn execute_dag(
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
-    let session = CryptoConf::get_active_session(None).await.map_err(|e|
-        NexusCliError::Any(
-            anyhow!(
-                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
-                e,
-                init_key = "$ nexus crypto init-key --force",
-                crypto_auth = "$ nexus crypto auth"
-            )
-        )
-    )?;
+    let session = CryptoConf::get_active_session(None).await.map_err(|e| {
+        NexusCliError::Any(anyhow!(
+            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{crypto_auth}",
+            e,
+            crypto_auth = "$ nexus crypto auth"
+        ))
+    })?;
 
     // Fetch information about entry ports that need to be encrypted.
     let encrypt =
@@ -110,6 +107,11 @@ pub(crate) async fn execute_dag(
             .truecolor(100, 100, 100)
     );
 
+    notify_success!(
+        "DAGExecution checkpoint: {id}",
+        id = result.tx_checkpoint.to_string().truecolor(100, 100, 100)
+    );
+
     // Update the session in the configuration.
     CryptoConf::release_session(session, None)
         .await
@@ -118,9 +120,11 @@ pub(crate) async fn execute_dag(
     if inspect {
         inspect_dag_execution(result.execution_object_id, result.tx_checkpoint).await?;
     } else {
-        json_output(
-            &json!({ "digest": result.tx_digest, "execution_id": result.execution_object_id }),
-        )?;
+        json_output(&json!({
+            "execution_id": result.execution_object_id,
+            "digest": result.tx_digest,
+            "tx_checkpoint": result.tx_checkpoint
+        }))?;
     }
 
     Ok(())

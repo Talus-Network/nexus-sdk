@@ -11,6 +11,7 @@ use crate::{
 pub fn claim_pre_key_for_self(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
+    invoker_gas: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut PreKeyVault`
     let pre_key_vault = tx.input(sui::tx::Input::shared(
@@ -19,10 +20,10 @@ pub fn claim_pre_key_for_self(
         true,
     ));
 
-    // `gas_service: &GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
+    // `invoker_gas: &InvokerGas`
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
         false,
     ));
 
@@ -41,7 +42,7 @@ pub fn claim_pre_key_for_self(
             workflow::PreKeyVault::CLAIM_PRE_KEY_FOR_SELF.name,
             vec![],
         ),
-        vec![pre_key_vault, gas_service, clock],
+        vec![pre_key_vault, invoker_gas, clock],
     ))
 }
 
@@ -98,19 +99,17 @@ pub fn claim_and_fulfill_pre_key_for_user(
     requested_by: sui::types::Address,
     pre_key: &PreKeyBundle,
     mist_gas_budget_to_claim: u64,
+    invoker_gas: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
-    // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
+    // `invoker_gas: &mut InvokerGas`
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
         true,
     ));
 
     // `amount: u64`
     let amount = tx.input(pure_arg(&mist_gas_budget_to_claim)?);
-
-    // `requested_by: address`
-    let requested_by_arg = sui_framework::Address::address_from_type(tx, requested_by)?;
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
     let leader_cap_obj = tx.input(sui::tx::Input::shared(
@@ -127,7 +126,7 @@ pub fn claim_and_fulfill_pre_key_for_user(
             workflow::Gas::CLAIM_LEADER_GAS_FOR_PRE_KEY.name,
             vec![],
         ),
-        vec![gas_service, requested_by_arg, leader_cap_obj, amount],
+        vec![invoker_gas, leader_cap_obj, amount],
     );
 
     // Convert the balance into a Coin<SUI>.
@@ -199,6 +198,7 @@ mod tests {
     #[test]
     fn test_claim_pre_key_for_self() {
         let objects = sui_mocks::mock_nexus_objects();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
         tx.set_sender(sui::types::Address::from_static("0x1"));
@@ -210,7 +210,7 @@ mod tests {
             gas.version(),
             *gas.digest(),
         )]);
-        claim_pre_key_for_self(&mut tx, &objects).unwrap();
+        claim_pre_key_for_self(&mut tx, &objects, &invoker_gas).unwrap();
         let tx = tx.finish().expect("Transaction should build");
         let sui::types::TransactionKind::ProgrammableTransaction(
             sui::types::ProgrammableTransaction { commands, .. },
@@ -295,6 +295,7 @@ mod tests {
         let spk_secret = x25519_dalek::StaticSecret::from([1; 32]);
         let pre_key = PreKeyBundle::new(&identity, 1, &spk_secret, None, None);
         let requested_by = sui::types::Address::generate(rng);
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
         claim_and_fulfill_pre_key_for_user(
@@ -306,6 +307,7 @@ mod tests {
             requested_by,
             &pre_key,
             1,
+            &invoker_gas,
         )
         .unwrap();
         tx.set_sender(sui::types::Address::from_static("0x1"));

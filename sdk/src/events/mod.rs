@@ -81,8 +81,7 @@ events! {
     OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
     RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
     AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
-    OffChainToolRegisteredEvent => OffChainToolRegistered, "OffChainToolRegisteredEvent",
-    OnChainToolRegisteredEvent => OnChainToolRegistered, "OnChainToolRegisteredEvent",
+    ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
@@ -105,7 +104,6 @@ events! {
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
     // These events are unused for now.
-    // "ToolRegistryCreated" => ToolRegistryCreated(serde_json::Value),
     // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
     // "DAGEdgeAdded" => DAGEdgeAdded(serde_json::Value),
     // "DAGOutputAdded" => DAGOutputAdded(serde_json::Value),
@@ -124,6 +122,7 @@ events! {
 pub struct RequestWalkExecutionEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
+    pub invoker: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
@@ -144,73 +143,14 @@ pub struct AnnounceInterfacePackageEvent {
     pub shared_objects: Vec<SharedObjectRef>,
 }
 
-/// Fired by the Nexus Workflow when a new off-chain tool is registered so that
-/// the Leader can also register it in Redis. This way the Leader knows how and
-/// where to evaluate the tool.
+/// Fired by the Nexus Workflow when a new tool is registered so that the Leader
+/// can also register it in Redis. This way the Leader knows how and where to
+/// evaluate the tool.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct OffChainToolRegisteredEvent {
-    pub registry: sui::types::Address,
+pub struct ToolRegisteredEvent {
     pub tool: sui::types::Address,
     /// The tool domain, name and version. See [ToolFqn] for more information.
     pub fqn: ToolFqn,
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_url",
-        serialize_with = "serialize_url_to_bytes"
-    )]
-    pub url: reqwest::Url,
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_json_value",
-        serialize_with = "serialize_json_value_to_bytes"
-    )]
-    pub input_schema: serde_json::Value,
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_json_value",
-        serialize_with = "serialize_json_value_to_bytes"
-    )]
-    pub output_schema: serde_json::Value,
-}
-
-/// Fired by the Nexus Workflow when a new on-chain tool is registered so that
-/// the Leader can also register it in Redis. This way the Leader knows how and
-/// where to evaluate the tool.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct OnChainToolRegisteredEvent {
-    /// [ID] of [ToolRegistry].
-    pub registry: sui::types::Address,
-    /// New [ID] of the [OnChainTool].
-    pub tool: sui::types::Address,
-    /// When the tool was registered.
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub registered_at_ms: u64,
-    /// The tool domain, name and version. See [ToolFqn] for more information.
-    pub fqn: ToolFqn,
-    /// The address of the published package.
-    pub package_address: sui::types::Address,
-    /// Module name.
-    pub module_name: String,
-    /// The witness object ID that proves the tool's identity.
-    pub witness_id: sui::types::Address,
-    /// Arguments to the execute function.
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_json_value",
-        serialize_with = "serialize_json_value_to_bytes"
-    )]
-    pub input_schema: serde_json::Value,
-    /// Output schema of the execute function.
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_json_value",
-        serialize_with = "serialize_json_value_to_bytes"
-    )]
-    pub output_schema: serde_json::Value,
-    /// Description of the tool.
-    #[serde(
-        deserialize_with = "deserialize_bytes_to_string",
-        serialize_with = "serialize_string_to_bytes"
-    )]
-    pub description: String,
 }
 
 /// Fired by the Nexus Workflow when a tool is unregistered. The Leader should

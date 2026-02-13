@@ -8,7 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::transactions::tool,
+    nexus_sdk::{transactions::tool, types::Tool},
 };
 
 /// Unregister a Tool based on the provided FQN.
@@ -52,12 +52,34 @@ pub(crate) async fn unregister_tool(
                 "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
             ))
         })?;
+
+    // Resolve the tool derived object.
+    let tool_handle = loading!("Resolving tool derived object for tool '{tool_fqn}'...");
+
+    let tool_id = Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+        .map_err(NexusCliError::Any)?;
+
+    let tool = match crawler.get_object_metadata(tool_id).await {
+        Ok(resp) => {
+            tool_handle.success();
+
+            resp.object_ref()
+        }
+        Err(e) => {
+            tool_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
+            )));
+        }
+    };
+
     // Craft a TX to unregister the tool.
     let tx_handle = loading!("Crafting transaction...");
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = tool::unregister(&mut tx, nexus_objects, &tool_fqn, &owner_cap) {
+    if let Err(e) = tool::unregister(&mut tx, nexus_objects, &tool, &owner_cap) {
         tx_handle.error();
 
         return Err(NexusCliError::Any(e));

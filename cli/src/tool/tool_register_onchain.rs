@@ -141,6 +141,11 @@ pub(crate) async fn register_onchain_tool(
     // Extract the OwnerCap<OverTool> object ID.
     let over_tool_id = extract_over_tool_owner_cap(&response.objects, nexus_objects)?;
 
+    notify_success!(
+        "Transaction digest: {digest}",
+        digest = response.digest.to_string().truecolor(100, 100, 100)
+    );
+
     // Save the owner caps to the CLI conf.
     if !no_save {
         save_tool_owner_caps(fqn.clone(), over_tool_id).await?;

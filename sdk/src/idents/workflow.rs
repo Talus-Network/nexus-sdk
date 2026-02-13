@@ -13,14 +13,6 @@ const DEFAULT_TAP_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("default_tap");
 
 impl DefaultTap {
-    /// This function is called when a DAG is to be executed using the default
-    /// TAP implementation.
-    ///
-    /// `nexus_workflow::default_tap::begin_dag_execution`
-    pub const BEGIN_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("begin_dag_execution"),
-    };
     /// The witness type needed to register DAG execution.
     ///
     /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
@@ -28,19 +20,27 @@ impl DefaultTap {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("BeginDagExecutionWitness"),
     };
-    /// Scheduler entry point to invoke DAG execution via the default TAP.
-    ///
-    /// `nexus_workflow::default_tap::dag_begin_execution_from_scheduler`
-    pub const DAG_BEGIN_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("dag_begin_execution_from_scheduler"),
-    };
     /// The DefaultTAP struct type.
     ///
     /// `nexus_workflow::default_tap::DefaultTAP`
     pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DEFAULT_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultTAP"),
+    };
+    /// This function is called when a DAG is to be executed using the default
+    /// TAP implementation.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution`
+    pub const PREPARE_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution"),
+    };
+    /// Scheduler entry point to invoke DAG execution via the default TAP.
+    ///
+    /// `nexus_workflow::default_tap::prepare_dag_execution_from_scheduler`
+    pub const PREPARE_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DEFAULT_TAP_MODULE,
+        name: sui::types::Identifier::from_static("prepare_dag_execution_from_scheduler"),
     };
     /// Register DAG execution configuration on the execution policy.
     ///
@@ -400,7 +400,6 @@ impl Dag {
     /// its result to the workflow.
     ///
     /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk`
-    // TODO: <https://github.com/Talus-Network/nexus-next/issues/30>
     pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
@@ -642,25 +641,9 @@ impl Dag {
     pub fn on_chain_vertex_kind_from_fqn(
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
-        tool_registry_id: &sui::types::ObjectReference,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
-        let tool_registry_id = tx.input(sui::tx::Input::shared(
-            *tool_registry_id.object_id(),
-            tool_registry_id.version(),
-            false,
-        ));
-
-        let witness_id = tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.module,
-                ToolRegistry::ONCHAIN_TOOL_WITNESS_ID.name,
-                vec![],
-            ),
-            vec![tool_registry_id, str],
-        );
 
         Ok(tx.move_call(
             sui::tx::Function::new(
@@ -669,7 +652,7 @@ impl Dag {
                 Self::VERTEX_ON_CHAIN.name,
                 vec![],
             ),
-            vec![str, witness_id],
+            vec![str],
         ))
     }
 
@@ -745,13 +728,12 @@ const TOOL_REGISTRY_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("tool_registry");
 
 impl ToolRegistry {
-    /// Add an address to the allowlist for tool registration.
-    /// Only callable by the holder of OverSlashing cap.
+    /// Claim collateral for a tool. The function call returns Balance<SUI>.
     ///
-    /// `nexus_workflow::tool_registry::add_allowed_owner`
-    pub const ADD_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::claim_collateral`
+    pub const CLAIM_COLLATERAL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("add_allowed_owner"),
+        name: sui::types::Identifier::from_static("claim_collateral"),
     };
     /// Claim collateral for a tool and transfer the balance to the tx sender.
     ///
@@ -759,20 +741,6 @@ impl ToolRegistry {
     pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("claim_collateral_for_self"),
-    };
-    /// Claim collateral for a tool. The function call returns Balance<SUI>.
-    ///
-    /// `nexus_workflow::tool_registry::claim_collateral_for_tool`
-    pub const CLAIM_COLLATERAL_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("claim_collateral_for_tool"),
-    };
-    /// Get the witness ID for an onchain tool.
-    ///
-    /// `nexus_workflow::tool_registry::onchain_tool_witness_id`
-    pub const ONCHAIN_TOOL_WITNESS_ID: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("onchain_tool_witness_id"),
     };
     /// OverSlashing struct type. Used to fetch caps for slashing tools.
     ///
@@ -795,14 +763,6 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_off_chain_tool"),
     };
-    /// Register an off-chain tool and transfer the tool's owner cap to the ctx
-    /// sender.
-    ///
-    /// `nexus_workflow::tool_registry::register_off_chain_tool_for_self`
-    pub const REGISTER_OFF_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_off_chain_tool_for_self"),
-    };
     /// Register an on-chain tool. This returns the tool's owner cap.
     ///
     /// `nexus_workflow::tool_registry::register_on_chain_tool`
@@ -810,21 +770,12 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_on_chain_tool"),
     };
-    /// Register an on-chain tool and transfer the tool's owner cap to the ctx
-    /// sender.
+    /// Tool struct type. Used for fetching tool info.
     ///
-    /// `nexus_workflow::tool_registry::register_on_chain_tool_for_self`
-    pub const REGISTER_ON_CHAIN_TOOL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::Tool`
+    pub const TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_on_chain_tool_for_self"),
-    };
-    /// Remove an address from the allowlist for tool registration.
-    /// Only callable by the holder of OverSlashing cap.
-    ///
-    /// `nexus_workflow::tool_registry::remove_allowed_owner`
-    pub const REMOVE_ALLOWED_OWNER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("remove_allowed_owner"),
+        name: sui::types::Identifier::from_static("Tool"),
     };
     /// The ToolRegistry struct type.
     ///
@@ -835,10 +786,10 @@ impl ToolRegistry {
     };
     /// Unregister a tool.
     ///
-    /// `nexus_workflow::tool_registry::unregister_tool`
-    pub const UNREGISTER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::tool_registry::unregister`
+    pub const UNREGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("unregister_tool"),
+        name: sui::types::Identifier::from_static("unregister"),
     };
 }
 
@@ -887,19 +838,40 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas"),
     };
-    /// Claim leader gas against an invoker scope (no DAG execution object).
-    ///
-    /// `nexus_workflow::gas::claim_leader_gas_for_invoker`
-    pub const CLAIM_LEADER_GAS_FOR_INVOKER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("claim_leader_gas_for_invoker"),
-    };
     /// Claim leader gas specifically for pre-key handshakes.
     ///
     /// `nexus_workflow::gas::claim_leader_gas_for_pre_key`
     pub const CLAIM_LEADER_GAS_FOR_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
+    };
+    /// Claim leader gas and transfer Coin to the tx sender.
+    ///
+    /// `nexus_workflow::gas::claim_leader_gas_for_self`
+    pub const CLAIM_LEADER_GAS_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("claim_leader_gas_for_self"),
+    };
+    /// Derive an `InvokerGas` object.
+    ///
+    /// `nexus_workflow::gas::create_invoker_gas`
+    pub const CREATE_INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_invoker_gas"),
+    };
+    /// Derive a `ToolGas` object while setting the initial invocation price.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas`
+    pub const CREATE_TOOL_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas"),
+    };
+    /// Same as `CREATE_TOOL_GAS` but object is shared.
+    ///
+    /// `nexus_workflow::gas::create_tool_gas_and_share`
+    pub const CREATE_TOOL_GAS_AND_SHARE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_tool_gas_and_share"),
     };
     /// De-escalate an OverTool owner cap into OverGas.
     ///
@@ -908,12 +880,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("deescalate"),
     };
+    /// ExecutionGas struct type.
+    ///
+    /// `nexus_workflow::gas::ExecutionGas`
+    pub const EXECUTION_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("ExecutionGas"),
+    };
     /// GasService type for lookups.
     ///
     /// `nexus_workflow::gas::GasService`
     pub const GAS_SERVICE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("GasService"),
+    };
+    /// InvokerGas struct type.
+    ///
+    /// `nexus_workflow::gas::InvokerGas`
+    pub const INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("InvokerGas"),
     };
     /// OverGas owner cap generic.
     ///
@@ -950,12 +936,12 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
     };
-    /// Sync gas for the vertices in the current execution object.
+    /// Sync gas for a tool in the current execution.
     ///
-    /// `nexus_workflow::gas::sync_gas_state`
-    pub const SYNC_GAS_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::gas::sync_gas_state_for_tool`
+    pub const SYNC_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("sync_gas_state"),
+        name: sui::types::Identifier::from_static("sync_gas_state_for_tool"),
     };
 
     /// Convert an object ID to an InvokerAddress scope.
