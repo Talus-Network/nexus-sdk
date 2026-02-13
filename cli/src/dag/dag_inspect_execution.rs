@@ -33,16 +33,13 @@ pub(crate) async fn inspect_dag_execution(
     let storage_conf = conf.data_storage.clone().into();
 
     // Get the active session for potential encryption
-    let session = CryptoConf::get_active_session(None).await.map_err(|e|
-        NexusCliError::Any(
-            anyhow!(
-                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
-                e,
-                init_key = "$ nexus crypto init-key --force",
-                crypto_auth = "$ nexus crypto auth"
-            )
-        )
-    )?;
+    let session = CryptoConf::get_active_session(None).await.map_err(|e| {
+        NexusCliError::Any(anyhow!(
+            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{crypto_auth}",
+            e,
+            crypto_auth = "$ nexus crypto auth"
+        ))
+    })?;
 
     let mut json_trace = Vec::new();
 

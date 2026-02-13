@@ -7,8 +7,16 @@
 //! See more documentation at <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
 mod config;
+
+/// Shared test utilities
+#[cfg(test)]
+pub(crate) mod test_utils {
+    /// Serialize tests that use ENV_TOOLKIT_CONFIG_PATH to avoid race conditions
+    pub static ENV_VAR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}
 mod nexus_tool;
-mod runtime;
+#[doc(hidden)]
+pub mod runtime;
 mod serde_tracked;
 mod signed_http_warp;
 
@@ -18,7 +26,6 @@ pub use {
     env_logger,
     log::debug,
     nexus_tool::{AuthContext, NexusTool},
-    runtime::{routes_for_, routes_for_with_config_},
     serde_tracked::*,
     warp::{self, http::StatusCode},
 };

@@ -1,5 +1,5 @@
 pub(crate) use {
-    crate::{cli_conf::*, error::NexusCliError, utils::secrets::Secret},
+    crate::{cli_conf::*, error::NexusCliError, secrets::store::Secret},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
