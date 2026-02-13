@@ -105,9 +105,8 @@ macro_rules! events {
                             Ok(distributed) => {
                                 let metadata = DistributedEventMetadata {
                                     deadline: chrono::Duration::milliseconds(distributed.deadline_ms as i64),
-                                    requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp(
-                                        distributed.requested_at_ms as i64 / 1000, 0
-                                    ).ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
+                                    requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(distributed.requested_at_ms as i64)
+                                        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
                                     task_id: distributed.task_id,
                                     leaders: distributed.leaders,
                                 };
@@ -586,8 +585,8 @@ mod tests {
         event: T,
         deadline_ms: u64,
         requested_at_ms: u64,
-        leaders: Vec<sui::types::Address>,
         task_id: sui::types::Address,
+        leaders: Vec<sui::types::Address>,
     }
 
     #[test]
@@ -669,8 +668,8 @@ mod tests {
             event: AnotherEvent {
                 text: "xyz".to_string(),
             },
-            deadline_ms: 0,
-            requested_at_ms: 0,
+            deadline_ms: 100,
+            requested_at_ms: 1500,
             task_id: sui::types::Address::ZERO,
             leaders: vec![sui::types::Address::ZERO],
         };
@@ -694,10 +693,10 @@ mod tests {
 
         assert_eq!(dis2.leaders, vec![sui::types::Address::ZERO]);
         assert_eq!(dis2.task_id, sui::types::Address::ZERO);
-        assert_eq!(dis2.deadline, chrono::Duration::milliseconds(0));
+        assert_eq!(dis2.deadline, chrono::Duration::milliseconds(100));
         assert_eq!(
             dis2.requested_at,
-            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
         );
 
         match parsed_dummy {

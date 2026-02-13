@@ -328,7 +328,7 @@ mod tests {
         let data = DistributedWrapperBcs {
             event: DAGCreatedEvent { dag: dag_addr },
             deadline_ms: 30,
-            requested_at_ms: 10,
+            requested_at_ms: 1500,
             leaders: vec![sui::types::Address::ZERO],
             task_id: sui::types::Address::ZERO,
         };
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(distribution.deadline, chrono::Duration::milliseconds(30));
         assert_eq!(
             distribution.requested_at,
-            chrono::DateTime::<chrono::Utc>::from_timestamp(10 / 1000, 0).unwrap()
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
         );
         assert_eq!(distribution.leaders.len(), 1);
         assert_eq!(distribution.task_id, sui::types::Address::ZERO);
@@ -1010,7 +1010,7 @@ mod tests {
         let data = DistributedWrapper {
             event: DAGCreatedEvent { dag: dag_addr },
             deadline_ms: "100".to_string(),
-            requested_at_ms: "1000".to_string(),
+            requested_at_ms: "1500".to_string(),
             leaders: vec![sui::types::Address::ZERO, sui::types::Address::ZERO],
             task_id: sui::types::Address::ZERO,
         };
@@ -1047,7 +1047,7 @@ mod tests {
         assert_eq!(distribution.deadline, chrono::Duration::milliseconds(100),);
         assert_eq!(
             distribution.requested_at,
-            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 0).unwrap()
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
         );
         assert_eq!(distribution.leaders.len(), 2);
         assert_eq!(distribution.task_id, sui::types::Address::ZERO);
