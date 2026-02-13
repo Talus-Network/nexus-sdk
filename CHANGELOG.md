@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `network_auth` helpers, types, and PTB templates for tool key registration and leader allowlists.
 - derived gas service identifiers and PTB templates
 - `NexusClient` code for gas tickets
+- support for distribution by fetching `DistributedEventWrapper` events
+- `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
 
 #### Changed
 

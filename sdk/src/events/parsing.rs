@@ -253,8 +253,8 @@ mod tests {
         event: T,
         deadline_ms: String,
         requested_at_ms: String,
-        leaders: Vec<sui::types::Address>,
         task_id: sui::types::Address,
+        leaders: Vec<sui::types::Address>,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -262,8 +262,8 @@ mod tests {
         event: T,
         deadline_ms: u64,
         requested_at_ms: u64,
-        leaders: Vec<sui::types::Address>,
         task_id: sui::types::Address,
+        leaders: Vec<sui::types::Address>,
     }
 
     #[test]

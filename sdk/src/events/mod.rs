@@ -93,8 +93,8 @@ macro_rules! events {
                 event: T,
                 deadline_ms: u64,
                 requested_at_ms: u64,
-                leaders: Vec<sui::types::Address>,
                 task_id: sui::types::Address,
+                leaders: Vec<sui::types::Address>,
             }
 
 
@@ -108,8 +108,8 @@ macro_rules! events {
                                     requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp(
                                         distributed.requested_at_ms as i64 / 1000, 0
                                     ).ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
-                                    leaders: distributed.leaders,
                                     task_id: distributed.task_id,
+                                    leaders: distributed.leaders,
                                 };
 
                                 Ok((NexusEventKind::$variant(distributed.event), Some(metadata)))
@@ -662,8 +662,8 @@ mod tests {
             event: DummyEvent { value: 99 },
             deadline_ms: 0,
             requested_at_ms: 0,
-            leaders: vec![sui::types::Address::TWO],
             task_id: sui::types::Address::TWO,
+            leaders: vec![sui::types::Address::TWO],
         };
         let another = DistributedWrapper {
             event: AnotherEvent {
@@ -671,8 +671,8 @@ mod tests {
             },
             deadline_ms: 0,
             requested_at_ms: 0,
-            leaders: vec![sui::types::Address::ZERO],
             task_id: sui::types::Address::ZERO,
+            leaders: vec![sui::types::Address::ZERO],
         };
 
         let dummy_bytes = bcs::to_bytes(&dummy).unwrap();
