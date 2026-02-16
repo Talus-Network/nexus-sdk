@@ -452,8 +452,8 @@ mod tests {
         let dag = Dag {
             vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
             defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            // edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            // outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
         };
 
         sui_mocks::grpc::mock_get_object_json(
