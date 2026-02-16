@@ -441,18 +441,11 @@ fn build_inputs_vec_map(
 
         for (port_name, value) in data {
             // `port: InputPort`
-            let port = match value.is_encrypted() {
-                true => workflow::Dag::encrypted_input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    port_name.as_str(),
-                )?,
-                false => workflow::Dag::input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    port_name.as_str(),
-                )?,
-            };
+            let port = workflow::Dag::input_port_from_str(
+                tx,
+                objects.workflow_pkg_id,
+                port_name.as_str(),
+            )?;
 
             // `value: NexusData`
             let value = match value.storage_kind() {
@@ -460,13 +453,11 @@ fn build_inputs_vec_map(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
             };
 

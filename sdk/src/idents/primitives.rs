@@ -17,27 +17,12 @@ impl Data {
         module: DATA_MODULE,
         name: sui::types::Identifier::from_static("inline_many"),
     };
-    /// Create NexusData from a vector of vectors of bytes and mark it as
-    /// encrypted.
-    ///
-    /// `nexus_primitives::data::inline_many_encrypted`
-    pub const INLINE_MANY_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("inline_many_encrypted"),
-    };
     /// Create NexusData from a vector of bytes.
     ///
     /// `nexus_primitives::data::inline_one`
     pub const INLINE_ONE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DATA_MODULE,
         name: sui::types::Identifier::from_static("inline_one"),
-    };
-    /// Create NexusData from a vector of bytes and mark it as encrypted.
-    ///
-    /// `nexus_primitives::data::inline_one_encrypted`
-    pub const INLINE_ONE_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("inline_one_encrypted"),
     };
     /// NexusData struct. Mostly used for creating generic types.
     ///
@@ -54,14 +39,6 @@ impl Data {
         module: DATA_MODULE,
         name: sui::types::Identifier::from_static("walrus_many"),
     };
-    /// Create NexusData from a vector of vectors of bytes that are stored on
-    /// Walrus and mark it as encrypted.
-    ///
-    /// `nexus_primitives::data::walrus_many_encrypted`
-    pub const WALRUS_MANY_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("walrus_many_encrypted"),
-    };
     /// Create NexusData from a vector of bytes that are stored on Walrus.
     ///
     /// `nexus_primitives::data::walrus_one`
@@ -69,28 +46,20 @@ impl Data {
         module: DATA_MODULE,
         name: sui::types::Identifier::from_static("walrus_one"),
     };
-    /// Create NexusData from a vector of bytes that are stored on Walrus and
-    /// mark it as encrypted.
-    ///
-    /// `nexus_primitives::data::walrus_one_encrypted`
-    pub const WALRUS_ONE_ENCRYPTED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("walrus_one_encrypted"),
-    };
 
     /// Create NexusData with inline storage from a [serde_json::Value].
     pub fn nexus_data_inline_from_json<T: serde::Serialize>(
         tx: &mut sui::tx::TransactionBuilder,
         primitives_pkg_id: sui::types::Address,
         json: &T,
-        encrypted: bool,
     ) -> anyhow::Result<sui::types::Argument> {
-        let (one, many) = match encrypted {
-            true => (&Self::INLINE_ONE_ENCRYPTED, &Self::INLINE_MANY_ENCRYPTED),
-            false => (&Self::INLINE_ONE, &Self::INLINE_MANY),
-        };
-
-        Self::nexus_data_from_json(tx, primitives_pkg_id, json, one, many)
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::INLINE_ONE,
+            &Self::INLINE_MANY,
+        )
     }
 
     /// Create NexusData with Walrus storage from a [serde_json::Value].
@@ -98,14 +67,14 @@ impl Data {
         tx: &mut sui::tx::TransactionBuilder,
         primitives_pkg_id: sui::types::Address,
         json: &T,
-        encrypted: bool,
     ) -> anyhow::Result<sui::types::Argument> {
-        let (one, many) = match encrypted {
-            true => (&Self::WALRUS_ONE_ENCRYPTED, &Self::WALRUS_MANY_ENCRYPTED),
-            false => (&Self::WALRUS_ONE, &Self::WALRUS_MANY),
-        };
-
-        Self::nexus_data_from_json(tx, primitives_pkg_id, json, one, many)
+        Self::nexus_data_from_json(
+            tx,
+            primitives_pkg_id,
+            json,
+            &Self::WALRUS_ONE,
+            &Self::WALRUS_MANY,
+        )
     }
 
     /// Internal helper to create NexusData from a [serde_json::Value].

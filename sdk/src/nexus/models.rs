@@ -17,10 +17,6 @@ use {
 pub struct Dag {
     pub vertices: DynamicMap<TypeName, DagVertexInfo>,
     pub defaults_to_input_ports: DynamicMap<DagVertexInputPort, NexusData>,
-    /// We fetch the edges so that we know which output ports need encryption.
-    pub edges: DynamicMap<TypeName, Vec<DagEdge>>,
-    /// We fetch the outputs so that we know which output ports need encryption.
-    pub outputs: DynamicMap<TypeName, Vec<DagOutputVariantPort>>,
 }
 
 /// Struct holding the DAG execution information.
@@ -63,7 +59,6 @@ pub struct DagVertexInputPort {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct DagInputPort {
     pub name: String,
-    pub encrypted: bool,
 }
 
 /// Enum distinguishing between a plain vertex and a vertex with an iterator.
@@ -90,13 +85,11 @@ pub struct DagEdge {
     pub from: DagOutputVariantPort,
 }
 
-/// Struct holding the output variant and port pair, holding the encryption
-/// info.
+/// Struct holding the output variant and port pair.
 ///
 /// See <sui/workflow/sources/dag.move:OutputVariantPort> for documentation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DagOutputVariantPort {
     pub variant: TypeName,
     pub port: TypeName,
-    pub encrypted: bool,
 }

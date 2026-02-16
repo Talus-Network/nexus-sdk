@@ -335,12 +335,10 @@ An example JSON DAG using the onchain tool is as follows:
       "name": "just_execute_first",
       "entry_ports": [
         {
-          "name": "0",
-          "encrypted": false
+          "name": "0"
         },
         {
-          "name": "1",
-          "encrypted": false
+          "name": "1"
         }
       ]
     },
@@ -352,8 +350,7 @@ An example JSON DAG using the onchain tool is as follows:
       "name": "just_execute_second",
       "entry_ports": [
         {
-          "name": "0",
-          "encrypted": false
+          "name": "0"
         }
       ]
     }

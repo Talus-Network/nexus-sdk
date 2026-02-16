@@ -21,7 +21,6 @@ pub struct NexusObjects {
     pub network_auth: sui::types::ObjectReference,
     pub default_tap: sui::types::ObjectReference,
     pub gas_service: sui::types::ObjectReference,
-    pub pre_key_vault: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 }
 
@@ -109,11 +108,6 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             ),
             gas_service: sui::types::ObjectReference::new(
-                sui::types::Address::generate(&mut rng),
-                1,
-                sui::types::Digest::generate(&mut rng),
-            ),
-            pre_key_vault: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
                 sui::types::Digest::generate(&mut rng),

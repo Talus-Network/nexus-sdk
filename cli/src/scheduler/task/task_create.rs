@@ -12,9 +12,9 @@ use {
     nexus_sdk::{
         events::NexusEventKind,
         nexus::scheduler::{CreateTaskParams, GeneratorKind, OccurrenceRequest},
-        types::{EncryptionMode, PolicySymbol, StorageConf},
+        types::{PolicySymbol, StorageConf},
     },
-    std::{collections::HashMap, sync::Arc},
+    std::collections::HashMap,
 };
 
 /// Create a scheduler task and optionally enqueue the initial occurrence.
@@ -47,36 +47,17 @@ pub(crate) async fn create_task(
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
     let input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
 
-    // Fetch encrypted entry ports.
-    let encrypt_handles =
-        helpers::fetch_encryption_targets(nexus_client.crawler(), &dag_id, &entry_group).await?;
-
     // Build the remote storage configuration.
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf: StorageConf = conf.data_storage.clone().into();
 
-    // Acquire a session for potential encryption/remote storage commits.
-    let session = CryptoConf::get_active_session(None).await.map_err(|e| {
-        NexusCliError::Any(anyhow!(
-            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{crypto_auth}",
-            e,
-            crypto_auth = "$ nexus crypto auth"
-        ))
-    })?;
-
-    let ports_data = workflow::process_entry_ports(
-        &input_json,
-        preferred_remote_storage,
-        &encrypt_handles,
-        &remote,
-        EncryptionMode::LimitedPersistent,
-    )
-    .await?;
+    let ports_data =
+        workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
 
     let mut input_data = HashMap::new();
     for (vertex, data) in ports_data {
         let committed = data
-            .commit_all(&storage_conf, Arc::clone(&session))
+            .commit_all(&storage_conf)
             .await
             .map_err(|e| {
                 NexusCliError::Any(anyhow!(
@@ -88,14 +69,6 @@ pub(crate) async fn create_task(
             })?;
         input_data.insert(vertex, committed);
     }
-
-    if encrypt_handles.values().any(|ports| !ports.is_empty()) {
-        session.lock().await.commit_sender(None);
-    }
-
-    CryptoConf::release_session(session, None)
-        .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {e}")))?;
 
     let schedule_requested = schedule_start_ms.is_some()
         || schedule_start_offset_ms.is_some()

@@ -6,7 +6,6 @@
 
 use {
     crate::{
-        crypto::session::Session,
         events::{EventPage, NexusEvent, NexusEventKind},
         idents::workflow,
         nexus::{client::NexusClient, error::NexusError, models::Dag},
@@ -15,12 +14,9 @@ use {
         types::{Dag as JsonDag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
-    std::{collections::HashMap, sync::Arc},
+    std::collections::HashMap,
     tokio::{
-        sync::{
-            mpsc::{unbounded_channel, UnboundedReceiver},
-            Mutex,
-        },
+        sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
         time::Duration,
     },
@@ -124,10 +120,8 @@ impl WorkflowActions {
 
     /// Execute a published DAG with the given object ID.
     ///
-    /// The `entry_data` [`HashMap`] already holds information about encryption
-    /// and storage kind for each port.
-    ///
-    /// `session` is NOT committed in this function.
+    /// The `entry_data` [`HashMap`] already holds information about the storage
+    /// kind for each port.
     ///
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
@@ -143,19 +137,15 @@ impl WorkflowActions {
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
-        session: Arc<Mutex<Session>>,
     ) -> Result<ExecuteResult, NexusError> {
         // == Commit data to their respective storage ==
 
         let mut input_data = HashMap::new();
 
         for (vertex, ports_data) in entry_data {
-            let committed_data = ports_data
-                .commit_all(storage_conf, Arc::clone(&session))
-                .await
-                .map_err(|e| {
-                    NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
-                })?;
+            let committed_data = ports_data.commit_all(storage_conf).await.map_err(|e| {
+                NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
+            })?;
 
             input_data.insert(vertex, committed_data);
         }
@@ -430,7 +420,6 @@ mod tests {
         let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let tool_gas_ref = sui_mocks::mock_sui_object_ref();
-        let (sender, _) = nexus_mocks::mock_session();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -463,8 +452,8 @@ mod tests {
         let dag = Dag {
             vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
             defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            // edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            // outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
         };
 
         sui_mocks::grpc::mock_get_object_json(
@@ -539,8 +528,8 @@ mod tests {
                     NexusData::new_inline(json!("data")),
                 ),
                 (
-                    "entry_port_encrypted".to_string(),
-                    NexusData::new_inline_encrypted(json!("data")),
+                    "another_entry_port".to_string(),
+                    NexusData::new_inline(json!("data")),
                 ),
             ])),
         )]);
@@ -555,7 +544,6 @@ mod tests {
                 price_priority_fee,
                 None,
                 &StorageConf::default(),
-                sender,
             )
             .await
             .expect("Failed to execute DAG");
