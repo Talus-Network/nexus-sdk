@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - support for distribution by fetching `DistributedEventWrapper` events
 - `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
 
+#### Removed
+
+- X3DH+DR encryption
+
 #### Changed
 
 - adjusted transaction templates and events to support tools as derived objects

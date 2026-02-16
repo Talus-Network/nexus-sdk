@@ -17,6 +17,8 @@ use {
 pub struct Dag {
     pub vertices: DynamicMap<TypeName, DagVertexInfo>,
     pub defaults_to_input_ports: DynamicMap<DagVertexInputPort, NexusData>,
+    pub edges: DynamicMap<TypeName, Vec<DagEdge>>,
+    pub outputs: DynamicMap<TypeName, Vec<DagOutputVariantPort>>,
 }
 
 /// Struct holding the DAG execution information.
