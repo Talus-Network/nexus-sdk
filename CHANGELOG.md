@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - derived gas service identifiers and PTB templates
 - `secret_store` module providing a minimal at-rest secret wrapper with optional encryption.
 - `NexusClient` code for gas tickets
+- support for distribution by fetching `DistributedEventWrapper` events
+- `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
 
 #### Changed
 
