@@ -223,8 +223,6 @@ The input `<data>` is a JSON string with the following structure:
 - Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
-Data for encrypted ports are automatically encrypted before being sent on-chain.
-
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 
 The `--remote` argument accepts a list of `{vertex}.{port}` strings that refer to entry ports and their vertices. The data associated with these ports is stored remotely based on the configured preferred remote storage provider. Note that it is required that the user configure these remote storage providers via the `$ nexus conf set --help` command.
@@ -276,8 +274,6 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
-
-Data for encrypted entry ports is automatically encrypted when a session is available.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
@@ -338,64 +334,6 @@ Removes the periodic schedule while leaving any existing sporadic occurrences un
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
 {% endhint %}
-
-### `nexus secrets`
-
-Commands for managing the CLI’s local at-rest secret storage (master key + encryption behavior for data stored in `~/.nexus/crypto.toml`).
-
----
-
-**`nexus secrets status`**
-
-Reports whether secrets will be written encrypted or plaintext, and whether the OS keyring is available.
-
----
-
-**`nexus secrets enable`**
-
-Ensures a master key exists in the OS keyring and rewrites `~/.nexus/crypto.toml` so secret fields are stored encrypted.
-
----
-
-**`nexus secrets disable [--yes]`**
-
-Rewrites local secret state as plaintext and deletes the master key from the OS keyring.
-
----
-
-**`nexus secrets rotate [--yes]`**
-
-Rotates the master key and re-encrypts local secret state. Use when you want a new master key but can still decrypt existing data.
-
----
-
-**`nexus secrets wipe [--yes]`**
-
-Deletes the master key and deletes `~/.nexus/crypto.toml`. Use when you lost the master key (e.g., moved machines) and want a clean slate.
-
----
-
-### `nexus crypto`
-
-Set of commands for establishing secure sessions that power DAG data encryption (X3DH identity key + Double Ratchet sessions).
-
----
-
-**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
-
-Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
-
-Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
-{% endhint %}
-
----
-
-**`nexus crypto generate-identity-key`**
-
-Creates a brand-new long-term identity key and stores it inside `~/.nexus/crypto.toml` (encrypted if at-rest encryption is enabled). Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
 
 ---
 

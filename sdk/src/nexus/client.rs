@@ -6,7 +6,6 @@ use {
         events::EventFetcher,
         nexus::{
             crawler::Crawler,
-            crypto::CryptoActions,
             error::NexusError,
             gas::GasActions,
             models::Dag,
@@ -209,13 +208,6 @@ impl NexusClient {
     /// Return a [`GasActions`] instance for performing gas-related operations.
     pub fn gas(&self) -> GasActions {
         GasActions {
-            client: self.clone(),
-        }
-    }
-
-    /// Return a [`CryptoActions`] instance for performing crypto-related operations.
-    pub fn crypto(&self) -> CryptoActions {
-        CryptoActions {
             client: self.clone(),
         }
     }

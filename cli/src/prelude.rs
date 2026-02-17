@@ -1,14 +1,9 @@
 pub(crate) use {
-    crate::{cli_conf::*, error::NexusCliError, secrets::store::Secret},
+    crate::{cli_conf::*, error::NexusCliError},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{
-        crypto::{session::Session, x3dh::IdentityKey},
-        sui::traits::*,
-        types::NexusObjects,
-        *,
-    },
+    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -24,7 +19,6 @@ pub(crate) use {
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
-pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 
 /// Various Nexus RPC URLs.
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";

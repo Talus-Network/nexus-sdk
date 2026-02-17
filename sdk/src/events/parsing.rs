@@ -1232,22 +1232,6 @@ mod tests {
                 vertex: vertex.clone(),
                 was_settled: true,
             }),
-            NexusEventKind::PreKeyVaultCreated(PreKeyVaultCreatedEvent {
-                vault: addr(),
-                crypto_cap: addr(),
-            }),
-            NexusEventKind::PreKeyRequested(PreKeyRequestedEvent {
-                requested_by: addr(),
-            }),
-            NexusEventKind::PreKeyFulfilled(PreKeyFulfilledEvent {
-                requested_by: addr(),
-                pre_key_bytes: vec![1, 2, 3],
-            }),
-            NexusEventKind::PreKeyAssociated(PreKeyAssociatedEvent {
-                claimed_by: addr(),
-                pre_key: vec![4, 5],
-                initial_message: vec![6, 7],
-            }),
             NexusEventKind::DAGCreated(DAGCreatedEvent { dag: addr() }),
         ]
     }

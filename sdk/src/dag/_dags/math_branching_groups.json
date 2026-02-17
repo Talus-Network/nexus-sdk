@@ -52,12 +52,10 @@
       "name": "add_inputs",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": true
+          "name": "a"
         },
         {
-          "name": "b",
-          "encrypted": true
+          "name": "b"
         }
       ]
     },
@@ -69,12 +67,10 @@
       "name": "mul_inputs",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         },
         {
-          "name": "b",
-          "encrypted": false
+          "name": "b"
         }
       ]
     },

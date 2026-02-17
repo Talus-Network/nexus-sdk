@@ -35,8 +35,7 @@ A DAG JSON file consists of sections defining the graph's components:
   "name": "unique_vertex_name",
   "entry_ports": [
     {
-      "name": "input_port_name", // Must match the tool's input schema
-      "encrypted": false // Optional, default is false
+      "name": "input_port_name" // Must match the tool's input schema
     }
     // ... potentially more entry ports
   ]
@@ -69,8 +68,7 @@ Edges define the flow of data between vertices, connecting an output port of a s
   "from": {
     "vertex": "source_vertex_name", // Name from the "vertices" list
     "output_variant": "ok", // e.g., ok, err, gt, lt, eq
-    "output_port": "output_port_name",
-    "encrypted": true // Optional, default is false
+    "output_port": "output_port_name"
   },
   "to": {
     "vertex": "target_vertex_name", // Name from the "vertices" list
@@ -82,7 +80,6 @@ Edges define the flow of data between vertices, connecting an output port of a s
 
 - The `source_vertex_name` and `target_vertex_name` refer to the `name` field of vertices defined in the `vertices` list.
 - The `target_input_port_name` must be a valid input port for the tool used by the `target_vertex_name`.
-- If the `encrypted` field is set to `true`, the data will be encrypted before being sent on-chain. This is useful for sensitive data that should not be exposed in plaintext.
 
 ## 3.1 Special edge types
 
@@ -148,8 +145,7 @@ Outputs can be defined on vertices that have no outgoing edges. These can be tho
 {
   "vertex": "vertex_name", // Name must exist in the `vertices` list
   "output_variant": "ok", // e.g., ok, err, gt, lt, eq
-  "output_port": "output_port_name", // e.g., result
-  "encrypted": true // Optional, default is false
+  "output_port": "output_port_name" // e.g., result
 }
 ```
 
@@ -174,16 +170,13 @@ The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to en
 ## 8. Best Practices
 
 1. **Naming Conventions**:
-
    - Use descriptive names for vertices.
 
 1. **Organization**:
-
    - Keep the DAG as simple as possible. (But no simpler! For example, branching and entry groups can make powerful composite DAG structures. )
    - Use entry groups to provide different ways of starting DAG execution.
 
 1. **Error Handling**:
-
    - Consider all possible `output_variant`s (e.g., `ok`, `err`) from tools.
    - Explicitly handle error paths or ensure they lead to acceptable end states.
    - Use appropriate comparison/logic tools for branching.
@@ -198,29 +191,24 @@ The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to en
 Here's a step-by-step process to create a DAG:
 
 1. **Define Requirements**:
-
    - What inputs are needed?
    - What outputs are expected?
    - What processing steps are required?
 
 1. **Design the Flow**:
-
    - Map out the vertices (tools) needed
    - Determine the connections
    - Identify branching points
 
 1. **Create Entry Points**:
-
    - Specify entry ports and default values
    - Set up entry groups if needed
 
 1. **Add Processing Vertices**:
-
    - Define intermediate vertices (tools)
    - Set up default values
 
 1. **Connect the Dots**:
-
    - Create edges between vertices
    - Handle all output variants
    - Ensure proper data flow

@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn test_datetime_deser_ser() {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
-        let input = format!(r#"{{"value":"1600000000000"}}"#);
+        let input = r#"{"value":"1600000000000"}"#.to_string();
         let result: TestDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dt);
 
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn test_duration_deser_ser() {
         let dur = chrono::Duration::milliseconds(12345);
-        let input = format!(r#"{{"value":"12345"}}"#);
+        let input = r#"{"value":"12345"}"#.to_string();
         let result: TestDurationStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dur);
 
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn test_option_datetime_deser_ser_some() {
         let dt = chrono::Utc.timestamp_millis_opt(1_600_000_000_000).unwrap();
-        let input = format!(r#"{{"value":"1600000000000"}}"#);
+        let input = r#"{"value":"1600000000000"}"#.to_string();
         let result: TestOptionDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, Some(dt));
 

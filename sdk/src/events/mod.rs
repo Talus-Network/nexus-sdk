@@ -150,10 +150,6 @@ events! {
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     GasSettlementUpdateEvent => GasSettlementUpdate, "GasSettlementUpdateEvent",
-    PreKeyVaultCreatedEvent => PreKeyVaultCreated, "PreKeyVaultCreatedEvent",
-    PreKeyRequestedEvent => PreKeyRequested, "PreKeyRequestedEvent",
-    PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
-    PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
@@ -489,55 +485,6 @@ pub struct LeaderClaimedGasEvent {
     /// Optional reason for auditing purposes.
     #[serde(default)]
     pub purpose: String,
-}
-
-/// Fired by the Nexus Workflow when a new pre key vault is created. This happens
-/// on initial network setup.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyVaultCreatedEvent {
-    pub vault: sui::types::Address,
-    pub crypto_cap: sui::types::Address,
-}
-
-/// Fired by the Nexus Workflow when a pre key is requested. The pre key bytes
-/// are still empty at this point and will be fulfilled by the leader.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyRequestedEvent {
-    /// The address of the user that requested the pre key.
-    pub requested_by: sui::types::Address,
-}
-
-/// Fired by the Nexus Workflow when a pre key request is fulfilled by the
-/// leader. Carries the pending pre key bytes that the user can then associate.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyFulfilledEvent {
-    /// The address of the user that requested the pre key.
-    pub requested_by: sui::types::Address,
-    /// Bytes of the fulfilled pre key.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub pre_key_bytes: Vec<u8>,
-}
-
-/// Fired by the Nexus Workflow when a pre key is associated with a user.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyAssociatedEvent {
-    /// The address of the user the pre key is associated with.
-    pub claimed_by: sui::types::Address,
-    /// Bytes of the pre key.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub pre_key: Vec<u8>,
-    /// Bytes of the initial message.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub initial_message: Vec<u8>,
 }
 
 /// Fired by the Nexus Workflow when a new DAG is created.
