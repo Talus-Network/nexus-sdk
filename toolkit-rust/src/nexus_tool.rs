@@ -76,7 +76,7 @@ pub trait NexusTool: Send + Sync + 'static {
     /// Default: allow.
     ///
     /// # Example
-    /// ```no_run
+    /// ```ignore
     /// async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
     ///     // Example policy: only allow a specific LeaderId.
     ///     if ctx.invoker_id != "0x1111" {
