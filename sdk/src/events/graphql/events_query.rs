@@ -7,7 +7,7 @@ type JSON = serde_json::Value;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "src/events/graphql/schema-1.61.2.graphql",
+    schema_path = "src/events/graphql/schema-1.64.2.graphql",
     query_path = "src/events/graphql/events_query.graphql",
     response_derives = "Debug"
 )]
