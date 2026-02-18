@@ -283,13 +283,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("edge_kind_normal"),
     };
-    /// Create an encrypted InputPort from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::encrypted_input_port_from_string`
-    pub const ENCRYPTED_INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("encrypted_input_port_from_string"),
-    };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::EntryGroup`
@@ -454,20 +447,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_edge"),
     };
-    /// Add an encrypted Edge to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_encrypted_edge`
-    pub const WITH_ENCRYPTED_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_encrypted_edge"),
-    };
-    /// Add an encrypted output to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_encrypted_output`
-    pub const WITH_ENCRYPTED_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_encrypted_output"),
-    };
     /// Mark a vertex as an entry vertex and assign it to a group.
     ///
     /// `nexus_workflow::dag::with_entry_in_group`
@@ -537,25 +516,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::INPUT_PORT_FROM_STRING.module,
                 Self::INPUT_PORT_FROM_STRING.name,
-                vec![],
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an encrypted InputPort from a string.
-    pub fn encrypted_input_port_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module,
-                Self::ENCRYPTED_INPUT_PORT_FROM_STRING.name,
                 vec![],
             ),
             vec![str],
@@ -1016,10 +976,6 @@ impl GasExtension {
     };
 }
 
-// == `nexus_workflow::pre_key_vault` ==
-
-pub struct PreKeyVault;
-
 // == `nexus_workflow::network_auth` ==
 
 pub struct NetworkAuth;
@@ -1077,44 +1033,47 @@ impl NetworkAuth {
     };
 }
 
-const PRE_KEY_VAULT_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("pre_key_vault");
+// == `nexus_workflow::leader` ==
 
-impl PreKeyVault {
-    /// Associate a pre key with the sender and fire an initial message.
+pub struct Leader;
+
+const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
+
+impl Leader {
+    /// Create empty metadata for a leader.
     ///
-    /// `nexus_workflow::pre_key_vault::associate_pre_key`
-    pub const ASSOCIATE_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("associate_pre_key"),
+    /// `nexus_workflow::leader::empty_metadata`
+    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("empty_metadata"),
     };
-    /// Claim a pre key for the tx sender.
+    /// LeaderRegistry type for lookups.
     ///
-    /// `nexus_workflow::pre_key_vault::claim_pre_key_for_self`
-    pub const CLAIM_PRE_KEY_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("claim_pre_key_for_self"),
+    /// `nexus_workflow::leader::LeaderRegistry`
+    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderRegistry"),
     };
-    /// Fulfill a requested pre key for a user.
+    /// Create metadata with the provided map.
     ///
-    /// `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
-    pub const FULFILL_PRE_KEY_FOR_USER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("fulfill_pre_key_for_user"),
+    /// `nexus_workflow::leader::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("new_metadata"),
     };
-    /// OverCrypto owner cap generic.
+    /// Stake SUI into a leader's pool.
     ///
-    /// `nexus_workflow::pre_key_vault::OverCrypto`
-    pub const OVER_CRYPTO: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("OverCrypto"),
+    /// `nexus_workflow::leader::stake`
+    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("stake"),
     };
-    /// PreKeyVault type for lookups.
+    /// Update or register a leader node.
     ///
-    /// `nexus_workflow::pre_key_vault::PreKeyVault`
-    pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("PreKeyVault"),
+    /// `nexus_workflow::leader::upsert_self`
+    pub const UPSERT_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("upsert_self"),
     };
 }
 

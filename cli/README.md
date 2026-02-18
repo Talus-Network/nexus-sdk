@@ -57,7 +57,6 @@ Commands:
   scheduler   Manage scheduler tasks and occurrences
   gas         Manage Nexus gas budgets and tickets
   network     Manage Nexus networks and leader caps
-  crypto      Manage Nexus crypto
   completion  Provide shell completions
   help        Print this message or the help of the given subcommand(s)
 

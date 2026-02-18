@@ -1,8 +1,4 @@
-use {
-    crate::{prelude::*, workflow},
-    nexus_sdk::nexus::crawler::Crawler,
-    std::collections::HashMap,
-};
+use crate::prelude::*;
 
 /// Parse metadata pairs provided as `key=value` strings.
 pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)>, NexusCliError> {
@@ -21,15 +17,6 @@ pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)
         result.push((key.trim().to_owned(), value.trim().to_owned()));
     }
     Ok(result)
-}
-
-/// Fetch the encrypted entry port mapping for the provided DAG entry group.
-pub(crate) async fn fetch_encryption_targets(
-    crawler: &Crawler,
-    dag_id: &sui::types::Address,
-    entry_group: &str,
-) -> AnyResult<HashMap<String, Vec<String>>, NexusCliError> {
-    workflow::fetch_encrypted_entry_ports(crawler, entry_group.to_owned(), dag_id).await
 }
 
 #[cfg(test)]

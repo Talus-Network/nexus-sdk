@@ -9,7 +9,6 @@ use {
         sui::*,
     },
     nexus_sdk::{events::NexusEventKind, sui, types::Storable},
-    std::sync::Arc,
 };
 
 /// Inspect a Nexus DAG execution process based on the provided object ID and
@@ -32,15 +31,6 @@ pub(crate) async fn inspect_dag_execution(
     let conf = CliConf::load().await.unwrap_or_default();
     let storage_conf = conf.data_storage.clone().into();
 
-    // Get the active session for potential encryption
-    let session = CryptoConf::get_active_session(None).await.map_err(|e| {
-        NexusCliError::Any(anyhow!(
-            "Failed to get active session: {}.\nPlease initiate a session first.\n\n{crypto_auth}",
-            e,
-            crypto_auth = "$ nexus crypto auth"
-        ))
-    })?;
-
     let mut json_trace = Vec::new();
 
     while let Some(event) = result.next_event.recv().await {
@@ -56,7 +46,7 @@ pub(crate) async fn inspect_dag_execution(
 
                 let fetched_data = e
                     .variant_ports_to_data
-                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
                         "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
@@ -68,7 +58,7 @@ pub(crate) async fn inspect_dag_execution(
                 for (port, data) in fetched_data {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
                     );
 
                     item!(
@@ -100,7 +90,7 @@ pub(crate) async fn inspect_dag_execution(
 
                 let fetched_data = e
                     .variant_ports_to_data
-                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
                         "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
@@ -112,7 +102,7 @@ pub(crate) async fn inspect_dag_execution(
                 for (port, data) in fetched_data {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
                     );
 
                     item!(
@@ -155,11 +145,6 @@ pub(crate) async fn inspect_dag_execution(
             _ => {}
         }
     }
-
-    // Update the session in the configuration.
-    CryptoConf::release_session(session, None)
-        .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {e}")))?;
 
     json_output(&json_trace)?;
 
