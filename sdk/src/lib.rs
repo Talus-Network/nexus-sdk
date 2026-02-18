@@ -44,14 +44,6 @@ pub mod test_utils;
 #[cfg(feature = "walrus")]
 pub mod walrus;
 
-/// Cryptographic primitives including X3DH for secure key exchange
-#[cfg(feature = "crypto")]
-pub mod crypto;
-
-/// Secret store provides a minimal at-rest secret wrapper for config persistence.
-#[cfg(feature = "secret_store")]
-pub mod secret_store;
-
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;

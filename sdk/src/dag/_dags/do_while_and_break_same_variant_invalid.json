@@ -3,7 +3,7 @@
     {
       "name": "a",
       "kind": { "variant": "off_chain", "tool_fqn": "com.test.test@1" },
-      "entry_ports": [{ "name": "input", "encrypted": false }]
+      "entry_ports": [{ "name": "input" }]
     },
     {
       "name": "b",

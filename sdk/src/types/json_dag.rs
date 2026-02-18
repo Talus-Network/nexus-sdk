@@ -35,8 +35,6 @@ pub enum VertexKind {
 #[derive(Clone, Debug, Deserialize)]
 pub struct EntryPort {
     pub name: String,
-    #[serde(default)]
-    pub encrypted: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -96,11 +94,6 @@ pub struct FromPort {
     pub vertex: String,
     pub output_variant: String,
     pub output_port: String,
-    /// Whether the output port data should be encrypted before being sent to
-    /// the workflow. Defaults to `false`.
-    // TODO: <https://github.com/Talus-Network/nexus/issues/524>
-    #[serde(default)]
-    pub encrypted: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

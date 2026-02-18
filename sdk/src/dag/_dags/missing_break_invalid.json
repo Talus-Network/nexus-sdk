@@ -8,8 +8,7 @@
       },
       "entry_ports": [
         {
-          "name": "size",
-          "encrypted": false
+          "name": "size"
         }
       ]
     },
@@ -158,8 +157,7 @@
     {
       "vertex": "add_2",
       "output_variant": "ok",
-      "output_port": "result",
-      "encrypted": false
+      "output_port": "result"
     }
   ]
 }

@@ -335,8 +335,8 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [pre_key_vault]
-                object_id = "0x9"
+                [leader_registry]
+                object_id = "0x10"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
@@ -404,12 +404,12 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            *objects.pre_key_vault.object_id(),
-            sui::types::Address::from_static("0x9")
+            *objects.leader_registry.object_id(),
+            sui::types::Address::from_static("0x10")
         );
-        assert_eq!(objects.pre_key_vault.version(), 1);
+        assert_eq!(objects.leader_registry.version(), 1);
         assert_eq!(
-            *objects.pre_key_vault.digest(),
+            *objects.leader_registry.digest(),
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
 

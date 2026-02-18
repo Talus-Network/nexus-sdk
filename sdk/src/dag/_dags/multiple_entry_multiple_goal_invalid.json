@@ -12,7 +12,7 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "a",
-      "entry_ports": [{ "name": "input", "encrypted": false }]
+      "entry_ports": [{ "name": "input" }]
     },
     {
       "kind": {
@@ -20,7 +20,7 @@
         "tool_fqn": "com.test.test@1"
       },
       "name": "b",
-      "entry_ports": [{ "name": "input", "encrypted": false }]
+      "entry_ports": [{ "name": "input" }]
     },
     {
       "kind": {
