@@ -1040,12 +1040,33 @@ pub struct Leader;
 const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
 
 impl Leader {
+    /// Allow an address to request leader capabilities.
+    ///
+    /// `nexus_workflow::leader::allow_address`
+    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("allow_address"),
+    };
+    /// Disallow an address from requesting leader capabilities.
+    ///
+    /// `nexus_workflow::leader::disallow_address`
+    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("disallow_address"),
+    };
     /// Create empty metadata for a leader.
     ///
     /// `nexus_workflow::leader::empty_metadata`
     pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("empty_metadata"),
+    };
+    /// Admin capability type for modifying leader allowlist.
+    ///
+    /// `nexus_workflow::leader::LeaderCapabilitiesAdminCap`
+    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
     };
     /// LeaderRegistry type for lookups.
     ///
@@ -1060,6 +1081,13 @@ impl Leader {
     pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("new_metadata"),
+    };
+    /// Register the caller as a leader and stake.
+    ///
+    /// `nexus_workflow::leader::register`
+    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("register"),
     };
     /// Stake SUI into a leader's pool.
     ///

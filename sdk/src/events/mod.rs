@@ -149,6 +149,7 @@ events! {
     OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
+    LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
     GasSettlementUpdateEvent => GasSettlementUpdate, "GasSettlementUpdateEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
@@ -180,9 +181,12 @@ pub struct RequestWalkExecutionEvent {
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
-    /// This field defines the package ID, module and name of the Agent that
-    /// holds the DAG. Used to confirm the tool evaluation with the Agent.
-    pub worksheet_from_type: TypeName,
+    /// The off-chain realm can determine the Talus Agent Package to invoke
+    /// thanks to the package address and module name from this field.
+    pub tap_from_type: TypeName,
+    /// UID of the TAP witness object that created the worksheet used to start
+    /// this execution.
+    pub tap_from_uid: sui::types::Address,
 }
 
 /// Fired via the Nexus `interface` package when a new Agent is registered.
@@ -462,6 +466,14 @@ pub struct PeriodicScheduleConfiguredEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FoundingLeaderCapCreatedEvent {
     pub leader_cap: sui::types::Address,
+    pub network: sui::types::Address,
+}
+
+/// Fired by the Nexus Workflow when a leader capability is issued and transferred.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaderCapIssuedEvent {
+    pub registry: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
     pub network: sui::types::Address,
 }
 

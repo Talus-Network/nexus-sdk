@@ -1,4 +1,5 @@
 mod derive;
+mod interface_version;
 mod json_dag;
 mod network_auth;
 mod nexus_data;
@@ -18,6 +19,7 @@ mod type_name;
 
 pub use {
     derive::*,
+    interface_version::*,
     json_dag::*,
     network_auth::*,
     nexus_data::*,
