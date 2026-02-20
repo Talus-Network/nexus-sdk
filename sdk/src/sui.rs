@@ -34,7 +34,7 @@ pub mod build {
             schema::{update_managed_address, ManagedAddressUpdate},
             LockFile,
         },
-        sui_move_build::{implicit_deps, BuildConfig},
-        sui_package_management::system_package_versions::latest_system_packages,
+        move_package_alt::schema::Environment,
+        sui_move_build::BuildConfig,
     };
 }

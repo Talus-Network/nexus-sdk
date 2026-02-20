@@ -68,9 +68,8 @@ pub async fn publish_move_package_with_overrides(
             .collect::<Vec<_>>(),
     );
 
-    build_config.chain_id = Some(chain_id.clone());
-    build_config.config.implicit_dependencies =
-        sui::build::implicit_deps(sui::build::latest_system_packages());
+    build_config.environment =
+        sui::build::Environment::new("testnet".to_string(), chain_id.clone());
     let package = build_config
         .build(&install_dir)
         .expect("Failed to build package.");
