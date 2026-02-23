@@ -56,7 +56,7 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
-/// - Applies replay protection via `(leader_id, nonce)` (retries are safe; conflicting replays are rejected).
+/// - Applies replay protection via `(tool_id, nonce)` (retries are safe; conflicting replays are rejected).
 /// - Signs the JSON response with the tool's Ed25519 signing key so the Leader can verify provenance.
 ///   This includes error responses after the request has been authenticated (e.g. `403`, `422`, `500`).
 ///
@@ -677,7 +677,7 @@ mod tests {
         verify_signed_response(&resp1, &tool_id, req_hash, tool_pk);
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
-        // Exact retry returns cached bytes and does not re-run authorization or tool code.
+        // Exact retry returns a cached result and does not re-run authorization or tool code.
         let resp2 = warp::test::request()
             .method("POST")
             .path("/invoke")
@@ -690,15 +690,8 @@ mod tests {
             .await;
 
         assert_eq!(resp2.status(), StatusCode::FORBIDDEN);
+        verify_signed_response(&resp2, &tool_id, req_hash, tool_pk);
         assert_eq!(resp2.body(), resp1.body());
-        assert_eq!(
-            resp2.headers().get(HEADER_SIG_INPUT),
-            resp1.headers().get(HEADER_SIG_INPUT)
-        );
-        assert_eq!(
-            resp2.headers().get(HEADER_SIG),
-            resp1.headers().get(HEADER_SIG)
-        );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
         // Cleanup
@@ -778,15 +771,8 @@ mod tests {
             .await;
 
         assert_eq!(resp3.status(), StatusCode::FORBIDDEN);
+        verify_signed_response(&resp3, &tool_id, req_hash1, tool_pk);
         assert_eq!(resp3.body(), resp1.body());
-        assert_eq!(
-            resp3.headers().get(HEADER_SIG_INPUT),
-            resp1.headers().get(HEADER_SIG_INPUT)
-        );
-        assert_eq!(
-            resp3.headers().get(HEADER_SIG),
-            resp1.headers().get(HEADER_SIG)
-        );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
         // Cleanup
