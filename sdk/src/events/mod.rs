@@ -181,8 +181,8 @@ pub struct RequestWalkExecutionEvent {
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
-    /// The off-chain realm can determine the Talus Agent Package to invoke
-    /// thanks to the package address and module name from this field.
+    /// This field defines the package ID, module and name of the Agent that
+    /// holds the DAG. Used to confirm the tool evaluation with the Agent
     pub worksheet_from_type: TypeName,
     /// UID of the TAP witness object that created the worksheet used to start
     /// this execution.

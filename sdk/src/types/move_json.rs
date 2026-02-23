@@ -117,3 +117,113 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        serde::{Deserialize, Serialize},
+        serde_json::json,
+    };
+
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    struct Foo {
+        a: u64,
+    }
+
+    #[test]
+    fn strip_fields_owned_behaviour() {
+        let value = json!("hello");
+        assert_eq!(strip_fields_owned(value.clone()), value);
+
+        let value = json!({"a": 1});
+        assert_eq!(strip_fields_owned(value.clone()), value);
+
+        let value = json!({"fields": {"a": 1}});
+        assert_eq!(strip_fields_owned(value), json!({"a": 1}));
+
+        let value = json!({"fields": 1, "x": 2});
+        assert_eq!(strip_fields_owned(value.clone()), value);
+    }
+
+    #[test]
+    fn move_fields_deserializes_json_with_or_without_wrapper() {
+        let wrapped: MoveFields<Foo> =
+            serde_json::from_value(json!({"fields": {"a": 1}})).expect("should unwrap fields");
+        assert_eq!(wrapped.0, Foo { a: 1 });
+
+        let plain: MoveFields<Foo> =
+            serde_json::from_value(json!({"a": 2})).expect("should deserialize plain struct");
+        assert_eq!(plain.0, Foo { a: 2 });
+    }
+
+    #[cfg(feature = "bcs")]
+    #[test]
+    fn move_fields_deserializes_bcs_without_wrapper() {
+        let bytes = bcs::to_bytes(&Foo { a: 3 }).expect("BCS serialization should succeed");
+        let decoded: MoveFields<Foo> =
+            bcs::from_bytes(&bytes).expect("BCS deserialization should succeed");
+        assert_eq!(decoded.0, Foo { a: 3 });
+    }
+
+    #[test]
+    fn move_option_deserializes_common_json_forms() {
+        let none: MoveOption<u64> = serde_json::from_value(json!(null)).expect("null is accepted");
+        assert_eq!(none.0, None);
+
+        let array_some: MoveOption<u64> =
+            serde_json::from_value(json!([5])).expect("array form is accepted");
+        assert_eq!(array_some.0, Some(5));
+
+        let vec_some: MoveOption<u64> =
+            serde_json::from_value(json!({"vec": [7]})).expect("vec form is accepted");
+        assert_eq!(vec_some.0, Some(7));
+
+        let vec_cap: MoveOption<u64> =
+            serde_json::from_value(json!({"Vec": [8]})).expect("Vec form is accepted");
+        assert_eq!(vec_cap.0, Some(8));
+    }
+
+    #[test]
+    fn move_option_deserializes_some_none_and_fallback_forms() {
+        let some: MoveOption<u64> =
+            serde_json::from_value(json!({"some": 9})).expect("some form is accepted");
+        assert_eq!(some.0, Some(9));
+
+        let none: MoveOption<u64> =
+            serde_json::from_value(json!({"none": true})).expect("none form is accepted");
+        assert_eq!(none.0, None);
+
+        let none_cap: MoveOption<u64> =
+            serde_json::from_value(json!({"None": {}})).expect("None form is accepted");
+        assert_eq!(none_cap.0, None);
+
+        let number: MoveOption<u64> =
+            serde_json::from_value(json!(12)).expect("plain value form is accepted");
+        assert_eq!(number.0, Some(12));
+
+        let fallback: MoveOption<Foo> = serde_json::from_value(json!({"a": 42}))
+            .expect("fallback object form should deserialize as T");
+        assert_eq!(fallback.0, Some(Foo { a: 42 }));
+
+        let some_wrapped: MoveOption<Foo> = serde_json::from_value(json!({
+            "some": { "fields": { "a": 13 } }
+        }))
+        .expect("some inner fields wrapper should be tolerated");
+        assert_eq!(some_wrapped.0, Some(Foo { a: 13 }));
+    }
+
+    #[cfg(feature = "bcs")]
+    #[test]
+    fn move_option_deserializes_bcs_vec_layout() {
+        let bytes = bcs::to_bytes(&vec![1u64]).expect("BCS serialization should succeed");
+        let decoded: MoveOption<u64> =
+            bcs::from_bytes(&bytes).expect("BCS deserialization should succeed");
+        assert_eq!(decoded.0, Some(1));
+
+        let bytes = bcs::to_bytes(&Vec::<u64>::new()).expect("BCS serialization should succeed");
+        let decoded: MoveOption<u64> =
+            bcs::from_bytes(&bytes).expect("BCS deserialization should succeed");
+        assert_eq!(decoded.0, None);
+    }
+}
