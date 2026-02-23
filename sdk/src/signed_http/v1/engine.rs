@@ -37,7 +37,11 @@ use {
     rand::RngCore as _,
     std::{
         collections::HashMap,
-        sync::{Arc, Mutex},
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            Arc,
+            Mutex,
+        },
     },
 };
 
@@ -79,17 +83,39 @@ impl<'a> SignatureHeadersRef<'a> {
     }
 }
 
-/// Responder-side replay behavior decision for an authenticated `(invoker_id, nonce)` pair.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplayRequestIdentityV1 {
+    pub method: String,
+    pub path: String,
+    pub query: String,
+    pub body_sha256: [u8; 32],
+}
+
+/// Cached invocation result for a `(tool_id, nonce)` pair.
+#[derive(Clone, Debug)]
+pub struct CachedResponseV1 {
+    pub owner_leader_id: String,
+    pub status: u16,
+    pub body: Vec<u8>,
+}
+
+/// Responder-side replay behavior decision for an authenticated `(tool_id, nonce)` pair.
 #[derive(Clone, Debug)]
 pub enum ReplayDecisionV1 {
-    /// First time seen; allow execution and mark as `InFlight`.
-    Proceed,
-    /// Identical retry; return the cached signed response bytes.
-    Return(SignedResponseV1),
-    /// Conflicting replay (same nonce, different request hash).
-    Reject,
-    /// Concurrent retry while the original request is still executing.
-    InFlight,
+    /// Allow execution and mark as `InFlight` (or take over an expired lease).
+    Proceed {
+        owner_leader_id: String,
+        generation: u64,
+    },
+    /// Identical retry; return the cached invocation result.
+    Return(CachedResponseV1),
+    /// Conflicting replay (same nonce, different request identity).
+    Reject { owner_leader_id: Option<String> },
+    /// Concurrent retry while the request is still executing (lease not expired).
+    InFlight {
+        owner_leader_id: String,
+        lease_until_ms: u64,
+    },
 }
 
 /// Replay storage interface used by the responder to distinguish retries from replays.
@@ -99,37 +125,50 @@ pub trait ReplayStore: Send + Sync {
     /// Called after request authentication to decide how to handle a nonce.
     fn begin_or_replay(
         &self,
-        nonce_key: &str,
-        request_hash: [u8; 32],
-        expires_at_ms: u64,
+        invocation_key: &str,
+        request_identity: ReplayRequestIdentityV1,
+        invoker_id: &str,
         now_ms: u64,
     ) -> ReplayDecisionV1;
 
-    /// Mark a nonce as completed and store the signed response for future retries.
+    /// Mark a nonce as completed and store the response result for future retries.
     fn complete(
         &self,
-        nonce_key: &str,
-        request_hash: [u8; 32],
-        expires_at_ms: u64,
-        response: SignedResponseV1,
-    );
+        invocation_key: &str,
+        request_identity: &ReplayRequestIdentityV1,
+        generation: u64,
+        response: CachedResponseV1,
+        now_ms: u64,
+    ) -> CompleteDecisionV1;
 
-    /// Remove an `InFlight` reservation for a nonce.
-    fn remove(&self, nonce_key: &str);
+    /// Remove an `InFlight` reservation for a nonce (best-effort cleanup).
+    fn remove(&self, invocation_key: &str, generation: u64);
+}
+
+#[derive(Clone, Debug)]
+pub enum CompleteDecisionV1 {
+    Stored,
+    AlreadyComplete(CachedResponseV1),
+    LostLease {
+        owner_leader_id: String,
+        lease_until_ms: u64,
+    },
 }
 
 #[derive(Clone)]
 struct InFlightGuardV1 {
     store: Arc<dyn ReplayStore>,
-    nonce_key: String,
+    invocation_key: String,
+    generation: u64,
     armed: bool,
 }
 
 impl InFlightGuardV1 {
-    fn new(store: Arc<dyn ReplayStore>, nonce_key: String) -> Self {
+    fn new(store: Arc<dyn ReplayStore>, invocation_key: String, generation: u64) -> Self {
         Self {
             store,
-            nonce_key,
+            invocation_key,
+            generation,
             armed: true,
         }
     }
@@ -144,99 +183,188 @@ impl Drop for InFlightGuardV1 {
         if !self.armed {
             return;
         }
-        self.store.remove(&self.nonce_key);
+        self.store.remove(&self.invocation_key, self.generation);
     }
 }
 
 #[derive(Clone)]
 struct InMemoryReplayStore {
     inner: Arc<Mutex<HashMap<String, ReplayEntryV1>>>,
+    replay_cache_ttl_ms: u64,
+    in_flight_lease_ms: u64,
+    next_generation: Arc<AtomicU64>,
 }
 
 #[derive(Clone)]
 struct ReplayEntryV1 {
-    request_hash: [u8; 32],
+    request_identity: ReplayRequestIdentityV1,
     expires_at_ms: u64,
     state: ReplayStateV1,
 }
 
 #[derive(Clone)]
 enum ReplayStateV1 {
-    InFlight,
-    Complete(SignedResponseV1),
+    InFlight(InFlightEntryV1),
+    Complete(CachedResponseV1),
+}
+
+#[derive(Clone)]
+struct InFlightEntryV1 {
+    owner_leader_id: String,
+    lease_until_ms: u64,
+    generation: u64,
 }
 
 impl InMemoryReplayStore {
     /// Create a new empty in-memory replay store.
-    pub fn new() -> Self {
+    pub fn new(replay_cache_ttl_ms: u64, in_flight_lease_ms: u64) -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            replay_cache_ttl_ms,
+            in_flight_lease_ms,
+            next_generation: Arc::new(AtomicU64::new(1)),
         }
     }
 
     fn purge_expired(cache: &mut HashMap<String, ReplayEntryV1>, now_ms: u64) {
         cache.retain(|_, entry| entry.expires_at_ms >= now_ms);
     }
-}
 
-impl Default for InMemoryReplayStore {
-    fn default() -> Self {
-        Self::new()
+    fn next_generation(&self) -> u64 {
+        self.next_generation.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn refreshed_expires_at_ms(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_add(self.replay_cache_ttl_ms)
     }
 }
 
 impl ReplayStore for InMemoryReplayStore {
     fn begin_or_replay(
         &self,
-        nonce_key: &str,
-        request_hash: [u8; 32],
-        expires_at_ms: u64,
+        invocation_key: &str,
+        request_identity: ReplayRequestIdentityV1,
+        invoker_id: &str,
         now_ms: u64,
     ) -> ReplayDecisionV1 {
         let mut cache = self.inner.lock().unwrap();
         Self::purge_expired(&mut cache, now_ms);
 
-        match cache.get(nonce_key) {
+        match cache.get_mut(invocation_key) {
             None => {
+                let generation = self.next_generation();
+                let owner_leader_id = invoker_id.to_string();
                 cache.insert(
-                    nonce_key.to_string(),
+                    invocation_key.to_string(),
                     ReplayEntryV1 {
-                        request_hash,
-                        expires_at_ms,
-                        state: ReplayStateV1::InFlight,
+                        request_identity,
+                        expires_at_ms: self.refreshed_expires_at_ms(now_ms),
+                        state: ReplayStateV1::InFlight(InFlightEntryV1 {
+                            owner_leader_id: owner_leader_id.clone(),
+                            lease_until_ms: now_ms.saturating_add(self.in_flight_lease_ms),
+                            generation,
+                        }),
                     },
                 );
-                ReplayDecisionV1::Proceed
+                ReplayDecisionV1::Proceed {
+                    owner_leader_id,
+                    generation,
+                }
             }
-            Some(entry) if entry.request_hash != request_hash => ReplayDecisionV1::Reject,
-            Some(entry) => match &entry.state {
-                ReplayStateV1::InFlight => ReplayDecisionV1::InFlight,
-                ReplayStateV1::Complete(resp) => ReplayDecisionV1::Return(resp.clone()),
-            },
+            Some(entry) if entry.request_identity != request_identity => {
+                let owner_leader_id = match &entry.state {
+                    ReplayStateV1::InFlight(in_flight) => Some(in_flight.owner_leader_id.clone()),
+                    ReplayStateV1::Complete(resp) => Some(resp.owner_leader_id.clone()),
+                };
+                ReplayDecisionV1::Reject { owner_leader_id }
+            }
+            Some(entry) => {
+                entry.expires_at_ms = self.refreshed_expires_at_ms(now_ms);
+                match &mut entry.state {
+                    ReplayStateV1::Complete(resp) => ReplayDecisionV1::Return(resp.clone()),
+                    ReplayStateV1::InFlight(in_flight) => {
+                        if now_ms < in_flight.lease_until_ms {
+                            return ReplayDecisionV1::InFlight {
+                                owner_leader_id: in_flight.owner_leader_id.clone(),
+                                lease_until_ms: in_flight.lease_until_ms,
+                            };
+                        }
+
+                        // Lease expired: take over.
+                        in_flight.owner_leader_id = invoker_id.to_string();
+                        in_flight.lease_until_ms = now_ms.saturating_add(self.in_flight_lease_ms);
+                        in_flight.generation = self.next_generation();
+
+                        ReplayDecisionV1::Proceed {
+                            owner_leader_id: in_flight.owner_leader_id.clone(),
+                            generation: in_flight.generation,
+                        }
+                    }
+                }
+            }
         }
     }
 
     fn complete(
         &self,
-        nonce_key: &str,
-        request_hash: [u8; 32],
-        expires_at_ms: u64,
-        response: SignedResponseV1,
-    ) {
+        invocation_key: &str,
+        request_identity: &ReplayRequestIdentityV1,
+        generation: u64,
+        response: CachedResponseV1,
+        now_ms: u64,
+    ) -> CompleteDecisionV1 {
         let mut cache = self.inner.lock().unwrap();
-        cache.insert(
-            nonce_key.to_string(),
-            ReplayEntryV1 {
-                request_hash,
-                expires_at_ms,
-                state: ReplayStateV1::Complete(response),
-            },
-        );
+        Self::purge_expired(&mut cache, now_ms);
+
+        let Some(entry) = cache.get_mut(invocation_key) else {
+            return CompleteDecisionV1::LostLease {
+                owner_leader_id: response.owner_leader_id,
+                lease_until_ms: now_ms,
+            };
+        };
+
+        if &entry.request_identity != request_identity {
+            let owner_leader_id = match &entry.state {
+                ReplayStateV1::InFlight(in_flight) => in_flight.owner_leader_id.clone(),
+                ReplayStateV1::Complete(resp) => resp.owner_leader_id.clone(),
+            };
+            return CompleteDecisionV1::LostLease {
+                owner_leader_id,
+                lease_until_ms: now_ms,
+            };
+        }
+
+        entry.expires_at_ms = self.refreshed_expires_at_ms(now_ms);
+        match &entry.state {
+            ReplayStateV1::Complete(resp) => CompleteDecisionV1::AlreadyComplete(resp.clone()),
+            ReplayStateV1::InFlight(in_flight) if in_flight.generation != generation => {
+                CompleteDecisionV1::LostLease {
+                    owner_leader_id: in_flight.owner_leader_id.clone(),
+                    lease_until_ms: in_flight.lease_until_ms,
+                }
+            }
+            ReplayStateV1::InFlight(_) => {
+                entry.state = ReplayStateV1::Complete(response);
+                CompleteDecisionV1::Stored
+            }
+        }
     }
 
-    fn remove(&self, nonce_key: &str) {
+    fn remove(&self, invocation_key: &str, generation: u64) {
         let mut cache = self.inner.lock().unwrap();
-        cache.remove(nonce_key);
+        let Some(entry) = cache.get(invocation_key) else {
+            return;
+        };
+
+        let ReplayStateV1::InFlight(in_flight) = &entry.state else {
+            return;
+        };
+
+        if in_flight.generation != generation {
+            return;
+        }
+
+        cache.remove(invocation_key);
     }
 }
 
@@ -247,6 +375,10 @@ impl ReplayStore for InMemoryReplayStore {
 pub struct SignedHttpPolicyV1 {
     pub max_clock_skew_ms: u64,
     pub max_validity_ms: u64,
+    /// How long a `(tool_id, nonce)` entry stays in the replay cache (milliseconds).
+    pub replay_cache_ttl_ms: u64,
+    /// How long an in-flight lease is held before another Leader may take over (milliseconds).
+    pub in_flight_lease_ms: u64,
 }
 
 impl Default for SignedHttpPolicyV1 {
@@ -254,6 +386,8 @@ impl Default for SignedHttpPolicyV1 {
         Self {
             max_clock_skew_ms: 30_000,
             max_validity_ms: 60_000,
+            replay_cache_ttl_ms: 300_000,
+            in_flight_lease_ms: 10_000,
         }
     }
 }
@@ -342,7 +476,10 @@ impl SignedHttpEngineV1 {
             responder_kid,
             responder_signing_key,
             invoker_keys,
-            Arc::new(InMemoryReplayStore::new()),
+            Arc::new(InMemoryReplayStore::new(
+                self.policy.replay_cache_ttl_ms,
+                self.policy.in_flight_lease_ms,
+            )),
         )
     }
 
@@ -458,7 +595,7 @@ impl SignedHttpInvokerV1 {
         http: HttpRequestMeta<'_>,
         body: &[u8],
     ) -> Result<OutboundSessionV1, SignedHttpError> {
-        let mut bytes = [0u8; 16];
+        let mut bytes = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut bytes);
         let nonce = URL_SAFE_NO_PAD.encode(bytes);
 
@@ -586,6 +723,7 @@ impl OutboundSessionV1 {
             responder_kid: verified.claims.tool_kid,
             nonce: verified.claims.nonce.clone(),
             status: verified.claims.status,
+            owner_leader_id: verified.claims.owner_leader_id.clone(),
             responder_public_key: verified.tool_public_key,
             response_sig_input_sha256: verified.sig_input_sha256,
         })
@@ -599,6 +737,7 @@ pub struct VerifiedOutboundResponseV1 {
     pub responder_kid: u64,
     pub nonce: String,
     pub status: u16,
+    pub owner_leader_id: String,
     pub responder_public_key: [u8; 32],
     pub response_sig_input_sha256: [u8; 32],
 }
@@ -660,11 +799,12 @@ impl AuthenticatedRequestV1 {
 
     pub fn sign_response(
         &self,
+        owner_leader_id: &str,
         status: u16,
         body: &[u8],
     ) -> Result<SignedResponseV1, SignedHttpError> {
         self.responder
-            .sign_response_for(&self.verified, status, body)
+            .sign_response_for(&self.verified, owner_leader_id, status, body)
     }
 }
 
@@ -672,6 +812,8 @@ impl AuthenticatedRequestV1 {
 #[derive(Clone)]
 pub struct ResponderRejectionV1 {
     pub kind: ResponderRejectionKindV1,
+    pub owner_leader_id: Option<String>,
+    pub lease_until_ms: Option<u64>,
     pub request: AuthenticatedRequestV1,
 }
 
@@ -685,7 +827,11 @@ impl ResponderRejectionV1 {
         status: u16,
         body: &[u8],
     ) -> Result<SignedResponseV1, SignedHttpError> {
-        self.request.sign_response(status, body)
+        let owner_leader_id = self
+            .owner_leader_id
+            .as_deref()
+            .unwrap_or(&self.request.verified.invoker_id);
+        self.request.sign_response(owner_leader_id, status, body)
     }
 }
 
@@ -701,6 +847,7 @@ pub struct VerifiedInboundRequestV1 {
     pub method: String,
     pub path: String,
     pub query: String,
+    pub body_sha256: [u8; 32],
     pub invoker_public_key: [u8; 32],
     pub sig_input: Vec<u8>,
     pub sig_input_sha256: [u8; 32],
@@ -710,9 +857,10 @@ pub struct VerifiedInboundRequestV1 {
 #[derive(Clone)]
 pub struct InboundSessionV1 {
     request: AuthenticatedRequestV1,
-    nonce_key: String,
-    request_hash: [u8; 32],
-    expires_at_ms: u64,
+    invocation_key: String,
+    request_identity: ReplayRequestIdentityV1,
+    owner_leader_id: String,
+    generation: u64,
     guard: InFlightGuardV1,
 }
 
@@ -727,13 +875,66 @@ impl InboundSessionV1 {
         status: u16,
         body: Vec<u8>,
     ) -> Result<SignedResponseV1, SignedHttpError> {
-        let resp = self.request.sign_response(status, &body)?;
-        self.request.responder.replay_store.complete(
-            &self.nonce_key,
-            self.request_hash,
-            self.expires_at_ms,
-            resp.clone(),
-        );
+        let resp = self
+            .request
+            .sign_response(&self.owner_leader_id, status, &body)?;
+        let cached = CachedResponseV1 {
+            owner_leader_id: self.owner_leader_id.clone(),
+            status: resp.status,
+            body: body.clone(),
+        };
+
+        let now_ms = self.request.responder.engine.now_ms();
+        match self.request.responder.replay_store.complete(
+            &self.invocation_key,
+            &self.request_identity,
+            self.generation,
+            cached,
+            now_ms,
+        ) {
+            CompleteDecisionV1::Stored => {}
+            CompleteDecisionV1::AlreadyComplete(cached) => {
+                let signed = self.request.responder.sign_response_for(
+                    &self.request.verified,
+                    &cached.owner_leader_id,
+                    cached.status,
+                    &cached.body,
+                )?;
+                self.guard.disarm();
+                return Ok(SignedResponseV1 {
+                    status: signed.status,
+                    body: cached.body,
+                    headers: signed.headers,
+                });
+            }
+            CompleteDecisionV1::LostLease {
+                owner_leader_id,
+                lease_until_ms,
+            } => {
+                let status = 409u16;
+                let body = serde_json::to_vec(&serde_json::json!({
+                    "error": "request_in_flight",
+                    "details": "request with same nonce is still processing",
+                    "owner_leader_id": owner_leader_id,
+                    "lease_until_ms": lease_until_ms,
+                }))
+                .unwrap_or_else(|_| br#"{"error":"request_in_flight"}"#.to_vec());
+
+                let signed = self.request.responder.sign_response_for(
+                    &self.request.verified,
+                    &owner_leader_id,
+                    status,
+                    &body,
+                )?;
+
+                self.guard.disarm();
+                return Ok(SignedResponseV1 {
+                    status,
+                    body,
+                    headers: signed.headers,
+                });
+            }
+        }
         self.guard.disarm();
         Ok(SignedResponseV1 {
             status: resp.status,
@@ -755,38 +956,81 @@ impl SignedHttpResponderV1 {
             decode_signature_headers_v1(headers.sig_v, headers.sig_input_b64, headers.sig_b64)?;
 
         let verified = self.verify_inbound_request(decoded, http, body)?;
-        let nonce_key = format!("{}:{}", verified.invoker_id, verified.nonce);
-        let expires_at_ms = verified.exp_ms;
-        let request_hash = verified.sig_input_sha256;
+        // Length-prefix encoding avoids accidental collisions if callers supply custom nonces.
+        // (E.g., `{tool_id}:{nonce}` can collide if a nonce contains `:`.)
+        let invocation_key = format!(
+            "{}:{}:{}:{}",
+            verified.responder_id.len(),
+            verified.responder_id,
+            verified.nonce.len(),
+            verified.nonce
+        );
+        let request_identity = ReplayRequestIdentityV1 {
+            method: verified.method.clone(),
+            path: verified.path.clone(),
+            query: verified.query.clone(),
+            body_sha256: verified.body_sha256,
+        };
 
         let now_ms = self.engine.now_ms();
-        match self
-            .replay_store
-            .begin_or_replay(&nonce_key, request_hash, expires_at_ms, now_ms)
-        {
-            ReplayDecisionV1::Proceed => {
+        match self.replay_store.begin_or_replay(
+            &invocation_key,
+            request_identity.clone(),
+            &verified.invoker_id,
+            now_ms,
+        ) {
+            ReplayDecisionV1::Proceed {
+                owner_leader_id,
+                generation,
+            } => {
                 let request = AuthenticatedRequestV1 {
                     responder: self.clone(),
                     verified: verified.clone(),
                 };
                 Ok(ResponderDecisionV1::Proceed(InboundSessionV1 {
                     request,
-                    nonce_key: nonce_key.clone(),
-                    request_hash,
-                    expires_at_ms,
-                    guard: InFlightGuardV1::new(self.replay_store.clone(), nonce_key),
+                    invocation_key: invocation_key.clone(),
+                    request_identity,
+                    owner_leader_id,
+                    generation,
+                    guard: InFlightGuardV1::new(
+                        self.replay_store.clone(),
+                        invocation_key,
+                        generation,
+                    ),
                 }))
             }
-            ReplayDecisionV1::Return(resp) => Ok(ResponderDecisionV1::Return(resp)),
-            ReplayDecisionV1::Reject => Ok(ResponderDecisionV1::Reject(ResponderRejectionV1 {
-                kind: ResponderRejectionKindV1::ReplayConflict,
-                request: AuthenticatedRequestV1 {
-                    responder: self.clone(),
-                    verified,
-                },
-            })),
-            ReplayDecisionV1::InFlight => Ok(ResponderDecisionV1::Reject(ResponderRejectionV1 {
+            ReplayDecisionV1::Return(cached) => {
+                let signed = self.sign_response_for(
+                    &verified,
+                    &cached.owner_leader_id,
+                    cached.status,
+                    &cached.body,
+                )?;
+                Ok(ResponderDecisionV1::Return(SignedResponseV1 {
+                    status: signed.status,
+                    body: cached.body,
+                    headers: signed.headers,
+                }))
+            }
+            ReplayDecisionV1::Reject { owner_leader_id } => {
+                Ok(ResponderDecisionV1::Reject(ResponderRejectionV1 {
+                    kind: ResponderRejectionKindV1::ReplayConflict,
+                    owner_leader_id,
+                    lease_until_ms: None,
+                    request: AuthenticatedRequestV1 {
+                        responder: self.clone(),
+                        verified,
+                    },
+                }))
+            }
+            ReplayDecisionV1::InFlight {
+                owner_leader_id,
+                lease_until_ms,
+            } => Ok(ResponderDecisionV1::Reject(ResponderRejectionV1 {
                 kind: ResponderRejectionKindV1::InFlight,
+                owner_leader_id: Some(owner_leader_id),
+                lease_until_ms: Some(lease_until_ms),
                 request: AuthenticatedRequestV1 {
                     responder: self.clone(),
                     verified,
@@ -874,6 +1118,7 @@ impl SignedHttpResponderV1 {
             method: claims.method,
             path: claims.path,
             query: claims.query,
+            body_sha256,
             invoker_public_key,
             sig_input: decoded.sig_input,
             sig_input_sha256,
@@ -883,6 +1128,7 @@ impl SignedHttpResponderV1 {
     fn sign_response_for(
         &self,
         verified: &VerifiedInboundRequestV1,
+        owner_leader_id: &str,
         status: u16,
         body: &[u8],
     ) -> Result<SignedResponseV1, SignedHttpError> {
@@ -892,6 +1138,7 @@ impl SignedHttpResponderV1 {
         let claims = InvokeResponseClaimsV1 {
             tool_id: self.responder_id.clone(),
             tool_kid: self.responder_kid,
+            owner_leader_id: owner_leader_id.to_string(),
             iat_ms,
             exp_ms,
             nonce: verified.nonce.clone(),

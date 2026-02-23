@@ -132,6 +132,7 @@ The signed request claims include:
 The signed response claims include:
 
 - `tool_id`, `tool_kid`: identify the Tool and its signing key id.
+- `owner_leader_id`: Leader node id that currently “owns” the nonce (for observability / failover).
 - `iat_ms`, `exp_ms`: a validity window.
 - `nonce`: echo of the request nonce.
 - `req_sig_input_sha256`: hex-encoded SHA-256 of the **request** `sig_input` bytes (binds response to the exact request).
@@ -140,10 +141,10 @@ The signed response claims include:
 
 ### Replay rules (how retries stay safe)
 
-Tools MUST track nonce usage (typically keyed by `(leader_id, nonce)`):
+Tools MUST track nonce usage (keyed by `(tool_id, nonce)`):
 
-- If a request with the same `(leader_id, nonce)` arrives and the signed request bytes match exactly, it is a safe **retry**.
-- If the same `(leader_id, nonce)` is used with a different request hash, it is a **conflicting replay** and MUST be rejected.
+- If a request with the same `(tool_id, nonce)` arrives and the request identity matches (`method`, `path`, `query`, `body_sha256`), it is a safe **retry** (including Leader failover).
+- If the same `(tool_id, nonce)` is used with a different request identity, it is a **conflicting replay** and MUST be rejected.
 
 The Rust toolkit runtime implements this in-memory for you.
 

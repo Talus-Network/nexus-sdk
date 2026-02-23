@@ -114,6 +114,12 @@ pub struct InvokeResponseClaimsV1 {
     pub tool_id: String,
     /// Key id for Tool key rotation.
     pub tool_kid: u64,
+    /// Leader node id that currently "owns" the nonce.
+    ///
+    /// In the shared-nonce replay model, multiple Leaders may attempt the same invocation (same
+    /// `nonce`). The Tool records which Leader currently owns the in-flight lease / completed
+    /// result and includes it here for observability.
+    pub owner_leader_id: String,
     /// "Issued at" timestamp (start of validity window), milliseconds since the Unix epoch (UTC).
     pub iat_ms: u64,
     /// Expiry timestamp (end of validity window), milliseconds since the Unix epoch (UTC).
