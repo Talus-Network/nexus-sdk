@@ -32,7 +32,7 @@ use {
         },
         sui,
         transactions,
-        types::{IdentityKey, KeyBinding, Tool},
+        types::{IdentityKey, KeyBinding, NetworkAuth, Tool},
         ToolFqn,
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
@@ -191,6 +191,9 @@ impl NetworkAuthActions {
     ///
     /// The returned JSON schema matches `nexus_sdk::signed_http::v1::AllowedLeadersFileV1`
     /// and can be written to disk and mounted into `nexus-toolkit`.
+    ///
+    /// `leader_cap_ids` are **leader capability IDs** (`leader_cap::OverNetwork` object IDs),
+    /// not wallet addresses.
     pub async fn export_allowed_leaders_file_v1(
         &self,
         leader_cap_ids: &[sui::types::Address],
@@ -280,6 +283,96 @@ impl NetworkAuthActions {
         Ok(())
     }
 
+    /// List the leader capability IDs currently present in `network_auth.identities`.
+    pub async fn list_leader_cap_ids_from_network_auth(
+        &self,
+    ) -> Result<Vec<sui::types::Address>, NexusError> {
+        let objects = &self.client.nexus_objects;
+        let network_auth_object_id = *objects.network_auth.object_id();
+
+        let registry = self
+            .client
+            .crawler()
+            .get_object::<NetworkAuth>(network_auth_object_id)
+            .await
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "failed to fetch NetworkAuth object ({network_auth_object_id}): {e}"
+                ))
+            })?;
+
+        let mut out = registry
+            .data
+            .identities
+            .contents
+            .into_iter()
+            .filter_map(|id| match id {
+                IdentityKey::Leader { leader_cap_id } => Some(leader_cap_id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        out.sort_unstable();
+        out.dedup();
+
+        Ok(out)
+    }
+
+    /// Export a tool-side allowlist file containing the active key for every Leader identity
+    /// found in `network_auth.identities`.
+    ///
+    /// Leaders that do not have an active key are skipped.
+    pub async fn export_allowed_leaders_file_v1_for_all_leaders(
+        &self,
+    ) -> Result<AllowedLeadersFileV1, NexusError> {
+        let leader_cap_ids = self.list_leader_cap_ids_from_network_auth().await?;
+        if leader_cap_ids.is_empty() {
+            return Err(NexusError::Parsing(anyhow::anyhow!(
+                "network_auth contains no leader identities"
+            )));
+        }
+
+        let objects = &self.client.nexus_objects;
+        let codec =
+            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+
+        let mut out = Vec::with_capacity(leader_cap_ids.len());
+        for leader_cap_id in leader_cap_ids {
+            if let Some(entry) = self
+                .export_allowed_leader_entry_file_v1(&codec, leader_cap_id)
+                .await?
+            {
+                out.push(entry);
+            }
+        }
+
+        if out.is_empty() {
+            return Err(NexusError::Parsing(anyhow::anyhow!(
+                "no leaders with an active Ed25519 key were found in network_auth"
+            )));
+        }
+
+        Ok(AllowedLeadersFileV1 {
+            version: 1,
+            leaders: out,
+        })
+    }
+
+    /// Convenience helper to write an allowlist file for all leaders to disk as pretty JSON.
+    pub async fn write_allowed_leaders_file_v1_for_all_leaders(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), NexusError> {
+        let file = self
+            .export_allowed_leaders_file_v1_for_all_leaders()
+            .await?;
+        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
+            NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
+        })?;
+        std::fs::write(path, bytes).map_err(|e| NexusError::Parsing(e.into()))?;
+        Ok(())
+    }
+
     async fn try_get_key_binding(
         &self,
         binding_object_id: sui::types::Address,
@@ -294,6 +387,68 @@ impl NetworkAuthActions {
             Err(e) if e.to_string().contains("not found") => Ok(None),
             Err(e) => Err(NexusError::Rpc(e)),
         }
+    }
+
+    async fn export_allowed_leader_entry_file_v1(
+        &self,
+        codec: &NetworkAuthCodec,
+        leader_cap_id: sui::types::Address,
+    ) -> Result<Option<AllowedLeaderFileV1>, NexusError> {
+        let identity = IdentityKey::leader(leader_cap_id);
+        let binding_object_id = codec.binding_object_id(&identity)?;
+
+        let binding = self
+            .client
+            .crawler()
+            .get_object::<KeyBinding>(binding_object_id)
+            .await
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "failed to fetch leader KeyBinding ({binding_object_id}): {e}"
+                ))
+            })?;
+
+        let Some(active_kid) = binding.data.active_key_id else {
+            return Ok(None);
+        };
+
+        let keys = self
+            .client
+            .crawler()
+            .get_dynamic_fields(&binding.data.keys)
+            .await
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "failed to fetch leader key records ({binding_object_id}): {e}"
+                ))
+            })?;
+
+        let record = keys.get(&active_kid).ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "leader binding {binding_object_id} missing active key record kid={active_kid}"
+            ))
+        })?;
+
+        let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "leader binding {binding_object_id} active key is not 32 bytes"
+            ))
+        })?;
+
+        if record.scheme != KEY_SCHEME_ED25519 {
+            return Err(NexusError::Parsing(anyhow::anyhow!(
+                "leader binding {binding_object_id} active key uses unsupported scheme {}",
+                record.scheme
+            )));
+        }
+
+        Ok(Some(AllowedLeaderFileV1 {
+            leader_id: leader_cap_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: active_kid,
+                public_key: hex::encode(public_key),
+            }],
+        }))
     }
 }
 

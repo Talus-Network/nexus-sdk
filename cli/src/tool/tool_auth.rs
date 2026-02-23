@@ -25,8 +25,8 @@ pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), Nexu
             description,
             gas,
         } => register_key(tool_fqn, owner_cap, signing_key, description, gas).await,
-        ToolAuthCommand::ExportAllowedLeaders { leaders, out } => {
-            export_allowed_leaders(leaders, out).await
+        ToolAuthCommand::ExportAllowedLeaders { all, leaders, out } => {
+            export_allowed_leaders(all, leaders, out).await
         }
     }
 }
@@ -114,24 +114,34 @@ async fn register_key(
 }
 
 async fn export_allowed_leaders(
+    all: bool,
     leaders: Vec<sui::types::Address>,
     out: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Exporting allowed leaders file");
-    if leaders.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "at least one --leader is required"
-        )));
-    }
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
-    nexus_client
-        .network_auth()
-        .write_allowed_leaders_file_v1(&leaders, &out)
-        .await
-        .map_err(NexusCliError::Nexus)?;
+    if all {
+        nexus_client
+            .network_auth()
+            .write_allowed_leaders_file_v1_for_all_leaders(&out)
+            .await
+            .map_err(NexusCliError::Nexus)?;
+    } else {
+        if leaders.is_empty() {
+            return Err(NexusCliError::Any(anyhow!(
+                "at least one --leader (leader capability ID) is required (or use --all)"
+            )));
+        }
+
+        nexus_client
+            .network_auth()
+            .write_allowed_leaders_file_v1(&leaders, &out)
+            .await
+            .map_err(NexusCliError::Nexus)?;
+    }
     handle.success();
 
     notify_success!(
@@ -141,6 +151,7 @@ async fn export_allowed_leaders(
 
     json_output(&json!({
         "out": out,
+        "all": all,
         "leaders": leaders,
     }))?;
 

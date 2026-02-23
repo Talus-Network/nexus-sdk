@@ -75,8 +75,19 @@ pub(crate) enum ToolAuthCommand {
         about = "Export a leader allowlist file for tool-side verification (no RPC at runtime)."
     )]
     ExportAllowedLeaders {
-        /// One or more leader addresses to include.
-        #[arg(long = "leader", value_name = "ADDRESS")]
+        #[arg(
+            long = "all",
+            help = "Export allowlist entries for all leaders registered in network_auth (recommended).",
+            conflicts_with = "leaders"
+        )]
+        all: bool,
+
+        /// One or more leader capability IDs (`leader_cap::OverNetwork` object IDs) to include.
+        #[arg(
+            long = "leader",
+            value_name = "LEADER_CAP_ID",
+            required_unless_present = "all"
+        )]
         leaders: Vec<sui::types::Address>,
 
         #[arg(
