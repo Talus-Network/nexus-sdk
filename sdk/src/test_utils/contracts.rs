@@ -59,8 +59,9 @@ pub async fn publish_move_package_with_overrides(
             .expect("Chain ID missing in service info.")
     };
 
-    // Remove any stale Move.lock file.
+    // Remove any stale Move.lock and Published.toml files.
     let _ = std::fs::remove_file(format!("{path_str}/Move.lock"));
+    let _ = std::fs::remove_file(format!("{path_str}/Published.toml"));
 
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing_replace_addresses(
