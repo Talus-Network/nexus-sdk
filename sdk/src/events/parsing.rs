@@ -667,8 +667,8 @@ mod tests {
             walk_index: 1,
             next_vertex: RuntimeVertex::plain("v"),
             evaluations: sui::types::Address::generate(&mut rng),
-            tap_from_type: TypeName::new("worksheet"),
-            tap_from_uid: sui::types::Address::generate(&mut rng),
+            worksheet_from_type: TypeName::new("worksheet"),
+            worksheet_from_uid: sui::types::Address::generate(&mut rng),
         };
 
         let scheduled = RequestScheduledWalkEvent {
@@ -1127,8 +1127,8 @@ mod tests {
                     walk_index: 1,
                     next_vertex: vertex.clone(),
                     evaluations: addr(),
-                    tap_from_type: TypeName::new("worksheet"),
-                    tap_from_uid: addr(),
+                    worksheet_from_type: TypeName::new("worksheet"),
+                    worksheet_from_uid: addr(),
                 },
                 priority: 1,
                 request_ms: 2,
@@ -1146,8 +1146,8 @@ mod tests {
                 walk_index: 7,
                 next_vertex: vertex.clone(),
                 evaluations: addr(),
-                tap_from_type: TypeName::new("worksheet"),
-                tap_from_uid: addr(),
+                worksheet_from_type: TypeName::new("worksheet"),
+                worksheet_from_uid: addr(),
             }),
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
                 shared_objects: vec![SharedObjectRef::new_imm(addr())],

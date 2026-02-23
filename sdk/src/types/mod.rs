@@ -1,4 +1,5 @@
 mod derive;
+mod interface_package_config;
 mod interface_version;
 mod json_dag;
 mod move_json;
@@ -20,6 +21,7 @@ mod type_name;
 
 pub use {
     derive::*,
+    interface_package_config::InterfacePackageConfig,
     interface_version::*,
     json_dag::*,
     move_json::*,

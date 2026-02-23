@@ -183,10 +183,10 @@ pub struct RequestWalkExecutionEvent {
     pub evaluations: sui::types::Address,
     /// The off-chain realm can determine the Talus Agent Package to invoke
     /// thanks to the package address and module name from this field.
-    pub tap_from_type: TypeName,
+    pub worksheet_from_type: TypeName,
     /// UID of the TAP witness object that created the worksheet used to start
     /// this execution.
-    pub tap_from_uid: sui::types::Address,
+    pub worksheet_from_uid: sui::types::Address,
 }
 
 /// Fired via the Nexus `interface` package when a new Agent is registered.
