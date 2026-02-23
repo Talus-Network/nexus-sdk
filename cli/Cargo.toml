@@ -20,44 +20,25 @@ path = "src/main.rs"
 anyhow.workspace = true
 base64.workspace = true
 chrono.workspace = true
-clap.workspace = true
 clap_complete.workspace = true
 clap-verbosity.workspace = true
+clap.workspace = true
 colored.workspace = true
 convert_case.workspace = true
 env_logger.workspace = true
+hex.workspace = true
 home.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true
 openssl.workspace = true
+rand.workspace = true
+regex.workspace = true
 reqwest.workspace = true
-serde.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
-regex.workspace = true
-
-# crypto helpers
-rand.workspace = true
-hex.workspace = true
-
-# Add platform-specific keyring dependencies so that the correct backend feature is enabled per operating system.
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { workspace = true, features = ["apple-native"] }
-
-[target.'cfg(target_os = "ios")'.dependencies]
-keyring = { workspace = true, features = ["apple-native"] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-keyring = { workspace = true, features = ["windows-native"] }
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
-# `-sync-persistent` requires `apt-get install -y libdbus-1-dev` in CI
-keyring = { workspace = true, features = [
-    "linux-native-sync-persistent",
-    "vendored",
-] }
 
 # === Nexus deps ===
 [dependencies.nexus-sdk]
@@ -73,7 +54,6 @@ schemars.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true
 warp = "0.3.7"
-x25519-dalek = "2"
 
 [dev-dependencies.nexus-sdk]
 workspace = true

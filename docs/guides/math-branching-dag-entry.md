@@ -112,8 +112,7 @@ We'll start with the vertices from our original DAG and add the new `mul_inputs`
       "name": "add_input_and_default",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         }
       ]
     },
@@ -125,12 +124,10 @@ We'll start with the vertices from our original DAG and add the new `mul_inputs`
       "name": "mul_inputs",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         },
         {
-          "name": "b",
-          "encrypted": false
+          "name": "b"
         }
       ]
     },
@@ -360,8 +357,7 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
       "name": "add_input_and_default",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         }
       ]
     },
@@ -373,12 +369,10 @@ Combining these sections gives us the complete `math_branching_entry_group.json`
       "name": "mul_inputs",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         },
         {
-          "name": "b",
-          "encrypted": false
+          "name": "b"
         }
       ]
     },
