@@ -175,7 +175,7 @@ async fn sync_allowed_leaders(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Syncing allowed leaders file");
 
-    if interval == Duration::from_secs(0) {
+    if interval.is_zero() {
         return Err(NexusCliError::Any(anyhow!(
             "invalid duration (must be > 0)"
         )));
