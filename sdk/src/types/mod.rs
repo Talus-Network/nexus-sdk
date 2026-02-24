@@ -2,6 +2,7 @@ mod derive;
 mod interface_package_config;
 mod interface_version;
 mod json_dag;
+mod move_collections;
 mod move_json;
 mod network_auth;
 mod nexus_data;
@@ -24,6 +25,7 @@ pub use {
     interface_package_config::InterfacePackageConfig,
     interface_version::*,
     json_dag::*,
+    move_collections::*,
     move_json::*,
     network_auth::*,
     nexus_data::*,

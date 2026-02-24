@@ -159,11 +159,24 @@ If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the C
 
 ---
 
-**`nexus tool auth export-allowed-leaders --leader <address>... --out <path>`**
+**`nexus tool auth export-allowed-leaders (--all | --leader <address>...) --out <path>`**
 
 Exports a local allowlist file (JSON) of permitted Leader nodes and their active signing keys.
 
+Use `--all` to export entries for all leaders registered in `network_auth` (recommended), or pass one or more `--leader` capability IDs.
+
 This file is consumed by the Rust toolkit runtime (`allowed_leaders_path`) so the Tool can verify signed requests without performing Sui RPC calls at runtime.
+
+---
+
+**`nexus tool auth sync-allowed-leaders --out <path> [--interval <duration>] [--once]`**
+
+Continuously syncs an `allowed_leaders.json` file from on-chain `network_auth` (polling).
+
+- `--interval` accepts human durations like `500ms`, `5s`, `2m`, `1h` (default: `30s`).
+- Use `--once` to sync a single time and exit.
+
+This is useful for running as a sidecar next to a Tool so leader allowlists stay up-to-date without restarting the Tool.
 
 ---
 
