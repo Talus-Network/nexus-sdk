@@ -239,3 +239,67 @@ async fn sync_allowed_leaders(
         _ = tokio::signal::ctrl_c() => Ok(()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
+
+    #[test]
+    fn clap_parses_sync_allowed_leaders_interval() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "auth",
+            "sync-allowed-leaders",
+            "--out",
+            "/tmp/allowed-leaders.json",
+            "--interval",
+            "500ms",
+            "--once",
+        ])
+        .unwrap();
+
+        match cli.command {
+            crate::Command::Tool(crate::tool::ToolCommand::Auth { cmd }) => match cmd {
+                ToolAuthCommand::SyncAllowedLeaders {
+                    out,
+                    interval,
+                    once,
+                } => {
+                    assert_eq!(out, PathBuf::from("/tmp/allowed-leaders.json"));
+                    assert_eq!(interval, Duration::from_millis(500));
+                    assert!(once);
+                }
+                _ => panic!("unexpected tool auth command"),
+            },
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn clap_rejects_invalid_sync_allowed_leaders_interval() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "auth",
+            "sync-allowed-leaders",
+            "--out",
+            "/tmp/allowed-leaders.json",
+            "--interval",
+            "not-a-duration",
+            "--once",
+        ])
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn sync_allowed_leaders_rejects_zero_interval() {
+        let out_dir = tempfile::tempdir().unwrap();
+        let out_path = out_dir.path().join("allowed-leaders.json");
+
+        let err = sync_allowed_leaders(out_path, Duration::from_secs(0), true)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("invalid duration"));
+    }
+}
