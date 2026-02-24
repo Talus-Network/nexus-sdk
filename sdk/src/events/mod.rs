@@ -182,7 +182,7 @@ pub struct RequestWalkExecutionEvent {
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
     /// This field defines the package ID, module and name of the Agent that
-    /// holds the DAG. Used to confirm the tool evaluation with the Agent
+    /// holds the DAG. Used to confirm the tool evaluation with the Agent.
     pub worksheet_from_type: TypeName,
     /// UID of the TAP witness object that created the worksheet used to start
     /// this execution.
