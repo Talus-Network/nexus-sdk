@@ -39,16 +39,19 @@ impl MoveAsciiString {
 /// Move `nexus_workflow::network_auth::IdentityKey`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum IdentityKey {
-    /// `IdentityKey::Leader { address }`
-    Leader { address: sui::types::Address },
+    /// `IdentityKey::Leader { leader_cap_id }`
+    Leader {
+        /// ID of the leader's `leader_cap::OverNetwork` capability object.
+        leader_cap_id: sui::types::Address,
+    },
     /// `IdentityKey::Tool { fqn }`
     Tool { fqn: MoveAsciiString },
 }
 
 impl IdentityKey {
     /// Construct a leader identity key.
-    pub fn leader(address: sui::types::Address) -> Self {
-        Self::Leader { address }
+    pub fn leader(leader_cap_id: sui::types::Address) -> Self {
+        Self::Leader { leader_cap_id }
     }
 
     /// Construct a tool identity key from a tool FQN string.
@@ -109,7 +112,12 @@ mod tests {
         let address = sui::types::Address::generate(&mut rng);
 
         let leader = IdentityKey::leader(address);
-        assert_eq!(leader, IdentityKey::Leader { address });
+        assert_eq!(
+            leader,
+            IdentityKey::Leader {
+                leader_cap_id: address
+            }
+        );
 
         let tool = IdentityKey::tool_fqn("xyz.demo.tool@1");
         assert_eq!(

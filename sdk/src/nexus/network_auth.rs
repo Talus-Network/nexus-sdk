@@ -193,15 +193,15 @@ impl NetworkAuthActions {
     /// and can be written to disk and mounted into `nexus-toolkit`.
     pub async fn export_allowed_leaders_file_v1(
         &self,
-        leaders: &[sui::types::Address],
+        leader_cap_ids: &[sui::types::Address],
     ) -> Result<AllowedLeadersFileV1, NexusError> {
         let objects = &self.client.nexus_objects;
         let codec =
             NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
 
-        let mut out = Vec::with_capacity(leaders.len());
-        for leader in leaders {
-            let identity = IdentityKey::leader(*leader);
+        let mut out = Vec::with_capacity(leader_cap_ids.len());
+        for leader_cap_id in leader_cap_ids {
+            let identity = IdentityKey::leader(*leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity)?;
 
             let binding = self
@@ -252,7 +252,7 @@ impl NetworkAuthActions {
             }
 
             out.push(AllowedLeaderFileV1 {
-                leader_id: leader.to_string(),
+                leader_id: leader_cap_id.to_string(),
                 keys: vec![AllowedLeaderKeyFileV1 {
                     kid: active_kid,
                     public_key: hex::encode(public_key),
@@ -269,10 +269,10 @@ impl NetworkAuthActions {
     /// Convenience helper to write an allowlist file to disk as pretty JSON.
     pub async fn write_allowed_leaders_file_v1(
         &self,
-        leaders: &[sui::types::Address],
+        leader_cap_ids: &[sui::types::Address],
         path: impl AsRef<Path>,
     ) -> Result<(), NexusError> {
-        let file = self.export_allowed_leaders_file_v1(leaders).await?;
+        let file = self.export_allowed_leaders_file_v1(leader_cap_ids).await?;
         let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
             NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
         })?;
