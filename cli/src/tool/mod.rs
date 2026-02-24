@@ -97,6 +97,29 @@ pub(crate) enum ToolAuthCommand {
         )]
         out: PathBuf,
     },
+
+    #[command(
+        about = "Sync an allowed leaders allowlist file from on-chain network_auth (polling)."
+    )]
+    SyncAllowedLeaders {
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+
+        #[arg(
+            long = "interval",
+            default_value = "30s",
+            help = "Polling interval (e.g. 500ms, 5s, 2m, 1h).",
+            value_name = "DURATION"
+        )]
+        interval: String,
+
+        #[arg(long = "once", help = "Sync once and exit.")]
+        once: bool,
+    },
 }
 
 #[derive(Subcommand)]

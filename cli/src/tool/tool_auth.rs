@@ -6,13 +6,18 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
+        sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
     },
     nexus_sdk::{
+        nexus::network_auth::{
+            AllowedLeadersFileSyncerV1,
+            AllowedLeadersSyncOutcome,
+            NetworkAuthReader,
+        },
         signed_http::keys::{parse_ed25519_signing_key, Ed25519Keypair},
         ToolFqn,
     },
-    std::path::PathBuf,
+    std::{path::PathBuf, time::Duration},
 };
 
 pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
@@ -28,6 +33,11 @@ pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), Nexu
         ToolAuthCommand::ExportAllowedLeaders { all, leaders, out } => {
             export_allowed_leaders(all, leaders, out).await
         }
+        ToolAuthCommand::SyncAllowedLeaders {
+            out,
+            interval,
+            once,
+        } => sync_allowed_leaders(out, interval, once).await,
     }
 }
 
@@ -156,4 +166,113 @@ async fn export_allowed_leaders(
     }))?;
 
     Ok(())
+}
+
+async fn sync_allowed_leaders(
+    out: PathBuf,
+    interval: String,
+    once: bool,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Syncing allowed leaders file");
+
+    let interval = parse_duration_arg(&interval)?;
+
+    let mut conf = CliConf::load().await.unwrap_or_default();
+    let client = build_sui_grpc_client(&conf).await?;
+    let rpc_url = client.lock().await.uri().to_string();
+    let objects = get_nexus_objects(&mut conf).await?;
+
+    let reader = NetworkAuthReader::from_rpc_url(
+        &rpc_url,
+        objects.workflow_pkg_id,
+        *objects.network_auth.object_id(),
+    )
+    .map_err(NexusCliError::Nexus)?;
+
+    let syncer = AllowedLeadersFileSyncerV1::new(reader, out.clone());
+
+    if once {
+        let handle = loading!("Syncing allowlist...");
+        let outcome = syncer.sync_once().await.map_err(NexusCliError::Nexus)?;
+        handle.success();
+
+        notify_success!(
+            "Wrote allowlist JSON to {path} ({outcome})",
+            path = out.display().to_string().truecolor(100, 100, 100),
+            outcome = match outcome {
+                AllowedLeadersSyncOutcome::Updated => "updated",
+                AllowedLeadersSyncOutcome::Unchanged => "unchanged",
+            }
+        );
+
+        json_output(&json!({
+            "out": out,
+            "once": true,
+            "interval_ms": u64::try_from(interval.as_millis()).unwrap_or(u64::MAX),
+            "outcome": match outcome {
+                AllowedLeadersSyncOutcome::Updated => "updated",
+                AllowedLeadersSyncOutcome::Unchanged => "unchanged",
+            }
+        }))?;
+
+        return Ok(());
+    }
+
+    notify_success!(
+        "Syncing allowlist to {path} every {interval:?} (Ctrl-C to stop)",
+        path = out.display().to_string().truecolor(100, 100, 100),
+        interval = interval
+    );
+
+    json_output(&json!({
+        "out": out,
+        "once": false,
+        "interval_ms": u64::try_from(interval.as_millis()).unwrap_or(u64::MAX),
+    }))?;
+
+    tokio::select! {
+        _ = syncer.run_best_effort(interval) => Ok(()),
+        _ = tokio::signal::ctrl_c() => Ok(()),
+    }
+}
+
+fn parse_duration_arg(raw: &str) -> AnyResult<Duration, NexusCliError> {
+    let s = raw.trim().to_ascii_lowercase();
+    if s.is_empty() {
+        return Err(NexusCliError::Any(anyhow!("duration is empty")));
+    }
+
+    let (number, unit) = if let Some(v) = s.strip_suffix("ms") {
+        (v, "ms")
+    } else if let Some(v) = s.strip_suffix('s') {
+        (v, "s")
+    } else if let Some(v) = s.strip_suffix('m') {
+        (v, "m")
+    } else if let Some(v) = s.strip_suffix('h') {
+        (v, "h")
+    } else {
+        (s.as_str(), "s")
+    };
+
+    let number: u64 = number.parse().map_err(|_| {
+        NexusCliError::Any(anyhow!(
+            "invalid duration '{raw}' (expected <u64>[ms|s|m|h])"
+        ))
+    })?;
+
+    if number == 0 {
+        return Err(NexusCliError::Any(anyhow!(
+            "invalid duration '{raw}' (must be > 0)"
+        )));
+    }
+
+    let out = match unit {
+        "ms" => Duration::from_millis(number),
+        "s" => Duration::from_secs(number),
+        "m" => Duration::from_secs(number.saturating_mul(60)),
+        "h" => Duration::from_secs(number.saturating_mul(60 * 60)),
+        _ => unreachable!(),
+    };
+
+    Ok(out)
 }
