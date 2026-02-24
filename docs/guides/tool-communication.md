@@ -270,12 +270,19 @@ Tools should not RPC to Sui on every request. Instead, generate a local allowlis
 
 ```bash
 nexus tool auth export-allowed-leaders \
-  --leader 0x... \
-  --leader 0x... \
+  --all \
   --out ./allowed_leaders.json
 ```
 
 Deploy `allowed_leaders.json` next to your Tool.
+
+If you want this file to stay up-to-date automatically, run the syncer (polling):
+
+```bash
+nexus tool auth sync-allowed-leaders \
+  --out ./allowed_leaders.json \
+  --interval 30s
+```
 
 ### 7) Configure the toolkit runtime to require signed HTTP
 

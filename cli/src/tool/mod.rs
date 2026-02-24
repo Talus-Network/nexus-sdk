@@ -113,9 +113,10 @@ pub(crate) enum ToolAuthCommand {
             long = "interval",
             default_value = "30s",
             help = "Polling interval (e.g. 500ms, 5s, 2m, 1h).",
-            value_name = "DURATION"
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration)
         )]
-        interval: String,
+        interval: std::time::Duration,
 
         #[arg(long = "once", help = "Sync once and exit.")]
         once: bool,

@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
 - register/rotate a Tool message-signing key on-chain, and
 - export a local allowlist file of permitted Leader nodes for Tool-side verification (no RPC at runtime).
+- continuously sync an allowlist file from on-chain `network_auth` (polling).
 
 This is the same functionality exposed via the CLI under `nexus tool auth ...`.
 

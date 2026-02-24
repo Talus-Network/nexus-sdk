@@ -170,12 +170,16 @@ async fn export_allowed_leaders(
 
 async fn sync_allowed_leaders(
     out: PathBuf,
-    interval: String,
+    interval: Duration,
     once: bool,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Syncing allowed leaders file");
 
-    let interval = parse_duration_arg(&interval)?;
+    if interval == Duration::from_secs(0) {
+        return Err(NexusCliError::Any(anyhow!(
+            "invalid duration (must be > 0)"
+        )));
+    }
 
     let mut conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
@@ -234,45 +238,4 @@ async fn sync_allowed_leaders(
         _ = syncer.run_best_effort(interval) => Ok(()),
         _ = tokio::signal::ctrl_c() => Ok(()),
     }
-}
-
-fn parse_duration_arg(raw: &str) -> AnyResult<Duration, NexusCliError> {
-    let s = raw.trim().to_ascii_lowercase();
-    if s.is_empty() {
-        return Err(NexusCliError::Any(anyhow!("duration is empty")));
-    }
-
-    let (number, unit) = if let Some(v) = s.strip_suffix("ms") {
-        (v, "ms")
-    } else if let Some(v) = s.strip_suffix('s') {
-        (v, "s")
-    } else if let Some(v) = s.strip_suffix('m') {
-        (v, "m")
-    } else if let Some(v) = s.strip_suffix('h') {
-        (v, "h")
-    } else {
-        (s.as_str(), "s")
-    };
-
-    let number: u64 = number.parse().map_err(|_| {
-        NexusCliError::Any(anyhow!(
-            "invalid duration '{raw}' (expected <u64>[ms|s|m|h])"
-        ))
-    })?;
-
-    if number == 0 {
-        return Err(NexusCliError::Any(anyhow!(
-            "invalid duration '{raw}' (must be > 0)"
-        )));
-    }
-
-    let out = match unit {
-        "ms" => Duration::from_millis(number),
-        "s" => Duration::from_secs(number),
-        "m" => Duration::from_secs(number.saturating_mul(60)),
-        "h" => Duration::from_secs(number.saturating_mul(60 * 60)),
-        _ => unreachable!(),
-    };
-
-    Ok(out)
 }
