@@ -310,6 +310,59 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_from_grpc_valid_leader_cap_issued_event() {
+        let mut rng = rand::thread_rng();
+        let index = 0u64;
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("leader").unwrap(),
+            sui::types::Identifier::new("LeaderCapIssuedEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
+
+        let registry = sui::types::Address::generate(&mut rng);
+        let leader_cap_id = sui::types::Address::generate(&mut rng);
+        let network = sui::types::Address::generate(&mut rng);
+        let data = Wrapper {
+            event: LeaderCapIssuedEvent {
+                registry,
+                leader_cap_id,
+                network,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type.clone()],
+            ),
+            bcs,
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects);
+        assert!(result.is_ok(), "Should parse valid Nexus event");
+        let nexus_event = result.unwrap();
+        assert_eq!(nexus_event.generics, vec![]);
+        assert_eq!(nexus_event.id, (digest, index));
+        assert!(matches!(
+            nexus_event.data,
+            crate::events::NexusEventKind::LeaderCapIssued(LeaderCapIssuedEvent {
+                registry: r,
+                leader_cap_id: l,
+                network: n
+            }) if r == registry && l == leader_cap_id && n == network
+        ));
+    }
+
+    #[test]
     fn test_parse_from_grpc_valid_distributed_nexus_event() {
         let mut rng = rand::thread_rng();
         let index = 0u64;
@@ -668,6 +721,7 @@ mod tests {
             next_vertex: RuntimeVertex::plain("v"),
             evaluations: sui::types::Address::generate(&mut rng),
             worksheet_from_type: TypeName::new("worksheet"),
+            worksheet_from_uid: sui::types::Address::generate(&mut rng),
         };
 
         let scheduled = RequestScheduledWalkEvent {
@@ -1127,6 +1181,7 @@ mod tests {
                     next_vertex: vertex.clone(),
                     evaluations: addr(),
                     worksheet_from_type: TypeName::new("worksheet"),
+                    worksheet_from_uid: addr(),
                 },
                 priority: 1,
                 request_ms: 2,
@@ -1145,6 +1200,7 @@ mod tests {
                 next_vertex: vertex.clone(),
                 evaluations: addr(),
                 worksheet_from_type: TypeName::new("worksheet"),
+                worksheet_from_uid: addr(),
             }),
             NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
                 shared_objects: vec![SharedObjectRef::new_imm(addr())],

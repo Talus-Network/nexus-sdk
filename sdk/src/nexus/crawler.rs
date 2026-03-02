@@ -25,6 +25,69 @@ impl Crawler {
         Self { client }
     }
 
+    async fn get_object_parsed<T>(
+        &self,
+        object_id: sui::types::Address,
+        field_mask: sui::grpc::FieldMask,
+        parse_data: fn(&Crawler, &sui::grpc::Object) -> anyhow::Result<T>,
+    ) -> anyhow::Result<Response<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let object = self.fetch_object(object_id, field_mask).await?;
+
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
+        let data = parse_data(self, &object)?;
+
+        Ok(Response {
+            object_id,
+            owner,
+            version,
+            data,
+            digest,
+            balance,
+        })
+    }
+
+    async fn get_objects_parsed<T>(
+        &self,
+        object_ids: &[sui::types::Address],
+        field_mask: sui::grpc::FieldMask,
+        parse_data: fn(&Crawler, &sui::grpc::Object) -> anyhow::Result<T>,
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let objects = self.fetch_objects(object_ids, field_mask).await?;
+
+        objects
+            .into_iter()
+            .map(|object| {
+                let object_id = Self::parse_object_id(&object)?;
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+                let data = parse_data(self, &object)?;
+
+                Ok(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data,
+                    digest,
+                    balance,
+                })
+            })
+            .collect()
+    }
+
+    fn parse_object_id(object: &sui::grpc::Object) -> anyhow::Result<sui::types::Address> {
+        object
+            .object_id_opt()
+            .ok_or_else(|| anyhow!("Object ID missing"))?
+            .parse()
+            .map_err(|_| anyhow!("Could not parse object ID"))
+    }
+
     /// Fetch an object by its ID and deserialize it into the specified type.
     pub async fn get_object<T>(&self, object_id: sui::types::Address) -> anyhow::Result<Response<T>>
     where
@@ -39,19 +102,29 @@ impl Crawler {
             "json",
         ]);
 
-        let object = self.fetch_object(object_id, field_mask).await?;
+        self.get_object_parsed(object_id, field_mask, Self::parse_object_content::<T>)
+            .await
+    }
 
-        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
-        let data = self.parse_object_content(&object)?;
+    /// Fetch an object by its ID and deserialize its Move struct contents from BCS.
+    pub async fn get_object_contents_bcs<T>(
+        &self,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<Response<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
 
-        Ok(Response {
-            object_id,
-            owner,
-            version,
-            data,
-            digest,
-            balance,
-        })
+        self.get_object_parsed(object_id, field_mask, Self::parse_object_contents_bcs::<T>)
+            .await
     }
 
     /// Fetch many objects by their IDs in batch and deserialize them into the
@@ -72,31 +145,31 @@ impl Crawler {
             "json",
         ]);
 
-        let objects = self.fetch_objects(object_ids, field_mask).await?;
+        self.get_objects_parsed(object_ids, field_mask, Self::parse_object_content::<T>)
+            .await
+    }
 
-        objects
-            .into_iter()
-            .map(|object| {
-                let object_id = object
-                    .object_id_opt()
-                    .ok_or_else(|| anyhow!("Object ID missing"))?
-                    .parse()
-                    .map_err(|_| anyhow!("Could not parse object ID"))?;
+    /// Fetch many objects by their IDs in batch and deserialize their Move struct contents from BCS.
+    ///
+    /// This avoids relying on Sui's JSON rendering for Move types.
+    pub async fn get_objects_contents_bcs<T>(
+        &self,
+        object_ids: &[sui::types::Address],
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
 
-                let (owner, digest, version, balance) =
-                    self.parse_object_metadata(object_id, &object)?;
-                let data = self.parse_object_content(&object)?;
-
-                Ok(Response {
-                    object_id,
-                    owner,
-                    version,
-                    data,
-                    digest,
-                    balance,
-                })
-            })
-            .collect()
+        self.get_objects_parsed(object_ids, field_mask, Self::parse_object_contents_bcs::<T>)
+            .await
     }
 
     /// Fetch an object's metadata only, omitting its content.
@@ -143,11 +216,7 @@ impl Crawler {
         objects
             .into_iter()
             .map(|object| {
-                let object_id = object
-                    .object_id_opt()
-                    .ok_or_else(|| anyhow!("Object ID missing"))?
-                    .parse()
-                    .map_err(|_| anyhow!("Could not parse object ID"))?;
+                let object_id = Self::parse_object_id(&object)?;
 
                 let (owner, digest, version, balance) =
                     self.parse_object_metadata(object_id, &object)?;
@@ -208,6 +277,64 @@ impl Crawler {
             })?;
 
             out.insert(name, obj.data.value.into_inner());
+        }
+
+        Ok(out)
+    }
+
+    /// Fetch all dynamic object fields for a given parent object id and parse them into a
+    /// HashMap<K, V>, deserializing each value from Move BCS.
+    pub async fn get_dynamic_fields_bcs<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        expected_size: usize,
+    ) -> anyhow::Result<HashMap<K, V>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        #[derive(Clone, Debug, Deserialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            #[allow(dead_code)]
+            id: sui::types::Address,
+            #[allow(dead_code)]
+            name: K,
+            value: V,
+        }
+
+        let names_and_ids = self
+            .fetch_dynamic_fields::<K>(parent_id, expected_size)
+            .await?;
+
+        let mut name_by_field_id = HashMap::with_capacity(names_and_ids.len());
+        let mut field_ids = Vec::with_capacity(names_and_ids.len());
+
+        for (name, _child_id, field_id) in names_and_ids {
+            let Some(field_id) = field_id else {
+                bail!("Dynamic field ID missing for dynamic map");
+            };
+
+            if name_by_field_id.insert(field_id, name).is_some() {
+                bail!("Duplicate dynamic field ID '{field_id}' for dynamic map");
+            }
+
+            field_ids.push(field_id);
+        }
+
+        let field_objects = self
+            .get_objects_contents_bcs::<DynamicFieldValueBcs<K, V>>(&field_ids)
+            .await?;
+
+        let mut out = HashMap::with_capacity(field_objects.len());
+        for obj in field_objects {
+            let name = name_by_field_id.remove(&obj.object_id).ok_or_else(|| {
+                anyhow!(
+                    "Unexpected dynamic field ID '{}' for dynamic map",
+                    obj.object_id
+                )
+            })?;
+
+            out.insert(name, obj.data.value);
         }
 
         Ok(out)
@@ -499,6 +626,21 @@ impl Crawler {
 
         prost_value_to_json_value(json)
             .and_then(|v| serde_json::from_value::<T>(v).map_err(anyhow::Error::new))
+    }
+
+    fn parse_object_contents_bcs<T>(&self, object: &sui::grpc::Object) -> anyhow::Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let Some(contents) = object.contents_opt() else {
+            bail!("Object contents missing");
+        };
+
+        let Some(bytes) = contents.value_opt() else {
+            bail!("Object BCS contents missing");
+        };
+
+        bcs::from_bytes::<T>(bytes).map_err(|e| anyhow!("Could not parse object contents BCS: {e}"))
     }
 }
 
@@ -806,8 +948,12 @@ impl<T> TableVec<T> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DynamicMap<K, V> {
     id: sui::types::Address,
-    size: String,
-    #[serde(default)]
+    #[serde(
+        deserialize_with = "crate::types::deserialize_sui_u64",
+        serialize_with = "crate::types::serialize_sui_u64"
+    )]
+    size: u64,
+    #[serde(skip)]
     _marker: PhantomData<(K, V)>,
 }
 
@@ -815,7 +961,7 @@ impl<K, V> DynamicMap<K, V> {
     pub fn new(id: sui::types::Address, size: u64) -> Self {
         Self {
             id,
-            size: size.to_string(),
+            size,
             _marker: PhantomData,
         }
     }
@@ -825,7 +971,7 @@ impl<K, V> DynamicMap<K, V> {
     }
 
     pub fn size(&self) -> usize {
-        self.size.parse().unwrap_or(0)
+        usize::try_from(self.size).unwrap_or(0)
     }
 }
 
@@ -835,8 +981,12 @@ impl<K, V> DynamicMap<K, V> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DynamicObjectMap<K, V> {
     id: sui::types::Address,
-    size: String,
-    #[serde(default)]
+    #[serde(
+        deserialize_with = "crate::types::deserialize_sui_u64",
+        serialize_with = "crate::types::serialize_sui_u64"
+    )]
+    size: u64,
+    #[serde(skip)]
     _marker: PhantomData<(K, V)>,
 }
 
@@ -846,7 +996,7 @@ impl<K, V> DynamicObjectMap<K, V> {
     }
 
     pub fn size(&self) -> usize {
-        self.size.parse().unwrap_or(0)
+        usize::try_from(self.size).unwrap_or(0)
     }
 }
 

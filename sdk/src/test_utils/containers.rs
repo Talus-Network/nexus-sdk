@@ -126,19 +126,40 @@ pub async fn setup_sui_instance() -> SuiInstance {
 
 /// Spins up a Redis container and returns its handle and mapped Redis port.
 pub async fn setup_redis_instance() -> (RedisContainer, u16) {
-    let redis_request = Redis::default()
-        .with_tag("7.4-alpine")
-        .with_env_var("REDIS_PASSWORD", "my_secret_password");
+    const MAX_ATTEMPTS: usize = 10;
 
-    let container = redis_request
-        .start()
-        .await
-        .expect("Failed to start Redis container.");
+    for attempt in 1..=MAX_ATTEMPTS {
+        let host_port = pick_unused_port().expect("No free port for Redis.");
 
-    let host_port = container
-        .get_host_port_ipv4(6379)
-        .await
-        .expect("Failed to get Redis port.");
+        let redis_request = Redis::default()
+            .with_tag("7.4-alpine")
+            .with_env_var("REDIS_PASSWORD", "my_secret_password")
+            .with_mapped_port(host_port, ContainerPort::Tcp(6379));
 
-    (container, host_port)
+        match redis_request.start().await {
+            Ok(container) => {
+                let host_port = container
+                    .get_host_port_ipv4(6379)
+                    .await
+                    .expect("Failed to get Redis port.");
+                return (container, host_port);
+            }
+            Err(err) => {
+                let msg = err.to_string();
+                if msg.contains("address already in use")
+                    || msg.contains("failed to bind host port")
+                    || msg.contains("bind host port")
+                {
+                    eprintln!(
+                        "setup_redis_instance: port bind collision on attempt {attempt}/{MAX_ATTEMPTS}: {msg}"
+                    );
+                    continue;
+                }
+
+                panic!("Failed to start Redis container: {err}");
+            }
+        }
+    }
+
+    panic!("Failed to start Redis container after {MAX_ATTEMPTS} attempts");
 }

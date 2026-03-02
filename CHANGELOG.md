@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.6.0`] - Unreleased
+## [`0.7.0`] - Unreleased
+
+## [`0.6.0`] - 2026-02-24
 
 ### `nexus-sdk`
 
@@ -18,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NexusClient` code for gas tickets
 - support for distribution by fetching `DistributedEventWrapper` events
 - `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
+- `InterfacePackageConfig` and `InterfaceVersionKey` type mirrors
+- Support for `LeaderCapIssuedEvent`
+- `bcs` support in `Crawler`
 
 #### Removed
 
@@ -30,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NexusClient::workflow::execute` to work with derived gas service
 - replaced `secret_core` with `secret_store` for at-rest secrets.
 - bump sui version to 1.65.2
+- `signed_http` is agnostic to the leader that makes the request and can be used with any leader.
 
 #### Fixed
 
@@ -45,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - added support for tagged_output in sdk
 - `nexus secrets` command group for local at-rest secrets:
   - `nexus secrets status` / `enable` / `disable` / `rotate` / `wipe`
+- `nexus tool auth sync-allowed-leaders` to keep tool config in sync with onchain
 
 #### Changed
 

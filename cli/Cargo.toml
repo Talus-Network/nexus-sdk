@@ -28,6 +28,7 @@ convert_case.workspace = true
 env_logger.workspace = true
 hex.workspace = true
 home.workspace = true
+humantime.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true
 openssl.workspace = true

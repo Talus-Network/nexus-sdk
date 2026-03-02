@@ -75,8 +75,19 @@ pub(crate) enum ToolAuthCommand {
         about = "Export a leader allowlist file for tool-side verification (no RPC at runtime)."
     )]
     ExportAllowedLeaders {
-        /// One or more leader addresses to include.
-        #[arg(long = "leader", value_name = "ADDRESS")]
+        #[arg(
+            long = "all",
+            help = "Export allowlist entries for all leaders registered in network_auth (recommended).",
+            conflicts_with = "leaders"
+        )]
+        all: bool,
+
+        /// One or more leader capability IDs (`leader_cap::OverNetwork` object IDs) to include.
+        #[arg(
+            long = "leader",
+            value_name = "LEADER_CAP_ID",
+            required_unless_present = "all"
+        )]
         leaders: Vec<sui::types::Address>,
 
         #[arg(
@@ -85,6 +96,30 @@ pub(crate) enum ToolAuthCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         out: PathBuf,
+    },
+
+    #[command(
+        about = "Sync an allowed leaders allowlist file from on-chain network_auth (polling)."
+    )]
+    SyncAllowedLeaders {
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+
+        #[arg(
+            long = "interval",
+            default_value = "30s",
+            help = "Polling interval (e.g. 500ms, 5s, 2m, 1h).",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration)
+        )]
+        interval: std::time::Duration,
+
+        #[arg(long = "once", help = "Sync once and exit.")]
+        once: bool,
     },
 }
 
