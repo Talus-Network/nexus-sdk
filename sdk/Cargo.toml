@@ -70,6 +70,7 @@ test_utils = [
     "sui_move_build",
     "sui_package_management",
     "move_package",
+    "move_package_alt",
     "portpicker",
     "testcontainers-modules",
     "mockall",
@@ -263,20 +264,26 @@ optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.61.2"
+tag = "mainnet-v1.65.2"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.61.2"
+tag = "mainnet-v1.65.2"
 package = "sui-package-management"
 optional = true
 
 [dependencies.move_package]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.61.2"
+tag = "mainnet-v1.65.2"
 package = "move-package"
+optional = true
+
+[dependencies.move_package_alt]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.65.2"
+package = "move-package-alt"
 optional = true
 
 [dependencies.testcontainers-modules]

@@ -3,5 +3,8 @@ name = "object_crawler_test"
 version = "0.0.0"
 edition = "2024"
 
+[environments]
+testnet = "4c78adac"
+
 [addresses]
 object_crawler_test = "0x0"

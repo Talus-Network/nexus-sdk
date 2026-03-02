@@ -15,3 +15,5 @@ sdk/tests/move/onchain_tool_test/Move.lock
 .DS_Store
 
 **/Move.lock
+
+Published.toml
