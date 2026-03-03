@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.7.0`] - Unreleased
 
+### `nexus-sdk`
+
+#### Changed
+
+- transaction templates adjusted to allow for locking and finalizing gas payments
+- `GasSettlementUpdate` event replaced with `GasLockUpdate`
+
 ## [`0.6.0`] - 2026-02-24
 
 ### `nexus-sdk`
