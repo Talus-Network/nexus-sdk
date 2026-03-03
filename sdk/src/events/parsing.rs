@@ -1282,11 +1282,11 @@ mod tests {
                 leader_cap: addr(),
                 network: addr(),
             }),
-            NexusEventKind::GasSettlementUpdate(GasSettlementUpdateEvent {
+            NexusEventKind::GasLockUpdate(GasLockUpdateEvent {
                 execution: addr(),
                 tool_fqn: fqn.clone(),
                 vertex: vertex.clone(),
-                was_settled: true,
+                was_locked: true,
             }),
             NexusEventKind::DAGCreated(DAGCreatedEvent { dag: addr() }),
         ]
