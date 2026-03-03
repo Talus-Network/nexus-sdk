@@ -985,10 +985,15 @@ pub fn execute_scheduled_occurrence(
         true,
     ));
 
-    transactions::dag::sync_gas_state_for_tools(
+    // `tools_gas: Vec<&mut ToolGas>`
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    transactions::dag::lock_gas_state_for_tools(
         tx,
         objects,
-        gas_service,
         execution_gas,
         invoker_gas,
         tools_gas,

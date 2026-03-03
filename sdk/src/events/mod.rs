@@ -150,7 +150,7 @@ events! {
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
-    GasSettlementUpdateEvent => GasSettlementUpdate, "GasSettlementUpdateEvent",
+    GasLockUpdateEvent => GasLockUpdate, "GasLockUpdateEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 
@@ -482,11 +482,11 @@ pub struct LeaderCapIssuedEvent {
 /// Combination of `execution` and `vertex` uniquely identifies the tool
 /// invocation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct GasSettlementUpdateEvent {
+pub struct GasLockUpdateEvent {
     pub execution: sui::types::Address,
     pub tool_fqn: ToolFqn,
     pub vertex: RuntimeVertex,
-    pub was_settled: bool,
+    pub was_locked: bool,
 }
 
 /// Fired when the leader claims gas from a user's budget.
