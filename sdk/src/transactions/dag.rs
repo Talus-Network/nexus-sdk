@@ -485,43 +485,27 @@ pub fn prepare_execution(
     ))
 }
 
-/// PTB template to sync gas state for the given tools.
-pub fn sync_gas_state_for_tools(
+/// PTB template to lock gas state for the given tools.
+pub fn lock_gas_state_for_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    gas_service: sui::types::Argument,
     execution_gas: sui::types::Argument,
     invoker_gas: sui::types::Argument,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tools_gas: Vec<sui::types::Argument>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     ticket: sui::types::Argument,
 ) {
-    for (tool_gas_id, tool_gas_version) in tools_gas {
-        // `tool_gas: &mut ToolGas`
-        let tool_gas = tx.input(sui::tx::Input::shared(
-            *tool_gas_id,
-            *tool_gas_version,
-            true,
-        ));
-
-        // `nexus_workflow::gas::register_tool_gas_for_tool()`
+    for tool_gas in tools_gas {
+        // `nexus_workflow::gas::lock_gas_state_for_tool()`
         tx.move_call(
             sui::tx::Function::new(
                 objects.workflow_pkg_id,
-                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.module,
-                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.name,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.module,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.name,
                 vec![],
             ),
-            vec![
-                execution_gas,
-                tool_gas,
-                invoker_gas,
-                gas_service,
-                dag,
-                execution,
-                ticket,
-            ],
+            vec![execution_gas, tool_gas, invoker_gas, dag, execution, ticket],
         );
     }
 }
@@ -591,10 +575,15 @@ pub fn execute(
         true,
     ));
 
-    sync_gas_state_for_tools(
+    // `tools_gas: Vec<&mut ToolGas>`
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    lock_gas_state_for_tools(
         tx,
         objects,
-        gas_service,
         execution_gas,
         invoker_gas,
         tools_gas,

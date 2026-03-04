@@ -812,6 +812,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("add_gas_budget"),
     };
+    /// Assert that an aborted execution was fully refunded.
+    ///
+    /// `nexus_workflow::gas::assert_aborted_execution_fully_refunded`
+    pub const ASSERT_ABORTED_EXECUTION_FULLY_REFUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("assert_aborted_execution_fully_refunded"),
+    };
     /// Claim leader gas for this evaluation.
     ///
     /// `nexus_workflow::gas::claim_leader_gas`
@@ -868,6 +875,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("ExecutionGas"),
     };
+    /// Finalize gas settlement by transferring funds to a tool vault.
+    ///
+    /// `nexus_workflow::gas::finalize_gas_state_for_vertex`
+    pub const FINALIZE_GAS_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("finalize_gas_state_for_vertex"),
+    };
     /// GasService type for lookups.
     ///
     /// `nexus_workflow::gas::GasService`
@@ -882,12 +896,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("InvokerGas"),
     };
+    /// Lock gas for a tool in the current execution.
+    ///
+    /// `nexus_workflow::gas::lock_gas_state_for_tool`
+    pub const LOCK_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("lock_gas_state_for_tool"),
+    };
     /// OverGas owner cap generic.
     ///
     /// `nexus_workflow::gas::OverGas`
     pub const OVER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("OverGas"),
+    };
+    /// Refund gas for an aborted execution in a tool's context.
+    ///
+    /// `nexus_workflow::gas::refund_aborted_execution_gas_for_tool`
+    pub const REFUND_ABORTED_EXECUTION_GAS_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("refund_aborted_execution_gas_for_tool"),
     };
     /// Create an Execution scope.
     ///
@@ -916,13 +944,6 @@ impl Gas {
     pub const SET_SINGLE_INVOCATION_COST_MIST: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
-    };
-    /// Sync gas for a tool in the current execution.
-    ///
-    /// `nexus_workflow::gas::sync_gas_state_for_tool`
-    pub const SYNC_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("sync_gas_state_for_tool"),
     };
 
     /// Convert an object ID to an InvokerAddress scope.
