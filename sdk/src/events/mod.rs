@@ -7,8 +7,9 @@ use {
 mod fetching;
 mod graphql;
 mod parsing;
+mod polling;
 
-pub use {fetching::*, graphql::*, parsing::*};
+pub use {fetching::*, graphql::*, parsing::*, polling::*};
 
 /// Distribution metadata for distributed events. This contains metadata about
 /// the event deadline as well as the priority in which leaders should attempt
