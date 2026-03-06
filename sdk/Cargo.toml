@@ -43,7 +43,7 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 types = ["sui_types", "sui_idents", "enum_dispatch", "walrus", "futures", "jsonschema", "zeroize"]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "graphql_client"]
+events = ["types", "graphql_client", "tokio-util"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -236,6 +236,10 @@ workspace = true
 optional = true
 
 [dependencies.tokio-retry]
+workspace = true
+optional = true
+
+[dependencies.tokio-util]
 workspace = true
 optional = true
 
