@@ -11,7 +11,6 @@ use {
 pub(crate) async fn set_nexus_conf(
     sui_pk: Option<String>,
     sui_rpc_url: Option<reqwest::Url>,
-    sui_gql_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
     data_storage_walrus_publisher_url: Option<reqwest::Url>,
@@ -48,7 +47,6 @@ pub(crate) async fn set_nexus_conf(
 
     conf.sui.pk = sui_pk.map(SecretValue::from).or(conf.sui.pk);
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
-    conf.sui.gql_url = sui_gql_url.or(conf.sui.gql_url);
 
     // Preferred remote storage cannot be inline.
     if matches!(
@@ -132,7 +130,6 @@ mod tests {
         let result = set_nexus_conf(
             Some("123".to_string()),
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
-            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap()),
             Some(objects_path),
             Some(reqwest::Url::parse("https://aggregator.url").unwrap()),
             Some(reqwest::Url::parse("https://publisher.url").unwrap()),
@@ -153,10 +150,6 @@ mod tests {
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
-        );
-        assert_eq!(
-            conf.sui.gql_url,
-            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -182,7 +175,6 @@ mod tests {
             None,
             None,
             None,
-            None,
             false,
             path.clone(),
         )
@@ -197,10 +189,6 @@ mod tests {
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())
-        );
-        assert_eq!(
-            conf.sui.gql_url,
-            Some(reqwest::Url::parse("https://mainnet.sui.io/graphql").unwrap())
         );
         assert_eq!(objects, nexus_objects_instance);
         assert_eq!(
@@ -227,7 +215,6 @@ mod tests {
         let result = set_nexus_conf(
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
-            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,
@@ -264,7 +251,6 @@ mod tests {
         let result = set_nexus_conf(
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
-            Some(reqwest::Url::parse("https://testnet.sui.io/graphql").unwrap()),
             None,
             None,
             None,

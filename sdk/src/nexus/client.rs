@@ -3,7 +3,7 @@
 
 use {
     crate::{
-        events::EventFetcher,
+        events::EventPoller,
         nexus::{
             crawler::Crawler,
             error::NexusError,
@@ -66,7 +66,6 @@ impl Gas {
 pub struct NexusClientBuilder {
     pk: Option<sui::crypto::Ed25519PrivateKey>,
     rpc_url: Option<String>,
-    gql_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     nexus_objects: Option<NexusObjects>,
@@ -88,12 +87,6 @@ impl NexusClientBuilder {
     /// Which RPC to connect to.
     pub fn with_rpc_url(mut self, rpc_url: &str) -> Self {
         self.rpc_url = Some(rpc_url.to_string());
-        self
-    }
-
-    /// Which GraphQL to connect to.
-    pub fn with_gql_url(mut self, gql_url: &str) -> Self {
-        self.gql_url = Some(gql_url.to_string());
         self
     }
 
@@ -172,12 +165,7 @@ impl NexusClientBuilder {
             nexus_objects: Arc::clone(&nexus_objects),
             reference_gas_price,
             crawler: Crawler::new(client),
-            event_fetcher: EventFetcher::new(
-                &self
-                    .gql_url
-                    .unwrap_or_else(|| format!("{}/graphql", &rpc_url)),
-                Arc::clone(&nexus_objects),
-            ),
+            event_poller: EventPoller::new(&rpc_url, Arc::clone(&nexus_objects)),
         })
     }
 }
@@ -195,8 +183,8 @@ pub struct NexusClient {
     pub(super) reference_gas_price: u64,
     /// Provide access to an instantiated object crawler.
     pub(super) crawler: Crawler,
-    /// Provide access to an instantiated event fetcher.
-    pub(super) event_fetcher: EventFetcher,
+    /// Provide access to an instantiated event poller.
+    pub(super) event_poller: EventPoller,
 }
 
 impl NexusClient {
@@ -243,9 +231,9 @@ impl NexusClient {
         &self.signer
     }
 
-    /// Return an [`EventFetcher`] instance for fetching Nexus events.
-    pub fn event_fetcher(&self) -> &EventFetcher {
-        &self.event_fetcher
+    /// Return an [`EventPoller`] instance for fetching Nexus events.
+    pub fn event_poller(&self) -> &EventPoller {
+        &self.event_poller
     }
 
     /// Return a reference to the [`Gas`] instance.
@@ -610,7 +598,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         assert_eq!(client.reference_gas_price, 1000);
 

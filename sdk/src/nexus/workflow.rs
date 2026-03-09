@@ -254,14 +254,13 @@ impl WorkflowActions {
 
         // Create some initial timings and restrictions.
         let timeout = timeout.unwrap_or(Duration::from_secs(300));
+        let poller = self.client.event_poller().clone();
+        let mut next_page = poller
+            .start_polling(Some(execution_checkpoint))
+            .map_err(|e| NexusError::Configuration(format!("{e}")))?;
 
         let poller = {
-            let fetcher = self.client.event_fetcher().clone();
-
             tokio::spawn(async move {
-                let (_poller, mut next_page) =
-                    fetcher.poll_nexus_events(None, Some(execution_checkpoint), None);
-
                 let timeout = tokio::time::sleep(timeout);
 
                 tokio::pin!(timeout);
@@ -279,6 +278,8 @@ impl WorkflowActions {
                                 let execution_id = match &event.data {
                                     NexusEventKind::WalkAdvanced(e) => e.execution,
                                     NexusEventKind::WalkFailed(e) => e.execution,
+                                    NexusEventKind::WalkAborted(e) => e.execution,
+                                    NexusEventKind::WalkCancelled(e) => e.execution,
                                     NexusEventKind::EndStateReached(e) => e.execution,
                                     NexusEventKind::ExecutionFinished(e) => e.execution,
                                     _ => continue,
@@ -334,7 +335,6 @@ mod tests {
             test_utils::{nexus_mocks, sui_mocks},
             types::{NexusData, RuntimeVertex, TypeName},
         },
-        mockito::Server,
         serde_json::json,
     };
 
@@ -390,7 +390,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let dag = JsonDag {
             vertices: vec![],
@@ -518,7 +518,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
@@ -559,15 +559,10 @@ mod tests {
         let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
 
-        let mut server = Server::new_async().await;
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        });
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: dag_object_id,
@@ -596,38 +591,29 @@ mod tests {
             execution: execution_object_id,
             has_any_walk_failed: false,
             has_any_walk_succeeded: true,
+            was_aborted: false,
         });
 
-        let first_call = sui_mocks::gql::mock_event_query(
-            &mut server,
-            nexus_objects.primitives_pkg_id,
-            vec![walk_advanced_event],
-            None,
-            None,
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![
+                walk_advanced_event.clone(),
+                end_state_reached_event.clone(),
+                execution_finished_event.clone(),
+            ],
+            1,
         );
 
-        let second_call = sui_mocks::gql::mock_event_query(
-            &mut server,
-            nexus_objects.primitives_pkg_id,
-            vec![end_state_reached_event],
-            None,
-            None,
-        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
 
-        let third_call = sui_mocks::gql::mock_event_query(
-            &mut server,
-            nexus_objects.primitives_pkg_id,
-            vec![execution_finished_event],
-            None,
-            None,
-        );
-
-        let client = nexus_mocks::mock_nexus_client(
-            &nexus_objects,
-            &rpc_url,
-            Some(&format!("{}/graphql", server.url())),
-        )
-        .await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let mut result = client
             .workflow()
@@ -642,12 +628,17 @@ mod tests {
         let mut events = vec![];
 
         while let Some(event) = result.next_event.recv().await {
-            events.push(event);
+            match &event.data {
+                NexusEventKind::ExecutionFinished(_) => {
+                    events.push(event);
+
+                    break;
+                }
+                _ => events.push(event),
+            }
         }
 
-        first_call.assert_async().await;
-        second_call.assert_async().await;
-        third_call.assert_async().await;
+        println!("{:?}", result.poller);
 
         assert_eq!(events.len(), 3);
         assert!(matches!(events[0].data, NexusEventKind::WalkAdvanced(_)));
@@ -665,32 +656,27 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let execution_object_id = sui::types::Address::generate(&mut rng);
 
-        let mut server = Server::new_async().await;
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![],
+            1,
+        );
+
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
 
-        let first_call = sui_mocks::gql::mock_event_query(
-            &mut server,
-            nexus_objects.primitives_pkg_id,
-            vec![],
-            None,
-            None,
-        )
-        .expect_at_least(1)
-        .expect_at_most(10);
-
-        let client = nexus_mocks::mock_nexus_client(
-            &nexus_objects,
-            &rpc_url,
-            Some(&format!("{}/graphql", server.url())),
-        )
-        .await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let mut result = client
             .workflow()
@@ -707,8 +693,6 @@ mod tests {
         while let Some(event) = result.next_event.recv().await {
             events.push(event);
         }
-
-        first_call.assert_async().await;
 
         assert_eq!(events.len(), 0);
         assert!(matches!(

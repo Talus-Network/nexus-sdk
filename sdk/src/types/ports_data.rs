@@ -8,6 +8,7 @@ use {
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsData {
     values: HashMap<String, NexusData>,

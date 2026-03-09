@@ -121,7 +121,6 @@ mod tests {
         let test_utils::containers::SuiInstance {
             rpc_port,
             faucet_port,
-            pg: _pg,
             container: _container,
             ..
         } = test_utils::containers::setup_sui_instance().await;

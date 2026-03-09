@@ -106,7 +106,7 @@ impl<'de> Deserialize<'de> for PolicySymbol {
             };
         }
 
-        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
+        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Deserialize)]
         struct Fields<T> {
             #[serde(rename = "pos0")]
@@ -174,7 +174,7 @@ impl Serialize for PolicySymbol {
             };
         }
 
-        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
+        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Serialize)]
         struct Fields<'a, T> {
             #[serde(rename = "pos0")]

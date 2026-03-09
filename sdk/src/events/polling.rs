@@ -31,11 +31,12 @@ pub enum PollerError {
 }
 
 #[derive(Debug, Clone)]
-pub struct EventPageTODO {
+pub struct EventPage {
     pub events: Vec<NexusEvent>,
     pub checkpoint: u64,
 }
 
+#[derive(Clone)]
 pub struct EventPoller {
     rpc_url: String,
     nexus_objects: Arc<NexusObjects>,
@@ -51,9 +52,9 @@ pub struct EventPoller {
 }
 
 impl EventPoller {
-    pub fn new(rpc_url: String, nexus_objects: Arc<NexusObjects>) -> Self {
+    pub fn new(rpc_url: &str, nexus_objects: Arc<NexusObjects>) -> Self {
         Self {
-            rpc_url,
+            rpc_url: rpc_url.to_string(),
             nexus_objects,
             channel_capacity: 100,
             transactions_batch_size: 10,
@@ -87,7 +88,7 @@ impl EventPoller {
     pub fn start_polling(
         self,
         mut from_checkpoint: Option<u64>,
-    ) -> Result<mpsc::Receiver<Result<EventPageTODO, PollerError>>, PollerError> {
+    ) -> Result<mpsc::Receiver<Result<EventPage, PollerError>>, PollerError> {
         let this = Arc::new(self);
 
         let mut client = sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
@@ -95,16 +96,16 @@ impl EventPoller {
         })?;
 
         let (send_digest, next_digest) = mpsc::channel(this.transactions_batch_size * 2);
-        let (send_event, next_event) = mpsc::channel(this.channel_capacity);
+        let (send_page, next_page) = mpsc::channel(this.channel_capacity);
 
         // Spawn a task that accepts transaction digests via a channel and
         // fetches batches of transactions.
         tokio::spawn({
             let this = Arc::clone(&this);
-            let send_event = send_event.clone();
+            let send_page = send_page.clone();
 
             async move {
-                this.fetch_transactions_and_notify(next_digest, send_event)
+                this.fetch_transactions_and_notify(next_digest, send_page)
                     .await
             }
         });
@@ -113,7 +114,7 @@ impl EventPoller {
         // to the fetching task.
         tokio::spawn({
             let this = Arc::clone(&this);
-            let send_event = send_event.clone();
+            let send_page = send_page.clone();
             let send_digest = send_digest.clone();
 
             async move {
@@ -124,7 +125,7 @@ impl EventPoller {
                         match this.start_streaming_checkpoints(&mut client).await {
                             Ok(stream) => stream,
                             Err(e) => {
-                                if send_event.send(Err(e)).await.is_err() {
+                                if send_page.send(Err(e)).await.is_err() {
                                     break;
                                 }
 
@@ -138,14 +139,14 @@ impl EventPoller {
                         let checkpoint = match checkpoint_stream.try_next().await {
                             Ok(Some(response)) => response.checkpoint().clone(),
                             Ok(None) => {
-                                if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Checkpoint stream ended unexpectedly while trying to find the starting checkpoint")))).await.is_err() {
+                                if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Checkpoint stream ended unexpectedly while trying to find the starting checkpoint")))).await.is_err() {
                                     break;
                                 }
 
                                 continue;
                             }
                             Err(e) => {
-                                if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to receive checkpoint from stream while trying to find the starting checkpoint: {e}")))).await.is_err() {
+                                if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to receive checkpoint from stream while trying to find the starting checkpoint: {e}")))).await.is_err() {
                                     break;
                                 }
 
@@ -178,7 +179,7 @@ impl EventPoller {
                                     let response = match response {
                                         Ok(response) => response.into_inner(),
                                         Err(e) => {
-                                            if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch checkpoint {checkpoint} while trying to catch up: {e}")))).await.is_err() {
+                                            if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch checkpoint {checkpoint} while trying to catch up: {e}")))).await.is_err() {
                                                 break 'master;
                                             }
 
@@ -223,14 +224,14 @@ impl EventPoller {
                                 let response = match response {
                                     Ok(Some(response)) => response,
                                     Ok(None) => {
-                                        if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Checkpoint stream ended unexpectedly")))).await.is_err() {
+                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Checkpoint stream ended unexpectedly")))).await.is_err() {
                                             break 'master;
                                         }
 
                                         continue 'master;
                                     }
                                     Err(e) => {
-                                        if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to receive checkpoint from stream: {e}")))).await.is_err() {
+                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to receive checkpoint from stream: {e}")))).await.is_err() {
                                             break 'master;
                                         }
 
@@ -258,7 +259,7 @@ impl EventPoller {
             }
         });
 
-        Ok(next_event)
+        Ok(next_page)
     }
 
     /// Accept transaction digests via a channel and fetch batches of
@@ -268,7 +269,7 @@ impl EventPoller {
     async fn fetch_transactions_and_notify(
         &self,
         mut next_digest: mpsc::Receiver<(u64, String)>,
-        send_event: mpsc::Sender<Result<EventPageTODO, PollerError>>,
+        send_page: mpsc::Sender<Result<EventPage, PollerError>>,
     ) -> Result<(), PollerError> {
         let mut client = sui::grpc::Client::new(&self.rpc_url).map_err(|_| {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
@@ -311,7 +312,7 @@ impl EventPoller {
                                 response.into_inner()
                             },
                             Err(_) => {
-                                if send_event.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
+                                if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
                                     break;
                                 }
 
@@ -338,10 +339,13 @@ impl EventPoller {
                                 event,
                                 &self.nexus_objects,
                             )
+                            .inspect_err(|e| {
+                                println!("Failed to convert Sui GRPC event to Nexus event: {e}");
+                            })
                             .ok()
                         });
 
-                        if send_event.send(Ok(EventPageTODO {
+                        if send_page.send(Ok(EventPage {
                             events: nexus_events.collect(),
                             checkpoint,
                         })).await.is_err() {
@@ -373,4 +377,9 @@ impl EventPoller {
             })
             .map(|response| response.into_inner())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO:
 }

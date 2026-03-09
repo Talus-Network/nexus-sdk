@@ -16,7 +16,7 @@ The [`NexusClient`] provides access to:
 You can initialize a `NexusClient` via [`NexusClient::builder()`] with:
 
 - a Sui **ed25519 private key**
-- an RPC URL (and optional GraphQL URL for event fetching)
+- an RPC URL
 - one or more gas coins + a gas budget
 - the on-chain [`NexusObjects`]
 

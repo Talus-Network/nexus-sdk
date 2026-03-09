@@ -823,7 +823,7 @@ mod tests {
             ..Default::default()
         });
 
-        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         (rpc_url, nexus_client)
     }

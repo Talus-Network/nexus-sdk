@@ -1,43 +1,24 @@
 //! This module defines transformers from various Sui types to Nexus event types.
 //! Namely we support:
-//! - Parsing GRPC [`sui_sdk_types::Event`]
-//! - Parsing GQL response type
+//! - Parsing GRPC [`sui::types::Event`]
 
 use {
     crate::{
-        events::{
-            events_query::events_query::EventsQueryEventsNodesContents,
-            parse_bcs,
-            DistributedEventMetadata,
-            NexusEvent,
-        },
+        events::{parse_bcs, NexusEvent},
         idents::primitives,
         sui,
         types::NexusObjects,
     },
     anyhow::bail,
-    serde_json::json,
 };
 
-/// [`sui_sdk_types::Event`] -> [`NexusEvent`]
+/// [`sui::types::Event`] -> [`NexusEvent`]
 pub trait FromSuiGrpcEvent {
     /// Parse a Sui GRPC event into a Nexus event.
     fn from_sui_grpc_event(
         index: u64,
         digest: sui::types::Digest,
         event: &sui::types::Event,
-        objects: &NexusObjects,
-    ) -> anyhow::Result<NexusEvent>;
-}
-
-/// [`EventsQueryEventsNodes`] -> [`NexusEvent`]
-pub trait FromSuiGqlEvent {
-    /// Parse a Sui GQL event into a Nexus event.
-    fn from_sui_gql_event(
-        index: u64,
-        digest: sui::types::Digest,
-        package_id: sui::types::Address,
-        event: &EventsQueryEventsNodesContents,
         objects: &NexusObjects,
     ) -> anyhow::Result<NexusEvent>;
 }
@@ -91,86 +72,6 @@ impl FromSuiGrpcEvent for NexusEvent {
             id: (digest, index),
             generics: event_type.type_params().to_vec(),
             data,
-            distribution,
-        })
-    }
-}
-
-impl FromSuiGqlEvent for NexusEvent {
-    fn from_sui_gql_event(
-        index: u64,
-        digest: sui::types::Digest,
-        package_id: sui::types::Address,
-        event: &EventsQueryEventsNodesContents,
-        objects: &NexusObjects,
-    ) -> anyhow::Result<NexusEvent> {
-        let struct_tag: sui::types::StructTag = event
-            .type_
-            .as_ref()
-            .and_then(|t| t.repr.parse().ok())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Failed to parse event type '{:?}' into StructTag",
-                    event.type_
-                )
-            })?;
-
-        // Only accept events that are wrapped in `nexus_primitives::event::EventWrapper`.
-        if !is_event_wrapper(&struct_tag, objects) {
-            bail!(
-                "Event is not wrapped in '{}::event::EventWrapper', found type: '{:?}'",
-                objects.primitives_pkg_id,
-                event.type_
-            );
-        }
-
-        // Extract the name of the event we want to parse into.
-        let Some(event_type) = struct_tag.type_params().first().and_then(|tag| match tag {
-            sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
-            _ => None,
-        }) else {
-            bail!("EventWrapper does not have a valid event type parameter");
-        };
-
-        let event_name = normalize_event_name(event_type)?;
-
-        // Only accept inner events that come from Nexus packages.
-        if !is_nexus_package(*event_type.address(), objects) {
-            bail!(
-                "Inner event does not come from a Nexus package, it comes from '{}' instead",
-                event_type.address()
-            );
-        }
-
-        // Only accept events that come from the Nexus packages unless the
-        // event is marked as foreign.
-        if !is_nexus_package(package_id, objects) && !is_foreign_event(&event_name) {
-            bail!("Event does not come from a Nexus package, it comes from '{package_id}' instead");
-        }
-
-        let distribution = event
-            .json
-            .as_ref()
-            .and_then(|j| serde_json::from_value::<DistributedEventMetadata>(j.clone()).ok());
-
-        let Some(json) = event
-            .json
-            .as_ref()
-            .and_then(|j| j.as_object())
-            .and_then(|obj| obj.get("event"))
-        else {
-            bail!("Event contents missing JSON data");
-        };
-
-        let data = json!({
-            "_nexus_event_type": event_name,
-            "event": json
-        });
-
-        Ok(NexusEvent {
-            id: (digest, index),
-            generics: event_type.type_params().to_vec(),
-            data: serde_json::from_value(data)?,
             distribution,
         })
     }
@@ -231,30 +132,13 @@ fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool
 mod tests {
     use {
         super::*,
-        crate::{
-            events::{events_query::events_query::EventsQueryEventsNodesContentsType, *},
-            fqn,
-            idents::primitives,
-            test_utils::sui_mocks,
-            types::{NexusData, PolicySymbol, PortsData, SharedObjectRef},
-            ToolFqn,
-        },
+        crate::{events::*, idents::primitives, test_utils::sui_mocks, types::SharedObjectRef},
         serde::{Deserialize, Serialize},
-        std::sync::Arc,
     };
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     struct Wrapper<T> {
         event: T,
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    struct DistributedWrapper<T> {
-        event: T,
-        deadline_ms: String,
-        requested_at_ms: String,
-        task_id: sui::types::Address,
-        leaders: Vec<sui::types::Address>,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -327,11 +211,13 @@ mod tests {
         let registry = sui::types::Address::generate(&mut rng);
         let leader_cap_id = sui::types::Address::generate(&mut rng);
         let network = sui::types::Address::generate(&mut rng);
+        let leader = sui::types::Address::generate(&mut rng);
         let data = Wrapper {
             event: LeaderCapIssuedEvent {
                 registry,
                 leader_cap_id,
                 network,
+                leader,
             },
         };
         let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
@@ -357,8 +243,9 @@ mod tests {
             crate::events::NexusEventKind::LeaderCapIssued(LeaderCapIssuedEvent {
                 registry: r,
                 leader_cap_id: l,
-                network: n
-            }) if r == registry && l == leader_cap_id && n == network
+                network: n,
+                leader: lead,
+            }) if r == registry && l == leader_cap_id && n == network && lead == leader
         ));
     }
 
@@ -605,690 +492,168 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_from_gql_request_scheduled_occurrence_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
+    fn test_parse_sample_events() {
+        for (name, bytes) in sample_events() {
+            let result = parse_bcs(name, &bytes);
 
-        let inner_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
-            sui::types::Identifier::new("scheduler").unwrap(),
-            sui::types::Identifier::new("OccurrenceScheduledEvent").unwrap(),
-            vec![],
-        );
-
-        let scheduled_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
-            sui::types::Identifier::new("scheduler").unwrap(),
-            sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
-            vec![sui::types::TypeTag::Struct(Box::new(inner_type))],
-        );
-
-        let wrapper_type = sui::types::StructTag::new(
-            objects.primitives_pkg_id,
-            primitives::Event::EVENT_WRAPPER.module,
-            primitives::Event::EVENT_WRAPPER.name,
-            vec![sui::types::TypeTag::Struct(Box::new(scheduled_type))],
-        );
-
-        let generator_uid = sui::types::Address::generate(&mut rng);
-        let occurrence = OccurrenceScheduledEvent {
-            task: sui::types::Address::generate(&mut rng),
-            generator: crate::types::PolicySymbol::Uid(generator_uid),
-        };
-
-        let scheduled = RequestScheduledOccurrenceEvent {
-            request: occurrence.clone(),
-            priority: 5,
-            request_ms: 10,
-            start_ms: 20,
-            deadline_ms: 30,
-        };
-
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::json!({
-                "event": {
-                    "request": {
-                        "task": scheduled.request.task,
-                        "generator": {
-                            "variant": "Uid",
-                            "fields": { "pos0": generator_uid }
-                        }
-                    },
-                    "priority": scheduled.priority.to_string(),
-                    "request_ms": scheduled.request_ms.to_string(),
-                    "start_ms": scheduled.start_ms.to_string(),
-                    "deadline_ms": scheduled.deadline_ms.to_string(),
-                }
-            })),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: wrapper_type.to_string(),
-            }),
-        };
-
-        let result = NexusEvent::from_sui_gql_event(
-            index,
-            digest,
-            objects.primitives_pkg_id,
-            &gql_event,
-            &objects,
-        )
-        .expect("Should parse scheduled occurrence event");
-
-        assert!(matches!(
-            result.data,
-            NexusEventKind::RequestScheduledOccurrence(env)
-                if env.request.task == scheduled.request.task
-                    && env.priority == scheduled.priority
-                    && env.start_ms == scheduled.start_ms
-        ));
-    }
-
-    #[test]
-    fn test_parse_from_gql_request_scheduled_walk_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-
-        let inner_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
-            sui::types::Identifier::new("scheduler").unwrap(),
-            sui::types::Identifier::new("RequestWalkExecutionEvent").unwrap(),
-            vec![],
-        );
-
-        let scheduled_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
-            sui::types::Identifier::new("scheduler").unwrap(),
-            sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
-            vec![sui::types::TypeTag::Struct(Box::new(inner_type))],
-        );
-
-        let wrapper_type = sui::types::StructTag::new(
-            objects.primitives_pkg_id,
-            primitives::Event::EVENT_WRAPPER.module,
-            primitives::Event::EVENT_WRAPPER.name,
-            vec![sui::types::TypeTag::Struct(Box::new(scheduled_type))],
-        );
-
-        let walk = RequestWalkExecutionEvent {
-            dag: sui::types::Address::generate(&mut rng),
-            execution: sui::types::Address::generate(&mut rng),
-            invoker: sui::types::Address::generate(&mut rng),
-            walk_index: 1,
-            next_vertex: RuntimeVertex::plain("v"),
-            evaluations: sui::types::Address::generate(&mut rng),
-            worksheet_from_type: TypeName::new("worksheet"),
-            worksheet_from_uid: sui::types::Address::generate(&mut rng),
-        };
-
-        let scheduled = RequestScheduledWalkEvent {
-            request: walk.clone(),
-            priority: 1,
-            request_ms: 2,
-            start_ms: 3,
-            deadline_ms: 4,
-        };
-
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(
-                serde_json::to_value(&Wrapper {
-                    event: scheduled.clone(),
-                })
-                .unwrap(),
-            ),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: wrapper_type.to_string(),
-            }),
-        };
-
-        let result = NexusEvent::from_sui_gql_event(
-            index,
-            digest,
-            objects.primitives_pkg_id,
-            &gql_event,
-            &objects,
-        )
-        .expect("Should parse scheduled walk event");
-
-        assert!(matches!(
-            result.data,
-            NexusEventKind::RequestScheduledWalk(env)
-                if env.request.dag == scheduled.request.dag
-                    && env.start_ms == scheduled.start_ms
-                    && env.deadline_ms == scheduled.deadline_ms
-        ));
-    }
-
-    #[test]
-    fn test_parse_from_gql_valid_nexus_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let primitives_pkg_id = objects.primitives_pkg_id;
-        let event_type = sui::types::StructTag::new(
-            objects.primitives_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
-        assert!(result.is_ok(), "Should parse valid Nexus GQL event");
-        let nexus_event = result.unwrap();
-        assert_eq!(nexus_event.generics, vec![]);
-        assert_eq!(nexus_event.id, (digest, index));
-        assert!(matches!(
-            nexus_event.data,
-            crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
-        ));
-    }
-
-    #[test]
-    fn test_parse_from_gql_non_nexus_package_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
-        let event_type = sui::types::StructTag::new(
-            non_nexus_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    non_nexus_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, non_nexus_pkg_id, &gql_event, &objects);
-        assert!(
-            result.is_err(),
-            "Should fail for non-Nexus package GQL event"
-        );
-    }
-
-    #[test]
-    fn test_parse_from_gql_non_nexus_package_inner_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
-        let event_type = sui::types::StructTag::new(
-            non_nexus_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    objects.primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-        let result = NexusEvent::from_sui_gql_event(
-            index,
-            digest,
-            objects.workflow_pkg_id,
-            &gql_event,
-            &objects,
-        );
-        assert!(
-            result.is_err(),
-            "Should fail for non-Nexus package GQL inner event"
-        );
-    }
-
-    #[test]
-    fn test_parse_from_gql_non_nexus_package_event_foreign_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let non_nexus_pkg_id = sui::types::Address::generate(&mut rng);
-        let event_type = sui::types::StructTag::new(
-            objects.interface_pkg_id,
-            sui::types::Identifier::from_static("v1"),
-            sui::types::Identifier::from_static("AnnounceInterfacePackageEvent"),
-            vec![],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let data = Wrapper {
-            event: AnnounceInterfacePackageEvent {
-                shared_objects: vec![SharedObjectRef::new_imm(sui::types::Address::generate(
-                    &mut rng,
-                ))],
-            },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    objects.primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, non_nexus_pkg_id, &gql_event, &objects)
-                .expect("Should parse foreign event from non-Nexus package");
-
-        assert_eq!(result.id, (digest, index));
-        assert!(matches!(
-            result.data,
-            crate::events::NexusEventKind::AnnounceInterfacePackage(
-                AnnounceInterfacePackageEvent { shared_objects }
-            ) if shared_objects == data.event.shared_objects
-        ));
-    }
-
-    #[test]
-    fn test_parse_from_gql_non_event_wrapper_gql_type() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let primitives_pkg_id = objects.primitives_pkg_id;
-        let event_type = sui::types::StructTag::new(
-            primitives_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        // Use a non-wrapper struct tag
-        let non_wrapper_tag = sui::types::StructTag::new(
-            primitives_pkg_id,
-            sui::types::Identifier::new("not_wrapper").unwrap(),
-            sui::types::Identifier::new("not_wrapper").unwrap(),
-            vec![wrapper_type.clone()],
-        );
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: non_wrapper_tag.to_string(),
-            }),
-        };
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
-        assert!(result.is_err(), "Should fail for non-EventWrapper GQL type");
-    }
-
-    #[test]
-    fn test_parse_from_gql_event_wrapper_missing_type_param() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let primitives_pkg_id = objects.primitives_pkg_id;
-        // Wrapper tag with no type params
-        let wrapper_tag = sui::types::StructTag::new(
-            primitives_pkg_id,
-            primitives::Event::EVENT_WRAPPER.module,
-            primitives::Event::EVENT_WRAPPER.name,
-            vec![],
-        );
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: wrapper_tag.to_string(),
-            }),
-        };
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
-        assert!(
-            result.is_err(),
-            "Should fail for missing type param in GQL event"
-        );
-    }
-
-    #[test]
-    fn test_parse_from_gql_valid_nexus_event_with_generics() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let primitives_pkg_id = objects.primitives_pkg_id;
-        let event_type = sui::types::StructTag::new(
-            primitives_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![sui::types::TypeTag::U64],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = Wrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
-        assert!(
-            result.is_ok(),
-            "Should parse valid Nexus GQL event with generics"
-        );
-        let nexus_event = result.unwrap();
-        assert_eq!(nexus_event.generics, vec![sui::types::TypeTag::U64]);
-        assert_eq!(nexus_event.id, (digest, index));
-        assert!(matches!(
-            nexus_event.data,
-            crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
-        ));
-    }
-
-    #[test]
-    fn test_parse_from_gql_valid_distributed_nexus_event() {
-        let mut rng = rand::thread_rng();
-        let index = 0u64;
-        let digest = sui::types::Digest::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-        let primitives_pkg_id = objects.primitives_pkg_id;
-        let event_type = sui::types::StructTag::new(
-            primitives_pkg_id,
-            sui::types::Identifier::new("dag").unwrap(),
-            sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
-            vec![sui::types::TypeTag::U64],
-        );
-        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type.clone()));
-        let dag_addr = sui::types::Address::generate(&mut rng);
-        let data = DistributedWrapper {
-            event: DAGCreatedEvent { dag: dag_addr },
-            deadline_ms: "100".to_string(),
-            requested_at_ms: "1500".to_string(),
-            leaders: vec![sui::types::Address::ZERO, sui::types::Address::ZERO],
-            task_id: sui::types::Address::ZERO,
-        };
-        let gql_event = EventsQueryEventsNodesContents {
-            json: Some(serde_json::to_value(&data).unwrap()),
-            type_: Some(EventsQueryEventsNodesContentsType {
-                repr: sui::types::StructTag::new(
-                    primitives_pkg_id,
-                    primitives::Event::EVENT_WRAPPER.module,
-                    primitives::Event::EVENT_WRAPPER.name,
-                    vec![wrapper_type.clone()],
-                )
-                .to_string(),
-            }),
-        };
-
-        let result =
-            NexusEvent::from_sui_gql_event(index, digest, primitives_pkg_id, &gql_event, &objects);
-        assert!(
-            result.is_ok(),
-            "Should parse valid Nexus GQL event with generics"
-        );
-        let nexus_event = result.unwrap();
-        assert_eq!(nexus_event.generics, vec![sui::types::TypeTag::U64]);
-        assert_eq!(nexus_event.id, (digest, index));
-        assert!(matches!(
-            nexus_event.data,
-            crate::events::NexusEventKind::DAGCreated(DAGCreatedEvent { dag }) if dag == dag_addr
-        ));
-        let distribution = nexus_event
-            .distribution
-            .as_ref()
-            .expect("Distribution should be present");
-        assert_eq!(distribution.deadline, chrono::Duration::milliseconds(100),);
-        assert_eq!(
-            distribution.requested_at,
-            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
-        );
-        assert_eq!(distribution.leaders.len(), 2);
-        assert_eq!(distribution.task_id, sui::types::Address::ZERO);
-    }
-
-    #[tokio::test]
-    async fn test_parse_from_gql_all_events_roundtrip() {
-        let mut server = mockito::Server::new_async().await;
-        let objects = Arc::new(sui_mocks::mock_nexus_objects());
-        let primitives_pkg_id = objects.primitives_pkg_id;
-
-        let events = sample_events();
-
-        let mock = sui_mocks::gql::mock_event_query(
-            &mut server,
-            primitives_pkg_id,
-            events.clone(),
-            None,
-            Some("cursor"),
-        );
-
-        let fetcher = crate::events::EventFetcher::new(
-            &format!("{}/graphql", &server.url()),
-            objects.clone(),
-        );
-
-        let (_poller, mut receiver) = fetcher.poll_nexus_events(None, None, None);
-        let page = receiver
-            .recv()
-            .await
-            .expect("fetcher should yield a page of events")
-            .expect("result should be Ok");
-
-        assert_eq!(page.events.len(), events.len());
-
-        for (expected, parsed) in events.iter().zip(page.events.iter()) {
-            assert_eq!(expected.name(), parsed.data.name());
+            assert!(result.is_ok(), "'{name}' event failed to parse: {result:?}")
         }
-
-        mock.assert_async().await;
     }
 
-    fn sample_events() -> Vec<NexusEventKind> {
-        let mut idx: u8 = 1;
-        let mut addr = || {
-            let hex = format!("0x{:02x}", idx);
-            idx = idx.wrapping_add(1);
-            hex.parse::<sui::types::Address>().unwrap()
-        };
-        let fqn: ToolFqn = fqn!("xyz.taluslabs.example@1");
-        let vertex = RuntimeVertex::plain("v");
-        let ports = PortsData::from_map(
-            std::iter::once((
-                "p".to_string(),
-                NexusData::new_inline(serde_json::json!({ "k": 1 })),
-            ))
-            .collect(),
-        );
-
+    /// Return a sample list of various events in BCS directly from the chain.
+    fn sample_events() -> Vec<(&'static str, Vec<u8>)> {
         vec![
-            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
-                request: OccurrenceScheduledEvent {
-                    task: addr(),
-                    generator: PolicySymbol::Uid(addr()),
-                },
-                priority: 1,
-                request_ms: 2,
-                start_ms: 3,
-                deadline_ms: 4,
-            }),
-            NexusEventKind::RequestScheduledWalk(RequestScheduledWalkEvent {
-                request: RequestWalkExecutionEvent {
-                    dag: addr(),
-                    execution: addr(),
-                    invoker: addr(),
-                    walk_index: 1,
-                    next_vertex: vertex.clone(),
-                    evaluations: addr(),
-                    worksheet_from_type: TypeName::new("worksheet"),
-                    worksheet_from_uid: addr(),
-                },
-                priority: 1,
-                request_ms: 2,
-                start_ms: 3,
-                deadline_ms: 4,
-            }),
-            NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
-                task: addr(),
-                generator: PolicySymbol::Uid(addr()),
-            }),
-            NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
-                dag: addr(),
-                execution: addr(),
-                invoker: addr(),
-                walk_index: 7,
-                next_vertex: vertex.clone(),
-                evaluations: addr(),
-                worksheet_from_type: TypeName::new("worksheet"),
-                worksheet_from_uid: addr(),
-            }),
-            NexusEventKind::AnnounceInterfacePackage(AnnounceInterfacePackageEvent {
-                shared_objects: vec![SharedObjectRef::new_imm(addr())],
-            }),
-            NexusEventKind::ToolRegistered(ToolRegisteredEvent {
-                tool: addr(),
-                fqn: fqn.clone(),
-            }),
-            NexusEventKind::ToolUnregistered(ToolUnregisteredEvent {
-                tool: addr(),
-                fqn: fqn.clone(),
-            }),
-            NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
-                dag: addr(),
-                execution: addr(),
-                walk_index: 1,
-                vertex: vertex.clone(),
-                variant: TypeName::new("var"),
-                variant_ports_to_data: ports.clone(),
-            }),
-            NexusEventKind::WalkFailed(WalkFailedEvent {
-                dag: addr(),
-                execution: addr(),
-                walk_index: 2,
-                vertex: vertex.clone(),
-                reason: "fail".to_string(),
-            }),
-            NexusEventKind::EndStateReached(EndStateReachedEvent {
-                dag: addr(),
-                execution: addr(),
-                walk_index: 3,
-                vertex: vertex.clone(),
-                variant: TypeName::new("end"),
-                variant_ports_to_data: ports.clone(),
-            }),
-            NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
-                dag: addr(),
-                execution: addr(),
-                has_any_walk_failed: true,
-                has_any_walk_succeeded: true,
-            }),
-            NexusEventKind::MissedOccurrence(MissedOccurrenceEvent {
-                task: addr(),
-                start_time_ms: 1,
-                deadline_ms: Some(2),
-                pruned_at: 3,
-                priority_fee_per_gas_unit: 4,
-                generator: PolicySymbol::Uid(addr()),
-            }),
-            NexusEventKind::TaskCreated(TaskCreatedEvent {
-                task: addr(),
-                owner: addr(),
-            }),
-            NexusEventKind::TaskPaused(TaskPausedEvent { task: addr() }),
-            NexusEventKind::TaskResumed(TaskResumedEvent { task: addr() }),
-            NexusEventKind::TaskCanceled(TaskCanceledEvent {
-                task: addr(),
-                cleared_occurrences: 1,
-                had_periodic: true,
-            }),
-            NexusEventKind::OccurrenceConsumed(OccurrenceConsumedEvent {
-                task: addr(),
-                start_time_ms: 1,
-                deadline_ms: Some(2),
-                priority_fee_per_gas_unit: 3,
-                generator: PolicySymbol::Uid(addr()),
-                executed_at: 4,
-            }),
-            NexusEventKind::PeriodicScheduleConfigured(PeriodicScheduleConfiguredEvent {
-                task: addr(),
-                period_ms: Some(1),
-                deadline_offset_ms: Some(2),
-                max_iterations: Some(3),
-                generated: Some(4),
-                priority_fee_per_gas_unit: Some(5),
-                last_generated_start_ms: Some(6),
-            }),
-            NexusEventKind::FoundingLeaderCapCreated(FoundingLeaderCapCreatedEvent {
-                leader_cap: addr(),
-                network: addr(),
-            }),
-            NexusEventKind::GasLockUpdate(GasLockUpdateEvent {
-                execution: addr(),
-                tool_fqn: fqn.clone(),
-                vertex: vertex.clone(),
-                was_locked: true,
-            }),
-            NexusEventKind::DAGCreated(DAGCreatedEvent { dag: addr() }),
+            (
+                "RequestScheduledWalkEvent",
+                vec![
+                    172, 45, 232, 250, 15, 55, 177, 42, 63, 139, 114, 186, 218, 6, 79, 233, 155,
+                    245, 118, 65, 38, 9, 194, 133, 80, 214, 234, 139, 42, 249, 215, 254, 137, 85,
+                    88, 251, 70, 35, 154, 244, 157, 83, 95, 160, 229, 41, 235, 87, 49, 34, 108,
+                    227, 130, 217, 34, 60, 63, 1, 217, 168, 78, 221, 225, 177, 225, 55, 128, 133,
+                    77, 55, 145, 161, 138, 59, 157, 111, 32, 91, 56, 106, 138, 120, 219, 83, 24,
+                    59, 31, 20, 245, 161, 67, 82, 113, 22, 105, 245, 0, 0, 0, 0, 0, 0, 0, 0, 1, 5,
+                    100, 117, 109, 109, 121, 15, 4, 47, 22, 180, 230, 20, 20, 148, 255, 73, 141,
+                    105, 187, 102, 235, 190, 39, 150, 230, 194, 116, 197, 79, 149, 160, 81, 118,
+                    119, 162, 50, 67, 98, 56, 48, 51, 48, 51, 101, 51, 57, 48, 100, 51, 99, 50, 51,
+                    99, 100, 51, 98, 100, 50, 101, 102, 97, 56, 52, 51, 100, 55, 53, 55, 50, 54,
+                    48, 57, 101, 51, 53, 51, 53, 48, 57, 51, 100, 50, 56, 101, 100, 55, 50, 50, 50,
+                    52, 48, 55, 55, 52, 49, 55, 56, 101, 50, 53, 101, 54, 58, 58, 100, 101, 102,
+                    97, 117, 108, 116, 95, 116, 97, 112, 58, 58, 68, 101, 102, 97, 117, 108, 116,
+                    84, 65, 80, 86, 49, 87, 105, 116, 110, 101, 115, 115, 194, 253, 110, 49, 44,
+                    232, 173, 17, 187, 224, 166, 199, 143, 30, 119, 151, 248, 210, 201, 14, 34, 15,
+                    69, 8, 49, 214, 26, 231, 17, 124, 250, 113, 0, 0, 0, 0, 0, 0, 0, 0, 212, 39,
+                    34, 195, 156, 1, 0, 0, 212, 39, 34, 195, 156, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    48, 117, 0, 0, 0, 0, 0, 0, 212, 39, 34, 195, 156, 1, 0, 0, 235, 182, 85, 86,
+                    227, 215, 174, 219, 221, 108, 207, 129, 228, 115, 113, 83, 118, 141, 234, 189,
+                    80, 32, 47, 194, 209, 37, 52, 154, 4, 96, 207, 221, 2, 103, 9, 248, 223, 25,
+                    42, 12, 58, 238, 126, 174, 234, 146, 57, 167, 24, 134, 63, 229, 18, 116, 169,
+                    175, 18, 228, 106, 208, 225, 232, 155, 93, 123, 249, 197, 12, 241, 105, 213,
+                    209, 99, 241, 22, 91, 54, 129, 43, 201, 235, 31, 195, 43, 0, 38, 92, 210, 42,
+                    35, 69, 206, 211, 21, 62, 247, 125,
+                ],
+            ),
+            (
+                "DAGCreatedEvent",
+                vec![
+                    172, 45, 232, 250, 15, 55, 177, 42, 63, 139, 114, 186, 218, 6, 79, 233, 155,
+                    245, 118, 65, 38, 9, 194, 133, 80, 214, 234, 139, 42, 249, 215, 254,
+                ],
+            ),
+            (
+                "GasLockUpdateEvent",
+                vec![
+                    137, 85, 88, 251, 70, 35, 154, 244, 157, 83, 95, 160, 229, 41, 235, 87, 49, 34,
+                    108, 227, 130, 217, 34, 60, 63, 1, 217, 168, 78, 221, 225, 177, 1, 5, 100, 117,
+                    109, 109, 121, 16, 120, 121, 122, 46, 100, 117, 109, 109, 121, 46, 116, 111,
+                    111, 108, 64, 49, 1,
+                ],
+            ),
+            (
+                "ToolRegisteredEvent",
+                vec![
+                    53, 118, 162, 75, 202, 80, 114, 229, 20, 139, 102, 88, 41, 247, 106, 81, 231,
+                    122, 179, 18, 162, 131, 113, 77, 191, 203, 73, 146, 208, 212, 185, 171, 28,
+                    120, 121, 122, 46, 116, 97, 108, 117, 115, 108, 97, 98, 115, 46, 109, 97, 116,
+                    104, 46, 105, 54, 52, 46, 115, 117, 109, 64, 49,
+                ],
+            ),
+            (
+                "AnnounceInterfacePackageEvent",
+                vec![
+                    1, 30, 119, 100, 18, 153, 38, 229, 238, 194, 76, 38, 173, 14, 59, 134, 129, 97,
+                    127, 227, 222, 102, 203, 227, 137, 8, 168, 65, 31, 190, 45, 0, 151, 0,
+                ],
+            ),
+            (
+                "FoundingLeaderCapCreatedEvent",
+                vec![
+                    220, 77, 44, 250, 39, 146, 163, 254, 224, 253, 94, 74, 105, 99, 64, 142, 187,
+                    76, 70, 202, 207, 69, 223, 66, 20, 104, 0, 21, 159, 182, 106, 170, 7, 147, 201,
+                    4, 107, 90, 177, 234, 233, 159, 79, 235, 110, 104, 9, 97, 134, 200, 7, 65, 153,
+                    183, 255, 82, 32, 55, 192, 14, 111, 197, 5, 247,
+                ],
+            ),
+            (
+                "ExecutionFinishedEvent",
+                vec![
+                    76, 145, 234, 176, 46, 104, 79, 149, 7, 4, 155, 4, 34, 47, 112, 132, 107, 166,
+                    75, 155, 168, 106, 231, 169, 17, 231, 42, 55, 254, 13, 32, 182, 12, 64, 190,
+                    126, 42, 153, 71, 21, 43, 93, 197, 119, 139, 178, 53, 131, 225, 154, 24, 101,
+                    138, 228, 101, 237, 112, 225, 252, 204, 192, 102, 88, 49, 0, 1, 0,
+                ],
+            ),
+            (
+                "EndStateReachedEvent",
+                vec![
+                    76, 145, 234, 176, 46, 104, 79, 149, 7, 4, 155, 4, 34, 47, 112, 132, 107, 166,
+                    75, 155, 168, 106, 231, 169, 17, 231, 42, 55, 254, 13, 32, 182, 12, 64, 190,
+                    126, 42, 153, 71, 21, 43, 93, 197, 119, 139, 178, 53, 131, 225, 154, 24, 101,
+                    138, 228, 101, 237, 112, 225, 252, 204, 192, 102, 88, 49, 0, 0, 0, 0, 0, 0, 0,
+                    0, 1, 5, 100, 117, 109, 109, 121, 2, 111, 107, 1, 7, 109, 101, 115, 115, 97,
+                    103, 101, 6, 105, 110, 108, 105, 110, 101, 24, 34, 89, 111, 117, 32, 115, 97,
+                    105, 100, 58, 32, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 33, 34,
+                    0,
+                ],
+            ),
+            (
+                "RequestScheduledOccurrenceEvent",
+                vec![
+                    234, 49, 197, 185, 6, 194, 12, 9, 9, 187, 27, 164, 244, 58, 29, 51, 14, 42, 79,
+                    10, 177, 123, 69, 28, 27, 131, 12, 131, 102, 182, 151, 83, 0, 98, 99, 50, 48,
+                    49, 54, 53, 51, 56, 51, 99, 56, 48, 101, 102, 48, 51, 57, 49, 54, 101, 51, 51,
+                    99, 48, 52, 99, 101, 49, 98, 54, 101, 55, 99, 98, 98, 56, 100, 97, 48, 50, 48,
+                    53, 48, 98, 50, 49, 101, 101, 49, 101, 100, 55, 50, 101, 52, 99, 97, 55, 57,
+                    53, 99, 101, 55, 49, 58, 58, 115, 99, 104, 101, 100, 117, 108, 101, 114, 58,
+                    58, 81, 117, 101, 117, 101, 71, 101, 110, 101, 114, 97, 116, 111, 114, 87, 105,
+                    116, 110, 101, 115, 115, 1, 0, 0, 0, 0, 0, 0, 0, 27, 208, 108, 195, 156, 1, 0,
+                    0, 71, 209, 108, 195, 156, 1, 0, 0, 135, 240, 108, 195, 156, 1, 0, 0, 48, 117,
+                    0, 0, 0, 0, 0, 0, 71, 209, 108, 195, 156, 1, 0, 0, 28, 106, 230, 75, 241, 192,
+                    93, 183, 209, 11, 222, 12, 98, 199, 206, 166, 195, 132, 112, 190, 13, 133, 140,
+                    121, 192, 39, 92, 217, 2, 190, 93, 179, 2, 157, 22, 199, 54, 48, 18, 169, 158,
+                    216, 68, 111, 79, 42, 245, 75, 45, 204, 1, 239, 67, 252, 89, 220, 243, 127, 29,
+                    130, 3, 144, 9, 81, 223, 70, 239, 6, 15, 239, 195, 145, 34, 90, 230, 52, 78,
+                    245, 173, 196, 178, 236, 75, 142, 174, 7, 76, 106, 189, 66, 229, 139, 43, 142,
+                    105, 152, 182,
+                ],
+            ),
+            (
+                "OccurrenceConsumedEvent",
+                vec![
+                    234, 49, 197, 185, 6, 194, 12, 9, 9, 187, 27, 164, 244, 58, 29, 51, 14, 42, 79,
+                    10, 177, 123, 69, 28, 27, 131, 12, 131, 102, 182, 151, 83, 71, 209, 108, 195,
+                    156, 1, 0, 0, 1, 135, 240, 108, 195, 156, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    98, 99, 50, 48, 49, 54, 53, 51, 56, 51, 99, 56, 48, 101, 102, 48, 51, 57, 49,
+                    54, 101, 51, 51, 99, 48, 52, 99, 101, 49, 98, 54, 101, 55, 99, 98, 98, 56, 100,
+                    97, 48, 50, 48, 53, 48, 98, 50, 49, 101, 101, 49, 101, 100, 55, 50, 101, 52,
+                    99, 97, 55, 57, 53, 99, 101, 55, 49, 58, 58, 115, 99, 104, 101, 100, 117, 108,
+                    101, 114, 58, 58, 81, 117, 101, 117, 101, 71, 101, 110, 101, 114, 97, 116, 111,
+                    114, 87, 105, 116, 110, 101, 115, 115, 134, 211, 108, 195, 156, 1, 0, 0,
+                ],
+            ),
+            (
+                "WalkAdvancedEvent",
+                vec![
+                    25, 13, 140, 141, 215, 138, 116, 155, 39, 47, 68, 22, 144, 0, 154, 167, 99,
+                    115, 183, 30, 10, 144, 218, 96, 19, 136, 161, 170, 121, 189, 179, 24, 75, 66,
+                    44, 41, 248, 78, 49, 235, 213, 109, 239, 122, 242, 143, 7, 85, 166, 51, 204, 9,
+                    167, 127, 186, 225, 193, 81, 236, 140, 132, 134, 167, 51, 0, 0, 0, 0, 0, 0, 0,
+                    0, 1, 11, 105, 115, 95, 110, 101, 103, 97, 116, 105, 118, 101, 2, 108, 116, 1,
+                    1, 97, 6, 105, 110, 108, 105, 110, 101, 2, 45, 50, 0,
+                ],
+            ),
+            (
+                "LeaderCapIssuedEvent",
+                vec![
+                    205, 19, 59, 181, 227, 175, 174, 63, 109, 25, 51, 51, 242, 35, 41, 91, 77, 200,
+                    127, 205, 231, 244, 143, 137, 215, 215, 6, 177, 184, 68, 172, 140, 43, 59, 169,
+                    207, 177, 188, 84, 54, 147, 44, 93, 140, 42, 177, 128, 69, 212, 56, 135, 113,
+                    85, 146, 111, 58, 159, 33, 38, 214, 146, 18, 236, 17, 145, 173, 70, 152, 47,
+                    201, 1, 29, 239, 119, 79, 143, 4, 102, 8, 181, 255, 163, 194, 79, 158, 155, 5,
+                    220, 76, 145, 127, 10, 190, 156, 156, 79, 230, 125, 33, 187, 163, 211, 146,
+                    144, 156, 249, 196, 219, 221, 2, 159, 23, 145, 102, 193, 115, 199, 38, 49, 145,
+                    44, 100, 109, 189, 198, 0, 29, 25,
+                ],
+            ),
         ]
     }
 }

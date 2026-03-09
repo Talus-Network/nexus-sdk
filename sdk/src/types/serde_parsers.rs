@@ -255,7 +255,12 @@ pub fn deserialize_encoded_bytes<'de, D>(deserializer: D) -> Result<Vec<u8>, D::
 where
     D: Deserializer<'de>,
 {
-    let encoded: String = Deserialize::deserialize(deserializer)?;
+    // Accommodate for BCS.
+    if !deserializer.is_human_readable() {
+        return Vec::<u8>::deserialize(deserializer);
+    }
+
+    let encoded = String::deserialize(deserializer)?;
 
     BASE64_STANDARD
         .decode(&encoded)
@@ -302,6 +307,51 @@ where
     encoded_vec.serialize(serializer)
 }
 
+/// Deserialize a timestamp in milliseconds since epoch stored as a string
+pub fn deserialize_u64_to_datetime<'de, D>(
+    deserializer: D,
+) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let timestamp = u64::deserialize(deserializer)?;
+    let datetime = chrono::DateTime::from_timestamp_millis(timestamp as i64);
+
+    datetime.ok_or(serde::de::Error::custom("datetime out of range"))
+}
+
+/// Inverse of [deserialize_u64_to_datetime].
+pub fn serialize_datetime_to_u64<S>(
+    value: &chrono::DateTime<chrono::Utc>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_u64(value.timestamp_millis() as u64)
+}
+
+/// Deserialize a duration in milliseconds stored as a string.
+pub fn deserialize_u64_to_duration<'de, D>(deserializer: D) -> Result<chrono::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let millis = u64::deserialize(deserializer)?;
+
+    Ok(chrono::Duration::milliseconds(millis as i64))
+}
+
+/// Inverse of [deserialize_u64_to_duration].
+pub fn serialize_duration_to_u64<S>(
+    value: &chrono::Duration,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_u64(value.num_milliseconds() as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, chrono::TimeZone, serde::Deserialize};
@@ -343,7 +393,7 @@ mod tests {
     }
 
     #[derive(Deserialize, Serialize, Debug, PartialEq)]
-    struct TestDatetimeStruct {
+    struct TestSuiDatetimeStruct {
         #[serde(
             deserialize_with = "deserialize_sui_u64_to_datetime",
             serialize_with = "serialize_datetime_to_sui_u64"
@@ -352,7 +402,7 @@ mod tests {
     }
 
     #[derive(Deserialize, Serialize, Debug, PartialEq)]
-    struct TestDurationStruct {
+    struct TestSuiDurationStruct {
         #[serde(
             deserialize_with = "deserialize_sui_u64_to_duration",
             serialize_with = "serialize_duration_to_sui_u64"
@@ -361,7 +411,7 @@ mod tests {
     }
 
     #[derive(Deserialize, Serialize, Debug, PartialEq)]
-    struct TestOptionDatetimeStruct {
+    struct TestSuiOptionDatetimeStruct {
         #[serde(
             deserialize_with = "deserialize_option_sui_u64_to_datetime",
             serialize_with = "serialize_option_datetime_to_sui_u64"
@@ -394,6 +444,24 @@ mod tests {
             serialize_with = "serialize_json_value_to_bytes"
         )]
         value: serde_json::Value,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestDatetimeStruct {
+        #[serde(
+            deserialize_with = "deserialize_u64_to_datetime",
+            serialize_with = "serialize_datetime_to_u64"
+        )]
+        value: chrono::DateTime<chrono::Utc>,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct TestDurationStruct {
+        #[serde(
+            deserialize_with = "deserialize_u64_to_duration",
+            serialize_with = "serialize_duration_to_u64"
+        )]
+        value: chrono::Duration,
     }
 
     #[test]
@@ -472,10 +540,10 @@ mod tests {
     }
 
     #[test]
-    fn test_datetime_deser_ser() {
+    fn test_sui_datetime_deser_ser() {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
         let input = r#"{"value":"1600000000000"}"#.to_string();
-        let result: TestDatetimeStruct = serde_json::from_str(&input).unwrap();
+        let result: TestSuiDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dt);
 
         let ser = serde_json::to_string(&result).unwrap();
@@ -483,10 +551,10 @@ mod tests {
     }
 
     #[test]
-    fn test_duration_deser_ser() {
+    fn test_sui_duration_deser_ser() {
         let dur = chrono::Duration::milliseconds(12345);
         let input = r#"{"value":"12345"}"#.to_string();
-        let result: TestDurationStruct = serde_json::from_str(&input).unwrap();
+        let result: TestSuiDurationStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dur);
 
         let ser = serde_json::to_string(&result).unwrap();
@@ -497,7 +565,7 @@ mod tests {
     fn test_option_datetime_deser_ser_some() {
         let dt = chrono::Utc.timestamp_millis_opt(1_600_000_000_000).unwrap();
         let input = r#"{"value":"1600000000000"}"#.to_string();
-        let result: TestOptionDatetimeStruct = serde_json::from_str(&input).unwrap();
+        let result: TestSuiOptionDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, Some(dt));
 
         let ser = serde_json::to_string(&result).unwrap();
@@ -507,7 +575,7 @@ mod tests {
     #[test]
     fn test_option_datetime_deser_ser_none() {
         let input = r#"{"value":null}"#;
-        let result: TestOptionDatetimeStruct = serde_json::from_str(input).unwrap();
+        let result: TestSuiOptionDatetimeStruct = serde_json::from_str(input).unwrap();
         assert_eq!(result.value, None);
 
         let ser = serde_json::to_string(&result).unwrap();
@@ -542,6 +610,28 @@ mod tests {
         );
         let result: TestEncodedBytesVecStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, vec);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_datetime_deser_ser() {
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
+        let input = r#"{"value":1600000000000}"#.to_string();
+        let result: TestDatetimeStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, dt);
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_duration_deser_ser() {
+        let dur = chrono::Duration::milliseconds(12345);
+        let input = r#"{"value":12345}"#.to_string();
+        let result: TestDurationStruct = serde_json::from_str(&input).unwrap();
+        assert_eq!(result.value, dur);
 
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);

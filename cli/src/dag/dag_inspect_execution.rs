@@ -130,9 +130,29 @@ pub(crate) async fn inspect_dag_execution(
                 );
             }
 
+            NexusEventKind::WalkAborted(e) => {
+                notify_error!(
+                    "Vertex '{vertex}' was aborted by a third party due to a timeout.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                );
+            }
+
+            NexusEventKind::WalkCancelled(e) => {
+                notify_error!(
+                    "Vertex '{vertex}' was cancelled because another walk was aborted.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                );
+            }
+
             NexusEventKind::ExecutionFinished(e) => {
                 if e.has_any_walk_failed {
                     notify_error!("DAG execution finished unsuccessfully");
+
+                    break;
+                }
+
+                if !e.was_aborted {
+                    notify_error!("DAG execution was aborted by a third party due to a timeout");
 
                     break;
                 }
