@@ -524,7 +524,6 @@ pub mod grpc {
     ) {
         state_service
             .expect_list_dynamic_fields()
-            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::ListDynamicFieldsResponse::default();
                 let mut dynamic_fields = Vec::new();
@@ -551,7 +550,6 @@ pub mod grpc {
     ) {
         ledger_service
             .expect_get_checkpoint()
-            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetCheckpointResponse::default();
                 let mut checkpoint = sui::grpc::Checkpoint::default();

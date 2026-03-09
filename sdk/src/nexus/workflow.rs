@@ -638,8 +638,6 @@ mod tests {
             }
         }
 
-        println!("{:?}", result.poller);
-
         assert_eq!(events.len(), 3);
         assert!(matches!(events[0].data, NexusEventKind::WalkAdvanced(_)));
         assert!(matches!(events[1].data, NexusEventKind::EndStateReached(_)));

@@ -339,9 +339,6 @@ impl EventPoller {
                                 event,
                                 &self.nexus_objects,
                             )
-                            .inspect_err(|e| {
-                                println!("Failed to convert Sui GRPC event to Nexus event: {e}");
-                            })
                             .ok()
                         });
 
@@ -381,5 +378,95 @@ impl EventPoller {
 
 #[cfg(test)]
 mod tests {
-    // TODO:
+    use {
+        super::*,
+        crate::{events::NexusEventKind, test_utils::sui_mocks},
+        std::sync::Arc,
+    };
+
+    #[tokio::test]
+    async fn test_event_poller_receives_events() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        // Create a mock event
+        let walk_advanced_event = NexusEventKind::WalkAdvanced(crate::events::WalkAdvancedEvent {
+            dag: sui_mocks::mock_sui_address(),
+            execution: sui_mocks::mock_sui_address(),
+            walk_index: 0,
+            vertex: crate::events::RuntimeVertex::Plain {
+                vertex: crate::events::TypeName::new("v"),
+            },
+            variant: crate::events::TypeName::new("ok"),
+            variant_ports_to_data: crate::events::PortsData::from_map(Default::default()),
+        });
+
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            (*nexus_objects).clone(),
+            vec![walk_advanced_event.clone()],
+            1,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_channel_capacity(2)
+            .with_transactions_batch_size(1)
+            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+
+        let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
+        let page = receiver
+            .recv()
+            .await
+            .expect("should receive a page")
+            .expect("no error");
+        assert_eq!(page.checkpoint, 1);
+        assert_eq!(page.events.len(), 1);
+        match &page.events[0].data {
+            NexusEventKind::WalkAdvanced(_) => {}
+            _ => panic!("Expected WalkAdvanced event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_event_poller_empty_events() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 1);
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            (*nexus_objects).clone(),
+            vec![],
+            2,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_channel_capacity(2)
+            .with_transactions_batch_size(1)
+            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+
+        let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
+        let page = receiver
+            .recv()
+            .await
+            .expect("should receive a page")
+            .expect("no error");
+        assert_eq!(page.checkpoint, 1);
+        assert!(page.events.is_empty());
+    }
 }

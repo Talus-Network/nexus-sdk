@@ -123,8 +123,6 @@ mod tests {
 
         let vertex: RuntimeVertex = serde_json::from_str(json).unwrap();
 
-        println!("Deserialized vertex: {:?}", vertex);
-
         match vertex {
             RuntimeVertex::WithIterator {
                 vertex,
