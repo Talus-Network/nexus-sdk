@@ -282,6 +282,11 @@ pub fn deserialize_encoded_bytes_vec<'de, D>(deserializer: D) -> Result<Vec<Vec<
 where
     D: Deserializer<'de>,
 {
+    // Accommodate for BCS.
+    if !deserializer.is_human_readable() {
+        return Vec::<Vec<u8>>::deserialize(deserializer);
+    }
+
     let encoded_vec: Vec<String> = Deserialize::deserialize(deserializer)?;
 
     encoded_vec
