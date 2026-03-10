@@ -19,7 +19,6 @@ use {
     thiserror::Error,
     tokio::sync::mpsc,
     tokio_util::sync::CancellationToken,
-    tonic::Streaming,
 };
 
 #[derive(Debug, Error)]
@@ -121,17 +120,33 @@ impl EventPoller {
                 'master: loop {
                     // First, start streaming checkpoints. This way we know how many
                     // checkpoints we need to fetch in the past.
-                    let mut checkpoint_stream =
-                        match this.start_streaming_checkpoints(&mut client).await {
-                            Ok(stream) => stream,
-                            Err(e) => {
-                                if send_page.send(Err(e)).await.is_err() {
-                                    break;
-                                }
+                    let request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
+                        sui::grpc::FieldMask::from_paths(&[
+                            "transactions.digest",
+                            "sequence_number",
+                        ]),
+                    );
 
-                                continue;
+                    let mut checkpoint_stream = match client
+                        .subscription_client()
+                        .subscribe_checkpoints(request)
+                        .await
+                    {
+                        Ok(response) => response.into_inner(),
+                        Err(e) => {
+                            if send_page
+                                .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                    "Failed to subscribe to checkpoints stream: {e}"
+                                ))))
+                                .await
+                                .is_err()
+                            {
+                                break;
                             }
-                        };
+
+                            continue;
+                        }
+                    };
 
                     // If we need to catch up from the past.
                     if let Some(start_from) = from_checkpoint {
@@ -354,25 +369,6 @@ impl EventPoller {
         }
 
         Ok(())
-    }
-
-    /// Helper to start the streaming of checkpoints from GRPC.
-    async fn start_streaming_checkpoints(
-        &self,
-        client: &mut sui::grpc::Client,
-    ) -> Result<Streaming<sui::grpc::SubscribeCheckpointsResponse>, PollerError> {
-        let request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
-            sui::grpc::FieldMask::from_paths(&["transactions.digest", "sequence_number"]),
-        );
-
-        client
-            .subscription_client()
-            .subscribe_checkpoints(request)
-            .await
-            .map_err(|e| {
-                PollerError::Rpc(anyhow::anyhow!("Failed to subscribe to checkpoints: {e}"))
-            })
-            .map(|response| response.into_inner())
     }
 }
 
