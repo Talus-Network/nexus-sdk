@@ -44,6 +44,7 @@ log = "^0.4.26"
 minijinja = "2.8.0"
 mockall = "0.14.0"
 mockito = "1.7"
+openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
 prost-types = "0.14.1"
