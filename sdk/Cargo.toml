@@ -47,7 +47,7 @@ events = ["types", "tokio-util"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents", "bincode", "types"]
+transactions = ["sui_idents", "types"]
 
 # Provides DAG-related utilities.
 dag = ["petgraph"]
@@ -98,7 +98,6 @@ full = [
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true
-serde_repr = "0.1"
 
 # === Optional deps for features ===
 [dependencies.base64]
@@ -106,10 +105,6 @@ workspace = true
 optional = true
 
 [dependencies.bcs]
-workspace = true
-optional = true
-
-[dependencies.bincode]
 workspace = true
 optional = true
 
@@ -264,25 +259,25 @@ optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.65.2"
+tag = "testnet-v1.66.2"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.65.2"
+tag = "testnet-v1.66.2"
 package = "sui-package-management"
 optional = true
 
 [dependencies.move_package]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.65.2"
+tag = "testnet-v1.66.2"
 package = "move-package"
 optional = true
 
 [dependencies.move_package_alt]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.65.2"
+tag = "testnet-v1.66.2"
 package = "move-package-alt"
 optional = true
 
