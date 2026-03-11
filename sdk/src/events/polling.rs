@@ -42,7 +42,7 @@ pub struct EventPoller {
     channel_capacity: usize,
     /// How many transactions should be fetched in a single batch. This is just
     /// a max value.
-    transactions_batch_size: usize,
+    transactions_max_batch_size: usize,
     /// This timeout defines max wait between transaction batch fetches. If this
     /// timeout is reached, the batch will be fetched even if the batch size is
     /// not reached, provided there is at least one transaction to fetch.
@@ -56,7 +56,7 @@ impl EventPoller {
             rpc_url: rpc_url.to_string(),
             nexus_objects,
             channel_capacity: 100,
-            transactions_batch_size: 10,
+            transactions_max_batch_size: 30,
             transactions_batch_max_wait: Duration::from_millis(200),
             cancellation_token: CancellationToken::new(),
         }
@@ -67,8 +67,8 @@ impl EventPoller {
         self
     }
 
-    pub fn with_transactions_batch_size(mut self, batch_size: usize) -> Self {
-        self.transactions_batch_size = batch_size;
+    pub fn with_transactions_max_batch_size(mut self, batch_size: usize) -> Self {
+        self.transactions_max_batch_size = batch_size;
         self
     }
 
@@ -94,7 +94,7 @@ impl EventPoller {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", this.rpc_url))
         })?;
 
-        let (send_digest, next_digest) = mpsc::channel(this.transactions_batch_size * 2);
+        let (send_digest, next_digest) = mpsc::channel(this.transactions_max_batch_size * 2);
         let (send_page, next_page) = mpsc::channel(this.channel_capacity);
 
         // Spawn a task that accepts transaction digests via a channel and
@@ -290,7 +290,7 @@ impl EventPoller {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
         })?;
 
-        let mut batch = Vec::with_capacity(self.transactions_batch_size);
+        let mut batch = Vec::with_capacity(self.transactions_max_batch_size);
         let mut last_fetched_at = Instant::now();
 
         loop {
@@ -304,7 +304,7 @@ impl EventPoller {
 
                     // Only fetch if the batch size is reached or if the max
                     // wait was exceeded.
-                    if batch.len() < self.transactions_batch_size
+                    if batch.len() < self.transactions_max_batch_size
                         && last_fetched_at.elapsed() < self.transactions_batch_max_wait
                     {
                         continue;
@@ -414,7 +414,7 @@ mod tests {
 
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
-            .with_transactions_batch_size(1)
+            .with_transactions_max_batch_size(1)
             .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
@@ -453,7 +453,7 @@ mod tests {
 
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
-            .with_transactions_batch_size(1)
+            .with_transactions_max_batch_size(1)
             .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
