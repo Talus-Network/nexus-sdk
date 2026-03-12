@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - transaction templates adjusted to allow for locking and finalizing gas payments
 - `GasSettlementUpdate` event replaced with `GasLockUpdate`
 - removed graphql client and changed event fetching to poll GRPC
-- bump Sui version to `testnet-v1.66.2` to allow for testnet deployment on current Sui version
+- bump Sui version to `mainnet-v1.67.3`
 
 ## [`0.6.0`] - 2026-02-24
 
