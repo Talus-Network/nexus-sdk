@@ -173,7 +173,6 @@ mod tests {
         // No path with slash
         let meta =
             validate_off_chain_tool(reqwest::Url::parse("http://localhost:8042/").unwrap()).await;
-        println!("{:?}", meta);
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));

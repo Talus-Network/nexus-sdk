@@ -11,8 +11,7 @@ use {
         redis::Redis,
         sui::Sui,
         testcontainers::{
-            bollard::network::CreateNetworkOptions,
-            core::{client, ports::ContainerPort, Mount},
+            core::{client, ports::ContainerPort},
             runners::AsyncRunner,
             ContainerAsync,
             ImageExt,
@@ -30,10 +29,8 @@ const SUI_TOOLS_TAG_ARM64: &str = "mainnet-v1.65.2-arm64";
 
 pub struct SuiInstance {
     pub container: SuiContainer,
-    pub pg: PgContainer,
     pub rpc_port: u16,
     pub faucet_port: u16,
-    pub graphql_port: u16,
 }
 
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
@@ -46,21 +43,10 @@ pub async fn setup_sui_instance() -> SuiInstance {
             break port;
         }
     };
-    let graphql_host_port = loop {
-        let port = pick_unused_port().expect("No free port for Sui GraphQL.");
-        if port != rpc_host_port && port != faucet_host_port {
-            break port;
-        }
-    };
 
-    // Create a `sui-net` Docker network for Sui and Postgres to communicate.
-    // If it already exists, it will be reused.
     let docker = client::docker_client_instance()
         .await
         .expect("Failed to get Docker client.");
-    let mut request = CreateNetworkOptions::default();
-    request.name = "sui-net";
-    let _ = docker.create_network(request).await.ok();
 
     let sui_tools_tag = docker
         .version()
@@ -81,34 +67,13 @@ pub async fn setup_sui_instance() -> SuiInstance {
             }
         });
 
-    let container_name = format!("sui-postgres-{}", rpc_host_port);
-
-    let pg_request = Postgres::default()
-        .with_tag("latest")
-        .with_mount(Mount::tmpfs_mount("/postgres_data"))
-        .with_network("sui-net")
-        .with_container_name(&container_name);
-
-    let pg_container = pg_request
-        .start()
-        .await
-        .expect("Failed to start Postgres container for Sui.");
-
     let sui_request = Sui::default()
         .with_force_regenesis(true)
         .with_faucet(true)
-        .with_indexer(true)
-        .with_indexer_pg_url(format!(
-            "postgres://postgres:postgres@{}:5432/postgres",
-            container_name
-        ))
-        .with_graphql(true)
         .with_name("mysten/sui-tools")
         .with_tag(sui_tools_tag)
         .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
-        .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123))
-        .with_mapped_port(graphql_host_port, ContainerPort::Tcp(9125))
-        .with_network("sui-net");
+        .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123));
 
     let container = sui_request
         .start()
@@ -117,10 +82,8 @@ pub async fn setup_sui_instance() -> SuiInstance {
 
     SuiInstance {
         container,
-        pg: pg_container,
         rpc_port: rpc_host_port,
         faucet_port: faucet_host_port,
-        graphql_port: graphql_host_port,
     }
 }
 

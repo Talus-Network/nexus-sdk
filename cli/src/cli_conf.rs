@@ -53,8 +53,6 @@ pub(crate) struct SuiConf {
     pub(crate) pk: Option<SecretValue>,
     #[serde(default)]
     pub(crate) rpc_url: Option<reqwest::Url>,
-    #[serde(default)]
-    pub(crate) gql_url: Option<reqwest::Url>,
 }
 
 /// Local secrets configuration.

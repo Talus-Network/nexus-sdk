@@ -272,27 +272,12 @@ pub(crate) async fn get_nexus_client(
     let nexus_objects = get_nexus_objects(&mut conf).await?;
     let rpc_url = client.lock().await.uri().to_string();
 
-    // Try to get the `SUI_GQL_URL` from the environment, otherwise use
-    // the configuration.
-    let Some(gql_url) = std::env::var("SUI_GQL_URL")
-        .ok()
-        .or_else(|| conf.sui.gql_url.as_ref().map(|u| u.to_string()))
-    else {
-        return Err(NexusCliError::Any(anyhow!(
-            "{message}\n\n{command}",
-            message =
-                "The Sui GraphQL URL is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf set --sui.gql-url <url>".to_string().bold(),
-        )));
-    };
-
     // Create Nexus client.
     let nexus_client = NexusClient::builder()
         .with_private_key(pk)
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![gas_coin], sui_gas_budget)
         .with_rpc_url(&rpc_url)
-        .with_gql_url(&gql_url)
         .build()
         .await
         .map_err(NexusCliError::Nexus)?;

@@ -61,7 +61,6 @@ Configure your Nexus CLI to connect to the Talus `devnet` by running:
 ```bash
 nexus conf set \
   --sui.rpc-url https://grpc.ssfn.devnet.production.taluslabs.dev \
-  --sui.gql-url https://graphql.devnet.production.taluslabs.dev/graphql \
   --nexus.objects ~/.nexus/objects.devnet.toml
 ```
 

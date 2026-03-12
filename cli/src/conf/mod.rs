@@ -39,12 +39,6 @@ pub(crate) enum ConfCommand {
         )]
         sui_rpc_url: Option<reqwest::Url>,
         #[arg(
-            long = "sui.gql-url",
-            help = "Set a Sui indexer GraphQL URL",
-            value_name = "URL"
-        )]
-        sui_gql_url: Option<reqwest::Url>,
-        #[arg(
             long = "nexus.objects",
             help = "Path to a TOML file containing Nexus objects",
             value_name = "PATH",
@@ -117,7 +111,6 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         ConfCommand::Set {
             sui_pk,
             sui_rpc_url,
-            sui_gql_url,
             nexus_objects_path,
             data_storage_walrus_aggregator_url,
             data_storage_walrus_publisher_url,
@@ -129,7 +122,6 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             set_nexus_conf(
                 sui_pk,
                 sui_rpc_url,
-                sui_gql_url,
                 nexus_objects_path,
                 data_storage_walrus_aggregator_url,
                 data_storage_walrus_publisher_url,
