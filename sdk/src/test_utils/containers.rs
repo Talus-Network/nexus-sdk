@@ -24,8 +24,8 @@ pub type PgContainer = ContainerAsync<Postgres>;
 pub type RedisContainer = ContainerAsync<Redis>;
 pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand;
 
-const SUI_TOOLS_TAG_AMD64: &str = "mainnet-v1.65.2";
-const SUI_TOOLS_TAG_ARM64: &str = "mainnet-v1.65.2-arm64";
+const SUI_TOOLS_TAG_AMD64: &str = "mainnet-v1.67.3";
+const SUI_TOOLS_TAG_ARM64: &str = "mainnet-v1.67.3-arm64";
 
 pub struct SuiInstance {
     pub container: SuiContainer,
