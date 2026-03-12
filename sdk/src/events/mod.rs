@@ -4,11 +4,10 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-mod fetching;
-mod graphql;
 mod parsing;
+mod polling;
 
-pub use {fetching::*, graphql::*, parsing::*};
+pub use {parsing::*, polling::*};
 
 /// Distribution metadata for distributed events. This contains metadata about
 /// the event deadline as well as the priority in which leaders should attempt
@@ -18,15 +17,15 @@ pub struct DistributedEventMetadata {
     /// The execution window duration.
     #[serde(
         rename = "deadline_ms",
-        deserialize_with = "deserialize_sui_u64_to_duration",
-        serialize_with = "serialize_duration_to_sui_u64"
+        deserialize_with = "deserialize_u64_to_duration",
+        serialize_with = "serialize_duration_to_u64"
     )]
     pub deadline: chrono::Duration,
     /// The timestamp by which the event was requested.
     #[serde(
         rename = "requested_at_ms",
-        deserialize_with = "deserialize_sui_u64_to_datetime",
-        serialize_with = "serialize_datetime_to_sui_u64"
+        deserialize_with = "deserialize_u64_to_datetime",
+        serialize_with = "serialize_datetime_to_u64"
     )]
     pub requested_at: chrono::DateTime<chrono::Utc>,
     /// The priority list of leader addresses.
@@ -139,6 +138,8 @@ events! {
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
+    WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
+    WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
     EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
     ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
     MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
@@ -153,16 +154,6 @@ events! {
     GasLockUpdateEvent => GasLockUpdate, "GasLockUpdateEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
-
-    // These events are unused for now.
-    // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
-    // "DAGEdgeAdded" => DAGEdgeAdded(serde_json::Value),
-    // "DAGOutputAdded" => DAGOutputAdded(serde_json::Value),
-    // "DAGEntryVertexInputPortAdded" => DAGEntryVertexInputPortAdded(serde_json::Value),
-    // "DAGDefaultValueAdded" => DAGDefaultValueAdded(serde_json::Value),
-    // "LeaderClaimedGas" => LeaderClaimedGas(serde_json::Value),
-    // "AllowedOwnerAdded" => AllowedOwnerAdded(serde_json::Value),
-    // "AllowedOwnerRemoved" => AllowedOwnerRemoved(serde_json::Value),
 }
 
 // == Event definitions ==
@@ -174,10 +165,6 @@ pub struct RequestWalkExecutionEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
     pub invoker: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
@@ -222,10 +209,6 @@ pub struct ToolUnregisteredEvent {
 pub struct WalkAdvancedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was just executed.
     pub vertex: RuntimeVertex,
@@ -240,15 +223,31 @@ pub struct WalkAdvancedEvent {
 pub struct WalkFailedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was being executed when the failure happened.
     pub vertex: RuntimeVertex,
     /// The error message associated with the failure.
     pub reason: String,
+}
+
+/// Fired by the Nexus Workflow when a walk was aborted.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkAbortedEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    /// Which vertex was being executed when the abort happened.
+    pub vertex: RuntimeVertex,
+}
+
+/// Fired by the Nexus Workflow when a walk was cancelled.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkCancelledEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    /// Which vertex was being executed when the cancellation happened.
+    pub vertex: RuntimeVertex,
 }
 
 /// Fired by the Nexus Workflow when a walk has halted in an end state. This
@@ -257,10 +256,6 @@ pub struct WalkFailedEvent {
 pub struct EndStateReachedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was just executed.
     pub vertex: RuntimeVertex,
@@ -279,31 +274,16 @@ pub struct ExecutionFinishedEvent {
     pub execution: sui::types::Address,
     pub has_any_walk_failed: bool,
     pub has_any_walk_succeeded: bool,
+    pub was_aborted: bool,
 }
 
 /// Request wrapper emitted when scheduling an occurrence.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RequestScheduledOccurrenceEvent {
     pub request: OccurrenceScheduledEvent,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub request_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub deadline_ms: u64,
 }
 
@@ -311,25 +291,9 @@ pub struct RequestScheduledOccurrenceEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RequestScheduledWalkEvent {
     pub request: RequestWalkExecutionEvent,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub request_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub deadline_ms: u64,
 }
 
@@ -345,25 +309,9 @@ pub struct OccurrenceScheduledEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MissedOccurrenceEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_time_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub pruned_at: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
 }
@@ -391,10 +339,6 @@ pub struct TaskResumedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskCanceledEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub cleared_occurrences: u64,
     pub had_periodic: bool,
 }
@@ -403,26 +347,10 @@ pub struct TaskCanceledEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceConsumedEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_time_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub executed_at: u64,
 }
 
@@ -430,35 +358,11 @@ pub struct OccurrenceConsumedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PeriodicScheduleConfiguredEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub period_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_offset_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub max_iterations: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub generated: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub priority_fee_per_gas_unit: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub last_generated_start_ms: Option<u64>,
 }
 
@@ -475,6 +379,7 @@ pub struct LeaderCapIssuedEvent {
     pub registry: sui::types::Address,
     pub leader_cap_id: sui::types::Address,
     pub network: sui::types::Address,
+    pub leader: sui::types::Address,
 }
 
 /// Fired by the Gas service when the gas settlement is updated. This event is
@@ -484,8 +389,8 @@ pub struct LeaderCapIssuedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GasLockUpdateEvent {
     pub execution: sui::types::Address,
-    pub tool_fqn: ToolFqn,
     pub vertex: RuntimeVertex,
+    pub tool_fqn: ToolFqn,
     pub was_locked: bool,
 }
 
@@ -494,8 +399,6 @@ pub struct GasLockUpdateEvent {
 pub struct LeaderClaimedGasEvent {
     pub network: sui::types::Address,
     pub amount: u64,
-    /// Optional reason for auditing purposes.
-    #[serde(default)]
     pub purpose: String,
 }
 

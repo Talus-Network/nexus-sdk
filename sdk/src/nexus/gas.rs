@@ -564,7 +564,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -635,7 +635,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -705,7 +705,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -776,7 +776,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -847,7 +847,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -910,7 +910,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -982,7 +982,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
