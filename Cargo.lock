@@ -5476,7 +5476,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-cli"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5513,7 +5513,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5568,7 +5568,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
