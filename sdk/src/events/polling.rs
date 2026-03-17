@@ -290,7 +290,7 @@ impl EventPoller {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
         })?;
 
-        let mut batch = Vec::with_capacity(self.transactions_max_batch_size);
+        let mut batch: Vec<(u64, String)> = Vec::with_capacity(self.transactions_max_batch_size);
         let mut last_fetched_at = Instant::now();
 
         loop {
@@ -300,7 +300,7 @@ impl EventPoller {
                 }
 
                 Some((checkpoint, digest)) = next_digest.recv() => {
-                    batch.push(digest);
+                    batch.push((checkpoint, digest));
 
                     // Only fetch if the batch size is reached or if the max
                     // wait was exceeded.
@@ -310,9 +310,13 @@ impl EventPoller {
                         continue;
                     }
 
-                    // Drain the batch and fetch the transactions and their
-                    // events.
-                    let digests = batch.drain(..).collect::<Vec<_>>();
+                    // Drain the batch, preserving the checkpoint each digest
+                    // belongs to so that EventPages carry the correct value.
+                    let entries = batch.drain(..).collect::<Vec<_>>();
+                    let digest_to_checkpoint: std::collections::HashMap<String, u64> =
+                        entries.iter().cloned().map(|(cp, d)| (d, cp)).collect();
+                    let digests: Vec<String> = entries.into_iter().map(|(_, d)| d).collect();
+
                     let request = sui::grpc::BatchGetTransactionsRequest::default()
                         .with_digests(digests.clone())
                         .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
@@ -333,7 +337,10 @@ impl EventPoller {
 
                                 // On fetch error, we return the digests back to
                                 // the batch.
-                                batch.extend(digests);
+                                batch.extend(digests.into_iter().map(|d| {
+                                    let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
+                                    (cp, d)
+                                }));
 
                                 continue;
                             }
@@ -341,6 +348,12 @@ impl EventPoller {
 
                     for transaction in response.transactions {
                         let transaction = transaction.transaction();
+
+                        let tx_digest = transaction.digest().to_string();
+                        let checkpoint = digest_to_checkpoint
+                            .get(&tx_digest)
+                            .copied()
+                            .unwrap_or(0);
 
                         let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
                         else {
