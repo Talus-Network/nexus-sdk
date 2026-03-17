@@ -185,6 +185,25 @@ impl EventPoller {
                         let parallel = this.catchup_parallel_fetches;
                         let mut cursor = start_from;
 
+                        // Pre-create a pool of clients for parallel fetching.
+                        // Wrapped in Arc<Mutex> so they can be moved into
+                        // spawned tasks and reused across batches.
+                        let mut client_pool: Vec<Arc<tokio::sync::Mutex<sui::grpc::Client>>> =
+                            Vec::with_capacity(parallel);
+                        for _ in 0..parallel {
+                            match sui::grpc::Client::new(&this.rpc_url) {
+                                Ok(c) => client_pool.push(Arc::new(tokio::sync::Mutex::new(c))),
+                                Err(e) => {
+                                    if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                        "Failed to create gRPC client for parallel catch-up: {e}"
+                                    )))).await.is_err() {
+                                        break 'master;
+                                    }
+                                    continue 'master;
+                                }
+                            }
+                        }
+
                         while cursor < catchup_end {
                             if this.cancellation_token.is_cancelled() {
                                 break 'master;
@@ -193,11 +212,10 @@ impl EventPoller {
                             let batch_end = (cursor + parallel as u64).min(catchup_end);
                             let mut tasks = tokio::task::JoinSet::new();
 
-                            for seq in cursor..batch_end {
-                                let rpc_url = this.rpc_url.clone();
+                            for (i, seq) in (cursor..batch_end).enumerate() {
+                                let client = Arc::clone(&client_pool[i]);
                                 tasks.spawn(async move {
-                                    let mut c = sui::grpc::Client::new(&rpc_url)
-                                        .map_err(|e| (seq, format!("{e}")))?;
+                                    let mut c = client.lock().await;
                                     let req = sui::grpc::GetCheckpointRequest::default()
                                         .with_sequence_number(seq)
                                         .with_read_mask(sui::grpc::FieldMask::from_paths(&[
