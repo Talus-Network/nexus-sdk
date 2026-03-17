@@ -354,10 +354,18 @@ impl EventPoller {
         let mut last_fetched_at = Instant::now();
 
         loop {
+            // Compute the remaining time before the batch should be flushed.
+            let flush_deadline = self.transactions_batch_max_wait
+                .saturating_sub(last_fetched_at.elapsed());
+
             tokio::select! {
                 _ = self.cancellation_token.cancelled() => {
                     break;
                 }
+
+                // Flush partial batch when the timeout fires, even if no
+                // new digest has arrived.
+                _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {}
 
                 Some((checkpoint, digest)) = next_digest.recv() => {
                     batch.push((checkpoint, digest));
@@ -367,6 +375,11 @@ impl EventPoller {
                     if batch.len() < self.transactions_max_batch_size
                         && last_fetched_at.elapsed() < self.transactions_batch_max_wait
                     {
+                        continue;
+                    }
+                }
+
+                    if batch.is_empty() {
                         continue;
                     }
 
