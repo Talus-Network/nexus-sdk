@@ -22,6 +22,82 @@ use {
     tokio_util::sync::CancellationToken,
 };
 
+// -- Prometheus metrics for the event poller pipeline --
+
+lazy_static::lazy_static! {
+    // -- Checkpoint fetcher metrics --
+
+    /// Histogram: how long each get_checkpoint RPC call takes [s].
+    static ref CHECKPOINT_FETCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_fetch_duration",
+        "Duration of individual get_checkpoint gRPC calls [s]"
+    ).unwrap();
+
+    /// Histogram: time between consecutive checkpoints from the subscription stream [s].
+    static ref CHECKPOINT_STREAM_INTERVAL: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_stream_interval",
+        "Interval between consecutive checkpoints from subscription [s]",
+        vec![0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: number of transaction digests in each checkpoint.
+    static ref CHECKPOINT_DIGESTS_COUNT: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_digests_count",
+        "Number of transaction digests per checkpoint",
+        vec![0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0]
+    ).unwrap();
+
+    /// Counter: number of times the checkpoint stream reconnected.
+    static ref STREAM_RECONNECTIONS: prometheus::Counter = prometheus::register_counter!(
+        "poller_stream_reconnections",
+        "Number of checkpoint stream reconnections"
+    ).unwrap();
+
+    /// Gauge: checkpoints remaining during catch-up.
+    static ref CATCHUP_REMAINING: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_catchup_remaining",
+        "Checkpoints remaining during catch-up (0 when live)"
+    ).unwrap();
+
+    // -- Transaction batch fetcher metrics --
+
+    /// Histogram: how long each batch_get_transactions RPC call takes [s].
+    static ref TX_BATCH_FETCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_tx_batch_fetch_duration",
+        "Duration of batch_get_transactions gRPC calls [s]"
+    ).unwrap();
+
+    /// Histogram: number of digests in each flushed batch.
+    static ref TX_BATCH_SIZE: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_tx_batch_size",
+        "Number of transaction digests per flushed batch",
+        vec![1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 50.0]
+    ).unwrap();
+
+    /// Counter: reason each batch was flushed (label: reason=full|timeout).
+    static ref TX_BATCH_FLUSH_REASON: prometheus::CounterVec = prometheus::register_counter_vec!(
+        "poller_tx_batch_flush_reason",
+        "Reason each transaction batch was flushed",
+        &["reason"]
+    ).unwrap();
+
+    // -- Channel backpressure metrics --
+
+    /// Gauge: number of digests waiting in the channel between checkpoint
+    /// fetcher and transaction fetcher.
+    static ref DIGEST_CHANNEL_LEN: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_digest_channel_len",
+        "Number of digests queued in the checkpoint-to-tx channel"
+    ).unwrap();
+
+    /// Gauge: number of event pages waiting in the output channel for the
+    /// leader consumer.
+    static ref EVENT_PAGE_CHANNEL_LEN: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_event_page_channel_len",
+        "Number of event pages queued in the output channel"
+    ).unwrap();
+}
+
 #[derive(Debug, Error)]
 pub enum PollerError {
     #[error("Configuration error: {0}")]
@@ -126,7 +202,14 @@ impl EventPoller {
             let send_digest = send_digest.clone();
 
             async move {
+                let mut is_reconnection = false;
+
                 'master: loop {
+                    if is_reconnection {
+                        STREAM_RECONNECTIONS.inc();
+                    }
+                    is_reconnection = true;
+
                     // First, start streaming checkpoints. This way we know how many
                     // checkpoints we need to fetch in the past.
                     let request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
@@ -209,12 +292,14 @@ impl EventPoller {
                                 break 'master;
                             }
 
+                            CATCHUP_REMAINING.set((catchup_end - cursor) as f64);
                             let batch_end = (cursor + parallel as u64).min(catchup_end);
                             let mut tasks = tokio::task::JoinSet::new();
 
                             for (i, seq) in (cursor..batch_end).enumerate() {
                                 let client = Arc::clone(&client_pool[i]);
                                 tasks.spawn(async move {
+                                    let start = Instant::now();
                                     let mut c = client.lock().await;
                                     let req = sui::grpc::GetCheckpointRequest::default()
                                         .with_sequence_number(seq)
@@ -225,6 +310,7 @@ impl EventPoller {
                                         .get_checkpoint(req)
                                         .await
                                         .map_err(|e| (seq, format!("{e}")))?;
+                                    CHECKPOINT_FETCH_DURATION.observe(start.elapsed().as_secs_f64());
                                     let digests: Vec<String> = resp.into_inner()
                                         .checkpoint()
                                         .transactions()
@@ -264,6 +350,7 @@ impl EventPoller {
 
                             // Send digests in checkpoint order.
                             for (seq, digests) in results {
+                                CHECKPOINT_DIGESTS_COUNT.observe(digests.len() as f64);
                                 from_checkpoint = Some(seq);
                                 for digest in digests {
                                     if send_digest.send((seq, digest)).await.is_err() {
@@ -287,6 +374,10 @@ impl EventPoller {
                             }
                         }
                     }
+
+                    // Catch-up complete, now live.
+                    CATCHUP_REMAINING.set(0.0);
+                    let mut last_checkpoint_at = Instant::now();
 
                     // Finally we can just poll the stream.
                     loop {
@@ -314,8 +405,12 @@ impl EventPoller {
                                     }
                                 };
 
+                                CHECKPOINT_STREAM_INTERVAL.observe(last_checkpoint_at.elapsed().as_secs_f64());
+                                last_checkpoint_at = Instant::now();
+
                                 let checkpoint = response.checkpoint();
 
+                                CHECKPOINT_DIGESTS_COUNT.observe(checkpoint.transactions().len() as f64);
                                 from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                                 for tx in checkpoint.transactions() {
@@ -358,6 +453,8 @@ impl EventPoller {
             let flush_deadline = self.transactions_batch_max_wait
                 .saturating_sub(last_fetched_at.elapsed());
 
+            let flush_reason;
+
             tokio::select! {
                 _ = self.cancellation_token.cancelled() => {
                     break;
@@ -365,7 +462,9 @@ impl EventPoller {
 
                 // Flush partial batch when the timeout fires, even if no
                 // new digest has arrived.
-                _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {}
+                _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {
+                    flush_reason = "timeout";
+                }
 
                 Some((checkpoint, digest)) = next_digest.recv() => {
                     batch.push((checkpoint, digest));
@@ -377,12 +476,23 @@ impl EventPoller {
                     {
                         continue;
                     }
+
+                    flush_reason = if batch.len() >= self.transactions_max_batch_size {
+                        "full"
+                    } else {
+                        "timeout"
+                    };
                 }
             }
 
             if batch.is_empty() {
                 continue;
             }
+
+            // Record batch metrics.
+            TX_BATCH_FLUSH_REASON.with_label_values(&[flush_reason]).inc();
+            TX_BATCH_SIZE.observe(batch.len() as f64);
+            DIGEST_CHANNEL_LEN.set(next_digest.len() as f64);
 
             // Drain the batch, preserving the checkpoint each digest
             // belongs to so that EventPages carry the correct value.
@@ -395,11 +505,13 @@ impl EventPoller {
                 .with_digests(digests.clone())
                 .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
 
+            let fetch_start = Instant::now();
             let response = match client
                 .ledger_client()
                 .batch_get_transactions(request)
                 .await {
                     Ok(response) => {
+                        TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
                         last_fetched_at = Instant::now();
 
                         response.into_inner()
@@ -450,6 +562,9 @@ impl EventPoller {
                 })).await.is_err() {
                     break;
                 }
+                EVENT_PAGE_CHANNEL_LEN.set(
+                    (send_page.max_capacity() - send_page.capacity()) as f64,
+                );
             }
         }
 

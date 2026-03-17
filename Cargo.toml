@@ -46,6 +46,7 @@ mockall = "0.14.0"
 mockito = "1.7"
 petgraph = "0.7.1"
 portpicker = "0.1.1"
+prometheus = "0.14"
 prost-types = "0.14.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }
 regex = "1.11.1"
