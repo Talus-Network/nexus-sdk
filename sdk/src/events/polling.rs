@@ -378,78 +378,77 @@ impl EventPoller {
                         continue;
                     }
                 }
+            }
 
-                    if batch.is_empty() {
-                        continue;
-                    }
+            if batch.is_empty() {
+                continue;
+            }
 
-                    // Drain the batch, preserving the checkpoint each digest
-                    // belongs to so that EventPages carry the correct value.
-                    let entries = batch.drain(..).collect::<Vec<_>>();
-                    let digest_to_checkpoint: std::collections::HashMap<String, u64> =
-                        entries.iter().cloned().map(|(cp, d)| (d, cp)).collect();
-                    let digests: Vec<String> = entries.into_iter().map(|(_, d)| d).collect();
+            // Drain the batch, preserving the checkpoint each digest
+            // belongs to so that EventPages carry the correct value.
+            let entries = batch.drain(..).collect::<Vec<_>>();
+            let digest_to_checkpoint: std::collections::HashMap<String, u64> =
+                entries.iter().cloned().map(|(cp, d)| (d, cp)).collect();
+            let digests: Vec<String> = entries.into_iter().map(|(_, d)| d).collect();
 
-                    let request = sui::grpc::BatchGetTransactionsRequest::default()
-                        .with_digests(digests.clone())
-                        .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
+            let request = sui::grpc::BatchGetTransactionsRequest::default()
+                .with_digests(digests.clone())
+                .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
 
-                    let response = match client
-                        .ledger_client()
-                        .batch_get_transactions(request)
-                        .await {
-                            Ok(response) => {
-                                last_fetched_at = Instant::now();
+            let response = match client
+                .ledger_client()
+                .batch_get_transactions(request)
+                .await {
+                    Ok(response) => {
+                        last_fetched_at = Instant::now();
 
-                                response.into_inner()
-                            },
-                            Err(_) => {
-                                if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
-                                    break;
-                                }
-
-                                // On fetch error, we return the digests back to
-                                // the batch.
-                                batch.extend(digests.into_iter().map(|d| {
-                                    let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
-                                    (cp, d)
-                                }));
-
-                                continue;
-                            }
-                        };
-
-                    for transaction in response.transactions {
-                        let transaction = transaction.transaction();
-
-                        let tx_digest = transaction.digest().to_string();
-                        let checkpoint = digest_to_checkpoint
-                            .get(&tx_digest)
-                            .copied()
-                            .unwrap_or(0);
-
-                        let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
-                        else {
-                            continue;
-                        };
-
-                        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
-                            NexusEvent::from_sui_grpc_event(
-                                index as u64,
-                                transaction.digest().parse().ok()?,
-                                event,
-                                &self.nexus_objects,
-                            )
-                            .ok()
-                        });
-
-                        if send_page.send(Ok(EventPage {
-                            events: nexus_events.collect(),
-                            checkpoint,
-                        })).await.is_err() {
+                        response.into_inner()
+                    },
+                    Err(_) => {
+                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
                             break;
                         }
+
+                        // On fetch error, we return the digests back to
+                        // the batch.
+                        batch.extend(digests.into_iter().map(|d| {
+                            let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
+                            (cp, d)
+                        }));
+
+                        continue;
                     }
+                };
+
+            for transaction in response.transactions {
+                let transaction = transaction.transaction();
+
+                let tx_digest = transaction.digest().to_string();
+                let checkpoint = digest_to_checkpoint
+                    .get(&tx_digest)
+                    .copied()
+                    .unwrap_or(0);
+
+                let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
+                else {
+                    continue;
+                };
+
+                let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
+                    NexusEvent::from_sui_grpc_event(
+                        index as u64,
+                        transaction.digest().parse().ok()?,
+                        event,
+                        &self.nexus_objects,
+                    )
+                    .ok()
+                });
+
+                if send_page.send(Ok(EventPage {
+                    events: nexus_events.collect(),
+                    checkpoint,
+                })).await.is_err() {
+                    break;
                 }
             }
         }
