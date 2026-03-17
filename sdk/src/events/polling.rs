@@ -12,6 +12,7 @@ use {
     },
     futures::TryStreamExt,
     std::{
+        collections::BTreeMap,
         sync::Arc,
         time::{Duration, Instant},
     },
@@ -47,6 +48,8 @@ pub struct EventPoller {
     /// timeout is reached, the batch will be fetched even if the batch size is
     /// not reached, provided there is at least one transaction to fetch.
     transactions_batch_max_wait: Duration,
+    /// How many checkpoints to fetch in parallel during catch-up.
+    catchup_parallel_fetches: usize,
     cancellation_token: CancellationToken,
 }
 
@@ -58,6 +61,7 @@ impl EventPoller {
             channel_capacity: 100,
             transactions_max_batch_size: 30,
             transactions_batch_max_wait: Duration::from_millis(200),
+            catchup_parallel_fetches: 10,
             cancellation_token: CancellationToken::new(),
         }
     }
@@ -74,6 +78,11 @@ impl EventPoller {
 
     pub fn with_transactions_batch_max_wait(mut self, max_wait: Duration) -> Self {
         self.transactions_batch_max_wait = max_wait;
+        self
+    }
+
+    pub fn with_catchup_parallel_fetches(mut self, n: usize) -> Self {
+        self.catchup_parallel_fetches = n.max(1);
         self
     }
 
@@ -169,50 +178,83 @@ impl EventPoller {
                             }
                         };
 
-                        // Fetch all the checkpoints that are between the requested
-                        // starting checkpoint and the current one.
-                        for checkpoint in start_from..checkpoint.sequence_number() {
-                            let request = sui::grpc::GetCheckpointRequest::default()
-                                .with_sequence_number(checkpoint)
-                                .with_read_mask(sui::grpc::FieldMask::from_paths(&[
-                                    "transactions.digest",
-                                ]));
+                        // Fetch all the checkpoints between the requested
+                        // starting checkpoint and the current one, in parallel
+                        // batches to maximize throughput during catch-up.
+                        let catchup_end = checkpoint.sequence_number();
+                        let parallel = this.catchup_parallel_fetches;
+                        let mut cursor = start_from;
 
-                            let mut ledger_client = client.ledger_client();
+                        while cursor < catchup_end {
+                            if this.cancellation_token.is_cancelled() {
+                                break 'master;
+                            }
 
-                            // Update the starting pointer. This way we can
-                            // restart this whole process and continue where
-                            // we left off.
-                            from_checkpoint = Some(checkpoint);
+                            let batch_end = (cursor + parallel as u64).min(catchup_end);
+                            let mut tasks = tokio::task::JoinSet::new();
 
-                            tokio::select! {
-                                _ = this.cancellation_token.cancelled() => {
-                                    break 'master;
-                                }
+                            for seq in cursor..batch_end {
+                                let rpc_url = this.rpc_url.clone();
+                                tasks.spawn(async move {
+                                    let mut c = sui::grpc::Client::new(&rpc_url)
+                                        .map_err(|e| (seq, format!("{e}")))?;
+                                    let req = sui::grpc::GetCheckpointRequest::default()
+                                        .with_sequence_number(seq)
+                                        .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                                            "transactions.digest",
+                                        ]));
+                                    let resp = c.ledger_client()
+                                        .get_checkpoint(req)
+                                        .await
+                                        .map_err(|e| (seq, format!("{e}")))?;
+                                    let digests: Vec<String> = resp.into_inner()
+                                        .checkpoint()
+                                        .transactions()
+                                        .iter()
+                                        .map(|tx| tx.digest().to_string())
+                                        .collect();
+                                    Ok::<(u64, Vec<String>), (u64, String)>((seq, digests))
+                                });
+                            }
 
-                                response = ledger_client.get_checkpoint(request) => {
-                                    let response = match response {
-                                        Ok(response) => response.into_inner(),
-                                        Err(e) => {
-                                            if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch checkpoint {checkpoint} while trying to catch up: {e}")))).await.is_err() {
-                                                break 'master;
-                                            }
-
-                                            continue 'master;
-                                        }
-                                    };
-
-                                    for tx in response.checkpoint().transactions() {
-                                        if send_digest
-                                            .send((checkpoint, tx.digest().to_string()))
-                                            .await
-                                            .is_err()
-                                        {
+                            // Collect results and sort by checkpoint sequence
+                            // number to preserve ordering.
+                            let mut results: BTreeMap<u64, Vec<String>> = BTreeMap::new();
+                            while let Some(join_result) = tasks.join_next().await {
+                                match join_result {
+                                    Ok(Ok((seq, digests))) => {
+                                        results.insert(seq, digests);
+                                    }
+                                    Ok(Err((seq, err))) => {
+                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                            "Failed to fetch checkpoint {seq} during catch-up: {err}"
+                                        )))).await.is_err() {
                                             break 'master;
                                         }
+                                        continue 'master;
+                                    }
+                                    Err(e) => {
+                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                            "Checkpoint fetch task panicked: {e}"
+                                        )))).await.is_err() {
+                                            break 'master;
+                                        }
+                                        continue 'master;
                                     }
                                 }
-                            };
+                            }
+
+                            // Send digests in checkpoint order.
+                            for (seq, digests) in results {
+                                from_checkpoint = Some(seq);
+                                for digest in digests {
+                                    if send_digest.send((seq, digest)).await.is_err() {
+                                        break 'master;
+                                    }
+                                }
+                            }
+
+                            cursor = batch_end;
                         }
 
                         from_checkpoint = Some(checkpoint.sequence_number() + 1);
