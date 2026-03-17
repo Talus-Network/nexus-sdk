@@ -96,6 +96,48 @@ lazy_static::lazy_static! {
         "poller_event_page_channel_len",
         "Number of event pages queued in the output channel"
     ).unwrap();
+
+    /// Histogram: how long send_page.send() blocks when the consumer is slow [s].
+    static ref SEND_PAGE_BACKPRESSURE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_send_page_backpressure_duration",
+        "Duration blocked on send_page.send() due to consumer backpressure [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: how long send_digest.send() blocks when the tx fetcher is slow [s].
+    static ref SEND_DIGEST_BACKPRESSURE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_send_digest_backpressure_duration",
+        "Duration blocked on send_digest.send() due to tx fetcher backpressure [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
+    ).unwrap();
+
+    /// Histogram: how long event parsing takes per transaction [s].
+    static ref EVENT_PARSE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_event_parse_duration",
+        "Duration of NexusEvent parsing per transaction [s]",
+        vec![0.00001, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05]
+    ).unwrap();
+
+    /// Histogram: number of nexus events per EventPage at SDK level.
+    static ref EVENTS_PER_PAGE: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_events_per_page",
+        "Number of nexus events per EventPage",
+        vec![0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0]
+    ).unwrap();
+
+    /// Histogram: end-to-end duration of each catch-up parallel batch [s].
+    static ref CATCHUP_BATCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_catchup_batch_duration",
+        "Duration of each parallel catch-up batch (fetch + send) [s]",
+        vec![0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: end-to-end checkpoint processing time (receive checkpoint to all pages sent) [s].
+    static ref CHECKPOINT_PROCESS_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_process_duration",
+        "End-to-end time from receiving a live checkpoint to finishing page sends [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
+    ).unwrap();
 }
 
 #[derive(Debug, Error)]
@@ -292,6 +334,7 @@ impl EventPoller {
                                 break 'master;
                             }
 
+                            let catchup_batch_start = Instant::now();
                             CATCHUP_REMAINING.set((catchup_end - cursor) as f64);
                             let batch_end = (cursor + parallel as u64).min(catchup_end);
                             let mut tasks = tokio::task::JoinSet::new();
@@ -353,18 +396,22 @@ impl EventPoller {
                                 CHECKPOINT_DIGESTS_COUNT.observe(digests.len() as f64);
                                 from_checkpoint = Some(seq);
                                 for digest in digests {
+                                    let send_start = Instant::now();
                                     if send_digest.send((seq, digest)).await.is_err() {
                                         break 'master;
                                     }
+                                    SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
                                 }
                             }
 
+                            CATCHUP_BATCH_DURATION.observe(catchup_batch_start.elapsed().as_secs_f64());
                             cursor = batch_end;
                         }
 
                         from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                         for tx in checkpoint.transactions() {
+                            let send_start = Instant::now();
                             if send_digest
                                 .send((checkpoint.sequence_number(), tx.digest().to_string()))
                                 .await
@@ -372,6 +419,7 @@ impl EventPoller {
                             {
                                 break 'master;
                             }
+                            SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
                         }
                     }
 
@@ -407,6 +455,7 @@ impl EventPoller {
 
                                 CHECKPOINT_STREAM_INTERVAL.observe(last_checkpoint_at.elapsed().as_secs_f64());
                                 last_checkpoint_at = Instant::now();
+                                let checkpoint_process_start = Instant::now();
 
                                 let checkpoint = response.checkpoint();
 
@@ -414,6 +463,7 @@ impl EventPoller {
                                 from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                                 for tx in checkpoint.transactions() {
+                                    let send_start = Instant::now();
                                     if send_digest
                                         .send((checkpoint.sequence_number(), tx.digest().to_string()))
                                         .await
@@ -421,7 +471,10 @@ impl EventPoller {
                                     {
                                         break 'master;
                                     }
+                                    SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
                                 }
+
+                                CHECKPOINT_PROCESS_DURATION.observe(checkpoint_process_start.elapsed().as_secs_f64());
                             }
                         }
                     }
@@ -546,7 +599,8 @@ impl EventPoller {
                     continue;
                 };
 
-                let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
+                let parse_start = Instant::now();
+                let nexus_events: Vec<_> = events.0.iter().enumerate().filter_map(|(index, event)| {
                     NexusEvent::from_sui_grpc_event(
                         index as u64,
                         transaction.digest().parse().ok()?,
@@ -554,14 +608,18 @@ impl EventPoller {
                         &self.nexus_objects,
                     )
                     .ok()
-                });
+                }).collect();
+                EVENT_PARSE_DURATION.observe(parse_start.elapsed().as_secs_f64());
+                EVENTS_PER_PAGE.observe(nexus_events.len() as f64);
 
+                let send_start = Instant::now();
                 if send_page.send(Ok(EventPage {
-                    events: nexus_events.collect(),
+                    events: nexus_events,
                     checkpoint,
                 })).await.is_err() {
                     break;
                 }
+                SEND_PAGE_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
                 EVENT_PAGE_CHANNEL_LEN.set(
                     (send_page.max_capacity() - send_page.capacity()) as f64,
                 );
