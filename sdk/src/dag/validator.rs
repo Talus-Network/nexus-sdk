@@ -240,6 +240,7 @@ fn validate_for_each_pairs(
 
         for edge in graph.edges(node) {
             let next_state = match (state, edge.weight()) {
+                (Idle, EdgeKind::Static) => Idle,
                 (Idle, EdgeKind::Normal) => Idle,
                 (Idle, EdgeKind::DoWhile) => Idle,
                 (Idle, EdgeKind::Break) => Idle,
@@ -255,6 +256,9 @@ fn validate_for_each_pairs(
                 (InForEach, EdgeKind::Collect) => Idle,
                 (InForEach, EdgeKind::DoWhile) | (InForEach, EdgeKind::Break) => {
                     bail!("'{vertex}' has a do-while or break edge inside a for-each");
+                }
+                (InForEach, EdgeKind::Static) => {
+                    bail!("'{vertex}' has a static edge inside a for-each");
                 }
             };
 
@@ -899,6 +903,14 @@ mod tests {
         let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Do-while edge at 'Output port: c.also_ok.loop' has a nested loop inside."));
+    }
+
+    #[test]
+    fn test_double_do_while_static_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/double_do_while_static_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
     }
 
     // == Cyclic or no input graphs ==

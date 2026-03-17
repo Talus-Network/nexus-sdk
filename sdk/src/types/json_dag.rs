@@ -87,6 +87,8 @@ pub enum EdgeKind {
     /// Do-while and break control edges.
     DoWhile,
     Break,
+    /// Provide static values to loops from outside the loop body.
+    Static,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
