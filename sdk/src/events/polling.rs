@@ -217,7 +217,9 @@ impl EventPoller {
     ) -> Result<mpsc::Receiver<Result<EventPage, PollerError>>, PollerError> {
         let this = Arc::new(self);
 
-        let mut client = sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
+        // Validate the URL eagerly — actual clients are created per
+        // reconnection attempt so DNS is always re-resolved.
+        sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", this.rpc_url))
         })?;
 
@@ -249,8 +251,30 @@ impl EventPoller {
                 'master: loop {
                     if is_reconnection {
                         STREAM_RECONNECTIONS.inc();
+
+                        // Back off before reconnecting to avoid tight-looping
+                        // when the RPC is down.
+                        tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                     is_reconnection = true;
+
+                    // Create a fresh client on each reconnection attempt so
+                    // DNS is re-resolved and stale connections are discarded.
+                    let mut client = match sui::grpc::Client::new(&this.rpc_url) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            if send_page
+                                .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                    "Failed to create gRPC client: {e}"
+                                ))))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        }
+                    };
 
                     // First, start streaming checkpoints. This way we know how many
                     // checkpoints we need to fetch in the past.
@@ -569,17 +593,24 @@ impl EventPoller {
 
                         response.into_inner()
                     },
-                    Err(_) => {
-                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
+                    Err(e) => {
+                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}: {e}", digests)))).await.is_err() {
                             break;
                         }
 
                         // On fetch error, we return the digests back to
-                        // the batch.
+                        // the batch and recreate the client so DNS is
+                        // re-resolved and stale connections are discarded.
                         batch.extend(digests.into_iter().map(|d| {
                             let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
                             (cp, d)
                         }));
+
+                        if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
+                            client = new_client;
+                        }
+
+                        tokio::time::sleep(Duration::from_secs(1)).await;
 
                         continue;
                     }
