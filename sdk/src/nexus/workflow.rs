@@ -515,7 +515,6 @@ mod tests {
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
             state_service_mock: Some(state_service_mock),
-            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;

@@ -343,9 +343,13 @@ impl EventPoller {
                             match sui::grpc::Client::new(&this.rpc_url) {
                                 Ok(c) => client_pool.push(Arc::new(tokio::sync::Mutex::new(c))),
                                 Err(e) => {
-                                    if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                    if send_page
+                                        .send(Err(PollerError::Rpc(anyhow::anyhow!(
                                         "Failed to create gRPC client for parallel catch-up: {e}"
-                                    )))).await.is_err() {
+                                    ))))
+                                        .await
+                                        .is_err()
+                                    {
                                         break 'master;
                                     }
                                     continue 'master;
@@ -373,12 +377,15 @@ impl EventPoller {
                                         .with_read_mask(sui::grpc::FieldMask::from_paths(&[
                                             "transactions.digest",
                                         ]));
-                                    let resp = c.ledger_client()
+                                    let resp = c
+                                        .ledger_client()
                                         .get_checkpoint(req)
                                         .await
                                         .map_err(|e| (seq, format!("{e}")))?;
-                                    CHECKPOINT_FETCH_DURATION.observe(start.elapsed().as_secs_f64());
-                                    let digests: Vec<String> = resp.into_inner()
+                                    CHECKPOINT_FETCH_DURATION
+                                        .observe(start.elapsed().as_secs_f64());
+                                    let digests: Vec<String> = resp
+                                        .into_inner()
                                         .checkpoint()
                                         .transactions()
                                         .iter()
@@ -405,9 +412,13 @@ impl EventPoller {
                                         continue 'master;
                                     }
                                     Err(e) => {
-                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
-                                            "Checkpoint fetch task panicked: {e}"
-                                        )))).await.is_err() {
+                                        if send_page
+                                            .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                                "Checkpoint fetch task panicked: {e}"
+                                            ))))
+                                            .await
+                                            .is_err()
+                                        {
                                             break 'master;
                                         }
                                         continue 'master;
@@ -424,11 +435,13 @@ impl EventPoller {
                                     if send_digest.send((seq, digest)).await.is_err() {
                                         break 'master;
                                     }
-                                    SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
+                                    SEND_DIGEST_BACKPRESSURE_DURATION
+                                        .observe(send_start.elapsed().as_secs_f64());
                                 }
                             }
 
-                            CATCHUP_BATCH_DURATION.observe(catchup_batch_start.elapsed().as_secs_f64());
+                            CATCHUP_BATCH_DURATION
+                                .observe(catchup_batch_start.elapsed().as_secs_f64());
                             cursor = batch_end;
                         }
 
@@ -443,7 +456,8 @@ impl EventPoller {
                             {
                                 break 'master;
                             }
-                            SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
+                            SEND_DIGEST_BACKPRESSURE_DURATION
+                                .observe(send_start.elapsed().as_secs_f64());
                         }
                     }
 
@@ -527,7 +541,8 @@ impl EventPoller {
 
         loop {
             // Compute the remaining time before the batch should be flushed.
-            let flush_deadline = self.transactions_batch_max_wait
+            let flush_deadline = self
+                .transactions_batch_max_wait
                 .saturating_sub(last_fetched_at.elapsed());
 
             let flush_reason;
@@ -567,7 +582,9 @@ impl EventPoller {
             }
 
             // Record batch metrics.
-            TX_BATCH_FLUSH_REASON.with_label_values(&[flush_reason]).inc();
+            TX_BATCH_FLUSH_REASON
+                .with_label_values(&[flush_reason])
+                .inc();
             TX_BATCH_SIZE.observe(batch.len() as f64);
             DIGEST_CHANNEL_LEN.set(next_digest.len() as f64);
 
@@ -580,50 +597,54 @@ impl EventPoller {
 
             let request = sui::grpc::BatchGetTransactionsRequest::default()
                 .with_digests(digests.clone())
-                .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
+                .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                    "events.events",
+                    "digest",
+                ]));
 
             let fetch_start = Instant::now();
-            let response = match client
-                .ledger_client()
-                .batch_get_transactions(request)
-                .await {
-                    Ok(response) => {
-                        TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
-                        last_fetched_at = Instant::now();
+            let response = match client.ledger_client().batch_get_transactions(request).await {
+                Ok(response) => {
+                    TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
+                    last_fetched_at = Instant::now();
 
-                        response.into_inner()
-                    },
-                    Err(e) => {
-                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}: {e}", digests)))).await.is_err() {
-                            break;
-                        }
-
-                        // On fetch error, we return the digests back to
-                        // the batch and recreate the client so DNS is
-                        // re-resolved and stale connections are discarded.
-                        batch.extend(digests.into_iter().map(|d| {
-                            let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
-                            (cp, d)
-                        }));
-
-                        if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
-                            client = new_client;
-                        }
-
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-
-                        continue;
+                    response.into_inner()
+                }
+                Err(e) => {
+                    if send_page
+                        .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                            "Failed to fetch transactions for digests: {:?}: {e}",
+                            digests
+                        ))))
+                        .await
+                        .is_err()
+                    {
+                        break;
                     }
-                };
+
+                    // On fetch error, we return the digests back to
+                    // the batch and recreate the client so DNS is
+                    // re-resolved and stale connections are discarded.
+                    batch.extend(digests.into_iter().map(|d| {
+                        let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
+                        (cp, d)
+                    }));
+
+                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
+                        client = new_client;
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+
+                    continue;
+                }
+            };
 
             for transaction in response.transactions {
                 let transaction = transaction.transaction();
 
                 let tx_digest = transaction.digest().to_string();
-                let checkpoint = digest_to_checkpoint
-                    .get(&tx_digest)
-                    .copied()
-                    .unwrap_or(0);
+                let checkpoint = digest_to_checkpoint.get(&tx_digest).copied().unwrap_or(0);
 
                 let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
                 else {
@@ -631,29 +652,37 @@ impl EventPoller {
                 };
 
                 let parse_start = Instant::now();
-                let nexus_events: Vec<_> = events.0.iter().enumerate().filter_map(|(index, event)| {
-                    NexusEvent::from_sui_grpc_event(
-                        index as u64,
-                        transaction.digest().parse().ok()?,
-                        event,
-                        &self.nexus_objects,
-                    )
-                    .ok()
-                }).collect();
+                let nexus_events: Vec<_> = events
+                    .0
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, event)| {
+                        NexusEvent::from_sui_grpc_event(
+                            index as u64,
+                            transaction.digest().parse().ok()?,
+                            event,
+                            &self.nexus_objects,
+                        )
+                        .ok()
+                    })
+                    .collect();
                 EVENT_PARSE_DURATION.observe(parse_start.elapsed().as_secs_f64());
                 EVENTS_PER_PAGE.observe(nexus_events.len() as f64);
 
                 let send_start = Instant::now();
-                if send_page.send(Ok(EventPage {
-                    events: nexus_events,
-                    checkpoint,
-                })).await.is_err() {
+                if send_page
+                    .send(Ok(EventPage {
+                        events: nexus_events,
+                        checkpoint,
+                    }))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
                 SEND_PAGE_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
-                EVENT_PAGE_CHANNEL_LEN.set(
-                    (send_page.max_capacity() - send_page.capacity()) as f64,
-                );
+                EVENT_PAGE_CHANNEL_LEN
+                    .set((send_page.max_capacity() - send_page.capacity()) as f64);
             }
         }
 
