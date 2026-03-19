@@ -115,6 +115,7 @@ mod tests {
             default_tap: sui_mocks::mock_sui_object_ref(),
             gas_service: sui_mocks::mock_sui_object_ref(),
             leader_registry: sui_mocks::mock_sui_object_ref(),
+            workflow_original_pkg_id: None,
         };
 
         // Serialize the NexusObjects instance to a TOML string.
