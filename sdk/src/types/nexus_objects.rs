@@ -299,4 +299,152 @@ mod tests {
         assert!(objects.scheduler_matches_periodic_generator(&periodic));
         assert!(!objects.scheduler_matches_queue_generator(&periodic));
     }
+
+    fn sample_objects_with_upgrade() -> NexusObjects {
+        let mut objects = sample_objects();
+        let mut rng = rand::thread_rng();
+        objects.workflow_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects
+    }
+
+    #[test]
+    fn workflow_type_origin_pkg_id_without_upgrade() {
+        let objects = sample_objects();
+        assert_eq!(
+            objects.workflow_type_origin_pkg_id(),
+            objects.workflow_pkg_id
+        );
+    }
+
+    #[test]
+    fn workflow_type_origin_pkg_id_with_upgrade() {
+        let objects = sample_objects_with_upgrade();
+        assert_eq!(
+            objects.workflow_type_origin_pkg_id(),
+            objects.workflow_original_pkg_id.unwrap()
+        );
+        assert_ne!(
+            objects.workflow_type_origin_pkg_id(),
+            objects.workflow_pkg_id
+        );
+    }
+
+    #[test]
+    fn is_workflow_package_matches_current() {
+        let objects = sample_objects();
+        assert!(objects.is_workflow_package(objects.workflow_pkg_id));
+    }
+
+    #[test]
+    fn is_workflow_package_matches_original_after_upgrade() {
+        let objects = sample_objects_with_upgrade();
+        let original = objects.workflow_original_pkg_id.unwrap();
+        assert!(objects.is_workflow_package(objects.workflow_pkg_id));
+        assert!(objects.is_workflow_package(original));
+    }
+
+    #[test]
+    fn is_workflow_package_rejects_unrelated() {
+        let mut rng = rand::thread_rng();
+        let objects = sample_objects_with_upgrade();
+        assert!(!objects.is_workflow_package(sui::types::Address::generate(&mut rng)));
+    }
+
+    #[test]
+    fn event_from_original_pkg_matches_after_upgrade() {
+        let objects = sample_objects_with_upgrade();
+        let original = objects.workflow_original_pkg_id.unwrap();
+
+        // Event referencing the original package address should match.
+        let event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                original,
+                workflow::Scheduler::TASK.module,
+                workflow::Scheduler::TASK.name,
+                vec![],
+            ),
+        );
+        assert!(objects.is_event_from_nexus(&event));
+
+        // Event referencing the current (upgraded) package should also match.
+        let event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.workflow_pkg_id,
+                workflow::Scheduler::TASK.module,
+                workflow::Scheduler::TASK.name,
+                vec![],
+            ),
+        );
+        assert!(objects.is_event_from_nexus(&event));
+    }
+
+    #[test]
+    fn interface_event_with_original_pkg_witness_matches() {
+        let objects = sample_objects_with_upgrade();
+        let original = objects.workflow_original_pkg_id.unwrap();
+
+        let event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.interface_pkg_id,
+                sui::types::Identifier::from_static("v1"),
+                sui::types::Identifier::from_static("AnnounceInterfacePackageEvent"),
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    sui::types::StructTag::new(
+                        original,
+                        workflow::Scheduler::TASK.module,
+                        workflow::Scheduler::TASK.name,
+                        vec![],
+                    ),
+                ))],
+            ),
+        );
+        assert!(objects.is_event_from_nexus(&event));
+    }
+
+    #[test]
+    fn generator_helpers_match_after_upgrade() {
+        let objects = sample_objects_with_upgrade();
+
+        // Symbols generated with the original package address should match.
+        let queue = objects.scheduler_queue_generator_symbol();
+        assert!(objects.scheduler_matches_queue_generator(&queue));
+        assert!(!objects.scheduler_matches_periodic_generator(&queue));
+
+        let periodic = objects.scheduler_periodic_generator_symbol();
+        assert!(objects.scheduler_matches_periodic_generator(&periodic));
+
+        // Symbols using the current (upgraded) package should also match.
+        let current_queue = PolicySymbol::Witness(TypeName::new(
+            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS
+                .qualified_name(objects.workflow_pkg_id),
+        ));
+        assert!(objects.scheduler_matches_queue_generator(&current_queue));
+
+        let current_periodic = PolicySymbol::Witness(TypeName::new(
+            &workflow::Scheduler::PERIODIC_GENERATOR_WITNESS
+                .qualified_name(objects.workflow_pkg_id),
+        ));
+        assert!(objects.scheduler_matches_periodic_generator(&current_periodic));
+    }
+
+    #[test]
+    fn serde_round_trip_without_upgrade() {
+        let objects = sample_objects();
+        let json = serde_json::to_string(&objects).unwrap();
+        assert!(!json.contains("workflow_original_pkg_id"));
+        let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, objects);
+    }
+
+    #[test]
+    fn serde_round_trip_with_upgrade() {
+        let objects = sample_objects_with_upgrade();
+        let json = serde_json::to_string(&objects).unwrap();
+        assert!(json.contains("workflow_original_pkg_id"));
+        let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, objects);
+    }
 }
