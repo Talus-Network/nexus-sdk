@@ -1,0 +1,213 @@
+{
+  "default_values": [
+    {
+      "vertex": "start",
+      "input_port": "comp",
+      "value": {
+        "storage": "inline",
+        "data": 15
+      }
+    },
+    {
+      "vertex": "loop_1",
+      "input_port": "comp",
+      "value": {
+        "storage": "inline",
+        "data": 1000
+      }
+    },
+    {
+      "vertex": "loop_1",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 1
+      }
+    },
+    {
+      "vertex": "loop_2",
+      "input_port": "comp",
+      "value": {
+        "storage": "inline",
+        "data": 1000
+      }
+    },
+    {
+      "vertex": "loop_2",
+      "input_port": "b",
+      "value": {
+        "storage": "inline",
+        "data": 2
+      }
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.cmp_sum@1"
+      },
+      "name": "start",
+      "entry_ports": [
+        {
+          "name": "a"
+        },
+        {
+          "name": "b"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.cmp_sum@1"
+      },
+      "name": "decide"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.cmp_sum@1"
+      },
+      "name": "loop_1"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.cmp_sum@1"
+      },
+      "name": "loop_2"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_1"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "add_2"
+    },
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.add@1"
+      },
+      "name": "output"
+    }
+  ],
+  "edges": [
+    {
+      "from": { "vertex": "start", "output_variant": "lt", "output_port": "a" },
+      "to": { "vertex": "loop_1", "input_port": "a" }
+    },
+    {
+      "from": { "vertex": "start", "output_variant": "lt", "output_port": "b" },
+      "to": { "vertex": "loop_2", "input_port": "a" }
+    },
+    {
+      "from": {
+        "vertex": "start",
+        "output_variant": "lt",
+        "output_port": "comp"
+      },
+      "to": { "vertex": "decide", "input_port": "comp" },
+      "kind": "static"
+    },
+    {
+      "from": {
+        "vertex": "loop_1",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": { "vertex": "add_1", "input_port": "a" }
+    },
+    {
+      "from": {
+        "vertex": "loop_1",
+        "output_variant": "lt",
+        "output_port": "b"
+      },
+      "to": { "vertex": "add_2", "input_port": "b" }
+    },
+    {
+      "from": {
+        "vertex": "loop_2",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": { "vertex": "add_1", "input_port": "b" }
+    },
+    {
+      "from": {
+        "vertex": "loop_2",
+        "output_variant": "lt",
+        "output_port": "b"
+      },
+      "to": { "vertex": "add_2", "input_port": "a" }
+    },
+    {
+      "from": {
+        "vertex": "add_1",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": { "vertex": "decide", "input_port": "a" }
+    },
+    {
+      "from": {
+        "vertex": "add_2",
+        "output_variant": "ok",
+        "output_port": "result"
+      },
+      "to": { "vertex": "decide", "input_port": "b" }
+    },
+    {
+      "from": {
+        "vertex": "decide",
+        "output_variant": "lt",
+        "output_port": "a"
+      },
+      "to": { "vertex": "loop_1", "input_port": "a" },
+      "kind": "do_while"
+    },
+    {
+      "from": {
+        "vertex": "decide",
+        "output_variant": "lt",
+        "output_port": "b"
+      },
+      "to": { "vertex": "loop_2", "input_port": "a" },
+      "kind": "do_while"
+    },
+    {
+      "from": {
+        "vertex": "decide",
+        "output_variant": "gte",
+        "output_port": "a"
+      },
+      "to": { "vertex": "output", "input_port": "a" },
+      "kind": "break"
+    },
+    {
+      "from": {
+        "vertex": "decide",
+        "output_variant": "gte",
+        "output_port": "b"
+      },
+      "to": { "vertex": "output", "input_port": "b" },
+      "kind": "break"
+    }
+  ],
+  "outputs": [
+    {
+      "vertex": "output",
+      "output_variant": "ok",
+      "output_port": "result"
+    }
+  ]
+}
