@@ -418,8 +418,7 @@ mod tests {
 
         // Symbols using the current (upgraded) package should also match.
         let current_queue = PolicySymbol::Witness(TypeName::new(
-            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS
-                .qualified_name(objects.workflow_pkg_id),
+            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.workflow_pkg_id),
         ));
         assert!(objects.scheduler_matches_queue_generator(&current_queue));
 
