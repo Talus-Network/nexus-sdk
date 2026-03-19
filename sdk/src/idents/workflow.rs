@@ -339,6 +339,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
     };
+    /// Stamp the worksheet with the execution ID before onchain tool execution.
+    ///
+    /// `nexus_workflow::dag::pre_stamp_execution`
+    pub const PRE_STAMP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("pre_stamp_execution"),
+    };
     /// Stamp a worksheet as the leader during a dry run.
     ///
     /// `nexus_workflow::dag::leader_stamp_worksheet_for_dry_run`
