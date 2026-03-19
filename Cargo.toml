@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "0.6.0"
+version = "0.7.0"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -23,7 +23,6 @@ argon2 = "0.5"
 base64 = "0.21"
 bcs = "0.1.6"
 bip32 = "0.4.0"
-bincode = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive"] }
 clap_complete = "4.5.48"
@@ -44,8 +43,7 @@ lazy-regex = "3.4.1"
 log = "^0.4.26"
 minijinja = "2.8.0"
 mockall = "0.14.0"
-mockito = "1.7.0"
-openssl = { version = "0.10", features = ["vendored"] }
+mockito = "1.7"
 petgraph = "0.7.1"
 portpicker = "0.1.1"
 prost-types = "0.14.1"

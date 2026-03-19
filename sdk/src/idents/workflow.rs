@@ -304,6 +304,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("edge_kind_normal"),
     };
+    /// Create a static edge kind.
+    ///
+    /// `nexus_workflow::dag::edge_kind_static`
+    pub const EDGE_KIND_STATIC: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("edge_kind_static"),
+    };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::EntryGroup`
@@ -670,6 +677,7 @@ impl Dag {
             EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
             EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
             EdgeKind::Break => Self::EDGE_KIND_BREAK,
+            EdgeKind::Static => Self::EDGE_KIND_STATIC,
         };
 
         tx.move_call(

@@ -31,7 +31,6 @@ home.workspace = true
 humantime.workspace = true
 indicatif.workspace = true
 minijinja.workspace = true
-openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
