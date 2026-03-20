@@ -106,7 +106,7 @@ fn normalize_event_name(event_type: &sui::types::StructTag) -> anyhow::Result<St
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
     address == objects.primitives_pkg_id
         || address == objects.interface_pkg_id
-        || address == objects.workflow_pkg_id
+        || objects.is_workflow_package(address)
 }
 
 /// Helper function to determine whether the event name corresponds to a foreign

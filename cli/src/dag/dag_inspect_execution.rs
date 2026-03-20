@@ -151,7 +151,7 @@ pub(crate) async fn inspect_dag_execution(
                     break;
                 }
 
-                if !e.was_aborted {
+                if e.was_aborted {
                     notify_error!("DAG execution was aborted by a third party due to a timeout");
 
                     break;

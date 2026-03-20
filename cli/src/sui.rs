@@ -269,7 +269,16 @@ pub(crate) async fn get_nexus_client(
     let pk = get_signing_key(&conf).await?;
     let owner = pk.public_key().derive_address();
     let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
-    let nexus_objects = get_nexus_objects(&mut conf).await?;
+    let mut nexus_objects = get_nexus_objects(&mut conf).await?;
+
+    nexus_objects
+        .resolve_workflow_original_pkg_id(&client)
+        .await
+        .map_err(|e| {
+            NexusCliError::Any(anyhow!(
+                "Failed to resolve workflow original package ID: {e}"
+            ))
+        })?;
     let rpc_url = client.lock().await.uri().to_string();
 
     // Create Nexus client.
