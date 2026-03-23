@@ -354,6 +354,7 @@ pub fn prepare_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     gas_service: sui::types::Argument,
+    tool_registry: sui::types::Argument,
     dag: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
@@ -365,13 +366,6 @@ pub fn prepare_execution(
         *objects.default_tap.object_id(),
         objects.default_tap.version(),
         true,
-    ));
-
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
-        false,
     ));
 
     // `network: ID`
@@ -543,6 +537,13 @@ pub fn execute(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -554,6 +555,7 @@ pub fn execute(
         tx,
         objects,
         gas_service,
+        tool_registry,
         dag,
         priority_fee_per_gas_unit,
         entry_group,
@@ -615,7 +617,14 @@ pub fn execute(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![
+            dag,
+            execution,
+            ticket,
+            leader_registry,
+            tool_registry,
+            clock,
+        ],
     );
 
     // `DAGExecution`

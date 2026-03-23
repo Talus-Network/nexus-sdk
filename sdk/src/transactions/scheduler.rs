@@ -857,6 +857,7 @@ pub fn prepare_dag_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     gas_service: sui::types::Argument,
+    tool_registry: sui::types::Argument,
     task: sui::types::Argument,
     dag: sui::types::Argument,
     leader_cap: sui::types::Argument,
@@ -867,13 +868,6 @@ pub fn prepare_dag_execution_from_scheduler(
         *objects.default_tap.object_id(),
         objects.default_tap.version(),
         true,
-    ));
-
-    // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
-        false,
     ));
 
     Ok(tx.move_call(
@@ -954,6 +948,13 @@ pub fn execute_scheduled_occurrence(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     // `dag: &DAG`
     let dag = tx.input(sui::tx::Input::shared(
         *dag.object_id(),
@@ -972,6 +973,7 @@ pub fn execute_scheduled_occurrence(
         tx,
         objects,
         gas_service,
+        tool_registry,
         task,
         dag,
         leader_cap,
@@ -1051,7 +1053,14 @@ pub fn execute_scheduled_occurrence(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![
+            dag,
+            execution,
+            ticket,
+            leader_registry,
+            tool_registry,
+            clock,
+        ],
     );
 
     // `DAGExecution`
