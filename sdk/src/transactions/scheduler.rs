@@ -869,6 +869,13 @@ pub fn prepare_dag_execution_from_scheduler(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -876,7 +883,15 @@ pub fn prepare_dag_execution_from_scheduler(
             workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name,
             vec![],
         ),
-        vec![tap, task, dag, gas_service, leader_cap, clock],
+        vec![
+            tap,
+            task,
+            dag,
+            gas_service,
+            tool_registry,
+            leader_cap,
+            clock,
+        ],
     ))
 }
 
@@ -1716,7 +1731,7 @@ mod tests {
             tap_call.function,
             workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name
         );
-        assert_eq!(tap_call.arguments.len(), 6);
+        assert_eq!(tap_call.arguments.len(), 7);
         inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);
         inspector.expect_shared_object(&tap_call.arguments[1], &task, true);
         let sui::types::Input::Shared {
@@ -1734,8 +1749,9 @@ mod tests {
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.gas_service, true);
-        inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
-        inspector.expect_clock(&tap_call.arguments[5]);
+        inspector.expect_shared_object(&tap_call.arguments[4], &objects.tool_registry, false);
+        inspector.expect_shared_object(&tap_call.arguments[5], &leader_cap, false);
+        inspector.expect_clock(&tap_call.arguments[6]);
 
         let finish_call = inspector.move_call(7);
         assert_eq!(finish_call.module, workflow::Scheduler::FINISH.module);

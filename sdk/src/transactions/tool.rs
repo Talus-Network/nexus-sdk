@@ -1,8 +1,11 @@
-use crate::{
-    idents::{move_std, pure_arg, sui_framework, workflow},
-    sui,
-    types::{NexusObjects, ToolMeta},
-    ToolFqn,
+use {
+    crate::{
+        idents::{move_std, pure_arg, sui_framework, workflow},
+        sui,
+        types::{NexusObjects, ToolMeta},
+        ToolFqn,
+    },
+    std::time::Duration,
 };
 
 /// PTB template for registering a new Nexus Tool.
@@ -36,6 +39,9 @@ pub fn register_off_chain_for_self(
     // `output_schema: vector<u8>`
     let output_schema = tx.input(pure_arg(&serde_json::to_vec(&meta.output_schema)?)?);
 
+    // `timeout_ms: u64`
+    let timeout_ms = tx.input(pure_arg(&(meta.timeout.as_millis() as u64))?);
+
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
         *collateral_coin.object_id(),
@@ -65,6 +71,7 @@ pub fn register_off_chain_for_self(
             description,
             input_schema,
             output_schema,
+            timeout_ms,
             pay_with,
             clock,
         ],
@@ -151,10 +158,11 @@ pub fn register_on_chain_for_self(
     objects: &NexusObjects,
     package_address: sui::types::Address,
     module_name: &str,
-    input_schema: &str,
-    output_schema: &str,
     fqn: &ToolFqn,
     description: &str,
+    input_schema: &str,
+    output_schema: &str,
+    timeout: Duration,
     witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
@@ -172,17 +180,20 @@ pub fn register_on_chain_for_self(
     // `module_name: AsciiString`
     let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
 
+    // `fqn: AsciiString`
+    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+
+    // `description: vector<u8>`
+    let description = tx.input(pure_arg(&description.as_bytes().to_vec())?);
+
     // `input_schema: vector<u8>`
     let input_schema = tx.input(pure_arg(&input_schema.as_bytes().to_vec())?);
 
     // `output_schema: vector<u8>`
     let output_schema = tx.input(pure_arg(&output_schema.as_bytes().to_vec())?);
 
-    // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
-
-    // `description: vector<u8>`
-    let description = tx.input(pure_arg(&description.as_bytes().to_vec())?);
+    // `timeout_ms: u64`
+    let timeout_ms = tx.input(pure_arg(&(timeout.as_millis() as u64))?);
 
     // `witness_id: ID`
     let witness_id = sui_framework::Address::address_from_type(tx, witness_id)?;
@@ -213,10 +224,11 @@ pub fn register_on_chain_for_self(
             tool_registry,
             package_addr,
             module_name,
-            input_schema,
-            output_schema,
             fqn,
             description,
+            input_schema,
+            output_schema,
+            timeout_ms,
             witness_id,
             pay_with,
             clock,
@@ -436,6 +448,7 @@ mod tests {
         let meta = ToolMeta {
             fqn: fqn!("xyz.dummy.tool@1"),
             url: "https://example.com".parse().unwrap(),
+            timeout: Duration::from_millis(5000),
             description: "a dummy tool".to_string(),
             input_schema: json!({}),
             output_schema: json!({}),
@@ -477,7 +490,7 @@ mod tests {
             call.function,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
         );
-        assert_eq!(call.arguments.len(), 8);
+        assert_eq!(call.arguments.len(), 9);
     }
 
     #[test]
@@ -500,10 +513,11 @@ mod tests {
             &objects,
             package_address,
             module_name,
-            input_schema,
-            output_schema,
             &fqn,
             description,
+            input_schema,
+            output_schema,
+            Duration::from_millis(5000),
             witness_id,
             &collateral_coin,
             address,
@@ -530,7 +544,7 @@ mod tests {
             call.function,
             workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name
         );
-        assert_eq!(call.arguments.len(), 10);
+        assert_eq!(call.arguments.len(), 11);
     }
 
     #[test]

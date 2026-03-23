@@ -367,6 +367,13 @@ pub fn prepare_execution(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
@@ -476,6 +483,7 @@ pub fn prepare_execution(
             default_tap,
             dag,
             gas_service,
+            tool_registry,
             network,
             entry_group,
             with_vertex_inputs,

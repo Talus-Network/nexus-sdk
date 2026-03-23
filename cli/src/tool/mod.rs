@@ -193,6 +193,16 @@ pub(crate) enum RegisterCommand {
         description: String,
 
         #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The timeout duration for the tool execution. Defaults to 5 seconds.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+            default_value = "5s"
+        )]
+        timeout: std::time::Duration,
+
+        #[arg(
             long = "witness-id",
             short = 'w',
             help = "The witness object ID that proves the tool's identity.",
@@ -408,6 +418,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 module,
                 tool_fqn,
                 description,
+                timeout,
                 witness_id,
                 collateral_coin,
                 no_save,
@@ -418,6 +429,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     module,
                     tool_fqn,
                     description,
+                    timeout,
                     witness_id,
                     collateral_coin,
                     no_save,
