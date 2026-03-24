@@ -190,6 +190,16 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
+**`nexus tool update-timeout --tool-fqn <fqn> --timeout <duration> [--owner-cap <object_id>]`**
+
+Updates the timeout duration for the specified Tool. This command allows operators to configure how long a tool can run before timing out.
+
+- `--tool-fqn` specifies the fully qualified name of the tool.
+- `--timeout` sets the new timeout duration.
+- `--owner-cap` optionally specifies the owner capability ID for the tool. This must be provided unless the owner cap is saved in the CLI configuration file.
+
+---
+
 ### `nexus dag`
 
 Set of commands for managing JSON DAGs.
