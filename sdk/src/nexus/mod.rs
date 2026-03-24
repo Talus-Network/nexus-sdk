@@ -12,4 +12,5 @@ pub mod models;
 pub mod network_auth;
 pub mod scheduler;
 pub mod signer;
+pub mod tool;
 pub mod workflow;

@@ -504,6 +504,12 @@ impl GasActions {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        fqn,
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
+    };
+
     #[tokio::test]
     async fn test_gas_actions_enable_expiry_extension() {
         let mut rng = rand::thread_rng();
@@ -857,11 +863,6 @@ mod tests {
 
         assert_eq!(result.tx_digest, tx_digest);
     }
-    use crate::{
-        fqn,
-        sui,
-        test_utils::{nexus_mocks, sui_mocks},
-    };
 
     #[tokio::test]
     async fn test_gas_actions_add_budget() {

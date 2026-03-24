@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.8.0`] - Unreleased
 
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool update-timeout` command to update a tool's timeout duration
+
 ### `nexus-sdk`
 
 #### Added
 
 - support and tests for `Static` edge kinds
+- support for configurable tool timeouts
 
 ## [`0.7.0`] - 2026-03-13
 

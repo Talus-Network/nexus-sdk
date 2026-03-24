@@ -434,6 +434,50 @@ pub fn claim_collateral_for_self(
     ))
 }
 
+/// PTB template for updating a tool's timeout.
+pub fn update_tool_timeout(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    new_timeout: Duration,
+) -> anyhow::Result<sui::types::Argument> {
+    // `self: &Tool`
+    let tool = tx.input(sui::tx::Input::shared(
+        *tool.object_id(),
+        tool.version(),
+        false,
+    ));
+
+    // `registry: &mut ToolRegistry`
+    let registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        true,
+    ));
+
+    // `owner_cap: &CloneableOwnerCap<OverTool>`
+    let owner_cap = tx.input(sui::tx::Input::owned(
+        *owner_cap.object_id(),
+        owner_cap.version(),
+        *owner_cap.digest(),
+    ));
+
+    // `timeout_ms: u64`
+    let timeout_ms = tx.input(pure_arg(&(new_timeout.as_millis() as u64))?);
+
+    // `nexus::tool_registry::update_tool_timeout()`
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.module,
+            workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.name,
+            vec![],
+        ),
+        vec![tool, registry, owner_cap, timeout_ms],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use {
