@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - support and tests for `Static` edge kinds
+- add leader stamp identifiers
 
 ## [`0.7.0`] - 2026-03-13
 
