@@ -1053,14 +1053,7 @@ pub fn execute_scheduled_occurrence(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![
-            dag,
-            execution,
-            ticket,
-            leader_registry,
-            tool_registry,
-            clock,
-        ],
+        vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
