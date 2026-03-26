@@ -1,6 +1,6 @@
-//! Commands related to gas management in Nexus.
+//! Commands related to Nexus tool management.
 //!
-//! - [`ToolActions::add_budget`] to add gas budget for Nexus workflows.
+//! - [`ToolActions::update_timeout`] to update a tool's timeout.
 
 use {
     crate::{

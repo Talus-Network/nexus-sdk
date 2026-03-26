@@ -196,7 +196,7 @@ pub(crate) enum RegisterCommand {
         #[arg(
             long = "timeout",
             short = 'i',
-            help = "The timeout duration for the tool execution. Defaults to 5 seconds.",
+            help = "The timeout duration for the tool execution. Defaults to 5 seconds. Value must be between 1 second and 2 minutes.",
             value_name = "DURATION",
             value_parser = ValueParser::from(humantime::parse_duration),
             default_value = "5s"
@@ -394,7 +394,7 @@ pub(crate) enum ToolCommand {
         #[arg(
             long = "timeout",
             short = 'i',
-            help = "The new timeout duration for the tool execution.",
+            help = "The new timeout duration for the tool execution. Value must be between 1 second and 2 minutes.",
             value_name = "DURATION",
             value_parser = ValueParser::from(humantime::parse_duration),
         )]

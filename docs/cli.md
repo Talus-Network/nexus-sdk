@@ -192,7 +192,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tool update-timeout --tool-fqn <fqn> --timeout <duration> [--owner-cap <object_id>]`**
 
-Updates the timeout duration for the specified Tool. This command allows operators to configure how long a tool can run before timing out.
+Updates the timeout duration for the specified Tool. This timeout tells the Nexus execution engine how long to wait for a response from the Tool before considering the invocation failed.
 
 - `--tool-fqn` specifies the fully qualified name of the tool.
 - `--timeout` sets the new timeout duration.
