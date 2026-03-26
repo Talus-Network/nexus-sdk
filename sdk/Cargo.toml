@@ -43,7 +43,7 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 types = ["sui_types", "sui_idents", "enum_dispatch", "walrus", "futures", "jsonschema", "zeroize"]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "tokio-util", "prometheus", "lazy_static"]
+events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -243,6 +243,10 @@ workspace = true
 optional = true
 
 [dependencies.tonic]
+workspace = true
+optional = true
+
+[dependencies.tracing]
 workspace = true
 optional = true
 

@@ -5563,6 +5563,7 @@ dependencies = [
  "tokio-util",
  "toml 0.8.23",
  "tonic",
+ "tracing",
  "x25519-dalek",
  "xeddsa",
  "zeroize",

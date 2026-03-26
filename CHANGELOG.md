@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - support and tests for `Static` edge kinds
 - support for configurable tool timeouts
 
+#### Fixed
+
+- issue with event poller where rpc failures would cause it to exceed the max batch size and fail to make progress
+- another poller issue where the checkpoint stream would start from the first checkpoint, restreaming all events
+
 ## [`0.7.0`] - 2026-03-13
 
 ### `nexus-cli`
