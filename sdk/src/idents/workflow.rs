@@ -339,6 +339,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
+    /// Stamp a worksheet as the leader before tool execution.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_worksheet`
+    pub const LEADER_STAMP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
+    };
+    /// Stamp a worksheet as the leader during a dry run.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_worksheet_for_dry_run`
+    pub const LEADER_STAMP_WORKSHEET_FOR_DRY_RUN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_worksheet_for_dry_run"),
+    };
     /// Create a new DAG object.
     ///
     /// `nexus_workflow::dag::new`
@@ -380,6 +394,13 @@ impl Dag {
     pub const OUTPUT_VARIANT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("output_variant_from_string"),
+    };
+    /// Stamp the worksheet with the execution ID before onchain tool execution.
+    ///
+    /// `nexus_workflow::dag::pre_stamp_execution`
+    pub const PRE_STAMP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("pre_stamp_execution"),
     };
     /// Function to call to continue to the next vertex in the given walk.
     ///

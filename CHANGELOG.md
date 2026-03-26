@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - support and tests for `Static` edge kinds
 - support for configurable tool timeouts
+- leader stamp identifiers
 
 #### Fixed
 
