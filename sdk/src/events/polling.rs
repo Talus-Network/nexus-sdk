@@ -267,6 +267,8 @@ impl EventPoller {
                     }
                     is_reconnection = true;
 
+                    tracing::info!("[EventPoller] Starting checkpoint stream from checkpoint {from_checkpoint:?} (is_reconnection={is_reconnection})");
+
                     // Create a fresh client on each reconnection attempt so
                     // DNS is re-resolved and stale connections are discarded.
                     let mut client = match sui::grpc::Client::new(&this.rpc_url) {
@@ -335,6 +337,11 @@ impl EventPoller {
                                 continue;
                             }
                         };
+
+                        tracing::info!(
+                            "[EventPoller] Starting catch-up from checkpoint {start_from} to checkpoint {}",
+                            checkpoint.sequence_number()
+                        );
 
                         // Fetch all the checkpoints between the requested
                         // starting checkpoint and the current one, in parallel
@@ -469,6 +476,10 @@ impl EventPoller {
                     // Catch-up complete, now live.
                     CATCHUP_REMAINING.set(0.0);
                     let mut last_checkpoint_at = Instant::now();
+
+                    tracing::info!(
+                        "[EventPoller] Entering live streaming mode from checkpoint {from_checkpoint:?}"
+                    );
 
                     // Finally we can just poll the stream.
                     loop {
@@ -622,7 +633,7 @@ impl EventPoller {
                 Err(e) => {
                     if send_page
                         .send(Err(PollerError::Rpc(anyhow::anyhow!(
-                            "Failed to fetch transactions for digests: (batch_size={}): {e}",
+                            "Failed to fetch transactions for digests: (batch_size={}) (consecutive_failures={consecutive_failures}): {e}",
                             digests.len()
                         ))))
                         .await
@@ -656,6 +667,15 @@ impl EventPoller {
                     continue;
                 }
             };
+
+            tracing::info!(
+                "[EventPoller] Fetched batch of {} transactions at checkpoint {:?}",
+                response.transactions.len(),
+                response
+                    .transactions
+                    .first()
+                    .and_then(|t| t.transaction().checkpoint_opt())
+            );
 
             for transaction in response.transactions {
                 let transaction = transaction.transaction();
