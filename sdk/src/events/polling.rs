@@ -12,6 +12,7 @@ use {
     },
     futures::TryStreamExt,
     std::{
+        collections::BTreeMap,
         sync::Arc,
         time::{Duration, Instant},
     },
@@ -20,6 +21,124 @@ use {
     tokio::sync::mpsc,
     tokio_util::sync::CancellationToken,
 };
+
+// -- Prometheus metrics for the event poller pipeline --
+
+lazy_static::lazy_static! {
+    // -- Checkpoint fetcher metrics --
+
+    /// Histogram: how long each get_checkpoint RPC call takes [s].
+    static ref CHECKPOINT_FETCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_fetch_duration",
+        "Duration of individual get_checkpoint gRPC calls [s]"
+    ).unwrap();
+
+    /// Histogram: time between consecutive checkpoints from the subscription stream [s].
+    static ref CHECKPOINT_STREAM_INTERVAL: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_stream_interval",
+        "Interval between consecutive checkpoints from subscription [s]",
+        vec![0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: number of transaction digests in each checkpoint.
+    static ref CHECKPOINT_DIGESTS_COUNT: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_digests_count",
+        "Number of transaction digests per checkpoint",
+        vec![0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0]
+    ).unwrap();
+
+    /// Counter: number of times the checkpoint stream reconnected.
+    static ref STREAM_RECONNECTIONS: prometheus::Counter = prometheus::register_counter!(
+        "poller_stream_reconnections",
+        "Number of checkpoint stream reconnections"
+    ).unwrap();
+
+    /// Gauge: checkpoints remaining during catch-up.
+    static ref CATCHUP_REMAINING: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_catchup_remaining",
+        "Checkpoints remaining during catch-up (0 when live)"
+    ).unwrap();
+
+    // -- Transaction batch fetcher metrics --
+
+    /// Histogram: how long each batch_get_transactions RPC call takes [s].
+    static ref TX_BATCH_FETCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_tx_batch_fetch_duration",
+        "Duration of batch_get_transactions gRPC calls [s]"
+    ).unwrap();
+
+    /// Histogram: number of digests in each flushed batch.
+    static ref TX_BATCH_SIZE: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_tx_batch_size",
+        "Number of transaction digests per flushed batch",
+        vec![1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 50.0]
+    ).unwrap();
+
+    /// Counter: reason each batch was flushed (label: reason=full|timeout).
+    static ref TX_BATCH_FLUSH_REASON: prometheus::CounterVec = prometheus::register_counter_vec!(
+        "poller_tx_batch_flush_reason",
+        "Reason each transaction batch was flushed",
+        &["reason"]
+    ).unwrap();
+
+    // -- Channel backpressure metrics --
+
+    /// Gauge: number of digests waiting in the channel between checkpoint
+    /// fetcher and transaction fetcher.
+    static ref DIGEST_CHANNEL_LEN: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_digest_channel_len",
+        "Number of digests queued in the checkpoint-to-tx channel"
+    ).unwrap();
+
+    /// Gauge: number of event pages waiting in the output channel for the
+    /// leader consumer.
+    static ref EVENT_PAGE_CHANNEL_LEN: prometheus::Gauge = prometheus::register_gauge!(
+        "poller_event_page_channel_len",
+        "Number of event pages queued in the output channel"
+    ).unwrap();
+
+    /// Histogram: how long send_page.send() blocks when the consumer is slow [s].
+    static ref SEND_PAGE_BACKPRESSURE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_send_page_backpressure_duration",
+        "Duration blocked on send_page.send() due to consumer backpressure [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: how long send_digest.send() blocks when the tx fetcher is slow [s].
+    static ref SEND_DIGEST_BACKPRESSURE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_send_digest_backpressure_duration",
+        "Duration blocked on send_digest.send() due to tx fetcher backpressure [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
+    ).unwrap();
+
+    /// Histogram: how long event parsing takes per transaction [s].
+    static ref EVENT_PARSE_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_event_parse_duration",
+        "Duration of NexusEvent parsing per transaction [s]",
+        vec![0.00001, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05]
+    ).unwrap();
+
+    /// Histogram: number of nexus events per EventPage at SDK level.
+    static ref EVENTS_PER_PAGE: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_events_per_page",
+        "Number of nexus events per EventPage",
+        vec![0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0]
+    ).unwrap();
+
+    /// Histogram: end-to-end duration of each catch-up parallel batch [s].
+    static ref CATCHUP_BATCH_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_catchup_batch_duration",
+        "Duration of each parallel catch-up batch (fetch + send) [s]",
+        vec![0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
+    ).unwrap();
+
+    /// Histogram: end-to-end checkpoint processing time (receive checkpoint to all pages sent) [s].
+    static ref CHECKPOINT_PROCESS_DURATION: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_checkpoint_process_duration",
+        "End-to-end time from receiving a live checkpoint to finishing page sends [s]",
+        vec![0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
+    ).unwrap();
+}
 
 #[derive(Debug, Error)]
 pub enum PollerError {
@@ -47,6 +166,8 @@ pub struct EventPoller {
     /// timeout is reached, the batch will be fetched even if the batch size is
     /// not reached, provided there is at least one transaction to fetch.
     transactions_batch_max_wait: Duration,
+    /// How many checkpoints to fetch in parallel during catch-up.
+    catchup_parallel_fetches: usize,
     cancellation_token: CancellationToken,
 }
 
@@ -58,6 +179,7 @@ impl EventPoller {
             channel_capacity: 100,
             transactions_max_batch_size: 30,
             transactions_batch_max_wait: Duration::from_millis(200),
+            catchup_parallel_fetches: 10,
             cancellation_token: CancellationToken::new(),
         }
     }
@@ -77,6 +199,11 @@ impl EventPoller {
         self
     }
 
+    pub fn with_catchup_parallel_fetches(mut self, n: usize) -> Self {
+        self.catchup_parallel_fetches = n.max(1);
+        self
+    }
+
     pub fn with_cancellation_token(mut self, cancellation_token: CancellationToken) -> Self {
         self.cancellation_token = cancellation_token;
         self
@@ -90,7 +217,9 @@ impl EventPoller {
     ) -> Result<mpsc::Receiver<Result<EventPage, PollerError>>, PollerError> {
         let this = Arc::new(self);
 
-        let mut client = sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
+        // Validate the URL eagerly — actual clients are created per
+        // reconnection attempt so DNS is always re-resolved.
+        sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", this.rpc_url))
         })?;
 
@@ -117,7 +246,36 @@ impl EventPoller {
             let send_digest = send_digest.clone();
 
             async move {
+                let mut is_reconnection = false;
+
                 'master: loop {
+                    if is_reconnection {
+                        STREAM_RECONNECTIONS.inc();
+
+                        // Back off before reconnecting to avoid tight-looping
+                        // when the RPC is down.
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                    is_reconnection = true;
+
+                    // Create a fresh client on each reconnection attempt so
+                    // DNS is re-resolved and stale connections are discarded.
+                    let mut client = match sui::grpc::Client::new(&this.rpc_url) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            if send_page
+                                .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                    "Failed to create gRPC client: {e}"
+                                ))))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        }
+                    };
+
                     // First, start streaming checkpoints. This way we know how many
                     // checkpoints we need to fetch in the past.
                     let request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
@@ -169,55 +327,128 @@ impl EventPoller {
                             }
                         };
 
-                        // Fetch all the checkpoints that are between the requested
-                        // starting checkpoint and the current one.
-                        for checkpoint in start_from..checkpoint.sequence_number() {
-                            let request = sui::grpc::GetCheckpointRequest::default()
-                                .with_sequence_number(checkpoint)
-                                .with_read_mask(sui::grpc::FieldMask::from_paths(&[
-                                    "transactions.digest",
-                                ]));
+                        // Fetch all the checkpoints between the requested
+                        // starting checkpoint and the current one, in parallel
+                        // batches to maximize throughput during catch-up.
+                        let catchup_end = checkpoint.sequence_number();
+                        let parallel = this.catchup_parallel_fetches;
+                        let mut cursor = start_from;
 
-                            let mut ledger_client = client.ledger_client();
-
-                            // Update the starting pointer. This way we can
-                            // restart this whole process and continue where
-                            // we left off.
-                            from_checkpoint = Some(checkpoint);
-
-                            tokio::select! {
-                                _ = this.cancellation_token.cancelled() => {
-                                    break 'master;
+                        // Pre-create a pool of clients for parallel fetching.
+                        // Wrapped in Arc<Mutex> so they can be moved into
+                        // spawned tasks and reused across batches.
+                        let mut client_pool: Vec<Arc<tokio::sync::Mutex<sui::grpc::Client>>> =
+                            Vec::with_capacity(parallel);
+                        for _ in 0..parallel {
+                            match sui::grpc::Client::new(&this.rpc_url) {
+                                Ok(c) => client_pool.push(Arc::new(tokio::sync::Mutex::new(c))),
+                                Err(e) => {
+                                    if send_page
+                                        .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                        "Failed to create gRPC client for parallel catch-up: {e}"
+                                    ))))
+                                        .await
+                                        .is_err()
+                                    {
+                                        break 'master;
+                                    }
+                                    continue 'master;
                                 }
+                            }
+                        }
 
-                                response = ledger_client.get_checkpoint(request) => {
-                                    let response = match response {
-                                        Ok(response) => response.into_inner(),
-                                        Err(e) => {
-                                            if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch checkpoint {checkpoint} while trying to catch up: {e}")))).await.is_err() {
-                                                break 'master;
-                                            }
+                        while cursor < catchup_end {
+                            if this.cancellation_token.is_cancelled() {
+                                break 'master;
+                            }
 
-                                            continue 'master;
+                            let catchup_batch_start = Instant::now();
+                            CATCHUP_REMAINING.set((catchup_end - cursor) as f64);
+                            let batch_end = (cursor + parallel as u64).min(catchup_end);
+                            let mut tasks = tokio::task::JoinSet::new();
+
+                            for (i, seq) in (cursor..batch_end).enumerate() {
+                                let client = Arc::clone(&client_pool[i]);
+                                tasks.spawn(async move {
+                                    let start = Instant::now();
+                                    let mut c = client.lock().await;
+                                    let req = sui::grpc::GetCheckpointRequest::default()
+                                        .with_sequence_number(seq)
+                                        .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                                            "transactions.digest",
+                                        ]));
+                                    let resp = c
+                                        .ledger_client()
+                                        .get_checkpoint(req)
+                                        .await
+                                        .map_err(|e| (seq, format!("{e}")))?;
+                                    CHECKPOINT_FETCH_DURATION
+                                        .observe(start.elapsed().as_secs_f64());
+                                    let digests: Vec<String> = resp
+                                        .into_inner()
+                                        .checkpoint()
+                                        .transactions()
+                                        .iter()
+                                        .map(|tx| tx.digest().to_string())
+                                        .collect();
+                                    Ok::<(u64, Vec<String>), (u64, String)>((seq, digests))
+                                });
+                            }
+
+                            // Collect results and sort by checkpoint sequence
+                            // number to preserve ordering.
+                            let mut results: BTreeMap<u64, Vec<String>> = BTreeMap::new();
+                            while let Some(join_result) = tasks.join_next().await {
+                                match join_result {
+                                    Ok(Ok((seq, digests))) => {
+                                        results.insert(seq, digests);
+                                    }
+                                    Ok(Err((seq, err))) => {
+                                        if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                            "Failed to fetch checkpoint {seq} during catch-up: {err}"
+                                        )))).await.is_err() {
+                                            break 'master;
                                         }
-                                    };
-
-                                    for tx in response.checkpoint().transactions() {
-                                        if send_digest
-                                            .send((checkpoint, tx.digest().to_string()))
+                                        continue 'master;
+                                    }
+                                    Err(e) => {
+                                        if send_page
+                                            .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                                                "Checkpoint fetch task panicked: {e}"
+                                            ))))
                                             .await
                                             .is_err()
                                         {
                                             break 'master;
                                         }
+                                        continue 'master;
                                     }
                                 }
-                            };
+                            }
+
+                            // Send digests in checkpoint order.
+                            for (seq, digests) in results {
+                                CHECKPOINT_DIGESTS_COUNT.observe(digests.len() as f64);
+                                from_checkpoint = Some(seq);
+                                for digest in digests {
+                                    let send_start = Instant::now();
+                                    if send_digest.send((seq, digest)).await.is_err() {
+                                        break 'master;
+                                    }
+                                    SEND_DIGEST_BACKPRESSURE_DURATION
+                                        .observe(send_start.elapsed().as_secs_f64());
+                                }
+                            }
+
+                            CATCHUP_BATCH_DURATION
+                                .observe(catchup_batch_start.elapsed().as_secs_f64());
+                            cursor = batch_end;
                         }
 
                         from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                         for tx in checkpoint.transactions() {
+                            let send_start = Instant::now();
                             if send_digest
                                 .send((checkpoint.sequence_number(), tx.digest().to_string()))
                                 .await
@@ -225,8 +456,14 @@ impl EventPoller {
                             {
                                 break 'master;
                             }
+                            SEND_DIGEST_BACKPRESSURE_DURATION
+                                .observe(send_start.elapsed().as_secs_f64());
                         }
                     }
+
+                    // Catch-up complete, now live.
+                    CATCHUP_REMAINING.set(0.0);
+                    let mut last_checkpoint_at = Instant::now();
 
                     // Finally we can just poll the stream.
                     loop {
@@ -254,11 +491,17 @@ impl EventPoller {
                                     }
                                 };
 
+                                CHECKPOINT_STREAM_INTERVAL.observe(last_checkpoint_at.elapsed().as_secs_f64());
+                                last_checkpoint_at = Instant::now();
+                                let checkpoint_process_start = Instant::now();
+
                                 let checkpoint = response.checkpoint();
 
+                                CHECKPOINT_DIGESTS_COUNT.observe(checkpoint.transactions().len() as f64);
                                 from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                                 for tx in checkpoint.transactions() {
+                                    let send_start = Instant::now();
                                     if send_digest
                                         .send((checkpoint.sequence_number(), tx.digest().to_string()))
                                         .await
@@ -266,7 +509,10 @@ impl EventPoller {
                                     {
                                         break 'master;
                                     }
+                                    SEND_DIGEST_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
                                 }
+
+                                CHECKPOINT_PROCESS_DURATION.observe(checkpoint_process_start.elapsed().as_secs_f64());
                             }
                         }
                     }
@@ -290,17 +536,30 @@ impl EventPoller {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
         })?;
 
-        let mut batch = Vec::with_capacity(self.transactions_max_batch_size);
+        let mut batch: Vec<(u64, String)> = Vec::with_capacity(self.transactions_max_batch_size);
         let mut last_fetched_at = Instant::now();
 
         loop {
+            // Compute the remaining time before the batch should be flushed.
+            let flush_deadline = self
+                .transactions_batch_max_wait
+                .saturating_sub(last_fetched_at.elapsed());
+
+            let flush_reason;
+
             tokio::select! {
                 _ = self.cancellation_token.cancelled() => {
                     break;
                 }
 
+                // Flush partial batch when the timeout fires, even if no
+                // new digest has arrived.
+                _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {
+                    flush_reason = "timeout";
+                }
+
                 Some((checkpoint, digest)) = next_digest.recv() => {
-                    batch.push(digest);
+                    batch.push((checkpoint, digest));
 
                     // Only fetch if the batch size is reached or if the max
                     // wait was exceeded.
@@ -310,61 +569,120 @@ impl EventPoller {
                         continue;
                     }
 
-                    // Drain the batch and fetch the transactions and their
-                    // events.
-                    let digests = batch.drain(..).collect::<Vec<_>>();
-                    let request = sui::grpc::BatchGetTransactionsRequest::default()
-                        .with_digests(digests.clone())
-                        .with_read_mask(sui::grpc::FieldMask::from_paths(&["events.events", "digest"]));
-
-                    let response = match client
-                        .ledger_client()
-                        .batch_get_transactions(request)
-                        .await {
-                            Ok(response) => {
-                                last_fetched_at = Instant::now();
-
-                                response.into_inner()
-                            },
-                            Err(_) => {
-                                if send_page.send(Err(PollerError::Rpc(anyhow::anyhow!("Failed to fetch transactions for digests: {:?}", digests)))).await.is_err() {
-                                    break;
-                                }
-
-                                // On fetch error, we return the digests back to
-                                // the batch.
-                                batch.extend(digests);
-
-                                continue;
-                            }
-                        };
-
-                    for transaction in response.transactions {
-                        let transaction = transaction.transaction();
-
-                        let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
-                        else {
-                            continue;
-                        };
-
-                        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
-                            NexusEvent::from_sui_grpc_event(
-                                index as u64,
-                                transaction.digest().parse().ok()?,
-                                event,
-                                &self.nexus_objects,
-                            )
-                            .ok()
-                        });
-
-                        if send_page.send(Ok(EventPage {
-                            events: nexus_events.collect(),
-                            checkpoint,
-                        })).await.is_err() {
-                            break;
-                        }
-                    }
+                    flush_reason = if batch.len() >= self.transactions_max_batch_size {
+                        "full"
+                    } else {
+                        "timeout"
+                    };
                 }
+            }
+
+            if batch.is_empty() {
+                continue;
+            }
+
+            // Record batch metrics.
+            TX_BATCH_FLUSH_REASON
+                .with_label_values(&[flush_reason])
+                .inc();
+            TX_BATCH_SIZE.observe(batch.len() as f64);
+            DIGEST_CHANNEL_LEN.set(next_digest.len() as f64);
+
+            // Drain the batch, preserving the checkpoint each digest
+            // belongs to so that EventPages carry the correct value.
+            let entries = batch.drain(..).collect::<Vec<_>>();
+            let digest_to_checkpoint: std::collections::HashMap<String, u64> =
+                entries.iter().cloned().map(|(cp, d)| (d, cp)).collect();
+            let digests: Vec<String> = entries.into_iter().map(|(_, d)| d).collect();
+
+            let request = sui::grpc::BatchGetTransactionsRequest::default()
+                .with_digests(digests.clone())
+                .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                    "events.events",
+                    "digest",
+                ]));
+
+            let fetch_start = Instant::now();
+            let response = match client.ledger_client().batch_get_transactions(request).await {
+                Ok(response) => {
+                    TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
+                    last_fetched_at = Instant::now();
+
+                    response.into_inner()
+                }
+                Err(e) => {
+                    if send_page
+                        .send(Err(PollerError::Rpc(anyhow::anyhow!(
+                            "Failed to fetch transactions for digests: {:?}: {e}",
+                            digests
+                        ))))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+
+                    // On fetch error, we return the digests back to
+                    // the batch and recreate the client so DNS is
+                    // re-resolved and stale connections are discarded.
+                    batch.extend(digests.into_iter().map(|d| {
+                        let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
+                        (cp, d)
+                    }));
+
+                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
+                        client = new_client;
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+
+                    continue;
+                }
+            };
+
+            for transaction in response.transactions {
+                let transaction = transaction.transaction();
+
+                let tx_digest = transaction.digest().to_string();
+                let checkpoint = digest_to_checkpoint.get(&tx_digest).copied().unwrap_or(0);
+
+                let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
+                else {
+                    continue;
+                };
+
+                let parse_start = Instant::now();
+                let nexus_events: Vec<_> = events
+                    .0
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, event)| {
+                        NexusEvent::from_sui_grpc_event(
+                            index as u64,
+                            transaction.digest().parse().ok()?,
+                            event,
+                            &self.nexus_objects,
+                        )
+                        .ok()
+                    })
+                    .collect();
+                EVENT_PARSE_DURATION.observe(parse_start.elapsed().as_secs_f64());
+                EVENTS_PER_PAGE.observe(nexus_events.len() as f64);
+
+                let send_start = Instant::now();
+                if send_page
+                    .send(Ok(EventPage {
+                        events: nexus_events,
+                        checkpoint,
+                    }))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+                SEND_PAGE_BACKPRESSURE_DURATION.observe(send_start.elapsed().as_secs_f64());
+                EVENT_PAGE_CHANNEL_LEN
+                    .set((send_page.max_capacity() - send_page.capacity()) as f64);
             }
         }
 

@@ -99,7 +99,7 @@ impl WorkflowActions {
                     return None;
                 };
 
-                if *object_type.address() == nexus_objects.workflow_pkg_id
+                if nexus_objects.is_workflow_package(*object_type.address())
                     && *object_type.module() == workflow::Dag::DAG.module
                     && *object_type.name() == workflow::Dag::DAG.name
                 {
@@ -215,7 +215,7 @@ impl WorkflowActions {
                     return None;
                 };
 
-                if *object_type.address() == nexus_objects.workflow_pkg_id
+                if nexus_objects.is_workflow_package(*object_type.address())
                     && *object_type.module() == workflow::Dag::DAG_EXECUTION.module
                     && *object_type.name() == workflow::Dag::DAG_EXECUTION.name
                 {
@@ -515,7 +515,6 @@ mod tests {
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
             state_service_mock: Some(state_service_mock),
-            ..Default::default()
         });
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;

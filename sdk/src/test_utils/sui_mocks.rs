@@ -39,6 +39,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
+        workflow_original_pkg_id: None,
     }
 }
 
@@ -287,6 +288,7 @@ pub mod grpc {
         format!("http://{}", addr)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn mock_execute_transaction_and_wait_for_checkpoint(
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
