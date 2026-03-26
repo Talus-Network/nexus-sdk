@@ -253,7 +253,7 @@ impl WorkflowActions {
         let (tx, rx) = unbounded_channel::<NexusEvent>();
 
         // Create some initial timings and restrictions.
-        let timeout = timeout.unwrap_or(Duration::from_secs(300));
+        let timeout = timeout.unwrap_or(Duration::from_secs(3600));
         let poller = self.client.event_poller().clone();
         let mut next_page = poller
             .start_polling(Some(execution_checkpoint))
