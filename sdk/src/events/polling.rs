@@ -361,8 +361,8 @@ impl EventPoller {
                                 Err(e) => {
                                     if send_page
                                         .send(Err(PollerError::Rpc(anyhow::anyhow!(
-                                        "Failed to create gRPC client for parallel catch-up: {e}"
-                                    ))))
+                                            "Failed to create gRPC client for parallel catch-up: {e}"
+                                        ))))
                                         .await
                                         .is_err()
                                     {
@@ -461,7 +461,13 @@ impl EventPoller {
                             cursor = batch_end;
                         }
 
-                        from_checkpoint = Some(checkpoint.sequence_number() + 1);
+                        // Only update if the stream is ahead. Avoids re-fetching
+                        // everything if the stream starts from CP 0.
+                        let next_checkpoint = checkpoint.sequence_number() + 1;
+
+                        if from_checkpoint.map_or(true, |current| current < next_checkpoint) {
+                            from_checkpoint = Some(next_checkpoint);
+                        }
 
                         for tx in checkpoint.transactions() {
                             let send_start = Instant::now();
@@ -512,6 +518,13 @@ impl EventPoller {
                                 let checkpoint_process_start = Instant::now();
 
                                 let checkpoint = response.checkpoint();
+
+                                // Ignore stale checkpoints when reconnecting.
+                                if from_checkpoint
+                                    .is_some_and(|from| checkpoint.sequence_number() < from)
+                                {
+                                    continue;
+                                }
 
                                 CHECKPOINT_DIGESTS_COUNT.observe(checkpoint.transactions().len() as f64);
                                 from_checkpoint = Some(checkpoint.sequence_number() + 1);
@@ -668,8 +681,8 @@ impl EventPoller {
                 }
             };
 
-            tracing::info!(
-                "[EventPoller] Fetched batch of {} transactions at checkpoint {:?}",
+            tracing::debug!(
+                "[EventPoller] Fetched batch of {} transactions at checkpoint {:?} (flush_reason={flush_reason})",
                 response.transactions.len(),
                 response
                     .transactions
