@@ -574,6 +574,7 @@ pub mod grpc {
                 let mut result = sui::grpc::GetTransactionResult::default();
                 let mut transaction = sui::grpc::ExecutedTransaction::default();
                 transaction.set_digest(sui::types::Digest::ZERO);
+                transaction.set_checkpoint(1);
                 let mut events = vec![];
 
                 #[derive(Serialize)]
