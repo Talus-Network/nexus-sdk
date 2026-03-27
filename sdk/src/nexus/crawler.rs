@@ -265,7 +265,7 @@ impl Crawler {
         // Fetch the dynamic field objects and parse only their `value` field.
         // This avoids deserializing the `name` field from JSON, which may encode
         // `u64` keys as strings.
-        let field_objects = self.get_objects::<DynamicValue<V>>(&field_ids).await?;
+        let field_objects = self.get_objects::<DynamicValue>(&field_ids).await?;
 
         let mut out = HashMap::with_capacity(field_objects.len());
         for obj in field_objects {
@@ -276,7 +276,13 @@ impl Crawler {
                 )
             })?;
 
-            out.insert(name, obj.data.value.into_inner());
+            // Parse the inner JSON value into the target type V.
+            // Sui encodes u64 as strings in JSON, so if direct deserialization
+            // fails on a string value, try parsing the string as a number first.
+            let raw_value = obj.data.into_inner();
+            let parsed: V = parse_sui_json_value(raw_value)?;
+
+            out.insert(name, parsed);
         }
 
         Ok(out)
@@ -404,7 +410,7 @@ impl Crawler {
             field_ids.push(field_id);
         }
 
-        let field_objects = self.get_objects::<DynamicValue<T>>(&field_ids).await?;
+        let field_objects = self.get_objects::<DynamicValue>(&field_ids).await?;
 
         let mut values_by_index: Vec<Option<T>> = std::iter::repeat_with(|| None)
             .take(expected_size)
@@ -424,7 +430,10 @@ impl Crawler {
                 bail!("Duplicate TableVec element at index {index}");
             }
 
-            values_by_index[index] = Some(obj.data.value.into_inner());
+            let raw_value = obj.data.into_inner();
+            let parsed: T = parse_sui_json_value(raw_value)?;
+
+            values_by_index[index] = Some(parsed);
         }
 
         values_by_index
@@ -1009,28 +1018,65 @@ struct Pair<K, V> {
 }
 
 /// Internal wrapper around dynamic map fields.
+///
+/// On-chain dynamic fields may store the value in different shapes depending
+/// on the Sui collection type:
+///   - Plain value `V` (e.g. from a `Table`)
+///   - `{ value: V }` wrapper (e.g. from an `ObjectBag`)
+///   - `{ next, prev, value: V }` linked-list node (e.g. from a `LinkedTable`)
 #[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-enum ValueOrWrapper<V> {
-    Value(V),
-    Wrapper { value: V },
+struct DynamicValue {
+    value: serde_json::Value,
 }
 
-impl<V> ValueOrWrapper<V> {
-    fn into_inner(self) -> V {
-        match self {
-            ValueOrWrapper::Value(v) => v,
-            ValueOrWrapper::Wrapper { value } => value,
+/// LinkedTable node shape: `{ next, prev, value }`.
+#[derive(Clone, Debug, Deserialize)]
+struct LinkedTableNode {
+    value: serde_json::Value,
+}
+
+impl DynamicValue {
+    /// Extract the inner value, unwrapping LinkedTable nodes if needed.
+    ///
+    /// If `value` is a JSON object with `next`, `prev`, and `value` fields
+    /// (i.e. a `LinkedTable` node), returns the nested `value`. Otherwise
+    /// returns the value as-is.
+    fn into_inner(self) -> serde_json::Value {
+        match self.value {
+            serde_json::Value::Object(ref map)
+                if map.contains_key("next")
+                    && map.contains_key("prev")
+                    && map.contains_key("value") =>
+            {
+                serde_json::from_value::<LinkedTableNode>(self.value)
+                    .map(|node| node.value)
+                    .unwrap_or_else(|_| unreachable!())
+            }
+            other => other,
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DynamicValue<V> {
-    value: ValueOrWrapper<V>,
-}
-
 // == Helper functions ==
+
+/// Parse a [`serde_json::Value`] into `T`, handling Sui's string-encoded `u64`.
+///
+/// Sui JSON encodes `u64` as strings to avoid JavaScript precision loss.
+/// If direct deserialization fails on a string value, this tries parsing
+/// the string as a number first.
+fn parse_sui_json_value<T: serde::de::DeserializeOwned>(
+    raw_value: serde_json::Value,
+) -> anyhow::Result<T> {
+    serde_json::from_value(raw_value.clone()).or_else(|e| {
+        if let serde_json::Value::String(s) = &raw_value {
+            if let Ok(n) = s.parse::<u64>() {
+                return serde_json::from_value(serde_json::Value::Number(n.into()))
+                    .map_err(|e| anyhow!(e));
+            }
+        }
+        Err(anyhow!(e))
+    })
+}
 
 /// Helper function to transform [`prost_types::Value`] which is returned by the
 /// GRPC into a [`serde_json::Value`]. This can then be easily deserialized into
