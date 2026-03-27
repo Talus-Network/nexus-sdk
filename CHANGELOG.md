@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.8.0`] - Unreleased
+## [`0.8.0`] - 2026-03-27
 
 ### `nexus-cli`
 
@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - issue with event poller where rpc failures would cause it to exceed the max batch size and fail to make progress
 - another poller issue where the checkpoint stream would start from the first checkpoint, restreaming all events
 
-## [`0.7.0`] - 2026-03-13
+## [`0.8.0`] - 2026-03-13
 
 ### `nexus-cli`
 
