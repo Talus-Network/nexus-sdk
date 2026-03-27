@@ -14,6 +14,7 @@ use {
     std::{
         collections::HashMap,
         io::{self, Write},
+        time::Duration,
     },
 };
 
@@ -26,6 +27,7 @@ pub(crate) async fn register_onchain_tool(
     module: sui::types::Identifier,
     fqn: ToolFqn,
     description: String,
+    timeout: Duration,
     witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
@@ -68,10 +70,11 @@ pub(crate) async fn register_onchain_tool(
         nexus_objects,
         package,
         module.as_str(),
-        &input_schema,
-        &output_schema,
         &fqn,
         &description,
+        &input_schema,
+        &output_schema,
+        timeout,
         witness_id,
         &collateral_coin,
         address,

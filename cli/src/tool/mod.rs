@@ -6,10 +6,11 @@ mod tool_register_offchain;
 mod tool_register_onchain;
 mod tool_set_invocation_cost;
 mod tool_unregister;
+mod tool_update_timeout;
 mod tool_validate;
 
 use {
-    crate::prelude::*,
+    crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_list::*,
@@ -193,6 +194,16 @@ pub(crate) enum RegisterCommand {
         description: String,
 
         #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The timeout duration for the tool execution. Defaults to 5 seconds. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+            default_value = "5s"
+        )]
+        timeout: std::time::Duration,
+
+        #[arg(
             long = "witness-id",
             short = 'w',
             help = "The witness object ID that proves the tool's identity.",
@@ -363,6 +374,34 @@ pub(crate) enum ToolCommand {
         #[command(subcommand)]
         cmd: ToolAuthCommand,
     },
+
+    #[command(about = "Update a tool's timeout duration.")]
+    UpdateTimeout {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to update the timeout for.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+        #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The new timeout duration for the tool execution. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+        )]
+        timeout: std::time::Duration,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
@@ -408,6 +447,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 module,
                 tool_fqn,
                 description,
+                timeout,
                 witness_id,
                 collateral_coin,
                 no_save,
@@ -418,6 +458,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     module,
                     tool_fqn,
                     description,
+                    timeout,
                     witness_id,
                     collateral_coin,
                     no_save,
@@ -474,5 +515,22 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool auth` ==
         ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
+
+        // == `$ nexus tool update-timeout` ==
+        ToolCommand::UpdateTimeout {
+            tool_fqn,
+            owner_cap,
+            timeout,
+            gas,
+        } => {
+            update_tool_timeout(
+                tool_fqn,
+                owner_cap,
+                timeout,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }

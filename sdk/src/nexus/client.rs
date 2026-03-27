@@ -221,6 +221,13 @@ impl NexusClient {
         }
     }
 
+    /// Return a [`ToolActions`] instance for tool-related operations.
+    pub fn tool(&self) -> crate::nexus::tool::ToolActions {
+        crate::nexus::tool::ToolActions {
+            client: self.clone(),
+        }
+    }
+
     /// Return a [`Crawler`] instance for object crawling operations.
     pub fn crawler(&self) -> &Crawler {
         &self.crawler

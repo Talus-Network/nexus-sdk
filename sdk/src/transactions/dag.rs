@@ -354,6 +354,7 @@ pub fn prepare_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     gas_service: sui::types::Argument,
+    tool_registry: sui::types::Argument,
     dag: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
@@ -476,6 +477,7 @@ pub fn prepare_execution(
             default_tap,
             dag,
             gas_service,
+            tool_registry,
             network,
             entry_group,
             with_vertex_inputs,
@@ -535,6 +537,13 @@ pub fn execute(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -546,6 +555,7 @@ pub fn execute(
         tx,
         objects,
         gas_service,
+        tool_registry,
         dag,
         priority_fee_per_gas_unit,
         entry_group,

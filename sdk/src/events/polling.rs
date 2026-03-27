@@ -166,6 +166,9 @@ pub struct EventPoller {
     /// timeout is reached, the batch will be fetched even if the batch size is
     /// not reached, provided there is at least one transaction to fetch.
     transactions_batch_max_wait: Duration,
+    /// How many consecutive failures to tolerato when fetching transaction
+    /// batches.
+    transactions_batch_max_retries: usize,
     /// How many checkpoints to fetch in parallel during catch-up.
     catchup_parallel_fetches: usize,
     cancellation_token: CancellationToken,
@@ -179,6 +182,7 @@ impl EventPoller {
             channel_capacity: 100,
             transactions_max_batch_size: 30,
             transactions_batch_max_wait: Duration::from_millis(200),
+            transactions_batch_max_retries: 3,
             catchup_parallel_fetches: 10,
             cancellation_token: CancellationToken::new(),
         }
@@ -196,6 +200,11 @@ impl EventPoller {
 
     pub fn with_transactions_batch_max_wait(mut self, max_wait: Duration) -> Self {
         self.transactions_batch_max_wait = max_wait;
+        self
+    }
+
+    pub fn with_transactions_batch_max_retries(mut self, max_retries: usize) -> Self {
+        self.transactions_batch_max_retries = max_retries;
         self
     }
 
@@ -257,6 +266,8 @@ impl EventPoller {
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                     is_reconnection = true;
+
+                    tracing::info!("[EventPoller] Starting checkpoint stream from checkpoint {from_checkpoint:?} (is_reconnection={is_reconnection})");
 
                     // Create a fresh client on each reconnection attempt so
                     // DNS is re-resolved and stale connections are discarded.
@@ -327,6 +338,11 @@ impl EventPoller {
                             }
                         };
 
+                        tracing::info!(
+                            "[EventPoller] Starting catch-up from checkpoint {start_from} to checkpoint {}",
+                            checkpoint.sequence_number()
+                        );
+
                         // Fetch all the checkpoints between the requested
                         // starting checkpoint and the current one, in parallel
                         // batches to maximize throughput during catch-up.
@@ -345,8 +361,8 @@ impl EventPoller {
                                 Err(e) => {
                                     if send_page
                                         .send(Err(PollerError::Rpc(anyhow::anyhow!(
-                                        "Failed to create gRPC client for parallel catch-up: {e}"
-                                    ))))
+                                            "Failed to create gRPC client for parallel catch-up: {e}"
+                                        ))))
                                         .await
                                         .is_err()
                                     {
@@ -432,7 +448,7 @@ impl EventPoller {
                                 from_checkpoint = Some(seq);
                                 for digest in digests {
                                     let send_start = Instant::now();
-                                    if send_digest.send((seq, digest)).await.is_err() {
+                                    if send_digest.send(digest).await.is_err() {
                                         break 'master;
                                     }
                                     SEND_DIGEST_BACKPRESSURE_DURATION
@@ -445,15 +461,17 @@ impl EventPoller {
                             cursor = batch_end;
                         }
 
-                        from_checkpoint = Some(checkpoint.sequence_number() + 1);
+                        // Only update if the stream is ahead. Avoids re-fetching
+                        // everything if the stream starts from CP 0.
+                        let next_checkpoint = checkpoint.sequence_number() + 1;
+
+                        if from_checkpoint.map_or(true, |current| current < next_checkpoint) {
+                            from_checkpoint = Some(next_checkpoint);
+                        }
 
                         for tx in checkpoint.transactions() {
                             let send_start = Instant::now();
-                            if send_digest
-                                .send((checkpoint.sequence_number(), tx.digest().to_string()))
-                                .await
-                                .is_err()
-                            {
+                            if send_digest.send(tx.digest().to_string()).await.is_err() {
                                 break 'master;
                             }
                             SEND_DIGEST_BACKPRESSURE_DURATION
@@ -464,6 +482,10 @@ impl EventPoller {
                     // Catch-up complete, now live.
                     CATCHUP_REMAINING.set(0.0);
                     let mut last_checkpoint_at = Instant::now();
+
+                    tracing::info!(
+                        "[EventPoller] Entering live streaming mode from checkpoint {from_checkpoint:?}"
+                    );
 
                     // Finally we can just poll the stream.
                     loop {
@@ -497,13 +519,20 @@ impl EventPoller {
 
                                 let checkpoint = response.checkpoint();
 
+                                // Ignore stale checkpoints when reconnecting.
+                                if from_checkpoint
+                                    .is_some_and(|from| checkpoint.sequence_number() < from)
+                                {
+                                    continue;
+                                }
+
                                 CHECKPOINT_DIGESTS_COUNT.observe(checkpoint.transactions().len() as f64);
                                 from_checkpoint = Some(checkpoint.sequence_number() + 1);
 
                                 for tx in checkpoint.transactions() {
                                     let send_start = Instant::now();
                                     if send_digest
-                                        .send((checkpoint.sequence_number(), tx.digest().to_string()))
+                                        .send(tx.digest().to_string())
                                         .await
                                         .is_err()
                                     {
@@ -529,14 +558,15 @@ impl EventPoller {
     /// via another channel.
     async fn fetch_transactions_and_notify(
         &self,
-        mut next_digest: mpsc::Receiver<(u64, String)>,
+        mut next_digest: mpsc::Receiver<String>,
         send_page: mpsc::Sender<Result<EventPage, PollerError>>,
     ) -> Result<(), PollerError> {
         let mut client = sui::grpc::Client::new(&self.rpc_url).map_err(|_| {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
         })?;
 
-        let mut batch: Vec<(u64, String)> = Vec::with_capacity(self.transactions_max_batch_size);
+        let mut consecutive_failures = 0;
+        let mut batch = Vec::with_capacity(self.transactions_max_batch_size);
         let mut last_fetched_at = Instant::now();
 
         loop {
@@ -558,8 +588,8 @@ impl EventPoller {
                     flush_reason = "timeout";
                 }
 
-                Some((checkpoint, digest)) = next_digest.recv() => {
-                    batch.push((checkpoint, digest));
+                Some(digest) = next_digest.recv() => {
+                    batch.push(digest);
 
                     // Only fetch if the batch size is reached or if the max
                     // wait was exceeded.
@@ -590,16 +620,18 @@ impl EventPoller {
 
             // Drain the batch, preserving the checkpoint each digest
             // belongs to so that EventPages carry the correct value.
-            let entries = batch.drain(..).collect::<Vec<_>>();
-            let digest_to_checkpoint: std::collections::HashMap<String, u64> =
-                entries.iter().cloned().map(|(cp, d)| (d, cp)).collect();
-            let digests: Vec<String> = entries.into_iter().map(|(_, d)| d).collect();
+            // Only drain as many digests as the max batch size. There can be
+            // more should the RPC calls fail.
+            let digests = batch
+                .drain(..batch.len().min(self.transactions_max_batch_size))
+                .collect::<Vec<_>>();
 
             let request = sui::grpc::BatchGetTransactionsRequest::default()
                 .with_digests(digests.clone())
                 .with_read_mask(sui::grpc::FieldMask::from_paths(&[
                     "events.events",
                     "digest",
+                    "checkpoint",
                 ]));
 
             let fetch_start = Instant::now();
@@ -607,14 +639,15 @@ impl EventPoller {
                 Ok(response) => {
                     TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
                     last_fetched_at = Instant::now();
+                    consecutive_failures = 0;
 
                     response.into_inner()
                 }
                 Err(e) => {
                     if send_page
                         .send(Err(PollerError::Rpc(anyhow::anyhow!(
-                            "Failed to fetch transactions for digests: {:?}: {e}",
-                            digests
+                            "Failed to fetch transactions for digests: (batch_size={}) (consecutive_failures={consecutive_failures}): {e}",
+                            digests.len()
                         ))))
                         .await
                         .is_err()
@@ -622,29 +655,44 @@ impl EventPoller {
                         break;
                     }
 
-                    // On fetch error, we return the digests back to
-                    // the batch and recreate the client so DNS is
-                    // re-resolved and stale connections are discarded.
-                    batch.extend(digests.into_iter().map(|d| {
-                        let cp = digest_to_checkpoint.get(&d).copied().unwrap_or(0);
-                        (cp, d)
-                    }));
+                    // Avoid trying to re-fetch a batch too many times.
+                    consecutive_failures += 1;
+
+                    if consecutive_failures < self.transactions_batch_max_retries {
+                        // On fetch error, we return the digests back to
+                        // the batch and recreate the client so DNS is
+                        // re-resolved and stale connections are discarded.
+                        //
+                        // If this batch failed too many times, we drop it.
+                        batch.splice(0..0, digests);
+                        consecutive_failures = 0;
+                    }
 
                     if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
                         client = new_client;
                     }
 
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_millis(
+                        500 * 2u64.pow(consecutive_failures as u32),
+                    ))
+                    .await;
 
                     continue;
                 }
             };
 
+            tracing::debug!(
+                "[EventPoller] Fetched batch of {} transactions at checkpoint {:?} (flush_reason={flush_reason})",
+                response.transactions.len(),
+                response
+                    .transactions
+                    .first()
+                    .and_then(|t| t.transaction().checkpoint_opt())
+            );
+
             for transaction in response.transactions {
                 let transaction = transaction.transaction();
-
-                let tx_digest = transaction.digest().to_string();
-                let checkpoint = digest_to_checkpoint.get(&tx_digest).copied().unwrap_or(0);
+                let checkpoint = transaction.checkpoint();
 
                 let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
                 else {

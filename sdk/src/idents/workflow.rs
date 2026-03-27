@@ -801,6 +801,13 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("unregister"),
     };
+    /// Update a tool's timeout.
+    ///
+    /// `nexus_workflow::tool_registry::update_tool_timeout`
+    pub const UPDATE_TOOL_TIMEOUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_tool_timeout"),
+    };
 }
 
 // == `nexus_workflow::leader_cap` ==

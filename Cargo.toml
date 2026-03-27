@@ -68,6 +68,7 @@ tokio-retry = "0.3.0"
 tokio-util = "0.7.18"
 toml = "0.8.20"
 tonic = "0.14"
+tracing = "0.1.41"
 warp = "0.3.7"
 zeroize = "1.7"
 

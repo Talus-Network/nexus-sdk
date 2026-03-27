@@ -7,12 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [`0.8.0`] - Unreleased
 
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool update-timeout` command to update a tool's timeout duration
+
 ### `nexus-sdk`
 
 #### Added
 
 - support and tests for `Static` edge kinds
-- add leader stamp identifiers
+- support for configurable tool timeouts
+- leader stamp identifiers
+
+#### Fixed
+
+- issue with event poller where rpc failures would cause it to exceed the max batch size and fail to make progress
+- another poller issue where the checkpoint stream would start from the first checkpoint, restreaming all events
 
 ## [`0.7.0`] - 2026-03-13
 
