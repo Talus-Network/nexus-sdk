@@ -270,8 +270,19 @@ impl WorkflowActions {
                         maybe_page = next_page.recv() => {
                             let events = match maybe_page {
                                 Some(Ok(EventPage { events, .. })) => events,
-                                Some(Err(e)) => return Err(NexusError::Channel(anyhow!("Error fetching events: {}", e))),
-                                None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
+                                Some(Err(_e)) => {
+                                    // Transient stream error. Wait and retry
+                                    // instead of aborting the inspect loop.
+                                    tokio::time::sleep(Duration::from_secs(2)).await;
+                                    continue;
+                                }
+                                None => {
+                                    // Channel closed. The poller will reconnect
+                                    // and re-open. Wait briefly then exit since
+                                    // the channel won't produce more data.
+                                    tokio::time::sleep(Duration::from_secs(2)).await;
+                                    return Err(NexusError::Channel(anyhow!("Event stream closed while inspecting DAG execution '{dag_execution_id}'")));
+                                }
                             };
 
                             for event in events {
