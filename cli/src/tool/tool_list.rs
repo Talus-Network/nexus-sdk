@@ -18,7 +18,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     #[derive(Deserialize)]
     struct ToolRegistry {
-        timeouts: DynamicMap<ToolFqn, u64>,
+        timeouts: DynamicMap<ToolFqn, String>,
     }
 
     let tool_registry = match crawler

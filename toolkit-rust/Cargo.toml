@@ -33,5 +33,5 @@ tracing = "0.1"
 nexus-sdk = { workspace = true, features = ["signed_http"] }
 
 [dev-dependencies]
-reqwest = { version = "0.12.14", features = ["json"] }
+reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1.44.1", features = ["macros"] }
