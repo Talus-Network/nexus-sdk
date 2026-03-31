@@ -1,6 +1,6 @@
 # Nexus SDK Developer Setup Guide
 
-This guide will help you quickly set up your development environment and start using Nexus SDK, including initializing your wallet, funding it through a faucet, and accessing the `devnet` Sui explorer.
+This guide will help you quickly set up your development environment and start using Nexus SDK, including initializing your wallet, funding it through a faucet, and accessing the `testnet` Sui explorer.
 
 ## Installation and Setup
 
@@ -51,22 +51,22 @@ nexus --version
 ## Download the Nexus objects
 
 ```bash
-wget -O ~/.nexus/objects.devnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.2/objects.devnet.toml
+wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.2/objects.testnet.toml
 ```
 
-## Configure the Talus devnet
+## Configure the Sui testnet
 
-Configure your Nexus CLI to connect to the Talus `devnet` by running:
+Configure your Nexus CLI to connect to the Sui `testnet` by running:
 
 ```bash
 nexus conf set \
-  --sui.rpc-url https://grpc.ssfn.devnet.production.taluslabs.dev \
-  --nexus.objects ~/.nexus/objects.devnet.toml
+  --sui.rpc-url https://fullnode.testnet.sui.io \
+  --nexus.objects ~/.nexus/objects.testnet.toml
 ```
 
 ### Configure the Sui client
 
-After installing the Sui binaries, configure and activate your Talus `devnet` environment:
+After installing the Sui binaries, configure and activate your Sui `testnet` environment:
 
 {% hint style="info" %}
 Assuming you have no prior sui configuration
@@ -78,8 +78,8 @@ sui client --yes
 {% endhint %}
 
 ```bash
-sui client new-env --alias devnet --rpc https://rpc.ssfn.devnet.production.taluslabs.dev
-sui client switch --env devnet
+sui client new-env --alias testnet --rpc https://fullnode.testnet.sui.io
+sui client switch --env testnet
 ```
 
 ## Create a wallet and request funds from the faucet
@@ -103,18 +103,7 @@ BASE64_PK=$(sui keytool convert "$PK" --json | jq -er '.base64WithFlag')
 nexus conf set --sui.pk "$BASE64_PK"
 ```
 
-To request funds from the faucet, run the following command twice to get 2 gas coins:
-
-```bash
-# Pick any alias for your address, here we pick the Talus mascot name tally.
-sui client faucet --address tally \
-  --url https://faucet.devnet.production.taluslabs.dev/gas
-```
-
-```bash
-sui client faucet --address tally \
-  --url https://faucet.devnet.production.taluslabs.dev/gas
-```
+To request funds from the faucet, visit the [Sui faucet](https://faucet.sui.io/) and enter your wallet address.
 
 To check the balance, run:
 
@@ -139,10 +128,6 @@ nexus gas add-budget \
 {% hint style="info" %}
 Note that this coin can only be used to pay for Nexus and tool invocation fees only if the DAG is executed from the **same address**.
 {% endhint %}
-
-## (Optional) Access Devnet Sui Explorer
-
-Open the [Talus Sui Explorer](https://explorer.devnet.taluslabs.dev/).
 
 ---
 
