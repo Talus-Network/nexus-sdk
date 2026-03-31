@@ -103,7 +103,7 @@ BASE64_PK=$(sui keytool convert "$PK" --json | jq -er '.base64WithFlag')
 nexus conf set --sui.pk "$BASE64_PK"
 ```
 
-To request funds from the faucet, visit the [Sui faucet](https://faucet.sui.io/) and enter your wallet address.
+Request funds from the faucet by visiting [Sui faucet](https://faucet.sui.io/) and entering your wallet address. You'll need at least 2 coins: one for the Nexus gas budget and one for transaction gas fees.
 
 To check the balance, run:
 
