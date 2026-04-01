@@ -8,10 +8,20 @@ use {
     crate::{
         events::{EventPage, NexusEvent, NexusEventKind},
         idents::workflow,
-        nexus::{client::NexusClient, error::NexusError, models::Dag},
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            models::{ClaimedGas, Dag, ExecutionGas},
+        },
         sui,
         transactions::dag,
-        types::{Dag as JsonDag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{
+            derive_execution_gas_id,
+            Dag as JsonDag,
+            PortsData,
+            StorageConf,
+            DEFAULT_ENTRY_GROUP,
+        },
     },
     anyhow::anyhow,
     std::collections::HashMap,
@@ -36,6 +46,10 @@ pub struct ExecuteResult {
 pub struct InspectExecutionResult {
     pub next_event: UnboundedReceiver<NexusEvent>,
     pub poller: JoinHandle<Result<(), NexusError>>,
+}
+
+pub struct ExecutionCostResult {
+    pub leader_claims: HashMap<Vec<u8>, ClaimedGas>,
 }
 
 pub struct WorkflowActions {
@@ -312,6 +326,32 @@ impl WorkflowActions {
             next_event: rx,
             poller,
         })
+    }
+
+    /// Calculate the gas cost of a finished DAG execution based on the provided
+    /// execution object ID.
+    pub async fn execution_cost(
+        &self,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<ExecutionCostResult, NexusError> {
+        // Derive the `ExecutionGas` object ID.
+        let gas_service_object_id = *self.client.nexus_objects.gas_service.object_id();
+        let execution_gas_id = derive_execution_gas_id(gas_service_object_id, dag_execution_id)
+            .map_err(NexusError::Parsing)?;
+
+        let crawler = self.client.crawler();
+        let execution_gas = crawler
+            .get_object::<ExecutionGas>(execution_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+
+        let leader_claims = crawler
+            .get_dynamic_fields(&execution_gas.claimed_leader_gas)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        Ok(ExecutionCostResult { leader_claims })
     }
 }
 

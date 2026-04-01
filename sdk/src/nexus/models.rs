@@ -123,3 +123,22 @@ pub struct GasFunds {
     )]
     pub locked: u64,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ExecutionGas {
+    pub claimed_leader_gas: DynamicMap<Vec<u8>, ClaimedGas>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClaimedGas {
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub execution: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub priority: u64,
+}

@@ -9,6 +9,7 @@ use {
         sui::*,
     },
     nexus_sdk::nexus::models::Scope,
+    num_format::{Locale, ToFormattedString},
 };
 
 /// Check the current Nexus gas balance for the invoker.
@@ -52,10 +53,11 @@ pub(crate) async fn check_balance() -> AnyResult<(), NexusCliError> {
         };
 
         item!(
-            "{}: Total {} MIST, Locked {} MIST",
+            "{}: Total {}; Locked {}",
             scope,
-            funds.bal,
-            funds.locked
+            format!("{} MIST", funds.bal.to_formatted_string(&Locale::en)).truecolor(100, 100, 100),
+            format!("{} MIST", funds.locked.to_formatted_string(&Locale::en))
+                .truecolor(100, 100, 100),
         );
     }
 
@@ -76,4 +78,4 @@ pub(crate) async fn check_balance() -> AnyResult<(), NexusCliError> {
     Ok(())
 }
 
-// TODO: tests for balance and models
+// TODO: tests for balance, cost and models
