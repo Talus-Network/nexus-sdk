@@ -4,7 +4,7 @@ use {
     crate::{
         nexus::crawler::{DynamicMap, Map},
         sui,
-        types::{NexusData, TypeName},
+        types::{deserialize_sui_u64, serialize_sui_u64, NexusData, TypeName},
         ToolFqn,
     },
     serde::{Deserialize, Serialize},
@@ -94,4 +94,32 @@ pub struct DagEdge {
 pub struct DagOutputVariantPort {
     pub variant: TypeName,
     pub port: TypeName,
+}
+
+// == `GasService` related types ==
+
+#[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Scope {
+    Execution(sui::types::Address),
+    WorksheetType(TypeName),
+    InvokerAddress(sui::types::Address),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct InvokerGas {
+    pub vault: DynamicMap<Scope, GasFunds>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GasFunds {
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub bal: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub locked: u64,
 }

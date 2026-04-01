@@ -2,14 +2,26 @@
 //!
 //! - [`GasActions::add_budget`] to add gas budget for Nexus workflows.
 
-use crate::{
-    nexus::{client::NexusClient, error::NexusError},
-    sui,
-    transactions::gas,
+use {
+    crate::{
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            models::{GasFunds, InvokerGas, Scope},
+        },
+        sui,
+        transactions::gas,
+        types::derive_invoker_gas_id,
+    },
+    std::collections::HashMap,
 };
 
 pub struct AddBudgetResult {
     pub tx_digest: sui::types::Digest,
+}
+
+pub struct BalanceResult {
+    pub funds: HashMap<Scope, GasFunds>,
 }
 
 pub struct BuyExpiryTicketResult {
@@ -100,6 +112,29 @@ impl GasActions {
         Ok(AddBudgetResult {
             tx_digest: response.digest,
         })
+    }
+
+    /// Check the current invoker's budget balance.
+    pub async fn balance(&self) -> Result<BalanceResult, NexusError> {
+        // Derive the `InvokerGas` object ID.
+        let gas_service_object_id = *self.client.nexus_objects.gas_service.object_id();
+        let invoker_address = self.client.signer.get_active_address();
+        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)
+            .map_err(NexusError::Parsing)?;
+
+        let crawler = self.client.crawler();
+        let invoker_gas = crawler
+            .get_object::<InvokerGas>(invoker_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+
+        let funds = crawler
+            .get_dynamic_fields(&invoker_gas.vault)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        Ok(BalanceResult { funds })
     }
 
     /// Enable the expiry gas extension for the specified tool.
