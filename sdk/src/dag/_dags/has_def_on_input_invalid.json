@@ -8,12 +8,10 @@
       "name": "location_decider",
       "entry_ports": [
         {
-          "name": "context",
-          "encrypted": false
+          "name": "context"
         },
         {
-          "name": "messages",
-          "encrypted": false
+          "name": "messages"
         }
       ]
     },

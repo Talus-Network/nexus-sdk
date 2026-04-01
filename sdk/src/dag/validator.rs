@@ -141,9 +141,8 @@ fn follows_concurrency_rules(
             // If there is no path to this input port then it is unreachable.
             if all_nodes_in_paths.is_empty() {
                 bail!(
-                    "'{}' is unreachable when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' is unreachable when invoking group '{group}'",
+                    graph[input_port]
                 );
             }
 
@@ -151,17 +150,15 @@ fn follows_concurrency_rules(
 
             if concurrency < 0 {
                 bail!(
-                    "'{}' is unreachable when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' is unreachable when invoking group '{group}'",
+                    graph[input_port]
                 )
             }
 
             if concurrency > 0 {
                 bail!(
-                    "'{}' has a race condition on it when invoking group '{}'",
-                    graph[input_port],
-                    group
+                    "'{}' has a race condition on it when invoking group '{group}'",
+                    graph[input_port]
                 )
             }
         }
@@ -235,10 +232,7 @@ fn validate_for_each_pairs(
     while let Some((node, vertex, state)) = stack.pop() {
         if graph.edges(node).count() == 0 {
             if state == InForEach {
-                bail!(
-                    "'{}' has a for-each edge without a corresponding collect",
-                    vertex
-                );
+                bail!("'{vertex}' has a for-each edge without a corresponding collect");
             }
 
             continue;
@@ -246,6 +240,7 @@ fn validate_for_each_pairs(
 
         for edge in graph.edges(node) {
             let next_state = match (state, edge.weight()) {
+                (Idle, EdgeKind::Static) => Idle,
                 (Idle, EdgeKind::Normal) => Idle,
                 (Idle, EdgeKind::DoWhile) => Idle,
                 (Idle, EdgeKind::Break) => Idle,
@@ -261,6 +256,9 @@ fn validate_for_each_pairs(
                 (InForEach, EdgeKind::Collect) => Idle,
                 (InForEach, EdgeKind::DoWhile) | (InForEach, EdgeKind::Break) => {
                     bail!("'{vertex}' has a do-while or break edge inside a for-each");
+                }
+                (InForEach, EdgeKind::Static) => {
+                    bail!("'{vertex}' has a static edge inside a for-each");
                 }
             };
 
@@ -393,9 +391,8 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
                 // Check that the group references a vertex that exists.
                 if !dag.vertices.iter().any(|v| &v.name == vertex) {
                     bail!(
-                        "Entry group '{}' references a non-existing vertex '{}'.",
-                        entry_group.name,
-                        vertex
+                        "Entry group '{}' references a non-existing vertex '{vertex}'.",
+                        entry_group.name
                     );
                 }
 
@@ -671,11 +668,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::types::{Dag, FromPort},
-        assert_matches::assert_matches,
-    };
+    use {super::*, crate::types::Dag, assert_matches::assert_matches};
 
     // == Various graph shapes ==
 
@@ -912,6 +905,14 @@ mod tests {
         assert_matches!(res, Err(e) if e.to_string().contains("Do-while edge at 'Output port: c.also_ok.loop' has a nested loop inside."));
     }
 
+    #[test]
+    fn test_double_do_while_static_valid() {
+        let dag: Dag =
+            serde_json::from_str(include_str!("_dags/double_do_while_static_valid.json")).unwrap();
+
+        assert!(validate(dag).is_ok());
+    }
+
     // == Cyclic or no input graphs ==
 
     #[test]
@@ -933,23 +934,6 @@ mod tests {
         let res = validate(dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' is not connected to the DAG."));
-    }
-
-    #[test]
-    fn test_encrypted_port_output_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/encrypted_port_output_valid.json")).unwrap();
-
-        assert!(dag.edges.first().unwrap().from.encrypted);
-        assert_eq!(
-            *dag.outputs.unwrap().first().unwrap(),
-            FromPort {
-                vertex: "b".to_string(),
-                output_variant: "1".to_string(),
-                output_port: "1.0".to_string(),
-                encrypted: true,
-            }
-        )
     }
 
     #[test]

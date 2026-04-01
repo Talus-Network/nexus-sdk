@@ -80,7 +80,7 @@ impl NexusTool for DummyErrTool {
 mod tests {
     use {super::*, reqwest::Client, serde_json::json};
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_endpoints_generated_correctly() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8043), DummyTool) });
 
@@ -136,7 +136,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_422_when_input_malformed() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8044), DummyTool) });
 
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(invoke_json["error"], "input_deserialization_error");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_500_when_execution_fails() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8045), [DummyErrTool]) });
 
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(health.status(), 200);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_multiple_tools() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8046), [DummyTool, DummyErrTool]) });
 
@@ -231,5 +231,30 @@ mod tests {
         let invoke_json = invoke.json::<serde_json::Value>().await.unwrap();
 
         assert_eq!(invoke_json["error"], "input_deserialization_error");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_meta_invalid_schema() {
+        tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8047), DummyTool) });
+
+        // Give the webserver some time to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let meta = Client::new()
+            .get("http://localhost:8047/meta")
+            .header("X-Forwarded-Proto", "ftp")
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(meta.status(), 400);
+
+        let meta_json = meta.json::<serde_json::Value>().await.unwrap();
+
+        assert_eq!(meta_json["error"], "invalid_scheme");
+        assert_eq!(
+            meta_json["details"],
+            "Scheme must be either 'http' or 'https'."
+        );
     }
 }

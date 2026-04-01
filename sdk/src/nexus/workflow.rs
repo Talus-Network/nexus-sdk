@@ -1,38 +1,36 @@
 //! Commands related to workflow management in Nexus.
 //!
 //! - [`WorkflowActions::publish`] to publish a [`Dag`] instance to Nexus.
+//! - [`WorkflowActions::execute`] to execute a published DAG.
+//! - [`WorkflowActions::inspect_execution`] to monitor the execution of a DAG.
 
 use {
     crate::{
-        crypto::session::Session,
-        events::{NexusEvent, NexusEventKind},
-        idents::{primitives, workflow},
-        nexus::{client::NexusClient, error::NexusError},
-        object_crawler::fetch_one,
+        events::{EventPage, NexusEvent, NexusEventKind},
+        idents::workflow,
+        nexus::{client::NexusClient, error::NexusError, models::Dag},
         sui,
         transactions::dag,
-        types::{Dag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{Dag as JsonDag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
     },
     anyhow::anyhow,
-    std::{collections::HashMap, sync::Arc},
+    std::collections::HashMap,
     tokio::{
-        sync::{
-            mpsc::{unbounded_channel, UnboundedReceiver},
-            Mutex,
-        },
+        sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
-        time::{Duration, Instant},
+        time::Duration,
     },
 };
 
 pub struct PublishResult {
-    pub tx_digest: sui::TransactionDigest,
-    pub dag_object_id: sui::ObjectID,
+    pub tx_digest: sui::types::Digest,
+    pub dag_object_id: sui::types::Address,
 }
 
 pub struct ExecuteResult {
-    pub tx_digest: sui::TransactionDigest,
-    pub execution_object_id: sui::ObjectID,
+    pub tx_digest: sui::types::Digest,
+    pub execution_object_id: sui::types::Address,
+    pub tx_checkpoint: u64,
 }
 
 pub struct InspectExecutionResult {
@@ -46,13 +44,13 @@ pub struct WorkflowActions {
 
 impl WorkflowActions {
     /// Publish the provided JSON [`Dag`].
-    pub async fn publish(&self, json_dag: Dag) -> Result<PublishResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
+    pub async fn publish(&self, json_dag: JsonDag) -> Result<PublishResult, NexusError> {
+        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
 
         // == Craft and submit the publish DAG transaction ==
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         let mut dag_arg = dag::empty(&mut tx, nexus_objects);
 
@@ -67,20 +65,26 @@ impl WorkflowActions {
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -88,21 +92,21 @@ impl WorkflowActions {
         // == Find the published DAG object ID ==
 
         let dag_object_id = response
-            .object_changes
-            .unwrap_or_default()
+            .objects
             .into_iter()
-            .find_map(|change| match change {
-                sui::ObjectChange::Created {
-                    object_type,
-                    object_id,
-                    ..
-                } if object_type.address == *nexus_objects.workflow_pkg_id
-                    && object_type.module == workflow::Dag::DAG.module.into()
-                    && object_type.name == workflow::Dag::DAG.name.into() =>
+            .find_map(|obj| {
+                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+                    return None;
+                };
+
+                if nexus_objects.is_workflow_package(*object_type.address())
+                    && *object_type.module() == workflow::Dag::DAG.module
+                    && *object_type.name() == workflow::Dag::DAG.name
                 {
-                    Some(object_id)
+                    Some(obj.object_id())
+                } else {
+                    None
                 }
-                _ => None,
             })
             .ok_or_else(|| {
                 NexusError::Parsing(anyhow!("DAG object ID not found in TX response"))
@@ -116,75 +120,87 @@ impl WorkflowActions {
 
     /// Execute a published DAG with the given object ID.
     ///
-    /// The `entry_data` [`HashMap`] already holds information about encryption
-    /// and storage kind for each port.
-    ///
-    /// `session` is NOT committed in this function.
+    /// The `entry_data` [`HashMap`] already holds information about the storage
+    /// kind for each port.
     ///
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
+    /// `priority_fee_per_gas_unit` is the per-transaction priority fee to pass
+    /// down to the DAG execution.
+    ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
     pub async fn execute(
         &self,
-        dag_object_id: sui::ObjectID,
+        dag_object_id: sui::types::Address,
         entry_data: HashMap<String, PortsData>,
+        priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
-        session: Arc<Mutex<Session>>,
     ) -> Result<ExecuteResult, NexusError> {
         // == Commit data to their respective storage ==
 
         let mut input_data = HashMap::new();
 
         for (vertex, ports_data) in entry_data {
-            let committed_data = ports_data
-                .commit_all(storage_conf, Arc::clone(&session))
-                .await
-                .map_err(|e| {
-                    NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
-                })?;
+            let committed_data = ports_data.commit_all(storage_conf).await.map_err(|e| {
+                NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
+            })?;
 
             input_data.insert(vertex, committed_data);
         }
 
         // == Craft and submit the execute DAG transaction ==
 
-        let address = self.client.signer.get_active_address().await?;
-        let sui_client = &self.client.signer.get_client().await?;
+        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let dag = fetch_one::<serde_json::Value>(sui_client, dag_object_id)
+        let dag = self
+            .client
+            .crawler()
+            .get_object::<Dag>(dag_object_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let invoker_gas = self.client.fetch_invoker_gas().await?;
+        let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
 
         if let Err(e) = dag::execute(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
+            priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
+            &invoker_gas,
+            &tools_gas,
         ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -192,21 +208,21 @@ impl WorkflowActions {
         // == Find the created DAG execution object ID ==
 
         let execution_object_id = response
-            .object_changes
-            .unwrap_or_default()
+            .objects
             .into_iter()
-            .find_map(|change| match change {
-                sui::ObjectChange::Created {
-                    object_type,
-                    object_id,
-                    ..
-                } if object_type.address == *nexus_objects.workflow_pkg_id
-                    && object_type.module == workflow::Dag::DAG_EXECUTION.module.into()
-                    && object_type.name == workflow::Dag::DAG_EXECUTION.name.into() =>
+            .find_map(|obj| {
+                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+                    return None;
+                };
+
+                if nexus_objects.is_workflow_package(*object_type.address())
+                    && *object_type.module() == workflow::Dag::DAG_EXECUTION.module
+                    && *object_type.name() == workflow::Dag::DAG_EXECUTION.name
                 {
-                    Some(object_id)
+                    Some(obj.object_id())
+                } else {
+                    None
                 }
-                _ => None,
             })
             .ok_or_else(|| {
                 NexusError::Parsing(anyhow!("DAG execution object ID not found in TX response"))
@@ -215,6 +231,7 @@ impl WorkflowActions {
         Ok(ExecuteResult {
             tx_digest: response.digest,
             execution_object_id,
+            tx_checkpoint: response.checkpoint,
         })
     }
 
@@ -228,94 +245,68 @@ impl WorkflowActions {
     /// completion.
     pub async fn inspect_execution(
         &self,
-        dag_execution_id: sui::ObjectID,
-        execution_tx_digest: sui::TransactionDigest,
+        dag_execution_id: sui::types::Address,
+        execution_checkpoint: u64,
         timeout: Option<Duration>,
     ) -> Result<InspectExecutionResult, NexusError> {
         // Setup MSPC channel.
         let (tx, rx) = unbounded_channel::<NexusEvent>();
 
-        let mut cursor = Some(sui::EventID {
-            tx_digest: execution_tx_digest,
-            event_seq: 0,
-        });
-
-        let sui_client = self.client.signer.get_client().await?;
-
         // Create some initial timings and restrictions.
-        let timeout = timeout.unwrap_or(Duration::from_secs(300));
-        let mut poll_interval = Duration::from_millis(100);
-        let max_poll_interval = Duration::from_secs(2);
-        let started = Instant::now();
+        let timeout = timeout.unwrap_or(Duration::from_secs(3600));
+        let poller = self.client.event_poller().clone();
+        let mut next_page = poller
+            .start_polling(Some(execution_checkpoint))
+            .map_err(|e| NexusError::Configuration(format!("{e}")))?;
 
-        let primitives_pkg_id = self.client.nexus_objects.primitives_pkg_id;
+        let poller = {
+            tokio::spawn(async move {
+                let timeout = tokio::time::sleep(timeout);
 
-        let poller = tokio::spawn(async move {
-            // Loop until we find an [`NexusEventKind::ExecutionFinished`] event.
-            loop {
-                if started.elapsed() > timeout {
-                    return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
-                }
+                tokio::pin!(timeout);
 
-                let query = sui::EventFilter::MoveEventModule {
-                    package: primitives_pkg_id,
-                    module: primitives::Event::EVENT_WRAPPER.module.into(),
-                };
-                let limit = None;
-                let descending_order = false;
+                loop {
+                    tokio::select! {
+                        maybe_page = next_page.recv() => {
+                            let events = match maybe_page {
+                                Some(Ok(EventPage { events, .. })) => events,
+                                Some(Err(e)) => return Err(NexusError::Channel(anyhow!("Error fetching events: {}", e))),
+                                None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
+                            };
 
-                let page = sui_client
-                    .event_api()
-                    .query_events(query, cursor, limit, descending_order)
-                    .await
-                    .map_err(|e| NexusError::Rpc(e.into()))?;
+                            for event in events {
+                                let execution_id = match &event.data {
+                                    NexusEventKind::WalkAdvanced(e) => e.execution,
+                                    NexusEventKind::WalkFailed(e) => e.execution,
+                                    NexusEventKind::WalkAborted(e) => e.execution,
+                                    NexusEventKind::WalkCancelled(e) => e.execution,
+                                    NexusEventKind::EndStateReached(e) => e.execution,
+                                    NexusEventKind::ExecutionFinished(e) => e.execution,
+                                    _ => continue,
+                                };
 
-                cursor = page.next_cursor;
+                                // Only process events for the given execution ID.
+                                if execution_id != dag_execution_id {
+                                    continue;
+                                }
 
-                let mut found_event = false;
+                                if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
+                                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
 
-                for event in page.data {
-                    let Ok(event): anyhow::Result<NexusEvent> = event.try_into() else {
-                        continue;
-                    };
+                                    return Ok(());
+                                }
 
-                    let execution_id = match &event.data {
-                        NexusEventKind::WalkAdvanced(e) => e.execution,
-                        NexusEventKind::WalkFailed(e) => e.execution,
-                        NexusEventKind::EndStateReached(e) => e.execution,
-                        NexusEventKind::ExecutionFinished(e) => e.execution,
-                        _ => continue,
-                    };
+                                tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+                            }
+                        }
 
-                    // Only process events for the given execution ID.
-                    if execution_id != dag_execution_id {
-                        continue;
+                        _ = &mut timeout => {
+                            return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
+                        }
                     }
-
-                    // We did find relevant events, do not increase the polling
-                    // interval.
-                    found_event = true;
-
-                    if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-                        tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-
-                        return Ok(());
-                    }
-
-                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
                 }
-
-                // If no new events were found, increase the polling interval.
-                // Otherwise, reset it to the initial value.
-                if found_event {
-                    poll_interval = Duration::from_millis(100);
-                } else {
-                    poll_interval = (poll_interval * 2).min(max_poll_interval);
-                }
-
-                tokio::time::sleep(poll_interval).await;
-            }
-        });
+            })
+        };
 
         Ok(InspectExecutionResult {
             next_event: rx,
@@ -327,6 +318,7 @@ impl WorkflowActions {
 #[cfg(test)]
 mod tests {
     use {
+        super::*,
         crate::{
             events::{
                 EndStateReachedEvent,
@@ -334,49 +326,73 @@ mod tests {
                 NexusEventKind,
                 WalkAdvancedEvent,
             },
-            idents::workflow,
-            nexus::error::NexusError,
-            sui,
+            fqn,
+            nexus::{
+                crawler::DynamicMap,
+                models::{Dag, DagVertexInfo, DagVertexKind},
+            },
+            sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{Dag, NexusData, PortsData, RuntimeVertex, StorageConf, TypeName},
+            types::{NexusData, RuntimeVertex, TypeName},
         },
         serde_json::json,
-        std::collections::{BTreeMap, HashMap},
     };
 
     #[tokio::test]
     async fn test_workflow_actions_publish() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_object_id = sui::types::Address::generate(&mut rng);
 
-        let dag_object_id = sui::ObjectID::random();
-        let dag_created = sui::ObjectChange::Created {
-            sender: sui::ObjectID::random().into(),
-            owner: sui::Owner::Shared {
-                initial_shared_version: sui::SequenceNumber::from_u64(1),
-            },
-            object_type: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: workflow::Dag::DAG.module.into(),
-                name: workflow::Dag::DAG.name.into(),
-                type_params: vec![],
-            },
-            object_id: dag_object_id,
-            version: sui::SequenceNumber::from_u64(1),
-            digest: sui::ObjectDigest::random(),
-        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let tx_digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                tx_digest,
-                None,
-                None,
-                None,
-                Some(vec![dag_created]),
-            );
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let dag = Dag {
+        let dag_created = sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(
+                    sui::types::StructTag::new(
+                        nexus_objects.workflow_pkg_id,
+                        sui::types::Identifier::from_static("dag"),
+                        sui::types::Identifier::from_static("DAG"),
+                        vec![],
+                    ),
+                    true,
+                    0,
+                    dag_object_id.to_bcs().unwrap(),
+                )
+                .unwrap(),
+            ),
+            sui::types::Owner::Shared(0),
+            digest,
+            1000,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![dag_created],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let dag = JsonDag {
             vertices: vec![],
             edges: vec![],
             default_values: None,
@@ -384,69 +400,124 @@ mod tests {
             outputs: None,
         };
 
-        let result = nexus_client
+        let result = client
             .workflow()
             .publish(dag)
             .await
             .expect("Failed to publish DAG");
 
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
-
         assert_eq!(result.dag_object_id, dag_object_id);
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, digest);
     }
 
     #[tokio::test]
     async fn test_workflow_actions_execute() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
-        let (sender, _) = nexus_mocks::mock_session();
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
 
-        let dag_object_id = sui::ObjectID::random();
-        let execution_object_id = sui::ObjectID::random();
-        let execution_created = sui::ObjectChange::Created {
-            sender: sui::ObjectID::random().into(),
-            owner: sui::Owner::Shared {
-                initial_shared_version: sui::SequenceNumber::from_u64(1),
-            },
-            object_type: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: workflow::Dag::DAG_EXECUTION.module.into(),
-                name: workflow::Dag::DAG_EXECUTION.name.into(),
-                type_params: vec![],
-            },
-            object_id: execution_object_id,
-            version: sui::SequenceNumber::from_u64(1),
-            digest: sui::ObjectDigest::random(),
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        let execution_created = sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(
+                    sui::types::StructTag::new(
+                        nexus_objects.workflow_pkg_id,
+                        sui::types::Identifier::from_static("dag"),
+                        sui::types::Identifier::from_static("DAGExecution"),
+                        vec![],
+                    ),
+                    true,
+                    0,
+                    execution_object_id.to_bcs().unwrap(),
+                )
+                .unwrap(),
+            ),
+            sui::types::Owner::Shared(0),
+            tx_digest,
+            1000,
+        );
+
+        // DAG
+        let dag = Dag {
+            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
         };
 
-        let dag_object = sui::ParsedMoveObject {
-            type_: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: workflow::Dag::DAG.module.into(),
-                name: workflow::Dag::DAG.name.into(),
-                type_params: vec![],
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!(dag),
+        );
+
+        // InvokerGas
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Shared(0),
+            None,
+        );
+
+        // Dag.vertices
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("InvokerGas"), *tool_gas_ref.object_id())],
+        );
+
+        // DAGVertexInfo
+        let vertex_info = DagVertexInfo {
+            kind: DagVertexKind::OffChain {
+                tool_fqn: fqn!("xyz.taluslabs.test@1"),
             },
-            has_public_transfer: false,
-            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
-                "test".into(),
-                sui::MoveValue::Number(1),
-            )])),
         };
 
-        let get_object_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, dag_object_id, dag_object);
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                tool_gas_ref.clone(),
+                sui::types::Owner::Shared(0),
+                json!({ "value": vertex_info }),
+            )],
+        );
 
-        let tx_digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                tx_digest,
-                None,
-                None,
-                None,
-                Some(vec![execution_created]),
-            );
+        // ToolGas
+        sui_mocks::grpc::mock_get_objects_metadata(
+            &mut ledger_service_mock,
+            vec![(tool_gas_ref, sui::types::Owner::Shared(0), None)],
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![execution_created],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            state_service_mock: Some(state_service_mock),
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
@@ -456,28 +527,25 @@ mod tests {
                     NexusData::new_inline(json!("data")),
                 ),
                 (
-                    "entry_port_encrypted".to_string(),
-                    NexusData::new_inline_encrypted(json!("data")),
+                    "another_entry_port".to_string(),
+                    NexusData::new_inline(json!("data")),
                 ),
             ])),
         )]);
 
-        let result = nexus_client
+        let price_priority_fee = 0_u64;
+
+        let result = client
             .workflow()
             .execute(
-                dag_object_id,
+                *dag_ref.object_id(),
                 entry_data,
+                price_priority_fee,
                 None,
                 &StorageConf::default(),
-                sender,
             )
             .await
             .expect("Failed to execute DAG");
-
-        get_object_call.assert_async().await;
-
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
 
         assert_eq!(result.execution_object_id, execution_object_id);
         assert_eq!(result.tx_digest, tx_digest);
@@ -485,11 +553,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_object_id = sui::types::Address::generate(&mut rng);
+        let execution_object_id = sui::types::Address::generate(&mut rng);
 
-        let dag_object_id = sui::ObjectID::random();
-        let execution_object_id = sui::ObjectID::random();
-        let execution_tx_digest = sui::TransactionDigest::random();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: dag_object_id,
@@ -518,34 +590,35 @@ mod tests {
             execution: execution_object_id,
             has_any_walk_failed: false,
             has_any_walk_succeeded: true,
+            was_aborted: false,
         });
 
-        let first_call = sui_mocks::rpc::mock_event_api_query_events(
-            &mut server,
-            vec![("WalkAdvancedEvent".to_string(), walk_advanced_event.clone())],
-        );
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
 
-        let second_call = sui_mocks::rpc::mock_event_api_query_events(
-            &mut server,
-            vec![(
-                "EndStateReachedEvent".to_string(),
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![
+                walk_advanced_event.clone(),
                 end_state_reached_event.clone(),
-            )],
-        );
-
-        let third_call = sui_mocks::rpc::mock_event_api_query_events(
-            &mut server,
-            vec![(
-                "ExecutionFinishedEvent".to_string(),
                 execution_finished_event.clone(),
-            )],
+            ],
+            1,
         );
 
-        let mut result = nexus_client
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let mut result = client
             .workflow()
             .inspect_execution(
                 execution_object_id,
-                execution_tx_digest,
+                1,
                 Some(std::time::Duration::from_secs(5)),
             )
             .await
@@ -554,12 +627,15 @@ mod tests {
         let mut events = vec![];
 
         while let Some(event) = result.next_event.recv().await {
-            events.push(event);
-        }
+            match &event.data {
+                NexusEventKind::ExecutionFinished(_) => {
+                    events.push(event);
 
-        first_call.assert_async().await;
-        second_call.assert_async().await;
-        third_call.assert_async().await;
+                    break;
+                }
+                _ => events.push(event),
+            }
+        }
 
         assert_eq!(events.len(), 3);
         assert!(matches!(events[0].data, NexusEventKind::WalkAdvanced(_)));
@@ -573,19 +649,38 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution_timeout() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
 
-        let execution_object_id = sui::ObjectID::random();
-        let execution_tx_digest = sui::TransactionDigest::random();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let first_call = sui_mocks::rpc::mock_event_api_query_events(&mut server, vec![]);
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let mut result = nexus_client
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![],
+            1,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let mut result = client
             .workflow()
             .inspect_execution(
                 execution_object_id,
-                execution_tx_digest,
-                Some(std::time::Duration::from_millis(100)),
+                1,
+                Some(std::time::Duration::from_secs(3)),
             )
             .await
             .expect("Failed to setup channel");
@@ -595,43 +690,11 @@ mod tests {
         while let Some(event) = result.next_event.recv().await {
             events.push(event);
         }
-
-        first_call.assert_async().await;
 
         assert_eq!(events.len(), 0);
         assert!(matches!(
             result.poller.await.unwrap(),
             Err(NexusError::Timeout(_))
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_workflow_actions_inspect_execution_rpc_fail() {
-        let (_, nexus_client) = nexus_mocks::mock_nexus_client().await;
-
-        let execution_object_id = sui::ObjectID::random();
-        let execution_tx_digest = sui::TransactionDigest::random();
-
-        let mut result = nexus_client
-            .workflow()
-            .inspect_execution(
-                execution_object_id,
-                execution_tx_digest,
-                Some(std::time::Duration::from_millis(100)),
-            )
-            .await
-            .expect("Failed to setup channel");
-
-        let mut events = vec![];
-
-        while let Some(event) = result.next_event.recv().await {
-            events.push(event);
-        }
-
-        assert_eq!(events.len(), 0);
-        assert!(matches!(
-            result.poller.await.unwrap(),
-            Err(NexusError::Rpc(_))
         ));
     }
 }

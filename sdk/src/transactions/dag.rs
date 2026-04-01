@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{primitives, sui_framework, workflow},
+        idents::{primitives, pure_arg, sui_framework, workflow},
         sui,
         types::{
             Dag,
@@ -17,47 +17,48 @@ use {
             DEFAULT_ENTRY_GROUP,
         },
     },
-    std::collections::HashMap,
+    std::collections::{HashMap, HashSet},
 };
 
 /// PTB template for creating a new empty DAG.
-pub fn empty(
-    tx: &mut sui::ProgrammableTransactionBuilder,
-    objects: &NexusObjects,
-) -> sui::Argument {
-    tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::NEW.module.into(),
-        workflow::Dag::NEW.name.into(),
-        vec![],
+pub fn empty(tx: &mut sui::tx::TransactionBuilder, objects: &NexusObjects) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::NEW.module,
+            workflow::Dag::NEW.name,
+            vec![],
+        ),
         vec![],
     )
 }
 
 /// PTB template to publish a DAG.
 pub fn publish(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
-) -> sui::Argument {
+    dag: sui::types::Argument,
+) -> sui::types::Argument {
     let dag_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG);
 
-    tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module.into(),
-        sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name.into(),
-        vec![dag_type],
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![dag_type],
+        ),
         vec![dag],
     )
 }
 
 /// PTB template to publish a full [`crate::types::Dag`].
 pub fn create(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    mut dag_arg: sui::Argument,
+    mut dag_arg: sui::types::Argument,
     dag: Dag,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // Create all vertices.
     for vertex in &dag.vertices {
         dag_arg = create_vertex(tx, objects, dag_arg, vertex)?;
@@ -133,42 +134,43 @@ pub fn create(
 
 /// PTB template for creating a new DAG vertex.
 pub fn create_vertex(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     vertex: &Vertex,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `name: Vertex`
     let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
         VertexKind::OffChain { tool_fqn } => {
-            // `tool_fqn: AsciiString`
             workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
-        VertexKind::OnChain { .. } => {
-            todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+        VertexKind::OnChain { tool_fqn } => {
+            workflow::Dag::on_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
         }
     };
 
     // `dag.with_vertex(name, kind)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_VERTEX.module.into(),
-        workflow::Dag::WITH_VERTEX.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_VERTEX.module,
+            workflow::Dag::WITH_VERTEX.name,
+            vec![],
+        ),
         vec![dag, name, kind],
     ))
 }
 
 /// PTB template for creating a new DAG default value.
 pub fn create_default_value(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     default_value: &DefaultValue,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
     let vertex =
         workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex)?;
@@ -183,37 +185,33 @@ pub fn create_default_value(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
-            // Default values cannot be secret. Sensitive data should be passed
-            // via entry ports at runtime.
-            false,
         )?,
         StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
-            // Default values cannot be secret. Sensitive data should be passed
-            // via entry ports at runtime.
-            false,
         )?,
     };
 
     // `dag.with_default_value(vertex, port, value)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_DEFAULT_VALUE.module.into(),
-        workflow::Dag::WITH_DEFAULT_VALUE.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_DEFAULT_VALUE.module,
+            workflow::Dag::WITH_DEFAULT_VALUE.name,
+            vec![],
+        ),
         vec![dag, vertex, port, value],
     ))
 }
 
 /// PTB template for creating a new DAG edge.
 pub fn create_edge(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     edge: &Edge,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `from_vertex: Vertex`
     let from_vertex =
         workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex)?;
@@ -239,31 +237,14 @@ pub fn create_edge(
     // `kind: EdgeKind`
     let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
 
-    if edge.from.encrypted {
-        // `dag.with_encrypted_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
-        return Ok(tx.programmable_move_call(
+    // `dag.with_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
+    Ok(tx.move_call(
+        sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::WITH_ENCRYPTED_EDGE.module.into(),
-            workflow::Dag::WITH_ENCRYPTED_EDGE.name.into(),
+            workflow::Dag::WITH_EDGE.module,
+            workflow::Dag::WITH_EDGE.name,
             vec![],
-            vec![
-                dag,
-                from_vertex,
-                from_variant,
-                from_port,
-                to_vertex,
-                to_port,
-                kind,
-            ],
-        ));
-    }
-
-    // `dag.with_edge(from_vertex, from_variant, from_port, encrypted, to_vertex, to_port)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_EDGE.module.into(),
-        workflow::Dag::WITH_EDGE.name.into(),
-        vec![],
+        ),
         vec![
             dag,
             from_vertex,
@@ -278,11 +259,11 @@ pub fn create_edge(
 
 /// PTB template for creating a new DAG edge.
 pub fn create_output(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     output: &FromPort,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex)?;
 
@@ -297,35 +278,26 @@ pub fn create_output(
     let port =
         workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port)?;
 
-    if output.encrypted {
-        // `dag.with_encrypted_output(vertex, variant, port)`
-        return Ok(tx.programmable_move_call(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_ENCRYPTED_OUTPUT.module.into(),
-            workflow::Dag::WITH_ENCRYPTED_OUTPUT.name.into(),
-            vec![],
-            vec![dag, vertex, variant, port],
-        ));
-    }
-
     // `dag.with_output(vertex, variant, port)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_OUTPUT.module.into(),
-        workflow::Dag::WITH_OUTPUT.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_OUTPUT.module,
+            workflow::Dag::WITH_OUTPUT.name,
+            vec![],
+        ),
         vec![dag, vertex, variant, port],
     ))
 }
 
 /// PTB template for marking a vertex as an entry vertex.
 pub fn mark_entry_vertex(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     vertex: &str,
     entry_group: &str,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
@@ -334,76 +306,67 @@ pub fn mark_entry_vertex(
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_in_group(vertex, entry_group)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_ENTRY_IN_GROUP.module.into(),
-        workflow::Dag::WITH_ENTRY_IN_GROUP.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_ENTRY_IN_GROUP.module,
+            workflow::Dag::WITH_ENTRY_IN_GROUP.name,
+            vec![],
+        ),
         vec![dag, vertex, entry_group],
     ))
 }
 
 /// PTB template for marking an input port as an input port.
 pub fn mark_entry_input_port(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::Argument,
+    dag: sui::types::Argument,
     vertex: &str,
     entry_port: &EntryPort,
     entry_group: &str,
-) -> anyhow::Result<sui::Argument> {
+) -> anyhow::Result<sui::types::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
-    let entry_port = if entry_port.encrypted {
-        workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
-    } else {
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
-    };
+    let entry_port =
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
     // `dag.with_entry_port_in_group(vertex, entry_port, entry_group)`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module.into(),
-        workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module,
+            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name,
+            vec![],
+        ),
         vec![dag, vertex, entry_port, entry_group],
     ))
 }
 
-/// PTB template to execute a DAG.
-pub fn execute(
-    tx: &mut sui::ProgrammableTransactionBuilder,
+/// PTB template to prepare a DAG execution.
+pub fn prepare_execution(
+    tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: &sui::ObjectRef,
+    gas_service: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    dag: sui::types::Argument,
+    priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-) -> anyhow::Result<sui::Argument> {
+    clock: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
     // `self: &mut DefaultTAP`
-    let default_tap = tx.obj(sui::ObjectArg::SharedObject {
-        id: objects.default_tap.object_id,
-        initial_shared_version: objects.default_tap.version,
-        mutable: true,
-    })?;
-
-    // `dag: &DAG`
-    let dag = tx.obj(sui::ObjectArg::SharedObject {
-        id: dag.object_id,
-        initial_shared_version: dag.version,
-        mutable: false,
-    })?;
-
-    // `gas_service: &mut GasService`
-    let gas_service = tx.obj(sui::ObjectArg::SharedObject {
-        id: objects.gas_service.object_id,
-        initial_shared_version: objects.gas_service.version,
-        mutable: true,
-    })?;
+    let default_tap = tx.input(sui::tx::Input::shared(
+        *objects.default_tap.object_id(),
+        objects.default_tap.version(),
+        true,
+    ));
 
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
@@ -420,19 +383,21 @@ pub fn execute(
 
     let outer_vec_map_type = vec![
         workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
-        sui::MoveTypeTag::Struct(Box::new(sui::MoveStructTag {
-            address: *sui::FRAMEWORK_PACKAGE_ID,
-            module: sui_framework::VecMap::VEC_MAP.module.into(),
-            name: sui_framework::VecMap::VEC_MAP.name.into(),
-            type_params: inner_vec_map_type.clone(),
-        })),
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::VEC_MAP.module,
+            sui_framework::VecMap::VEC_MAP.name,
+            inner_vec_map_type.clone(),
+        ))),
     ];
 
-    let with_vertex_inputs = tx.programmable_move_call(
-        sui::FRAMEWORK_PACKAGE_ID,
-        sui_framework::VecMap::EMPTY.module.into(),
-        sui_framework::VecMap::EMPTY.name.into(),
-        outer_vec_map_type.clone(),
+    let with_vertex_inputs = tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::EMPTY.module,
+            sui_framework::VecMap::EMPTY.name,
+            outer_vec_map_type.clone(),
+        ),
         vec![],
     );
 
@@ -441,24 +406,23 @@ pub fn execute(
         let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
-        let with_vertex_input = tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecMap::EMPTY.module.into(),
-            sui_framework::VecMap::EMPTY.name.into(),
-            inner_vec_map_type.clone(),
+        let with_vertex_input = tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::EMPTY.module,
+                sui_framework::VecMap::EMPTY.name,
+                inner_vec_map_type.clone(),
+            ),
             vec![],
         );
 
-        for (port, value) in data {
+        for (port_name, value) in data {
             // `port: InputPort`
-            let port = match value.is_encrypted() {
-                true => workflow::Dag::encrypted_input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    &port,
-                )?,
-                false => workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &port)?,
-            };
+            let port = workflow::Dag::input_port_from_str(
+                tx,
+                objects.workflow_pkg_id,
+                port_name.as_str(),
+            )?;
 
             // `value: NexusData`
             let value = match value.storage_kind() {
@@ -466,55 +430,227 @@ pub fn execute(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
             };
 
             // `with_vertex_input.insert(port, value)`
-            tx.programmable_move_call(
-                sui::FRAMEWORK_PACKAGE_ID,
-                sui_framework::VecMap::INSERT.module.into(),
-                sui_framework::VecMap::INSERT.name.into(),
-                inner_vec_map_type.clone(),
+            tx.move_call(
+                sui::tx::Function::new(
+                    sui_framework::PACKAGE_ID,
+                    sui_framework::VecMap::INSERT.module,
+                    sui_framework::VecMap::INSERT.name,
+                    inner_vec_map_type.clone(),
+                ),
                 vec![with_vertex_input, port, value],
             );
         }
 
         // `with_vertex_inputs.insert(vertex, with_vertex_input)`
-        tx.programmable_move_call(
-            sui::FRAMEWORK_PACKAGE_ID,
-            sui_framework::VecMap::INSERT.module.into(),
-            sui_framework::VecMap::INSERT.name.into(),
-            outer_vec_map_type.clone(),
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::INSERT.module,
+                sui_framework::VecMap::INSERT.name,
+                outer_vec_map_type.clone(),
+            ),
             vec![with_vertex_inputs, vertex, with_vertex_input],
         );
     }
 
-    // `clock: &Clock`
-    let clock = tx.obj(sui::CLOCK_OBJ_ARG)?;
+    // `priority_fee_per_gas_unit: u64`
+    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
 
     // `workflow::default_tap::begin_dag_execution()`
-    Ok(tx.programmable_move_call(
-        objects.workflow_pkg_id,
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.into(),
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.into(),
-        vec![],
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module,
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name,
+            vec![],
+        ),
         vec![
             default_tap,
             dag,
             gas_service,
+            tool_registry,
             network,
             entry_group,
             with_vertex_inputs,
+            priority_fee_per_gas_unit,
             clock,
         ],
     ))
+}
+
+/// PTB template to lock gas state for the given tools.
+pub fn lock_gas_state_for_tools(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution_gas: sui::types::Argument,
+    invoker_gas: sui::types::Argument,
+    tools_gas: Vec<sui::types::Argument>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    ticket: sui::types::Argument,
+) {
+    for tool_gas in tools_gas {
+        // `nexus_workflow::gas::lock_gas_state_for_tool()`
+        tx.move_call(
+            sui::tx::Function::new(
+                objects.workflow_pkg_id,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.module,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.name,
+                vec![],
+            ),
+            vec![execution_gas, tool_gas, invoker_gas, dag, execution, ticket],
+        );
+    }
+}
+
+/// PTB template to execute a DAG.
+pub fn execute(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    invoker_gas: &sui::types::ObjectReference,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    // `dag: &DAG`
+    let dag = tx.input(sui::tx::Input::shared(
+        *dag.object_id(),
+        dag.version(),
+        false,
+    ));
+
+    // `gas_service: &mut GasService`
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        true,
+    ));
+
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
+    // `clock: &Clock`
+    let clock = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    let results = prepare_execution(
+        tx,
+        objects,
+        gas_service,
+        tool_registry,
+        dag,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
+        clock,
+    )?;
+
+    // `ticket: RequestWalkExecution`
+    let Some(ticket) = results.nested(0) else {
+        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
+    };
+
+    // `execution: DAGExecution`
+    let Some(execution) = results.nested(1) else {
+        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    };
+
+    // `execution_gas: ExecutionGas`
+    let Some(execution_gas) = results.nested(2) else {
+        return Err(anyhow::anyhow!("Failed to receive execution gas argument"));
+    };
+
+    // `invoker_gas: &mut InvokerGas`
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
+        true,
+    ));
+
+    // `tools_gas: Vec<&mut ToolGas>`
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    lock_gas_state_for_tools(
+        tx,
+        objects,
+        execution_gas,
+        invoker_gas,
+        tools_gas,
+        dag,
+        execution,
+        ticket,
+    );
+
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
+    // `nexus_workflow::dag::request_network_to_execute_walks()`
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            vec![],
+        ),
+        vec![dag, execution, ticket, leader_registry, clock],
+    );
+
+    // `DAGExecution`
+    let execution_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+
+    // `sui::transfer::public_share_object<DAGExecution>`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_type],
+        ),
+        vec![execution],
+    );
+
+    // `ExecutionGas`
+    let execution_gas_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::EXECUTION_GAS);
+
+    // `sui::transfer::public_share_object<ExecutionGas>`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_gas_type],
+        ),
+        vec![execution_gas],
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -526,23 +662,30 @@ mod tests {
             test_utils::sui_mocks,
             types::{Data, EdgeKind, FromPort, ToPort},
         },
+        std::collections::HashMap,
     };
 
     #[test]
     fn test_empty() {
         let objects = sui_mocks::mock_nexus_objects();
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         empty(&mut tx, &objects);
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create an empty DAG");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::NEW.module.to_string(),);
-        assert_eq!(call.function, workflow::Dag::NEW.name.to_string());
+        assert_eq!(call.module, workflow::Dag::NEW.module);
+        assert_eq!(call.function, workflow::Dag::NEW.name);
         assert_eq!(call.type_arguments.len(), 0);
         assert_eq!(call.arguments.len(), 0);
     }
@@ -550,28 +693,30 @@ mod tests {
     #[test]
     fn test_publish() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         publish(&mut tx, &objects, dag);
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to publish a DAG");
         };
 
-        assert_eq!(call.package, sui::FRAMEWORK_PACKAGE_ID);
+        assert_eq!(call.package, sui_framework::PACKAGE_ID);
         assert_eq!(
             call.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT
-                .module
-                .to_string(),
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module
         );
         assert_eq!(
             call.function,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT
-                .name
-                .to_string()
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
         );
         assert_eq!(call.type_arguments.len(), 1);
         assert_eq!(call.arguments.len(), 1);
@@ -580,7 +725,7 @@ mod tests {
     #[test]
     fn test_create_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let vertex = Vertex {
             name: "vertex1".to_string(),
             kind: VertexKind::OffChain {
@@ -589,23 +734,29 @@ mod tests {
             entry_ports: None,
         };
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         create_vertex(&mut tx, &objects, dag, &vertex).unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create a vertex");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_VERTEX.module.to_string(),);
-        assert_eq!(call.function, workflow::Dag::WITH_VERTEX.name.to_string());
+        assert_eq!(call.module, workflow::Dag::WITH_VERTEX.module);
+        assert_eq!(call.function, workflow::Dag::WITH_VERTEX.name);
     }
 
     #[test]
     fn test_create_default_value() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let default_value = DefaultValue {
             vertex: "vertex1".to_string(),
             input_port: "port1".to_string(),
@@ -615,35 +766,34 @@ mod tests {
             },
         };
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         create_default_value(&mut tx, &objects, dag, &default_value).unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create a default value");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Dag::WITH_DEFAULT_VALUE.module.to_string(),
-        );
-        assert_eq!(
-            call.function,
-            workflow::Dag::WITH_DEFAULT_VALUE.name.to_string()
-        );
+        assert_eq!(call.module, workflow::Dag::WITH_DEFAULT_VALUE.module);
+        assert_eq!(call.function, workflow::Dag::WITH_DEFAULT_VALUE.name);
     }
 
     #[test]
     fn test_create_edge() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let edge = Edge {
             from: FromPort {
                 vertex: "vertex1".to_string(),
                 output_variant: "variant1".to_string(),
                 output_port: "port1".to_string(),
-                encrypted: false,
             },
             to: ToPort {
                 vertex: "vertex2".to_string(),
@@ -652,57 +802,62 @@ mod tests {
             kind: EdgeKind::Normal,
         };
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         create_edge(&mut tx, &objects, dag, &edge).unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create an edge");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_EDGE.module.to_string(),);
-        assert_eq!(call.function, workflow::Dag::WITH_EDGE.name.to_string());
+        assert_eq!(call.module, workflow::Dag::WITH_EDGE.module);
+        assert_eq!(call.function, workflow::Dag::WITH_EDGE.name);
     }
 
     #[test]
     fn test_mark_entry_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let vertex = "vertex1";
         let entry_group = "group1";
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         mark_entry_vertex(&mut tx, &objects, dag, vertex, entry_group).unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to mark an entry vertex");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Dag::WITH_ENTRY_IN_GROUP.module.to_string(),
-        );
-        assert_eq!(
-            call.function,
-            workflow::Dag::WITH_ENTRY_IN_GROUP.name.to_string()
-        );
+        assert_eq!(call.module, workflow::Dag::WITH_ENTRY_IN_GROUP.module);
+        assert_eq!(call.function, workflow::Dag::WITH_ENTRY_IN_GROUP.name);
     }
 
     #[test]
     fn test_mark_entry_input_port() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let vertex = "vertex1";
         let entry_port = &EntryPort {
             name: "test".to_string(),
-            encrypted: false,
         };
         let entry_group = "group1";
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         mark_entry_input_port(
             &mut tx,
             &nexus_objects,
@@ -712,21 +867,21 @@ mod tests {
             entry_group,
         )
         .unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to mark an entry input port");
         };
 
         assert_eq!(call.package, nexus_objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module.to_string(),
-        );
-        assert_eq!(
-            call.function,
-            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name.to_string()
-        );
+        assert_eq!(call.module, workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module);
+        assert_eq!(call.function, workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name);
     }
 
     #[test]
@@ -735,87 +890,81 @@ mod tests {
         let dag = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
         let mut input_data = HashMap::new();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
 
         input_data.insert(
             "vertex1".to_string(),
             HashMap::from([(
                 "port1".to_string(),
-                serde_json::json!({"kind": "inline", "encrypted": false, "data": { "key": "value" } })
+                serde_json::json!({"kind": "inline", "data": { "key": "value"} })
                     .try_into()
                     .expect("Failed to convert JSON to DataStorage"),
             )]),
         );
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
-        execute(&mut tx, &nexus_objects, &dag, entry_group, &input_data).unwrap();
-        let tx = tx.finish();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let priority_fee_per_gas_unit = 0;
+        execute(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            priority_fee_per_gas_unit,
+            entry_group,
+            &input_data,
+            &invoker_gas,
+            &tools_gas,
+        )
+        .unwrap();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.get(12).unwrap() else {
             panic!("Expected last command to be a MoveCall to execute a DAG");
         };
 
         assert_eq!(call.package, nexus_objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.module.to_string(),
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module
         );
         assert_eq!(
             call.function,
-            workflow::DefaultTap::BEGIN_DAG_EXECUTION.name.to_string()
+            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name
         );
     }
 
     #[test]
-    fn test_create_output_unencrypted() {
+    fn test_create_output() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
+        let dag = sui::types::Argument::Result(0);
         let output = FromPort {
             vertex: "vertex1".to_string(),
             output_variant: "variant1".to_string(),
             output_port: "port1".to_string(),
-            encrypted: false,
         };
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        let mut tx = sui::tx::TransactionBuilder::new();
         create_output(&mut tx, &objects, dag, &output).unwrap();
-        let tx = tx.finish();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
 
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create an output");
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_OUTPUT.module.to_string());
-        assert_eq!(call.function, workflow::Dag::WITH_OUTPUT.name.to_string());
-    }
-
-    #[test]
-    fn test_create_output_encrypted() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::Argument::Result(0);
-        let output = FromPort {
-            vertex: "vertex1".to_string(),
-            output_variant: "variant1".to_string(),
-            output_port: "port1".to_string(),
-            encrypted: true,
-        };
-
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
-        create_output(&mut tx, &objects, dag, &output).unwrap();
-        let tx = tx.finish();
-
-        let sui::Command::MoveCall(call) = &tx.commands.last().unwrap() else {
-            panic!("Expected last command to be a MoveCall to create an encrypted output");
-        };
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Dag::WITH_ENCRYPTED_OUTPUT.module.to_string()
-        );
-        assert_eq!(
-            call.function,
-            workflow::Dag::WITH_ENCRYPTED_OUTPUT.name.to_string()
-        );
+        assert_eq!(call.module, workflow::Dag::WITH_OUTPUT.module);
+        assert_eq!(call.function, workflow::Dag::WITH_OUTPUT.name);
     }
 }

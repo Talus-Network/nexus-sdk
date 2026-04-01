@@ -16,7 +16,6 @@ jobs:
     with:
       files: |
         docs/**
-        tools/*/README.md
 
   sync-docs:
     runs-on: ubuntu-latest

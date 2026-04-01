@@ -5,7 +5,12 @@
 //! All CLI functionality should be exported to this module in the future.
 
 pub mod client;
-pub mod crypto;
+pub mod crawler;
 pub mod error;
 pub mod gas;
+pub mod models;
+pub mod network_auth;
+pub mod scheduler;
+pub mod signer;
+pub mod tool;
 pub mod workflow;

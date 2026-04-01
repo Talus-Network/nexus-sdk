@@ -35,6 +35,7 @@ coverage:
         informational: false
         paths:
           - "!cli/"
+          - "!sdk/src/test_utils/"
 
 component_management:
   individual_components:
@@ -50,10 +51,6 @@ component_management:
       name: Toolkit Rust
       paths:
         - toolkit-rust/**
-    - component_id: tools
-      name: Tools
-      paths:
-        - tools/**
 
 comment:
   layout: "header, diff, flags, components, files, footer"
@@ -79,7 +76,6 @@ flags:
       - cli/
       - sdk/
       - toolkit-rust/
-      - tools/
     carryforward: true
 
 github_checks:

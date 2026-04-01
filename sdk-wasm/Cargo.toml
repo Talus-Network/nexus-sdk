@@ -60,7 +60,7 @@ features = [
 # === Nexus deps ===
 [dependencies.nexus-sdk]
 workspace = true
-features = ["wasm_types", "dag", "crypto"]
+features = ["wasm_types", "dag"]
 
 # Re-open dependencies table for local crate deps
 # (moved crypto deps to main [dependencies] above)

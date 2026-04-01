@@ -50,8 +50,7 @@
       "name": "add_input_and_default",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         }
       ]
     },

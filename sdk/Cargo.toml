@@ -19,55 +19,48 @@ default = ["tool_fqn"]
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
 
-# Crypto feature enables cryptographic primitives
-crypto = [
-    "aead", "serde-big-array", "chacha20poly1305", "hkdf", "rand", "rand_core",
-    "sha2", "subtle", "x25519-dalek", "xeddsa", "zeroize", "thiserror", "hmac",
-    "ciborium", "aes-gcm", "bincode", "serde_json", "aes-siv", "serde_bytes", "hex", "blake3", "lru"
-]
-
-# Secret core feature provides a generic secret type
-secret_core = ["bincode", "base64", "rand", "thiserror", "chacha20poly1305", "zeroize"]
+# Signed HTTP feature enables application-layer Ed25519 signatures for HTTP
+# requests/responses (headers + signed claims).
+signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
-    "sui_sdk",
-    "move_core_types",
-    "sui_keys",
-    "shared_crypto",
-    "sui_config",
+    "sui-rpc",
+    "sui-sdk-types",
+    "sui-crypto",
+    "sui-transaction-builder",
 ]
 
 # Sui idents feature enables the use of the `idents` module and adds sui-sdk
 # and move-core-types as dependencies.
-sui_idents = ["tool_fqn", "sui_types", "serde_json"]
-
-# Object crawler feature enables the use of the `object_crawler` module.
-object_crawler = ["sui_types", "serde_json"]
+sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
-# Types feature enables the use of the `types` module. Also adds reqwest as a
-# dependency.
-types = ["sui_types", "crypto", "enum_dispatch", "walrus", "futures", "serde_json"]
+# Types feature enables the use of the `types` module.
+types = ["sui_types", "sui_idents", "enum_dispatch", "walrus", "futures", "jsonschema", "zeroize"]
 
-# WASM-compatible types feature - only includes DAG types without system deps
+# WASM-compatible types feature — DAG JSON types only (no full Sui stack).
 wasm_types = ["tool_fqn", "serde_json"]
 
 # Events feature enables the use of the `events` module.
-events = ["sui_idents", "types"]
+events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents", "bincode", "types"]
+transactions = ["sui_idents", "types"]
 
 # Provides DAG-related utilities.
 dag = ["petgraph"]
 
+# Schema generation feature enables automatic schema generation from Move modules.
+# Used for onchain tool registration.
+schema_gen = ["sui_types", "serde_json"]
+
 # Provides various Nexus utilities like deployment and execution of workflows.
-nexus = ["transactions", "dag", "object_crawler"]
+nexus = ["transactions", "events", "dag", "bcs", "prost-types", "signed_http"]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -76,25 +69,30 @@ test_utils = [
     "types",
     "tempfile",
     "tokio-retry",
+    "tokio-stream",
     "sui_move_build",
     "sui_package_management",
+    "move_package",
+    "move_package_alt",
+    "portpicker",
     "testcontainers-modules",
+    "mockall",
     "mockito",
+    "tonic",
 ]
 
 # Enable all features apart from `test_utils`.
 full = [
     "tool_fqn",
-    "crypto",
-    "secret_core",
+    "signed_http",
     "sui_types",
     "sui_idents",
     "types",
     "events",
-    "object_crawler",
     "transactions",
     "walrus",
     "dag",
+    "schema_gen",
     "nexus",
 ]
 
@@ -102,11 +100,14 @@ full = [
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
-dirs = "6.0.0"
 serde.workspace = true
 
 # === Optional deps for features ===
 [dependencies.base64]
+workspace = true
+optional = true
+
+[dependencies.bcs]
 workspace = true
 optional = true
 
@@ -118,41 +119,6 @@ optional = true
 workspace = true
 optional = true
 
-# === Crypto deps ===
-[dependencies.aead]
-version = "0.5"
-optional = true
-
-[dependencies.serde-big-array]
-workspace = true
-optional = true
-
-[dependencies.serde_bytes]
-version = "0.11"
-optional = true
-
-[dependencies.aes-gcm]
-workspace = true
-optional = true
-
-[dependencies.aes-siv]
-workspace = true
-features = ["std"]
-optional = true
-
-[dependencies.bincode]
-workspace = true
-optional = true
-
-[dependencies.chacha20poly1305]
-version = "0.10"
-features = ["rand_core", "std"]
-optional = true
-
-[dependencies.hkdf]
-version = "0.12"
-optional = true
-
 [dependencies.hmac]
 version = "0.12"
 optional = true
@@ -161,7 +127,19 @@ optional = true
 version = "0.4"
 optional = true
 
+[dependencies.lazy_static]
+version = "1.5"
+optional = true
+
 [dependencies.petgraph]
+workspace = true
+optional = true
+
+[dependencies.prometheus]
+workspace = true
+optional = true
+
+[dependencies.portpicker]
 workspace = true
 optional = true
 
@@ -206,7 +184,15 @@ optional = true
 version = "0.3"
 optional = true
 
+[dependencies.jsonschema]
+workspace = true
+optional = true
+
 [dependencies.lazy-regex]
+workspace = true
+optional = true
+
+[dependencies.mockall]
 workspace = true
 optional = true
 
@@ -221,9 +207,12 @@ optional = true
 [dependencies.reqwest]
 workspace = true
 optional = true
-features = ["json", "stream"]
 
 [dependencies.serde_json]
+workspace = true
+optional = true
+
+[dependencies.prost-types]
 workspace = true
 optional = true
 
@@ -235,63 +224,82 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.ed25519-dalek]
+version = "2"
+optional = true
+
 [dependencies.tokio]
 workspace = true
 features = ["io-util"]
+optional = true
+
+[dependencies.tokio-stream]
+workspace = true
 optional = true
 
 [dependencies.tokio-retry]
 workspace = true
 optional = true
 
+[dependencies.tokio-util]
+workspace = true
+optional = true
+
+[dependencies.tonic]
+workspace = true
+optional = true
+
+[dependencies.tracing]
+workspace = true
+optional = true
+
 # === Sui deps ===
-[dependencies.sui_sdk]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-sdk"
+[dependencies.sui-rpc]
+version = "0.1.1"
 optional = true
 
-[dependencies.move_core_types]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "move-core-types"
+[dependencies.sui-sdk-types]
+version = "0.1.1"
+features = ["rand", "serde"]
 optional = true
 
-[dependencies.sui_keys]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-keys"
+[dependencies.sui-crypto]
+version = "0.1.0"
+features = ["ed25519", "pem"]
 optional = true
 
-[dependencies.sui_config]
-git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
-package = "sui-config"
-optional = true
-
-[dependencies.shared_crypto]
-git = "https://github.com/mystenlabs/sui"
-tag = "mainnet-v1.45.3"
-package = "shared-crypto"
+[dependencies.sui-transaction-builder]
+version = "0.1.0"
 optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
+tag = "mainnet-v1.67.3"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.45.3"
+tag = "mainnet-v1.67.3"
 package = "sui-package-management"
+optional = true
+
+[dependencies.move_package]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.67.3"
+package = "move-package"
+optional = true
+
+[dependencies.move_package_alt]
+git = "https://github.com/MystenLabs/sui"
+tag = "mainnet-v1.67.3"
+package = "move-package-alt"
 optional = true
 
 [dependencies.testcontainers-modules]
 git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
-# TODO: change this once merged.
 branch = "feat/add-sui-support"
-features = ["sui", "redis"]
+features = ["sui", "redis", "postgres"]
 optional = true
 
 # === Dev deps ===
@@ -299,8 +307,11 @@ optional = true
 assert_matches = "1.5.0"
 tokio = { workspace = true, features = ["full", "macros"] }
 serde_json.workspace = true
+mockall.workspace = true
 mockito.workspace = true
+portpicker.workspace = true
 tempfile.workspace = true
+tonic.workspace = true
 
 # === Build deps ===
 [build-dependencies]

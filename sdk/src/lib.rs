@@ -29,11 +29,6 @@ pub mod types;
 #[cfg(feature = "events")]
 pub mod events;
 
-/// Object crawler attempts to improve the Sui SDK object fetching by allowing
-/// direct parsing into structs.
-#[cfg(feature = "object_crawler")]
-pub mod object_crawler;
-
 /// Transactions module contains builders for PTBs that are submitted to Sui
 /// and perform various operations on the Nexus ecosystem.
 #[cfg(feature = "transactions")]
@@ -49,18 +44,18 @@ pub mod test_utils;
 #[cfg(feature = "walrus")]
 pub mod walrus;
 
-/// Cryptographic primitives including X3DH for secure key exchange
-#[cfg(feature = "crypto")]
-pub mod crypto;
-
-/// Secret core provides a generic secret type that can be used to store
-#[cfg(feature = "secret_core")]
-pub mod secret_core;
-
 /// Provides DAG-related utilities
 #[cfg(feature = "dag")]
 pub mod dag;
 
+/// Schema generation utilities for Move onchain tools.
+#[cfg(feature = "schema_gen")]
+pub mod onchain_schema_gen;
+
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]
 pub mod nexus;
+
+/// Application-layer request/response signatures for HTTP.
+#[cfg(feature = "signed_http")]
+pub mod signed_http;

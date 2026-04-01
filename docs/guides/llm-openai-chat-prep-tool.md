@@ -258,8 +258,7 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
       "name": "chat",
       "entry_ports": [
         {
-          "name": "api_key",
-          "encrypted": true
+          "name": "api_key"
         }
       ]
     }
@@ -329,8 +328,7 @@ This tool is typically used in a DAG to convert the output of a mathematical ope
     {
       "vertex": "chat",
       "output_variant": "ok",
-      "output_port": "message",
-      "encrypted": false
+      "output_port": "message"
     }
   ]
 }
@@ -344,27 +342,27 @@ Note that you'll have to add the chat completion api key still. It is recommende
 
 1. Build the tool:
 
-    ```bash
-    cargo build
-    ```
+   ```bash
+   cargo build
+   ```
 
 1. Start the tool server:
 
-    ```bash
-    cargo run
-    ```
+   ```bash
+   cargo run
+   ```
 
 1. Validate the tool:
 
-    ```bash
-    nexus tool validate --off-chain http://localhost:8080
-    ```
+   ```bash
+   nexus tool validate --off-chain http://localhost:8080
+   ```
 
 1. Register the tool:
 
-    ```bash
-    nexus tool register --off-chain http://localhost:8080
-    ```
+   ```bash
+   nexus tool register --off-chain http://localhost:8080
+   ```
 
 {% hint style="info" %}
 Tool registration is currently restricted during the beta phase. To register your tool, please contact the team to be added to the allow list.

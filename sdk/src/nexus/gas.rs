@@ -4,13 +4,36 @@
 
 use crate::{
     nexus::{client::NexusClient, error::NexusError},
-    object_crawler::fetch_one,
     sui,
     transactions::gas,
 };
 
 pub struct AddBudgetResult {
-    pub tx_digest: sui::TransactionDigest,
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct BuyExpiryTicketResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct EnableExpiryExtensionResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct DisableExpiryExtensionResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct BuyLimitedInvocationsTicketResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct EnableLimitedInvocationsExtensionResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+pub struct DisableLimitedInvocationsExtensionResult {
+    pub tx_digest: sui::types::Digest,
 }
 
 pub struct GasActions {
@@ -18,41 +41,58 @@ pub struct GasActions {
 }
 
 impl GasActions {
-    /// Add a Coin [`sui::ObjectRef`] as gas budget for Nexus workflows.
+    /// Add a Coin [`sui::types::ObjectReference`] as gas budget for Nexus workflows.
     pub async fn add_budget(
         &self,
-        coin_object_id: sui::ObjectID,
+        coin_object_id: sui::types::Address,
     ) -> Result<AddBudgetResult, NexusError> {
-        let address = self.client.signer.get_active_address().await?;
+        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let sui_client = &self.client.signer.get_client().await?;
-        let coin = fetch_one::<serde_json::Value>(sui_client, coin_object_id)
+
+        let coin = self
+            .client
+            .crawler()
+            .get_object_metadata(coin_object_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        let mut tx = sui::ProgrammableTransactionBuilder::new();
+        // Derive and fetch the InvokerGas object.
+        let invoker_gas = self.client.fetch_invoker_gas().await.ok();
 
-        if let Err(e) = gas::add_budget(&mut tx, nexus_objects, address.into(), &coin.object_ref())
-        {
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::add_budget(
+            &mut tx,
+            nexus_objects,
+            address,
+            &coin.object_ref(),
+            invoker_gas.as_ref(),
+        ) {
             return Err(NexusError::TransactionBuilding(e));
         }
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
-        let tx_data = sui::TransactionData::new_programmable(
-            address,
-            vec![gas_coin.to_object_ref()],
-            tx.finish(),
-            self.client.gas.get_budget(),
-            self.client.reference_gas_price,
-        );
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
 
-        let envelope = self.client.signer.sign_tx(tx_data).await?;
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
 
         let response = self
             .client
             .signer
-            .execute_tx(envelope, &mut gas_coin)
+            .execute_tx(tx, signature, &mut gas_coin)
             .await?;
 
         self.client.gas.release_gas_coin(gas_coin).await;
@@ -61,61 +101,895 @@ impl GasActions {
             tx_digest: response.digest,
         })
     }
+
+    /// Enable the expiry gas extension for the specified tool.
+    pub async fn enable_expiry_extension(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        owner_cap: sui::types::Address,
+        cost_per_minute: u64,
+    ) -> Result<EnableExpiryExtensionResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let owner_cap = crawler
+            .get_object_metadata(owner_cap)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::enable_expiry(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &owner_cap,
+            cost_per_minute,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(EnableExpiryExtensionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disable the expiry gas extension for the specified tool.
+    pub async fn disable_expiry_extension(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        owner_cap: sui::types::Address,
+    ) -> Result<DisableExpiryExtensionResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let owner_cap = crawler
+            .get_object_metadata(owner_cap)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}",
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(DisableExpiryExtensionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Buy a limited invocations gas ticket for a tool.
+    pub async fn buy_limited_invocations_ticket(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        invocations: u64,
+        coin: sui::types::Address,
+    ) -> Result<BuyLimitedInvocationsTicketResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let pay_with_coin = crawler
+            .get_object_metadata(coin)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch coin object metadata for '{coin}': {e}"
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::buy_limited_invocations_gas_ticket(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &pay_with_coin,
+            invocations,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(BuyLimitedInvocationsTicketResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Enable the limited invocations gas extension for the specified tool.
+    pub async fn enable_limited_invocations_extension(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        owner_cap: sui::types::Address,
+        cost_per_invocation: u64,
+        min_invocations: u64,
+        max_invocations: u64,
+    ) -> Result<EnableLimitedInvocationsExtensionResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let owner_cap = crawler
+            .get_object_metadata(owner_cap)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::enable_limited_invocations(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &owner_cap,
+            cost_per_invocation,
+            min_invocations,
+            max_invocations,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(EnableLimitedInvocationsExtensionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disable the limited invocations gas extension for the specified tool.
+    pub async fn disable_limited_invocations_extension(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        owner_cap: sui::types::Address,
+    ) -> Result<DisableLimitedInvocationsExtensionResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let owner_cap = crawler
+            .get_object_metadata(owner_cap)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) =
+            gas::disable_limited_invocations(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap)
+        {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(DisableLimitedInvocationsExtensionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Buy an expiry gas ticket for a tool for a given number of minutes.
+    pub async fn buy_expiry_ticket(
+        &self,
+        tool_fqn: crate::tool_fqn::ToolFqn,
+        minutes: u64,
+        coin: sui::types::Address,
+    ) -> Result<BuyExpiryTicketResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let crawler = self.client.crawler();
+
+        let pay_with_coin = crawler
+            .get_object_metadata(coin)
+            .await
+            .map(|resp| resp.object_ref())
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch coin object metadata for '{coin}': {e}"
+                ))
+            })?;
+
+        let tool = self.client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+
+        // Craft the transaction.
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        if let Err(e) = gas::buy_expiry_gas_ticket(
+            &mut tx,
+            nexus_objects,
+            &tool_gas,
+            &tool,
+            &pay_with_coin,
+            minutes,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(BuyExpiryTicketResult {
+            tx_digest: response.digest,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        crate::{
-            sui,
-            test_utils::{nexus_mocks, sui_mocks},
-        },
-        std::collections::BTreeMap,
+    use crate::{
+        fqn,
+        sui,
+        test_utils::{nexus_mocks, sui_mocks},
     };
 
     #[tokio::test]
+    async fn test_gas_actions_enable_expiry_extension() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+        let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock owner cap object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            owner_cap_object_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x3")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .enable_expiry_extension(tool_fqn, owner_cap_id, 1234)
+            .await
+            .expect("Failed to enable expiry extension");
+
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_gas_actions_disable_expiry_extension() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+        let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock owner cap object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            owner_cap_object_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x3")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .disable_expiry_extension(tool_fqn, owner_cap_id)
+            .await
+            .expect("Failed to disable expiry extension");
+
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_gas_actions_buy_limited_invocations_ticket() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let coin_object_id = sui::types::Address::generate(&mut rng);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock coin object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .buy_limited_invocations_ticket(tool_fqn, 42, coin_object_id)
+            .await
+            .expect("Failed to buy limited invocations ticket");
+
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_gas_actions_enable_limited_invocations_extension() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+        let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock owner cap object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            owner_cap_object_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x3")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .enable_limited_invocations_extension(tool_fqn, owner_cap_id, 555, 10, 100)
+            .await
+            .expect("Failed to enable limited invocations extension");
+
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_gas_actions_disable_limited_invocations_extension() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+        let owner_cap_object_ref = sui::types::ObjectReference::new(owner_cap_id, 0, tx_digest);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock owner cap object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            owner_cap_object_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x3")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .disable_limited_invocations_extension(tool_fqn, owner_cap_id)
+            .await
+            .expect("Failed to disable limited invocations extension");
+
+        assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
     async fn test_gas_actions_add_budget() {
-        let (mut server, nexus_client) = nexus_mocks::mock_nexus_client().await;
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let coin_object_id = sui::types::Address::generate(&mut rng);
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
 
-        let coin_object_id = sui::ObjectID::random();
-        let coin_object = sui::ParsedMoveObject {
-            type_: sui::MoveStructTag {
-                address: *nexus_client.nexus_objects.workflow_pkg_id,
-                module: sui::move_ident_str!("coin").into(),
-                name: sui::move_ident_str!("Coin").into(),
-                type_params: vec![],
-            },
-            has_public_transfer: false,
-            fields: sui::MoveStruct::WithFields(BTreeMap::from([(
-                "test".into(),
-                sui::MoveValue::Number(1),
-            )])),
-        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        let get_object_call =
-            sui_mocks::rpc::mock_read_api_get_object(&mut server, coin_object_id, coin_object);
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        let tx_digest = sui::TransactionDigest::random();
-        let (execute_call, confirm_call) =
-            sui_mocks::rpc::mock_governance_api_execute_execute_transaction_block(
-                &mut server,
-                tx_digest,
-                None,
-                None,
-                None,
-                None,
-            );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
 
-        let result = nexus_client
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            invoker_gas_ref,
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
             .gas()
             .add_budget(coin_object_id)
             .await
             .expect("Failed to add budget");
 
-        get_object_call.assert_async().await;
+        assert_eq!(result.tx_digest, tx_digest);
+    }
 
-        execute_call.assert_async().await;
-        confirm_call.assert_async().await;
+    #[tokio::test]
+    async fn test_gas_actions_buy_expiry_ticket() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let coin_object_id = sui::types::Address::generate(&mut rng);
+
+        // Tool FQN and derived tool id
+        let tool_fqn = fqn!("xyz.taluslabs.example@1");
+        let tool_ref = sui_mocks::mock_sui_object_ref();
+        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock coin object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(coin_object_id, 0, tx_digest),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            None,
+        );
+
+        // Mock tool object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        // Mock tool gas object metadata
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .buy_expiry_ticket(tool_fqn, 60, coin_object_id)
+            .await
+            .expect("Failed to buy expiry ticket");
 
         assert_eq!(result.tx_digest, tx_digest);
     }

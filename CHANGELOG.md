@@ -5,23 +5,190 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-## [`0.3.0`] - 2025-11-10
+## [`0.8.2`] - 2026-03-30
 
 ### `nexus-cli`
 
 #### Added
 
-- `nexus dag inspect-execution` now also shows the data storage kind for each port
-
-#### Changed
-
-- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
-- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
+- Sui testnet presets and automatic Nexus objects fetching
 
 #### Fixed
 
+- `ToolRegistry` struct to correctly deserialize timeout
+
+## [`0.8.0`] - 2026-03-27
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool update-timeout` command to update a tool's timeout duration
+
+### `nexus-sdk`
+
+#### Added
+
+- support and tests for `Static` edge kinds
+- support for configurable tool timeouts
+- leader stamp identifiers
+
+#### Fixed
+
+- issue with event poller where rpc failures would cause it to exceed the max batch size and fail to make progress
+- another poller issue where the checkpoint stream would start from the first checkpoint, restreaming all events
+
+## [`0.7.0`] - 2026-03-13
+
+### `nexus-cli`
+
+#### Removed
+
+- `sui_gql_url` config field
+
+### `nexus-sdk`
+
+#### Changed
+
+- transaction templates adjusted to allow for locking and finalizing gas payments
+- `GasSettlementUpdate` event replaced with `GasLockUpdate`
+- removed graphql client and changed event fetching to poll GRPC
+- bump Sui version to `mainnet-v1.67.3`
+
+## [`0.6.0`] - 2026-02-24
+
+### `nexus-sdk`
+
+#### Added
+
+- `signed_http` feature and module for application layer HTTP request/response signatures.
+- `network_auth` helpers, types, and PTB templates for tool key registration and leader allowlists.
+- derived gas service identifiers and PTB templates
+- `secret_store` module providing a minimal at-rest secret wrapper with optional encryption.
+- `NexusClient` code for gas tickets
+- support for distribution by fetching `DistributedEventWrapper` events
+- `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
+- `InterfacePackageConfig` and `InterfaceVersionKey` type mirrors
+- Support for `LeaderCapIssuedEvent`
+- `bcs` support in `Crawler`
+
+#### Removed
+
+- X3DH+DR encryption
+
+#### Changed
+
+- adjusted transaction templates and events to support tools as derived objects
+- removed all `Tool*` types for a unified `Tool` type that supports both offchain and onchain tools and `ToolRef` type to differentiate
+- `NexusClient::workflow::execute` to work with derived gas service
+- replaced `secret_core` with `secret_store` for at-rest secrets.
+- bump sui version to 1.65.2
+- `signed_http` is agnostic to the leader that makes the request and can be used with any leader.
+
+#### Fixed
+
+- bug where foreign `AnnounceInterfacePackageEvent` events could not be parsed because they did not originate from Nexus packages, which is however expected
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool auth` subcommands for key generation, tool key registration, and leader allowlist export.
+- `SharedObjectRef` type to represent shared object references with mutability information
+- `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
+- added support for tagged_output in sdk
+- `nexus secrets` command group for local at-rest secrets:
+  - `nexus secrets status` / `enable` / `disable` / `rotate` / `wipe`
+- `nexus tool auth sync-allowed-leaders` to keep tool config in sync with onchain
+
+#### Changed
+
+- `nexus tool list` now works with derived objects
+- at-rest secret storage now auto-creates a master key in the OS keyring on first secret write (when possible); if the keyring is unavailable, it warns and writes plaintext.
+
+#### Removed
+
+- `nexus crypto set-passphrase` command (passphrase-based encryption).
+- `nexus crypto init-key` and `nexus crypto key-status` (moved to `nexus secrets`).
+
+### `nexus-toolkit-rust`
+
+#### Added
+
+- Signed HTTP runtime support with tool signing keys and leader allowlists.
+- `SharedObjectRef` type to represent shared object references with mutability information
+- `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
+- added support for tagged_output in sdk
+
+## [`0.5.0`] - 2026-01-16
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus scheduler` command group for on-chain task management:
+  - `nexus scheduler task create` / `inspect` / `metadata` / `pause` / `resume` / `cancel`
+  - `nexus scheduler occurrence add`
+  - `nexus scheduler periodic set` / `disable`
+- `ToolRef` to combine offchain url and onchain move module id
+- add `--verbose` flag for debug log output
+
+### `nexus-sdk`
+
+#### Changed
+
+- leader and crypto caps in PTB templates are now party objects
+- added `ToolRegistryCreated` as tracked event
+- combined some functions in tool_registry.move
+- set Rust toolchain back to `stable`
+
+## [`0.4.0`] - 2026-01-07
+
+### `nexus-cli`
+
+#### Added
+
+- `--priority-fee-per-gas-unit` flag on `nexus dag execute` to forward a priority fee with DAG executions
+- `nexus tool register onchain` command to register onchain tools
+- onchain tool development guide
+- `nexus tool new` onchain tool move template
+
+#### Changed
+
+- CLI now uses GRPC behind the scenes to communicate with the Sui blockchain
+- CLI now uses the `EventFetcher` to fetche evens where necessary from Sui GraphQL
+
+### `nexus-sdk`
+
+#### Added
+
+- support for `scheduler` transactions and events
+- onchain schema generation
+- `EventFetcher` under `nexus` module to fetch events from Sui GraphQL
+
+#### Changed
+
+- `crypto auth` now uses the new handshake algorithm
+- `nexus tool register` now has two subcommands for both types of tools
+- wrap large numbers as JSON strings to preserve precision for u128/u256 in nexus parser
+- all identifiers and transaction templates now use new `sui-rust-sdk` types
+- `NexusClient` uses GRPC client under the hood
+- `ObjectCrawler` moved under `nexus` module and uses GRPC
+- `onchain_schema_gen` module now uses GRPC
+- all types in the SDK changed to use `sui-rust-sdk` types instead of `sui-sdk`
+
+#### Removed
+
+- dependency on `sui-sdk` crate in favour of `sui-rust-sdk`
+
+## [`0.3.0`] - 2025-11-10
+
+### `nexus-cli`
+
+#### Fixed
+
+- `nexus dag inspect-execution` now uses new `NexusData` implementation that supports remote storage
+- `nexus dag execute` now uses new `NexusData` implementation that supports remote storage
 - `nexus crypto init-key --force` wipes the old `crypto` state from config before rotating the key to avoid parsing errors
 
 ### `nexus-sdk`

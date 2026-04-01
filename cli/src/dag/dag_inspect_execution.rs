@@ -9,40 +9,27 @@ use {
         sui::*,
     },
     nexus_sdk::{events::NexusEventKind, sui, types::Storable},
-    std::sync::Arc,
 };
 
 /// Inspect a Nexus DAG execution process based on the provided object ID and
 /// execution digest.
 pub(crate) async fn inspect_dag_execution(
-    dag_execution_id: sui::ObjectID,
-    execution_digest: sui::TransactionDigest,
+    dag_execution_id: sui::types::Address,
+    execution_checkpoint: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
-    let (nexus_client, _) = get_nexus_client(None, sui::MIST_PER_SUI / 10).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
 
     let mut result = nexus_client
         .workflow()
-        .inspect_execution(dag_execution_id, execution_digest, None)
+        .inspect_execution(dag_execution_id, execution_checkpoint, None)
         .await
         .map_err(NexusCliError::Nexus)?;
 
     // Remote storage conf.
     let conf = CliConf::load().await.unwrap_or_default();
     let storage_conf = conf.data_storage.clone().into();
-
-    // Get the active session for potential encryption
-    let session = CryptoConf::get_active_session(None).await.map_err(|e|
-        NexusCliError::Any(
-            anyhow!(
-                "Failed to get active session: {}.\nPlease initiate a session first.\n\n{init_key}\n{crypto_auth}",
-                e,
-                init_key = "$ nexus crypto init-key --force",
-                crypto_auth = "$ nexus crypto auth"
-            )
-        )
-    )?;
 
     let mut json_trace = Vec::new();
 
@@ -59,7 +46,7 @@ pub(crate) async fn inspect_dag_execution(
 
                 let fetched_data = e
                     .variant_ports_to_data
-                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
                         "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
@@ -71,7 +58,7 @@ pub(crate) async fn inspect_dag_execution(
                 for (port, data) in fetched_data {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
                     );
 
                     item!(
@@ -103,7 +90,7 @@ pub(crate) async fn inspect_dag_execution(
 
                 let fetched_data = e
                     .variant_ports_to_data
-                    .fetch_all(&storage_conf, Arc::clone(&session))
+                    .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
                         "Failed to fetch data: {e}.\nEnsure remote storage is configured.\n\n{command}\n{testnet_command}",
@@ -115,7 +102,7 @@ pub(crate) async fn inspect_dag_execution(
                 for (port, data) in fetched_data {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "was_encrypted": data.is_encrypted(), "storage": data.storage_kind() }),
+                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
                     );
 
                     item!(
@@ -143,9 +130,29 @@ pub(crate) async fn inspect_dag_execution(
                 );
             }
 
+            NexusEventKind::WalkAborted(e) => {
+                notify_error!(
+                    "Vertex '{vertex}' was aborted by a third party due to a timeout.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                );
+            }
+
+            NexusEventKind::WalkCancelled(e) => {
+                notify_error!(
+                    "Vertex '{vertex}' was cancelled because another walk was aborted.",
+                    vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
+                );
+            }
+
             NexusEventKind::ExecutionFinished(e) => {
                 if e.has_any_walk_failed {
                     notify_error!("DAG execution finished unsuccessfully");
+
+                    break;
+                }
+
+                if e.was_aborted {
+                    notify_error!("DAG execution was aborted by a third party due to a timeout");
 
                     break;
                 }
@@ -158,11 +165,6 @@ pub(crate) async fn inspect_dag_execution(
             _ => {}
         }
     }
-
-    // Update the session in the configuration.
-    CryptoConf::release_session(session, None)
-        .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to release session: {}", e)))?;
 
     json_output(&json_trace)?;
 

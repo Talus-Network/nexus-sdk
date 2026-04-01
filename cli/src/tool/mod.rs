@@ -1,21 +1,257 @@
+mod tool_auth;
 mod tool_claim_collateral;
 mod tool_list;
 mod tool_new;
-mod tool_register;
+mod tool_register_offchain;
+mod tool_register_onchain;
 mod tool_set_invocation_cost;
 mod tool_unregister;
+mod tool_update_timeout;
 mod tool_validate;
 
 use {
-    crate::prelude::*,
+    crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
+    tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_list::*,
     tool_new::*,
-    tool_register::*,
+    tool_register_offchain::register_off_chain_tool,
+    tool_register_onchain::register_onchain_tool,
     tool_set_invocation_cost::*,
     tool_unregister::*,
-    tool_validate::*,
+    tool_validate::{validate_off_chain_tool, validate_on_chain_tool},
 };
+
+#[derive(Subcommand)]
+pub(crate) enum ToolAuthCommand {
+    #[command(about = "Generate a new Ed25519 message-signing key for a tool.")]
+    Keygen {
+        #[arg(
+            long = "out",
+            help = "Write the generated keypair JSON to this path.",
+            long_help = "Write the generated keypair JSON to this path. The output contains both `private_key_hex` and `public_key_hex`.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: Option<PathBuf>,
+    },
+
+    #[command(about = "Register (or rotate) a tool message-signing key on-chain.")]
+    RegisterKey {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "OwnerCap<OverTool> object ID (defaults to saved CLI config for this tool).",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+
+        #[arg(
+            long = "signing-key",
+            short = 'k',
+            help = "Tool Ed25519 private key (hex/base64/base64url) OR a path to a file containing it.",
+            value_name = "KEY_OR_PATH"
+        )]
+        signing_key: String,
+
+        #[arg(
+            long = "description",
+            help = "Optional description bytes stored on the key binding.",
+            value_name = "TEXT"
+        )]
+        description: Option<String>,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(
+        about = "Export a leader allowlist file for tool-side verification (no RPC at runtime)."
+    )]
+    ExportAllowedLeaders {
+        #[arg(
+            long = "all",
+            help = "Export allowlist entries for all leaders registered in network_auth (recommended).",
+            conflicts_with = "leaders"
+        )]
+        all: bool,
+
+        /// One or more leader capability IDs (`leader_cap::OverNetwork` object IDs) to include.
+        #[arg(
+            long = "leader",
+            value_name = "LEADER_CAP_ID",
+            required_unless_present = "all"
+        )]
+        leaders: Vec<sui::types::Address>,
+
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+    },
+
+    #[command(
+        about = "Sync an allowed leaders allowlist file from on-chain network_auth (polling)."
+    )]
+    SyncAllowedLeaders {
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+
+        #[arg(
+            long = "interval",
+            default_value = "30s",
+            help = "Polling interval (e.g. 500ms, 5s, 2m, 1h).",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration)
+        )]
+        interval: std::time::Duration,
+
+        #[arg(long = "once", help = "Sync once and exit.")]
+        once: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum RegisterCommand {
+    #[command(about = "Register an offchain tool")]
+    Offchain {
+        #[arg(long = "url", short = 'u', help = "The URL of the offchain tool")]
+        url: reqwest::Url,
+
+        #[arg(
+            long = "collateral-coin",
+            short = 'c',
+            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        collateral_coin: Option<sui::types::Address>,
+
+        #[arg(
+            long = "invocation-cost",
+            short = 'i',
+            help = "What is the cost of invoking this tool in MIST.",
+            default_value = "0",
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
+
+        #[arg(
+            long = "batch",
+            help = "Should all tools on a webserver be registered at once?"
+        )]
+        batch: bool,
+
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Register an onchain tool")]
+    Onchain {
+        #[arg(
+            long = "package",
+            short = 'p',
+            help = "The onchain tool package address",
+            value_name = "ADDRESS"
+        )]
+        package: sui::types::Address,
+
+        #[arg(long = "module", short = 'm', help = "The onchain tool module name")]
+        module: sui::types::Identifier,
+
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) for this tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+
+        #[arg(
+            long = "description",
+            short = 'd',
+            help = "Description of what the tool does.",
+            value_name = "DESCRIPTION"
+        )]
+        description: String,
+
+        #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The timeout duration for the tool execution. Defaults to 5 seconds. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+            default_value = "5s"
+        )]
+        timeout: std::time::Duration,
+
+        #[arg(
+            long = "witness-id",
+            short = 'w',
+            help = "The witness object ID that proves the tool's identity.",
+            value_name = "OBJECT_ID"
+        )]
+        witness_id: sui::types::Address,
+
+        #[arg(
+            long = "collateral-coin",
+            short = 'c',
+            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            value_name = "OBJECT_ID"
+        )]
+        collateral_coin: Option<sui::types::Address>,
+
+        #[arg(
+            long = "no-save",
+            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
+        )]
+        no_save: bool,
+
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ValidateCommand {
+    #[command(about = "Validate an offchain tool")]
+    Offchain {
+        #[arg(
+            long = "url",
+            short = 'u',
+            help = "The URL of the offchain tool to validate"
+        )]
+        url: reqwest::Url,
+    },
+
+    #[command(about = "Validate an onchain tool")]
+    Onchain {
+        #[arg(
+            long = "ident",
+            short = 'i',
+            help = "The identifier of the onchain tool to validate"
+        )]
+        ident: String,
+    },
+}
 
 #[derive(Subcommand)]
 pub(crate) enum ToolCommand {
@@ -45,47 +281,16 @@ pub(crate) enum ToolCommand {
         target: PathBuf,
     },
 
-    #[command(about = "Validate a tool based on its identifier.")]
+    #[command(about = "Validate a tool based on its type.")]
     Validate {
-        /// The ident of the Tool to validate.
-        #[command(flatten)]
-        ident: ToolIdent,
+        #[command(subcommand)]
+        tool_type: ValidateCommand,
     },
 
-    #[command(about = "Register a tool based on its identifier.")]
+    #[command(about = "Register a tool based on its type.")]
     Register {
-        /// The collateral coin object ID. Second coin object is chosen if not
-        /// present.
-        #[arg(
-            long = "collateral-coin",
-            short = 'c',
-            help = "The collateral coin object ID. Second coin object is chosen if not present.",
-            value_name = "OBJECT_ID"
-        )]
-        collateral_coin: Option<sui::ObjectID>,
-        #[arg(
-            long = "invocation-cost",
-            short = 'i',
-            help = "What is the cost of invoking this tool in MIST.",
-            default_value = "0",
-            value_name = "MIST"
-        )]
-        invocation_cost: u64,
-        #[arg(
-            long = "batch",
-            help = "Should all tools on a webserver be registered at once?"
-        )]
-        batch: bool,
-        #[arg(
-            long = "no-save",
-            help = "If this flag is set, the tool owner caps will not be saved to the local config file."
-        )]
-        no_save: bool,
-        /// The ident of the Tool to register.
-        #[command(flatten)]
-        ident: ToolIdent,
-        #[command(flatten)]
-        gas: GasArgs,
+        #[command(subcommand)]
+        tool_type: RegisterCommand,
     },
 
     #[command(about = "Unregister a tool identified by its FQN.")]
@@ -103,7 +308,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         /// Whether to skip the confirmation prompt.
         #[arg(long = "yes", short = 'y', help = "Skip the confirmation prompt")]
         skip_confirmation: bool,
@@ -126,7 +331,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -146,7 +351,7 @@ pub(crate) enum ToolCommand {
             help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::ObjectID>,
+        owner_cap: Option<sui::types::Address>,
         #[arg(
             long = "invocation-cost",
             short = 'i',
@@ -163,28 +368,40 @@ pub(crate) enum ToolCommand {
     List {
         //
     },
-}
 
-/// Struct holding an either on-chain or off-chain Tool identifier. Off-chain
-/// tools are identified by their URL, while on-chain tools are identified by
-/// a Move ident.
-#[derive(Args, Clone, Debug)]
-#[group(required = true, multiple = false)]
-pub(crate) struct ToolIdent {
-    #[arg(
-        long = "off-chain",
-        short = 'f',
-        help = "The URL of the off-chain Tool to validate",
-        value_name = "URL"
-    )]
-    pub(crate) off_chain: Option<reqwest::Url>,
-    #[arg(
-        long = "on-chain",
-        short = 'n',
-        help = "The ident of on-chain Tool to validate",
-        value_name = "IDENT"
-    )]
-    pub(crate) on_chain: Option<String>,
+    #[command(about = "Manage tool auth for signed HTTP.")]
+    Auth {
+        #[command(subcommand)]
+        cmd: ToolAuthCommand,
+    },
+
+    #[command(about = "Update a tool's timeout duration.")]
+    UpdateTimeout {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to update the timeout for.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+        #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The new timeout duration for the tool execution. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+        )]
+        timeout: std::time::Duration,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
@@ -199,28 +416,58 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         } => create_new_tool(name, template, target).await,
 
         // == `$ nexus tool validate` ==
-        ToolCommand::Validate { ident } => validate_tool(ident).await.map(|_| ()),
+        ToolCommand::Validate { tool_type } => match tool_type {
+            ValidateCommand::Offchain { url } => validate_off_chain_tool(url).await.map(|_| ()),
+            ValidateCommand::Onchain { ident } => validate_on_chain_tool(ident).await.map(|_| ()),
+        },
 
         // == `$ nexus tool register` ==
-        ToolCommand::Register {
-            ident,
-            collateral_coin,
-            invocation_cost,
-            batch,
-            no_save,
-            gas,
-        } => {
-            register_tool(
-                ident,
+        ToolCommand::Register { tool_type } => match tool_type {
+            RegisterCommand::Offchain {
+                url,
                 collateral_coin,
                 invocation_cost,
                 batch,
                 no_save,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
+                gas,
+            } => {
+                register_off_chain_tool(
+                    url,
+                    collateral_coin,
+                    invocation_cost,
+                    batch,
+                    no_save,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+            RegisterCommand::Onchain {
+                package,
+                module,
+                tool_fqn,
+                description,
+                timeout,
+                witness_id,
+                collateral_coin,
+                no_save,
+                gas,
+            } => {
+                register_onchain_tool(
+                    package,
+                    module,
+                    tool_fqn,
+                    description,
+                    timeout,
+                    witness_id,
+                    collateral_coin,
+                    no_save,
+                    gas.sui_gas_coin,
+                    gas.sui_gas_budget,
+                )
+                .await
+            }
+        },
 
         // == `$ nexus tool unregister` ==
         ToolCommand::Unregister {
@@ -265,5 +512,25 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
+
+        // == `$ nexus tool auth` ==
+        ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
+
+        // == `$ nexus tool update-timeout` ==
+        ToolCommand::UpdateTimeout {
+            tool_fqn,
+            owner_cap,
+            timeout,
+            gas,
+        } => {
+            update_tool_timeout(
+                tool_fqn,
+                owner_cap,
+                timeout,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }

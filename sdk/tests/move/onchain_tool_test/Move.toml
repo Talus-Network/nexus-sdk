@@ -1,0 +1,11 @@
+[package]
+name = "onchain_tool_test"
+edition = "2024.beta"
+
+[dependencies]
+
+[environments]
+testnet = "4c78adac"
+
+[addresses]
+onchain_tool = "0x0"

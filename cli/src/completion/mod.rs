@@ -1,6 +1,6 @@
 use {
     crate::{prelude::*, Cli},
-    std::io::Write,
+    std::io::{self, Write},
 };
 
 #[derive(Args)]
@@ -10,6 +10,13 @@ pub(crate) struct CompletionCommand {
 }
 
 pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError> {
+    handle_with_writer(command, &mut io::stdout())
+}
+
+fn handle_with_writer(
+    command: CompletionCommand,
+    writer: &mut dyn Write,
+) -> AnyResult<(), NexusCliError> {
     let mut cli_command = Cli::command();
     let bin_name = env!("CARGO_CRATE_NAME").to_string();
 
@@ -18,7 +25,7 @@ pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError>
     clap_complete::generate(command.shell, &mut cli_command, bin_name, &mut buffer);
 
     // Best-effort write to stdout; ignore EPIPE/BrokenPipe to avoid crashing when the reader closes early.
-    let _ = std::io::stdout().write_all(&buffer);
+    let _ = writer.write_all(&buffer);
 
     Ok(())
 }
@@ -38,7 +45,8 @@ mod tests {
             let cli = Cli::parse_from(&args);
             match cli.command {
                 Command::Completion(cc) => {
-                    handle(cc).unwrap();
+                    let mut sink = std::io::sink();
+                    handle_with_writer(cc, &mut sink).unwrap();
                 }
                 _ => unreachable!("This should have been a completion command!"),
             }

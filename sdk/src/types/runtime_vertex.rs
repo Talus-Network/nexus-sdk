@@ -13,23 +13,14 @@ use {
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(tag = "variant", content = "fields")]
 pub enum RuntimeVertex {
-    Plain {
-        vertex: TypeName,
-    },
     WithIterator {
         vertex: TypeName,
-        #[serde(
-            deserialize_with = "deserialize_sui_u64",
-            serialize_with = "serialize_sui_u64"
-        )]
         iteration: u64,
-        #[serde(
-            deserialize_with = "deserialize_sui_u64",
-            serialize_with = "serialize_sui_u64"
-        )]
         out_of: u64,
+    },
+    Plain {
+        vertex: TypeName,
     },
 }
 
@@ -49,6 +40,13 @@ impl RuntimeVertex {
             },
             iteration,
             out_of,
+        }
+    }
+
+    pub fn name(&self) -> TypeName {
+        match self {
+            RuntimeVertex::Plain { vertex } => vertex.clone(),
+            RuntimeVertex::WithIterator { vertex, .. } => vertex.clone(),
         }
     }
 }
@@ -80,20 +78,12 @@ mod tests {
 
         let json = serde_json::to_string(&vertex).unwrap();
 
-        assert_eq!(
-            json,
-            r#"{"variant":"Plain","fields":{"vertex":{"name":"vertex_a"}}}"#,
-        );
+        assert_eq!(json, r#"{"Plain":{"vertex":{"name":"vertex_a"}}}"#,);
     }
 
     #[test]
     fn test_deserialize_plain() {
-        let json = r#"{
-            "variant": "Plain",
-            "fields": {
-                "vertex": { "name": "vertex_b" }
-            }
-        }"#;
+        let json = r#"{"Plain":{"vertex": { "name": "vertex_b" }}}"#;
 
         let vertex: RuntimeVertex = serde_json::from_str(json).unwrap();
         match vertex {
@@ -123,20 +113,13 @@ mod tests {
 
         assert_eq!(
             json,
-            r#"{"variant":"WithIterator","fields":{"vertex":{"name":"vertex_c"},"iteration":"5","out_of":"10"}}"#
+            r#"{"WithIterator":{"vertex":{"name":"vertex_c"},"iteration":5,"out_of":10}}"#
         );
     }
 
     #[test]
     fn test_deserialize_with_iterator() {
-        let json = r#"{
-            "variant": "WithIterator",
-            "fields": {
-                "vertex": { "name": "vertex_d" },
-                "iteration": "7",
-                "out_of": "15"
-            }
-        }"#;
+        let json = r#"{"WithIterator":{"vertex":{"name":"vertex_d"},"iteration":7,"out_of":15}}"#;
 
         let vertex: RuntimeVertex = serde_json::from_str(json).unwrap();
 
@@ -219,5 +202,96 @@ mod tests {
             }
             _ => panic!("Expected WithIterator variant"),
         }
+    }
+
+    #[test]
+    fn test_name_getter_plain() {
+        let vertex = RuntimeVertex::Plain {
+            vertex: TypeName {
+                name: "plain_vertex".to_string(),
+            },
+        };
+        let name = vertex.name();
+        assert_eq!(
+            name,
+            TypeName {
+                name: "plain_vertex".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_name_getter_with_iterator() {
+        let vertex = RuntimeVertex::WithIterator {
+            vertex: TypeName {
+                name: "iter_vertex".to_string(),
+            },
+            iteration: 1,
+            out_of: 2,
+        };
+        let name = vertex.name();
+        assert_eq!(
+            name,
+            TypeName {
+                name: "iter_vertex".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_equality_plain() {
+        let v1 = RuntimeVertex::plain("eq_vertex");
+        let v2 = RuntimeVertex::Plain {
+            vertex: TypeName {
+                name: "eq_vertex".to_string(),
+            },
+        };
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_equality_with_iterator() {
+        let v1 = RuntimeVertex::with_iterator("eq_iter", 9, 99);
+        let v2 = RuntimeVertex::WithIterator {
+            vertex: TypeName {
+                name: "eq_iter".to_string(),
+            },
+            iteration: 9,
+            out_of: 99,
+        };
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_inequality_between_variants() {
+        let v1 = RuntimeVertex::plain("vertex");
+        let v2 = RuntimeVertex::with_iterator("vertex", 0, 1);
+        assert_ne!(v1, v2);
+    }
+
+    #[test]
+    fn test_debug_trait() {
+        let v = RuntimeVertex::with_iterator("dbg", 1, 2);
+        let dbg_str = format!("{:?}", v);
+        assert!(dbg_str.contains("WithIterator"));
+        assert!(dbg_str.contains("dbg"));
+        assert!(dbg_str.contains("iteration: 1"));
+        assert!(dbg_str.contains("out_of: 2"));
+    }
+
+    #[test]
+    fn test_bcs_ser_deser() {
+        let vertex = RuntimeVertex::WithIterator {
+            vertex: TypeName {
+                name: "bcs_vertex".to_string(),
+            },
+            iteration: 4,
+            out_of: 10,
+        };
+
+        let serialized = bcs::to_bytes(&vertex).unwrap();
+        let deserialized: RuntimeVertex = bcs::from_bytes(&serialized).unwrap();
+
+        assert_eq!(vertex, deserialized);
     }
 }

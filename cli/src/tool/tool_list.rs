@@ -1,41 +1,61 @@
 use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
-        object_crawler::{fetch_one, ObjectBag, Structure},
-        types::{
-            deserialize_bytes_to_lossy_utf8,
-            deserialize_bytes_to_url,
-            deserialize_string_to_datetime,
-        },
+        nexus::crawler::DynamicMap,
+        types::{Tool, ToolRef},
     },
 };
 
 /// List tools available in the tool registry.
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
-    command_title!("Listing all available Neuxs tools");
+    command_title!("Listing all available Nexus tools");
 
-    // Load CLI configuration.
-    let mut conf = CliConf::load().await.unwrap_or_default();
-
-    // Nexus objects must be present in the configuration.
-    let NexusObjects { tool_registry, .. } = &get_nexus_objects(&mut conf).await?;
-
-    // Build the Sui client.
-    let sui = build_sui_client(&conf.sui).await?;
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_objects = &*nexus_client.get_nexus_objects();
+    let crawler = nexus_client.crawler();
 
     let tools_handle = loading!("Fetching tools from the tool registry...");
 
-    let tool_registry =
-        match fetch_one::<Structure<ToolRegistry>>(&sui, tool_registry.object_id).await {
-            Ok(tool_registry) => tool_registry.data.into_inner(),
-            Err(e) => {
-                tools_handle.error();
+    #[derive(Deserialize)]
+    struct ToolRegistry {
+        timeouts: DynamicMap<ToolFqn, String>,
+    }
 
-                return Err(NexusCliError::Any(e));
-            }
-        };
+    let tool_registry = match crawler
+        .get_object::<ToolRegistry>(*nexus_objects.tool_registry.object_id())
+        .await
+    {
+        Ok(tool_registry) => tool_registry.data,
+        Err(e) => {
+            tools_handle.error();
 
-    let tools = match tool_registry.tools.fetch_all(&sui).await {
+            return Err(NexusCliError::Any(e));
+        }
+    };
+
+    let fqns = match crawler.get_dynamic_fields(&tool_registry.timeouts).await {
+        Ok(timeouts) => timeouts.into_keys().collect::<Vec<_>>(),
+        Err(e) => {
+            tools_handle.error();
+
+            return Err(NexusCliError::Any(e));
+        }
+    };
+
+    let tool_ids = match fqns
+        .into_iter()
+        .map(|fqn| Tool::derive_id(*nexus_objects.tool_registry.object_id(), &fqn))
+        .collect::<AnyResult<Vec<_>>>()
+    {
+        Ok(ids) => ids,
+        Err(e) => {
+            tools_handle.error();
+
+            return Err(NexusCliError::Any(e));
+        }
+    };
+
+    let tools = match crawler.get_objects::<Tool>(&tool_ids).await {
         Ok(tools) => tools,
         Err(e) => {
             tools_handle.error();
@@ -48,22 +68,32 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     let mut tools_json = Vec::new();
 
-    for (fqn, tool) in tools {
-        let tool = tool.into_inner();
+    for tool in tools {
+        let tool = tool.data;
 
-        tools_json.push(json!(
-        {
-            "fqn": fqn,
-            "url": tool.url,
-            "registered_at_ms": tool.registered_at_ms,
-            "description": tool.description
-        }));
+        let tool_type = if matches!(tool.reference, ToolRef::Sui { .. }) {
+            "OnChain"
+        } else {
+            "OffChain"
+        };
+
+        let unregistered = match tool.unregistered_at {
+            Some(unregistered_at) => format!(
+                "(Unregistered at '{}') ",
+                unregistered_at.timestamp_millis()
+            ),
+            None => "".to_string(),
+        };
+
+        tools_json.push(json!(tool));
 
         item!(
-            "Tool '{fqn}' at '{url}' registered '{registered_at}' - {description}",
-            fqn = fqn.to_string().truecolor(100, 100, 100),
-            url = tool.url.as_str().truecolor(100, 100, 100),
-            registered_at = tool.registered_at_ms.to_string().truecolor(100, 100, 100),
+            "{unregistered}{tool_type} Tool '{fqn}' at '{reference}' registered '{registered_at}' - {description}",
+            unregistered = unregistered.truecolor(100, 100, 100),
+            tool_type = tool_type.truecolor(100, 100, 100),
+            fqn = tool.fqn.to_string().truecolor(100, 100, 100),
+            reference = tool.reference.to_string().truecolor(100, 100, 100),
+            registered_at = tool.registered_at.to_string().truecolor(100, 100, 100),
             description = tool.description.truecolor(100, 100, 100),
         );
     }
@@ -71,19 +101,4 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     json_output(&tools_json)?;
 
     Ok(())
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ToolRegistry {
-    tools: ObjectBag<ToolFqn, Structure<Tool>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct Tool {
-    #[serde(deserialize_with = "deserialize_bytes_to_url")]
-    url: reqwest::Url,
-    #[serde(deserialize_with = "deserialize_bytes_to_lossy_utf8")]
-    description: String,
-    #[serde(deserialize_with = "deserialize_string_to_datetime")]
-    registered_at_ms: chrono::DateTime<chrono::Utc>,
 }

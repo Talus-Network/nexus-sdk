@@ -1,6 +1,6 @@
 //! Common error types for Nexus-related functionality.
 
-use {crate::crypto::session::SessionError, thiserror::Error};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NexusError {
@@ -14,8 +14,6 @@ pub enum NexusError {
     Rpc(anyhow::Error),
     #[error("Parsing error: {0}")]
     Parsing(anyhow::Error),
-    #[error("Crypto error: {0}")]
-    Crypto(SessionError),
     #[error("Timeout error: {0}")]
     Timeout(anyhow::Error),
     #[error("Channel error: {0}")]

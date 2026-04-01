@@ -10,7 +10,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y pkg-config libssl-dev
 
 COPY cli cli
-COPY tools tools
 COPY sdk sdk
 COPY toolkit-rust toolkit-rust
 
@@ -22,20 +21,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/sui/${TARGET_DIR} <<EOT
     cargo build \
     --profile ${PROFILE} \
-    --bin nexus-cli \
-    --bin math \
-    --bin llm-openai-chat-completion
+    --bin nexus-cli
     cp -t /app \
-        ${TARGET_DIR}/nexus-cli \
-        ${TARGET_DIR}/math \
-        ${TARGET_DIR}/llm-openai-chat-completion
+        ${TARGET_DIR}/nexus-cli
 EOT
 
 FROM gcr.io/distroless/cc-debian12
 
 COPY --from=builder /app/nexus-cli /
-COPY --from=builder /app/llm-openai-chat-completion /tools/
-COPY --from=builder /app/math /tools/
 
 CMD ["./nexus-cli"]
 

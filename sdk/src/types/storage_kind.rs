@@ -20,7 +20,7 @@ impl FromStr for StorageKind {
         match s.to_lowercase().as_str() {
             "inline" => Ok(StorageKind::Inline),
             "walrus" => Ok(StorageKind::Walrus),
-            _ => Err(format!("Invalid storage kind: {}", s)),
+            _ => Err(format!("Invalid storage kind: {s}")),
         }
     }
 }

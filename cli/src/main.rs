@@ -1,16 +1,15 @@
 mod cli_conf;
 mod completion;
 mod conf;
-mod crypto;
 mod dag;
 mod display;
 mod error;
 mod gas;
-mod network;
 mod prelude;
+mod scheduler;
 mod sui;
 mod tool;
-mod utils;
+mod workflow;
 
 use crate::prelude::*;
 
@@ -24,6 +23,10 @@ struct Cli {
         help = "Change the output format to JSON"
     )]
     json: bool,
+
+    #[command(flatten)]
+    verbose: clap_verbosity::Verbosity<clap_verbosity::ErrorLevel>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -36,12 +39,10 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
+    #[command(subcommand, about = "Manage scheduler tasks and occurrences")]
+    Scheduler(scheduler::SchedulerCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
-    #[command(subcommand, about = "Manage Nexus networks and leader caps")]
-    Network(network::NetworkCommand),
-    #[command(subcommand, about = "Manage Nexus crypto")]
-    Crypto(crypto::CryptoCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),
 }
@@ -56,7 +57,7 @@ async fn main() {
             // to display the CLI help or version.
             match e.kind() {
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
-                    println!("{}", e);
+                    println!("{e}");
 
                     std::process::exit(0);
                 }
@@ -73,6 +74,10 @@ async fn main() {
         }
     };
 
+    env_logger::builder()
+        .filter(None, cli.verbose.log_level_filter())
+        .init();
+
     JSON_MODE.store(cli.json, Ordering::Relaxed);
 
     // Send each sub-command to the respective handler.
@@ -80,9 +85,8 @@ async fn main() {
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
-        Command::Network(network) => network::handle(network).await,
         Command::Gas(gas) => gas::handle(gas).await,
-        Command::Crypto(crypto) => crypto::handle(crypto).await,
+        Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 

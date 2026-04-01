@@ -8,6 +8,7 @@ use {
     nexus_sdk::{types::StorageKind, walrus::WALRUS_MAX_EPOCHS},
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Clone, Debug)]
 pub(crate) enum ConfCommand {
     #[command(about = "Print the current Nexus CLI configuration")]
@@ -26,22 +27,14 @@ pub(crate) enum ConfCommand {
     #[command(about = "Update the Nexus CLI configuration")]
     Set {
         #[arg(
-            long = "sui.net",
-            help = "Set the Sui network",
-            value_enum,
-            value_name = "NET"
+            long = "sui.pk",
+            help = "Set the Sui private key base64 encoded bytes",
+            value_name = "BASE64"
         )]
-        sui_net: Option<SuiNet>,
-        #[arg(
-            long = "sui.wallet-path",
-            help = "Set the Sui wallet path",
-            value_name = "PATH",
-            value_parser = ValueParser::from(expand_tilde)
-        )]
-        sui_wallet_path: Option<PathBuf>,
+        sui_pk: Option<String>,
         #[arg(
             long = "sui.rpc-url",
-            help = "Set a custom RPC URL for the Sui node",
+            help = "Set a Sui node RPC URL",
             value_name = "URL"
         )]
         sui_rpc_url: Option<reqwest::Url>,
@@ -107,7 +100,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
 
             if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
                 let conf = toml::to_string_pretty(&conf).map_err(|e| {
-                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {}", e))
+                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {e}"))
                 })?;
 
                 println!("{conf}");
@@ -116,8 +109,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             Ok(())
         }
         ConfCommand::Set {
-            sui_net,
-            sui_wallet_path,
+            sui_pk,
             sui_rpc_url,
             nexus_objects_path,
             data_storage_walrus_aggregator_url,
@@ -128,8 +120,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             conf_path,
         } => {
             set_nexus_conf(
-                sui_net,
-                sui_wallet_path,
+                sui_pk,
                 sui_rpc_url,
                 nexus_objects_path,
                 data_storage_walrus_aggregator_url,

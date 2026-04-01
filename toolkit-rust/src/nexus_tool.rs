@@ -7,9 +7,24 @@ use {
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
     serde_json::{json, Value},
-    std::future::Future,
+    std::{future::Future, time::Duration},
     warp::http::StatusCode,
 };
+
+/// Authenticated request context available to tools when signed HTTP is enabled.
+///
+/// This context is produced by the toolkit runtime after it has:
+/// - verified the invoker's signature on the invocation request, and
+/// - verified the request freshness window (`iat_ms`/`exp_ms`), and
+/// - verified the request body hash, method/path/query binding, and tool id.
+///
+/// Tools can use this context inside [`NexusTool::authorize`] to implement their own
+/// admission policy (allowlists, task gating, rate-limits, etc) without any on-chain reads.
+///
+/// Terminology:
+/// - Invoker: the node calling the tool (in Nexus, the Leader).
+/// - Responder: the node serving the request (in Nexus, the Tool).
+pub type AuthContext = nexus_sdk::signed_http::v1::engine::AuthContextV1;
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
@@ -47,11 +62,36 @@ pub trait NexusTool: Send + Sync + 'static {
     type Output: JsonSchema + Serialize + Send;
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
+    /// Returns the Tool timeout duration. Defaults to 10 seconds.
+    fn timeout() -> Duration {
+        Duration::from_secs(10)
+    }
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
     ///
     /// It is used to generate the `/invoke` endpoint.
     fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+
+    /// Authorize an invocation after it has been authenticated via signed HTTP.
+    ///
+    /// This is an optional ergonomic hook for tool developers to implement their
+    /// own admission policy (allowlists, rate-limits, task gating, etc).
+    ///
+    /// Default: allow.
+    ///
+    /// # Example
+    /// ```ignore
+    /// async fn authorize(&self, ctx: AuthContext) -> AnyResult<()> {
+    ///     // Example policy: only allow a specific LeaderId.
+    ///     if ctx.invoker_id != "0x1111" {
+    ///         anyhow::bail!("leader not allowed");
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    fn authorize(&self, _ctx: AuthContext) -> impl Future<Output = AnyResult<()>> + Send {
+        async { Ok(()) }
+    }
     /// Returns the health status of the tool. For now, this only returns an
     /// HTTP status code.
     ///
@@ -79,6 +119,7 @@ pub trait NexusTool: Send + Sync + 'static {
     fn meta(url: Url) -> Value {
         let fqn = Self::fqn();
         let url = url.to_string();
+        let timeout = Self::timeout().as_millis() as u64;
         let description = Self::description();
         let input_schema = schemars::schema_for!(Self::Input);
         let output_schema = schemars::schema_for!(Self::Output);
@@ -87,6 +128,7 @@ pub trait NexusTool: Send + Sync + 'static {
             {
                 "fqn": fqn,
                 "url": url,
+                "timeout": timeout,
                 "description": description,
                 "input_schema": input_schema,
                 "output_schema": output_schema,
