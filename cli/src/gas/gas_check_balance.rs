@@ -77,5 +77,3 @@ pub(crate) async fn check_balance() -> AnyResult<(), NexusCliError> {
 
     Ok(())
 }
-
-// TODO: tests for balance, cost and models
