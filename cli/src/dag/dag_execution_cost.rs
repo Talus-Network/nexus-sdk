@@ -12,8 +12,6 @@ use {
     num_format::{Locale, ToFormattedString},
 };
 
-/// Inspect a Nexus DAG execution process based on the provided object ID and
-/// execution digest.
 pub(crate) async fn execution_cost(
     dag_execution_id: sui::types::Address,
 ) -> AnyResult<(), NexusCliError> {

@@ -12,7 +12,6 @@ use {
     num_format::{Locale, ToFormattedString},
 };
 
-/// Check the current Nexus gas balance for the invoker.
 pub(crate) async fn check_balance() -> AnyResult<(), NexusCliError> {
     command_title!("Checking invoker's Nexus gas balance");
 
