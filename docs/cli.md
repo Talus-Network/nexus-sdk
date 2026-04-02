@@ -266,6 +266,12 @@ Inspects a DAG execution process based on the provided `DAGExecution` object ID 
 
 ---
 
+**`nexus dag execution-cost --dag-execution-id <id>`**
+
+Checks the cost of a DAG execution based on the provided `DAGExecution` object ID. This cost is broken down per transaction digest and includes the execution cost and the priority fee.
+
+---
+
 ### `nexus scheduler`
 
 Manage scheduler tasks, occurrences, and periodic schedules.
@@ -369,6 +375,16 @@ Set of commands to manage Nexus gas budgets and tickets.
 **`nexus gas add-budget --coin <object_id>`**
 
 Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+## `nexus gas balance`
+
+Check the balance of the invoker's gas funds. This command reads all the funds that the invoker has uploaded as gas budget and prints them per usage scope.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
