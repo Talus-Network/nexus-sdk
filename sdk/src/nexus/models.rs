@@ -98,19 +98,19 @@ pub struct DagOutputVariantPort {
 
 // == `GasService` related types ==
 
-#[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Scope {
     Execution(sui::types::Address),
     WorksheetType(TypeName),
     InvokerAddress(sui::types::Address),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InvokerGas {
     pub vault: DynamicMap<Scope, GasFunds>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GasFunds {
     #[serde(
         deserialize_with = "deserialize_sui_u64",
@@ -124,12 +124,12 @@ pub struct GasFunds {
     pub locked: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecutionGas {
     pub claimed_leader_gas: DynamicMap<Vec<u8>, ClaimedGas>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ClaimedGas {
     #[serde(
         deserialize_with = "deserialize_sui_u64",
