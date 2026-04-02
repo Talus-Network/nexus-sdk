@@ -46,10 +46,7 @@ pub(crate) async fn execution_cost(
                 .truecolor(100, 100, 100),
             format!("{} MIST", claim.priority.to_formatted_string(&Locale::en))
                 .truecolor(100, 100, 100),
-            sui::types::Digest::from_bytes(digest.as_slice())
-                .unwrap_or(sui::types::Digest::ZERO)
-                .to_string()
-                .truecolor(100, 100, 100),
+            digest.to_string().truecolor(100, 100, 100),
         );
 
         total += claim.execution + claim.priority;
@@ -61,10 +58,12 @@ pub(crate) async fn execution_cost(
     );
 
     json_output(
-        &result.leader_claims.iter()
+        &result
+            .leader_claims
+            .iter()
             .map(|(digest, claim)| {
                 serde_json::json!({
-                    "digest": sui::types::Digest::from_bytes(digest.as_slice()).unwrap_or(sui::types::Digest::ZERO).to_string(),
+                    "digest": digest.to_string(),
                     "execution": claim.execution,
                     "priority": claim.priority,
                 })

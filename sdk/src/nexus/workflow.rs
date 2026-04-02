@@ -49,7 +49,7 @@ pub struct InspectExecutionResult {
 }
 
 pub struct ExecutionCostResult {
-    pub leader_claims: HashMap<Vec<u8>, ClaimedGas>,
+    pub leader_claims: HashMap<sui::types::Digest, ClaimedGas>,
 }
 
 pub struct WorkflowActions {
@@ -349,7 +349,15 @@ impl WorkflowActions {
         let leader_claims = crawler
             .get_dynamic_fields(&execution_gas.claimed_leader_gas)
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .map(|(digest, claim)| {
+                let digest = sui::types::Digest::from_bytes(digest.as_slice())
+                    .unwrap_or(sui::types::Digest::ZERO);
+
+                (digest, claim)
+            })
+            .collect();
 
         Ok(ExecutionCostResult { leader_claims })
     }
@@ -800,12 +808,12 @@ mod tests {
             .workflow()
             .execution_cost(execution_id)
             .await
-            .expect("Failed to buy expiry ticket");
+            .expect("Failed to fetch execution cost");
 
         assert_eq!(result.leader_claims.len(), 1);
         let (digest, funds) = result.leader_claims.iter().next().unwrap();
         assert_eq!(funds.execution, 100_000);
         assert_eq!(funds.priority, 10_000);
-        assert_eq!(digest, &claim_digest.as_bytes().to_vec());
+        assert_eq!(digest, &claim_digest);
     }
 }

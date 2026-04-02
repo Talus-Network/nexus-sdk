@@ -98,9 +98,7 @@ impl<'de> Deserialize<'de> for NexusData {
             let adjusted_value = wrap_large_numbers_as_string(&str);
 
             serde_json::from_str(&adjusted_value).map_err(|e| {
-                serde::de::Error::custom(format!(
-                    "NexusData contains invalid JSON: {e} ({adjusted_value})"
-                ))
+                serde::de::Error::custom(format!("NexusData contains invalid JSON: {e}"))
             })?
         } else {
             // If we're dealing with multiple values, we assume that
@@ -115,9 +113,7 @@ impl<'de> Deserialize<'de> for NexusData {
                 let adjusted_value = wrap_large_numbers_as_string(&str);
 
                 values.push(serde_json::from_str(&adjusted_value).map_err(|e| {
-                    serde::de::Error::custom(format!(
-                        "NexusData contains invalid JSON: {e} ({adjusted_value})"
-                    ))
+                    serde::de::Error::custom(format!("NexusData contains invalid JSON: {e}"))
                 })?);
             }
 

@@ -126,7 +126,11 @@ impl GasActions {
         let invoker_gas = crawler
             .get_object::<InvokerGas>(invoker_gas_id)
             .await
-            .map_err(NexusError::Rpc)?
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "InvokerGas doesn't yet exist, consider uploading some budget first: {e}"
+                ))
+            })?
             .data;
 
         let funds = crawler
@@ -1097,7 +1101,7 @@ mod tests {
             .gas()
             .balance()
             .await
-            .expect("Failed to buy expiry ticket");
+            .expect("Failed to fetch gas balance");
 
         assert_eq!(result.funds.len(), 1);
         let (scope, funds) = result.funds.iter().next().unwrap();

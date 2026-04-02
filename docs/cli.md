@@ -382,7 +382,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-## `nexus gas balance`
+**`nexus gas balance`**
 
 Check the balance of the invoker's gas funds. This command reads all the funds that the invoker has uploaded as gas budget and prints them per usage scope.
 

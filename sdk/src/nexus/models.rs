@@ -147,7 +147,7 @@ mod tests {
     use {super::*, crate::fqn, serde_json::json};
 
     #[test]
-    fn test_dag_vertex_kind_ofchain_serde() {
+    fn test_dag_vertex_kind_offchain_serde() {
         let kind = DagVertexKind::OffChain {
             tool_fqn: fqn!("xyz.example.tool@1"),
         };
