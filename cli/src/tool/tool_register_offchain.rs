@@ -383,7 +383,7 @@ pub(crate) async fn register_off_chain_tool(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, clap::Parser};
 
     /// Helper: returns a valid `ToolMeta` JSON string with the given URL.
     fn valid_meta_json(url: &str) -> String {
@@ -513,5 +513,62 @@ mod tests {
             err.to_string().contains("failed to read meta file"),
             "got: {err}"
         );
+    }
+
+    // -- Clap constraint tests --
+
+    /// Verifies that `--url` is not required when `--from-meta` is provided.
+    /// Guards against the `required_unless_present` constraint being removed.
+    #[test]
+    fn clap_accepts_from_meta_without_url() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "register",
+            "offchain",
+            "--from-meta",
+            "meta.json",
+        ])
+        .is_ok());
+    }
+
+    /// Verifies that `--url` is required when `--from-meta` is absent.
+    /// Guards against `required_unless_present` being accidentally removed.
+    #[test]
+    fn clap_rejects_offchain_without_url_or_from_meta() {
+        assert!(crate::Cli::try_parse_from(["nexus", "tool", "register", "offchain",]).is_err());
+    }
+
+    /// Verifies that `--from-meta` and `--batch` cannot be used together.
+    /// Guards against the `conflicts_with` constraint being removed.
+    #[test]
+    fn clap_rejects_from_meta_with_batch() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "register",
+            "offchain",
+            "--from-meta",
+            "meta.json",
+            "--batch",
+        ])
+        .is_err());
+    }
+
+    /// Verifies that `--from-meta` and `--url` can be used together (URL override).
+    /// Guards against an accidental `conflicts_with` between the two.
+    #[test]
+    fn clap_accepts_from_meta_with_url_override() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "register",
+            "offchain",
+            "--from-meta",
+            "meta.json",
+            "--url",
+            "https://override.example.com",
+        ])
+        .is_ok());
     }
 }
