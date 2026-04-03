@@ -1355,5 +1355,191 @@ mod tests {
             let bytes = std::fs::read(&out_path).unwrap();
             assert_eq!(bytes, expected_bytes);
         }
+
+        /// Verifies that `list_tool_keys` returns the correct key list for a tool
+        /// with an active key and a revoked key, sorted by kid ascending.
+        /// Guards against regressions in the binding lookup, dynamic field
+        /// deserialization, key sorting, and revocation flag mapping.
+        #[tokio::test]
+        async fn list_tool_keys_returns_sorted_entries() {
+            let mut rng = rand::thread_rng();
+            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let network_auth_object_id = sui::types::Address::generate(&mut rng);
+
+            let tool_fqn_str = "xyz.demo.tool@1";
+            let tool_fqn: crate::ToolFqn = tool_fqn_str.parse().unwrap();
+
+            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let identity = IdentityKey::tool_fqn(tool_fqn_str);
+            let binding_object_id = codec.binding_object_id(&identity).unwrap();
+
+            let key_table_id = sui::types::Address::from_static("0x111");
+
+            // Two keys: kid=0 (revoked), kid=1 (active).
+            let record_0 = KeyRecord {
+                scheme: 0,
+                public_key: vec![0xaau8; 32],
+                added_at_ms: 1000,
+                revoked_at_ms: Some(2000),
+            };
+            let record_1 = KeyRecord {
+                scheme: 0,
+                public_key: vec![0xbbu8; 32],
+                added_at_ms: 3000,
+                revoked_at_ms: None,
+            };
+
+            let binding = KeyBinding {
+                id: sui::types::Address::from_static("0x222"),
+                identity: identity.clone(),
+                description: None,
+                next_key_id: 2,
+                active_key_id: Some(1),
+                keys: MoveTable::new(key_table_id, 2),
+            };
+
+            let binding_bytes = bcs::to_bytes(&binding).unwrap();
+
+            let field_0_id = sui::types::Address::from_static("0x333");
+            let field_1_id = sui::types::Address::from_static("0x444");
+
+            let field_0_value = DynamicFieldValueBcs {
+                id: sui::types::Address::from_static("0x555"),
+                name: 0u64,
+                value: record_0.clone(),
+            };
+            let field_1_value = DynamicFieldValueBcs {
+                id: sui::types::Address::from_static("0x666"),
+                name: 1u64,
+                value: record_1.clone(),
+            };
+            let field_0_bytes = bcs::to_bytes(&field_0_value).unwrap();
+            let field_1_bytes = bcs::to_bytes(&field_1_value).unwrap();
+
+            let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+            let mut state_service = sui_mocks::grpc::MockStateService::new();
+
+            // Called once by NexusClientBuilder during initialization.
+            sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 42);
+
+            // get_object: returns the binding (called by try_get_key_binding).
+            let binding_object_id_str = binding_object_id.to_string();
+            ledger_service
+                .expect_get_object()
+                .times(1)
+                .returning(move |request| {
+                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
+                    if requested_id == binding_object_id_str {
+                        let object = object_with_contents(None, binding_bytes.clone());
+                        let mut response = sui::grpc::GetObjectResponse::default();
+                        response.object = Some(object);
+                        Ok(Response::new(response))
+                    } else {
+                        Err(Status::not_found(format!(
+                            "unexpected object id {requested_id}"
+                        )))
+                    }
+                });
+
+            // list_dynamic_fields: returns two field entries (kid=0 and kid=1).
+            // Return kid=1 first to verify the sort.
+            state_service
+                .expect_list_dynamic_fields()
+                .times(1)
+                .returning(move |_request| {
+                    let mut df1 = sui::grpc::DynamicField::default();
+                    df1.set_child_id(field_1_id);
+                    df1.set_field_id(field_1_id);
+                    let mut name1 = sui::grpc::Bcs::default();
+                    name1.value = Some(bcs::to_bytes(&1u64).unwrap().into());
+                    df1.set_name(name1);
+
+                    let mut df0 = sui::grpc::DynamicField::default();
+                    df0.set_child_id(field_0_id);
+                    df0.set_field_id(field_0_id);
+                    let mut name0 = sui::grpc::Bcs::default();
+                    name0.value = Some(bcs::to_bytes(&0u64).unwrap().into());
+                    df0.set_name(name0);
+
+                    let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                    response.dynamic_fields = vec![df1, df0];
+                    Ok(Response::new(response))
+                });
+
+            // batch_get_objects: returns both field values.
+            ledger_service
+                .expect_batch_get_objects()
+                .times(1)
+                .returning(move |_request| {
+                    let obj1 = object_with_contents(Some(field_1_id), field_1_bytes.clone());
+                    let mut r1 = sui::grpc::GetObjectResult::default();
+                    r1.result = Some(sui::grpc::get_object_result::Result::Object(obj1));
+
+                    let obj0 = object_with_contents(Some(field_0_id), field_0_bytes.clone());
+                    let mut r0 = sui::grpc::GetObjectResult::default();
+                    r0.result = Some(sui::grpc::get_object_result::Result::Object(obj0));
+
+                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                    response.objects = vec![r1, r0];
+                    Ok(Response::new(response))
+                });
+
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service),
+                state_service_mock: Some(state_service),
+                ..Default::default()
+            });
+
+            let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+            let nexus_objects = crate::types::NexusObjects {
+                workflow_pkg_id,
+                primitives_pkg_id: sui::types::Address::generate(&mut rng),
+                interface_pkg_id: sui::types::Address::generate(&mut rng),
+                network_id: sui::types::Address::generate(&mut rng),
+                tool_registry: sui_mocks::mock_sui_object_ref(),
+                network_auth: sui::types::ObjectReference::new(
+                    network_auth_object_id,
+                    1,
+                    sui::types::Digest::generate(&mut rng),
+                ),
+                default_tap: sui_mocks::mock_sui_object_ref(),
+                gas_service: sui_mocks::mock_sui_object_ref(),
+                leader_registry: sui_mocks::mock_sui_object_ref(),
+                workflow_original_pkg_id: None,
+            };
+
+            let gas_coin = sui_mocks::mock_sui_object_ref();
+            let client = NexusClient::builder()
+                .with_private_key(pk)
+                .with_rpc_url(&rpc_url)
+                .with_nexus_objects(nexus_objects)
+                .with_gas(vec![gas_coin], 1_000_000)
+                .build()
+                .await
+                .unwrap();
+
+            let list = client
+                .network_auth()
+                .list_tool_keys(&tool_fqn)
+                .await
+                .unwrap()
+                .expect("binding exists, should return Some");
+
+            assert_eq!(list.binding_object_id, binding_object_id);
+            assert_eq!(list.active_key_id, Some(1));
+            assert_eq!(list.next_key_id, 2);
+            assert_eq!(list.keys.len(), 2);
+
+            // Sorted by kid ascending.
+            assert_eq!(list.keys[0].kid, 0);
+            assert_eq!(list.keys[0].public_key_hex, hex::encode([0xaau8; 32]));
+            assert_eq!(list.keys[0].added_at_ms, 1000);
+            assert!(list.keys[0].revoked);
+
+            assert_eq!(list.keys[1].kid, 1);
+            assert_eq!(list.keys[1].public_key_hex, hex::encode([0xbbu8; 32]));
+            assert_eq!(list.keys[1].added_at_ms, 3000);
+            assert!(!list.keys[1].revoked);
+        }
     }
 }
