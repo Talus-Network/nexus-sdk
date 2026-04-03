@@ -59,6 +59,32 @@ pub struct RegisteredToolKey {
     pub binding_object_id: sui::types::Address,
 }
 
+/// An individual key entry returned by [`NetworkAuthActions::list_tool_keys`].
+#[derive(Clone, Debug)]
+pub struct ToolKeyEntry {
+    /// Key identifier (kid) used in signed HTTP claims.
+    pub kid: u64,
+    /// Hex-encoded Ed25519 public key.
+    pub public_key_hex: String,
+    /// Millisecond timestamp when the key was added.
+    pub added_at_ms: u64,
+    /// Whether the key has been revoked.
+    pub revoked: bool,
+}
+
+/// All registered keys for a specific tool, returned by [`NetworkAuthActions::list_tool_keys`].
+#[derive(Clone, Debug)]
+pub struct ToolKeyList {
+    /// On-chain object ID of the `KeyBinding` for this tool.
+    pub binding_object_id: sui::types::Address,
+    /// The currently active key ID, if any.
+    pub active_key_id: Option<u64>,
+    /// The next key ID that will be assigned on the next registration.
+    pub next_key_id: u64,
+    /// All key entries, sorted by kid ascending.
+    pub keys: Vec<ToolKeyEntry>,
+}
+
 pub struct NetworkAuthActions {
     pub(super) client: NexusClient,
 }
@@ -187,6 +213,59 @@ impl NetworkAuthActions {
             public_key,
             binding_object_id,
         })
+    }
+
+    /// Query all registered message-signing keys for a tool FQN.
+    ///
+    /// Returns `None` if the tool has no `KeyBinding` on-chain (no keys have ever been
+    /// registered for it). Returns `Some(list)` with the full key history otherwise.
+    pub async fn list_tool_keys(
+        &self,
+        tool_fqn: &ToolFqn,
+    ) -> Result<Option<ToolKeyList>, NexusError> {
+        let objects = &self.client.nexus_objects;
+        let codec =
+            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+
+        let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
+        let binding_object_id = codec.binding_object_id(&identity)?;
+
+        let binding = match self.try_get_key_binding(binding_object_id).await? {
+            None => return Ok(None),
+            Some(b) => b,
+        };
+
+        let key_records = self
+            .client
+            .crawler()
+            .get_dynamic_fields_bcs::<u64, crate::types::KeyRecord>(
+                binding.data.keys.id,
+                binding.data.keys.size(),
+            )
+            .await
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "failed to fetch tool key records ({binding_object_id}): {e}"
+                ))
+            })?;
+
+        let mut keys: Vec<ToolKeyEntry> = key_records
+            .into_iter()
+            .map(|(kid, record)| ToolKeyEntry {
+                kid,
+                public_key_hex: hex::encode(&record.public_key),
+                added_at_ms: record.added_at_ms,
+                revoked: record.revoked_at_ms.is_some(),
+            })
+            .collect();
+        keys.sort_by_key(|k| k.kid);
+
+        Ok(Some(ToolKeyList {
+            binding_object_id,
+            active_key_id: binding.data.active_key_id,
+            next_key_id: binding.data.next_key_id,
+            keys,
+        }))
     }
 
     /// Export a tool-side allowlist file containing the active key for each leader.
