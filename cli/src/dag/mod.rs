@@ -1,4 +1,5 @@
 mod dag_execute;
+mod dag_execution_cost;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
@@ -6,6 +7,7 @@ mod dag_validate;
 use {
     crate::prelude::*,
     dag_execute::*,
+    dag_execution_cost::*,
     dag_inspect_execution::*,
     dag_publish::*,
     dag_validate::*,
@@ -120,6 +122,20 @@ pub(crate) enum DagCommand {
         )]
         execution_checkpoint: u64,
     },
+
+    #[command(
+        about = "Calculate the total gas cost of a Nexus DAG execution based on the provided DAGExecution object ID."
+    )]
+    ExecutionCost {
+        /// The object ID of the Nexus DAGExecution object.
+        #[arg(
+            long = "dag-execution-id",
+            short = 'e',
+            help = "The object ID of the Nexus DAGExecution object.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_execution_id: sui::types::Address,
+    },
 }
 
 /// Handle the provided dag command. The [DagCommand] instance is passed from
@@ -165,5 +181,8 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             dag_execution_id,
             execution_checkpoint,
         } => inspect_dag_execution(dag_execution_id, execution_checkpoint).await,
+
+        // == `$ nexus dag execution-cost` ==
+        DagCommand::ExecutionCost { dag_execution_id } => execution_cost(dag_execution_id).await,
     }
 }

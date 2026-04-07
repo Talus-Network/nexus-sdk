@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [`0.9.0`] - Unreleased
 
 ### `nexus-cli`
 
@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nexus tool register offchain --from-meta <FILE|->` to register tools from a JSON metadata file or stdin, bypassing the live HTTP endpoint
 - `nexus tool auth list-keys --tool-fqn <FQN>` to query registered message-signing keys for a tool
 - `nexus tool auth register-key --skip-if-active` for idempotent key registration in CI pipelines
+- `nexus gas balance` command to check the balance of an invoker's gas funds
+- `nexus dag execution-cost` command to check the cost of a DAG execution
 
 ### `nexus-sdk`
 
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ToolKeyEntry` and `ToolKeyList` types in `nexus::network_auth`
 - `list_tool_keys()` method on `NetworkAuthActions`
+- support for gas cost and balance related commands to the `NexusClient`
 
 ### `nexus-toolkit`
 

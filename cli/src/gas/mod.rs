@@ -1,9 +1,11 @@
 mod gas_add_budget;
+mod gas_check_balance;
 mod tickets;
 
 use {
     crate::prelude::*,
     gas_add_budget::*,
+    gas_check_balance::*,
     tickets::{expiry::*, limited_invocations::*},
 };
 
@@ -21,6 +23,9 @@ pub(crate) enum GasCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+
+    #[command(about = "Check the current Nexus gas balance for the invoker")]
+    Balance,
 
     #[command(subcommand, about = "Manage the expiry gas ticket extension")]
     Expiry(ExpiryCommand),
@@ -206,6 +211,9 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
         GasCommand::AddBudget { coin, gas } => {
             add_gas_budget(coin, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
+
+        // == `$ nexus gas balance` ==
+        GasCommand::Balance => check_balance().await,
 
         // == `$ nexus gas expiry` ==
         GasCommand::Expiry(command) => match command {
