@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [`0.9.0`] - Unreleased
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus gas balance` command to check the balance of an invoker's gas funds
+- `nexus dag execution-cost` command to check the cost of a DAG execution
+
+### `nexus-sdk`
+
+#### Added
+
+- support for gas cost and balance related commands to the `NexusClient`
+
 ## [`0.8.2`] - 2026-03-30
 
 ### `nexus-cli`

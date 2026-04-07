@@ -4,7 +4,7 @@ use {
     crate::{
         nexus::crawler::{DynamicMap, Map},
         sui,
-        types::{NexusData, TypeName},
+        types::{deserialize_sui_u64, serialize_sui_u64, NexusData, TypeName},
         ToolFqn,
     },
     serde::{Deserialize, Serialize},
@@ -94,4 +94,108 @@ pub struct DagEdge {
 pub struct DagOutputVariantPort {
     pub variant: TypeName,
     pub port: TypeName,
+}
+
+// == `GasService` related types ==
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Scope {
+    Execution(sui::types::Address),
+    WorksheetType(TypeName),
+    InvokerAddress(sui::types::Address),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InvokerGas {
+    pub vault: DynamicMap<Scope, GasFunds>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GasFunds {
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub bal: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub locked: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExecutionGas {
+    pub claimed_leader_gas: DynamicMap<Vec<u8>, ClaimedGas>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ClaimedGas {
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub execution: u64,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub priority: u64,
+}
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::fqn, serde_json::json};
+
+    #[test]
+    fn test_dag_vertex_kind_offchain_serde() {
+        let kind = DagVertexKind::OffChain {
+            tool_fqn: fqn!("xyz.example.tool@1"),
+        };
+        let json = serde_json::to_string(&kind).unwrap();
+        let deserialized: DagVertexKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(kind.tool_fqn(), deserialized.tool_fqn());
+    }
+
+    #[test]
+    fn test_dag_vertex_kind_onchain_serde() {
+        let kind = DagVertexKind::OnChain {
+            tool_fqn: fqn!("xyz.example.tool@1"),
+        };
+        let json = serde_json::to_string(&kind).unwrap();
+        let deserialized: DagVertexKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(kind.tool_fqn(), deserialized.tool_fqn());
+    }
+
+    #[test]
+    fn test_dag_port_data_single_serde() {
+        let port_data = DagPortData::Single {
+            data: NexusData::new_inline(json!(1)),
+        };
+        let json = serde_json::to_string(&port_data).unwrap();
+        let _deserialized: DagPortData = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn test_gas_funds_serde() {
+        let gas_funds = GasFunds {
+            bal: 1000,
+            locked: 500,
+        };
+        let json = serde_json::to_string(&gas_funds).unwrap();
+        let deserialized: GasFunds = serde_json::from_str(&json).unwrap();
+        assert_eq!(gas_funds.bal, deserialized.bal);
+        assert_eq!(gas_funds.locked, deserialized.locked);
+    }
+
+    #[test]
+    fn test_claimed_gas_serde() {
+        let claimed = ClaimedGas {
+            execution: 2000,
+            priority: 300,
+        };
+        let json = serde_json::to_string(&claimed).unwrap();
+        let deserialized: ClaimedGas = serde_json::from_str(&json).unwrap();
+        assert_eq!(claimed.execution, deserialized.execution);
+        assert_eq!(claimed.priority, deserialized.priority);
+    }
 }

@@ -8,10 +8,20 @@ use {
     crate::{
         events::{EventPage, NexusEvent, NexusEventKind},
         idents::workflow,
-        nexus::{client::NexusClient, error::NexusError, models::Dag},
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            models::{ClaimedGas, Dag, ExecutionGas},
+        },
         sui,
         transactions::dag,
-        types::{Dag as JsonDag, PortsData, StorageConf, DEFAULT_ENTRY_GROUP},
+        types::{
+            derive_execution_gas_id,
+            Dag as JsonDag,
+            PortsData,
+            StorageConf,
+            DEFAULT_ENTRY_GROUP,
+        },
     },
     anyhow::anyhow,
     std::collections::HashMap,
@@ -36,6 +46,10 @@ pub struct ExecuteResult {
 pub struct InspectExecutionResult {
     pub next_event: UnboundedReceiver<NexusEvent>,
     pub poller: JoinHandle<Result<(), NexusError>>,
+}
+
+pub struct ExecutionCostResult {
+    pub leader_claims: HashMap<sui::types::Digest, ClaimedGas>,
 }
 
 pub struct WorkflowActions {
@@ -312,6 +326,40 @@ impl WorkflowActions {
             next_event: rx,
             poller,
         })
+    }
+
+    /// Calculate the gas cost of a finished DAG execution based on the provided
+    /// execution object ID.
+    pub async fn execution_cost(
+        &self,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<ExecutionCostResult, NexusError> {
+        // Derive the `ExecutionGas` object ID.
+        let gas_service_object_id = *self.client.nexus_objects.gas_service.object_id();
+        let execution_gas_id = derive_execution_gas_id(gas_service_object_id, dag_execution_id)
+            .map_err(NexusError::Parsing)?;
+
+        let crawler = self.client.crawler();
+        let execution_gas = crawler
+            .get_object::<ExecutionGas>(execution_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+
+        let leader_claims = crawler
+            .get_dynamic_fields(&execution_gas.claimed_leader_gas)
+            .await
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .map(|(digest, claim)| {
+                let digest = sui::types::Digest::from_bytes(digest.as_slice())
+                    .unwrap_or(sui::types::Digest::ZERO);
+
+                (digest, claim)
+            })
+            .collect();
+
+        Ok(ExecutionCostResult { leader_claims })
     }
 }
 
@@ -696,5 +744,76 @@ mod tests {
             result.poller.await.unwrap(),
             Err(NexusError::Timeout(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_actions_execution_cost() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_gas_ref = sui_mocks::mock_sui_object_ref();
+        let execution_gas_claims_id = sui_mocks::mock_sui_address();
+        let leader_claim_object_ref = sui_mocks::mock_sui_object_ref();
+        let claim_digest = sui::types::Digest::generate(&mut rand::thread_rng());
+        let execution_id = sui::types::Address::generate(&mut rand::thread_rng());
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock ExecutionGas object response
+        let execution_gas = ExecutionGas {
+            claimed_leader_gas: DynamicMap::new(execution_gas_claims_id, 1),
+        };
+
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_gas_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!(execution_gas),
+        );
+
+        // ExecutionGas.vault
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(
+                claim_digest.as_bytes().to_vec(),
+                *leader_claim_object_ref.object_id(),
+            )],
+        );
+
+        // ClaimedGas
+        let claimed_gas = ClaimedGas {
+            execution: 100_000,
+            priority: 10_000,
+        };
+
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                leader_claim_object_ref.clone(),
+                sui::types::Owner::Shared(0),
+                json!({ "value": claimed_gas }),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .workflow()
+            .execution_cost(execution_id)
+            .await
+            .expect("Failed to fetch execution cost");
+
+        assert_eq!(result.leader_claims.len(), 1);
+        let (digest, funds) = result.leader_claims.iter().next().unwrap();
+        assert_eq!(funds.execution, 100_000);
+        assert_eq!(funds.priority, 10_000);
+        assert_eq!(digest, &claim_digest);
     }
 }
