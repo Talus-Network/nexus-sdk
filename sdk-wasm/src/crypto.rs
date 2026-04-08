@@ -1,61 +1,28 @@
-// CLI v0.3.0 Crypto Implementation for WASM
-// Direct port of CLI crypto with localStorage instead of OS keyring
+//! Ed25519 key management for browser/WASM.
+//!
+//! Mirrors the CLI's `nexus tool auth keygen` / key-status flow using
+//! localStorage instead of the file system.  The Sui private key is stored
+//! as base64 in localStorage and used by the JS-side Sui SDK to sign
+//! transactions.
+//!
+//! This replaces the old X3DH + Double Ratchet session crypto that was
+//! removed from the SDK.
 
 use {
-    aes_gcm::{
-        aead::{Aead, KeyInit},
-        Aes256Gcm,
-        Nonce,
-    },
-    argon2::{Algorithm, Argon2, Params, Version},
-    base64::{self, Engine as _},
-    nexus_sdk::crypto::{
-        session::{Message, Session},
-        x3dh::{IdentityKey, PreKeyBundle},
-    },
-    rand::{self, RngCore},
+    base64::{engine::general_purpose::STANDARD as B64, Engine as _},
+    ed25519_dalek::{SigningKey, VerifyingKey},
+    rand::RngCore,
     serde::{Deserialize, Serialize},
-    std::collections::HashMap,
+    sha2::{Digest, Sha256},
     wasm_bindgen::prelude::*,
-    zeroize::Zeroizing,
 };
 
-// === Constants (matching CLI) ===
+const LS_SUI_PK: &str = "nexus-sui-pk";
+const LS_TOOL_SK: &str = "nexus-tool-signing-key";
 
-const SERVICE: &str = "nexus-cli-store";
-const USER: &str = "master-key";
-const PASSPHRASE_USER: &str = "passphrase";
-
-const KEY_LEN: usize = 32; // 256-bit master key
-const SALT_LEN: usize = 16; // 128-bit salt
-
-// Argon2id parameters (matching CLI exactly)
-const ARGON2_MEMORY_KIB: u32 = 64 * 1024; // 64 MiB
-const ARGON2_ITERATIONS: u32 = 4;
-
-// LocalStorage keys (simulating keyring)
-fn get_storage_key(user: &str) -> String {
-    format!("nexus-{}-{}", SERVICE, user)
-}
-
-const SALT_KEY: &str = "nexus-argon2-salt";
-const CRYPTO_CONF_KEY: &str = "nexus-crypto-conf";
-
-// === CryptoConf Structure (matching CLI) ===
-
-#[derive(Serialize, Deserialize, Default)]
-struct CryptoConf {
-    identity_key: Option<EncryptedData>,
-    sessions: Option<EncryptedData>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct EncryptedData {
-    nonce: Vec<u8>,
-    ciphertext: Vec<u8>,
-}
-
-// === LocalStorage Helper (simulating keyring) ===
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
 
 fn local_storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
@@ -67,554 +34,330 @@ fn storage_get(key: &str) -> Option<String> {
 
 fn storage_set(key: &str, value: &str) -> Result<(), String> {
     local_storage()
-        .ok_or("LocalStorage not available")?
+        .ok_or("localStorage not available")?
         .set_item(key, value)
-        .map_err(|_| "Failed to set item".to_string())
+        .map_err(|_| "failed to write to localStorage".to_string())
 }
 
 fn storage_remove(key: &str) {
-    if let Some(storage) = local_storage() {
-        let _ = storage.remove_item(key);
+    if let Some(s) = local_storage() {
+        let _ = s.remove_item(key);
     }
 }
 
-// === Master Key Management (CLI v0.3.0 parity) ===
+// ---------------------------------------------------------------------------
+// JSON response helpers
+// ---------------------------------------------------------------------------
 
-/// Get master key with 3-tier resolution (matching CLI exactly)
-fn get_master_key() -> Result<Zeroizing<[u8; KEY_LEN]>, String> {
-    // 1. Check passphrase in storage (simulating keyring)
-    if let Some(passphrase) = storage_get(&get_storage_key(PASSPHRASE_USER)) {
-        return derive_from_passphrase(&passphrase);
-    }
-
-    // 2. Check raw key in storage
-    if let Some(hex_key) = storage_get(&get_storage_key(USER)) {
-        let bytes = hex::decode(&hex_key).map_err(|e| format!("Hex decode: {}", e))?;
-        if bytes.len() == KEY_LEN {
-            let mut key_array = [0u8; KEY_LEN];
-            key_array.copy_from_slice(&bytes);
-            return Ok(Zeroizing::new(key_array));
-        }
-        // Corrupt entry, clean up
-        storage_remove(&get_storage_key(USER));
-    }
-
-    Err("No persistent master key found; run crypto_init_key() or crypto_set_passphrase()".into())
+fn ok_json(value: serde_json::Value) -> String {
+    let mut v = value;
+    v["success"] = serde_json::Value::Bool(true);
+    v.to_string()
 }
 
-/// Derive master key from passphrase using Argon2id (CLI parity)
-fn derive_from_passphrase(passphrase: &str) -> Result<Zeroizing<[u8; KEY_LEN]>, String> {
-    let salt = get_or_create_salt()?;
-
-    let params = Params::new(ARGON2_MEMORY_KIB, ARGON2_ITERATIONS, 1, Some(KEY_LEN))
-        .map_err(|e| format!("Argon2 params: {}", e))?;
-
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-    let mut key = Zeroizing::new([0u8; KEY_LEN]);
-    argon2
-        .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
-        .map_err(|e| format!("Argon2 hash: {}", e))?;
-
-    Ok(key)
+fn err_json(msg: &str) -> String {
+    serde_json::json!({ "success": false, "error": msg }).to_string()
 }
 
-/// Get or create salt (matching CLI salt.bin logic)
-fn get_or_create_salt() -> Result<[u8; SALT_LEN], String> {
-    if let Some(salt_b64) = storage_get(SALT_KEY) {
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&salt_b64)
-            .map_err(|e| format!("Salt decode: {}", e))?;
+// ---------------------------------------------------------------------------
+// Sui private key management  (replaces old master-key / passphrase)
+// ---------------------------------------------------------------------------
 
-        if bytes.len() == SALT_LEN {
-            let mut salt = [0u8; SALT_LEN];
-            salt.copy_from_slice(&bytes);
-            return Ok(salt);
-        }
-        // Invalid salt, will recreate
-        storage_remove(SALT_KEY);
-    }
-
-    // Generate new salt
-    let mut salt = [0u8; SALT_LEN];
-    rand::rngs::OsRng.fill_bytes(&mut salt);
-
-    // Store in localStorage
-    let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
-    storage_set(SALT_KEY, &salt_b64)?;
-
-    Ok(salt)
-}
-
-// === Secret<T> Encryption (CLI parity) ===
-
-/// Encrypt data with master key using AES-256-GCM
-fn encrypt_with_master_key(
-    plaintext: &[u8],
-    master_key: &[u8; KEY_LEN],
-) -> Result<EncryptedData, String> {
-    // Generate random nonce
-    let mut nonce_bytes = [0u8; 12];
-    rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
-
-    let cipher = Aes256Gcm::new(master_key.into());
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext)
-        .map_err(|e| format!("Encryption failed: {}", e))?;
-
-    Ok(EncryptedData {
-        nonce: nonce_bytes.to_vec(),
-        ciphertext,
-    })
-}
-
-/// Decrypt data with master key
-fn decrypt_with_master_key(
-    encrypted: &EncryptedData,
-    master_key: &[u8; KEY_LEN],
-) -> Result<Vec<u8>, String> {
-    let cipher = Aes256Gcm::new(master_key.into());
-    let nonce = Nonce::from_slice(&encrypted.nonce);
-
-    cipher
-        .decrypt(nonce, encrypted.ciphertext.as_ref())
-        .map_err(|e| format!("Decryption failed: {}", e))
-}
-
-// === CryptoConf Management ===
-
-fn load_crypto_conf() -> CryptoConf {
-    storage_get(CRYPTO_CONF_KEY)
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-fn save_crypto_conf(conf: &CryptoConf) -> Result<(), String> {
-    let json = serde_json::to_string(conf).map_err(|e| format!("Serialize: {}", e))?;
-    storage_set(CRYPTO_CONF_KEY, &json)
-}
-
-// === CLI Commands (WASM exports) ===
-
-/// CLI: nexus crypto init-key [--force]
+/// Store a Sui Ed25519 private key (base64, hex, or Sui keytool format).
+///
+/// This is the web equivalent of `nexus conf set --sui.pk <BASE64>`.
 #[wasm_bindgen]
-pub fn crypto_init_key(force: bool) -> String {
-    let result = (|| -> Result<String, String> {
-        // Check for existing keys (unless --force)
-        if !force {
-            if storage_get(&get_storage_key(PASSPHRASE_USER)).is_some()
-                || storage_get(&get_storage_key(USER)).is_some()
-            {
-                return Err("KeyAlreadyExists: A different persistent key already exists; re-run with force=true".into());
+pub fn set_sui_private_key(raw_key: &str) -> String {
+    let raw = raw_key.trim();
+    if raw.is_empty() {
+        return err_json("private key must not be empty");
+    }
+
+    match parse_ed25519_private_key(raw) {
+        Ok(sk) => {
+            let b64 = B64.encode(sk.to_bytes());
+            match storage_set(LS_SUI_PK, &b64) {
+                Ok(()) => ok_json(serde_json::json!({
+                    "message": "Sui private key saved to localStorage",
+                    "public_key_hex": hex::encode(VerifyingKey::from(&sk).to_bytes()),
+                })),
+                Err(e) => err_json(&e),
             }
         }
-
-        // Generate random 32-byte key
-        let mut key = [0u8; KEY_LEN];
-        rand::rngs::OsRng.fill_bytes(&mut key);
-        let key_hex = hex::encode(key);
-
-        // Store in localStorage (simulating keyring)
-        storage_set(&get_storage_key(USER), &key_hex)?;
-
-        // Remove any stale passphrase
-        storage_remove(&get_storage_key(PASSPHRASE_USER));
-
-        // Clear crypto conf (sessions invalidated)
-        save_crypto_conf(&CryptoConf::default())?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "message": "32-byte master key saved to localStorage",
-            "key_preview": format!("{}...", &key_hex[..16]),
-            "cli_compatible": true
-        })
-        .to_string())
-    })();
-
-    match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
+        Err(e) => err_json(&format!("invalid key: {e}")),
     }
 }
 
-/// CLI: nexus crypto set-passphrase [--force]
+/// Get the stored Sui private key (base64).
+/// JS-side Sui SDK can use this to sign transactions.
 #[wasm_bindgen]
-pub fn crypto_set_passphrase(passphrase: String, force: bool) -> String {
-    let result = (|| -> Result<String, String> {
-        if passphrase.trim().is_empty() {
-            return Err("Passphrase cannot be empty".into());
-        }
+pub fn get_sui_private_key_b64() -> Option<String> {
+    storage_get(LS_SUI_PK)
+}
 
-        // Check for existing keys (unless --force)
-        if !force {
-            if storage_get(&get_storage_key(USER)).is_some()
-                || storage_get(&get_storage_key(PASSPHRASE_USER)).is_some()
-            {
-                return Err("KeyAlreadyExists: A different persistent key already exists; re-run with force=true".into());
+/// Return status of stored Sui key.
+#[wasm_bindgen]
+pub fn sui_key_status() -> String {
+    match storage_get(LS_SUI_PK) {
+        Some(b64) => {
+            let pk_hex = B64
+                .decode(&b64)
+                .ok()
+                .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok())
+                .map(|sk| {
+                    let signing = SigningKey::from_bytes(&sk);
+                    hex::encode(signing.verifying_key().to_bytes())
+                })
+                .unwrap_or_else(|| "corrupt".to_string());
+            ok_json(serde_json::json!({
+                "exists": true,
+                "public_key_hex": pk_hex,
+            }))
+        }
+        None => ok_json(serde_json::json!({ "exists": false })),
+    }
+}
+
+/// Remove stored Sui private key.
+#[wasm_bindgen]
+pub fn remove_sui_private_key() -> String {
+    storage_remove(LS_SUI_PK);
+    ok_json(serde_json::json!({ "message": "Sui private key removed" }))
+}
+
+// ---------------------------------------------------------------------------
+// Tool signing key management  (mirrors `nexus tool auth keygen`)
+// ---------------------------------------------------------------------------
+
+/// Generate a new Ed25519 tool signing key and store it.
+///
+/// Web equivalent of `nexus tool auth keygen`.
+#[wasm_bindgen]
+pub fn tool_auth_keygen(force: bool) -> String {
+    if !force && storage_get(LS_TOOL_SK).is_some() {
+        return err_json("tool signing key already exists; call with force=true to overwrite");
+    }
+
+    let mut sk_bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut sk_bytes);
+    let signing = SigningKey::from_bytes(&sk_bytes);
+    let pk_hex = hex::encode(signing.verifying_key().to_bytes());
+    let sk_hex = hex::encode(sk_bytes);
+
+    match storage_set(LS_TOOL_SK, &sk_hex) {
+        Ok(()) => ok_json(serde_json::json!({
+            "message": "Ed25519 tool signing key generated",
+            "private_key_hex": sk_hex,
+            "public_key_hex": pk_hex,
+        })),
+        Err(e) => err_json(&e),
+    }
+}
+
+/// Import an existing tool signing key (hex or base64).
+#[wasm_bindgen]
+pub fn tool_auth_import_key(raw_key: &str, force: bool) -> String {
+    if !force && storage_get(LS_TOOL_SK).is_some() {
+        return err_json("tool signing key already exists; call with force=true to overwrite");
+    }
+
+    match parse_ed25519_private_key(raw_key.trim()) {
+        Ok(sk) => {
+            let sk_hex = hex::encode(sk.to_bytes());
+            let pk_hex = hex::encode(sk.verifying_key().to_bytes());
+            match storage_set(LS_TOOL_SK, &sk_hex) {
+                Ok(()) => ok_json(serde_json::json!({
+                    "message": "tool signing key imported",
+                    "public_key_hex": pk_hex,
+                })),
+                Err(e) => err_json(&e),
             }
         }
-
-        // Store passphrase
-        storage_set(&get_storage_key(PASSPHRASE_USER), &passphrase)?;
-
-        // Remove any stale raw key
-        storage_remove(&get_storage_key(USER));
-
-        // Clear crypto conf (sessions invalidated)
-        save_crypto_conf(&CryptoConf::default())?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "message": "Passphrase stored in localStorage",
-            "cli_compatible": true
-        })
-        .to_string())
-    })();
-
-    match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
+        Err(e) => err_json(&format!("invalid key: {e}")),
     }
 }
 
-/// CLI: nexus crypto key-status
+/// Return status of stored tool signing key.
 #[wasm_bindgen]
-pub fn crypto_key_status() -> String {
-    if storage_get(&get_storage_key(PASSPHRASE_USER)).is_some() {
-        serde_json::json!({
-            "exists": true,
-            "source": "passphrase (localStorage)",
-            "cli_compatible": true
-        })
-        .to_string()
-    } else if let Some(hex) = storage_get(&get_storage_key(USER)) {
-        serde_json::json!({
-            "exists": true,
-            "source": "raw-key (localStorage)",
-            "preview": format!("{}...", &hex[..std::cmp::min(16, hex.len())]),
-            "cli_compatible": true
-        })
-        .to_string()
-    } else {
-        serde_json::json!({
-            "exists": false,
-            "cli_compatible": true
-        })
-        .to_string()
+pub fn tool_key_status() -> String {
+    match storage_get(LS_TOOL_SK) {
+        Some(sk_hex) => {
+            let pk_hex = hex::decode(&sk_hex)
+                .ok()
+                .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+                .map(|sk| hex::encode(SigningKey::from_bytes(&sk).verifying_key().to_bytes()))
+                .unwrap_or_else(|| "corrupt".to_string());
+            ok_json(serde_json::json!({
+                "exists": true,
+                "public_key_hex": pk_hex,
+            }))
+        }
+        None => ok_json(serde_json::json!({ "exists": false })),
     }
 }
 
-/// CLI: nexus crypto generate-identity-key
+/// Remove stored tool signing key.
 #[wasm_bindgen]
-pub fn crypto_generate_identity_key() -> String {
-    let result = (|| -> Result<String, String> {
-        let master_key = get_master_key()?;
-
-        // Generate fresh identity key
-        let identity_key = IdentityKey::generate();
-
-        // Serialize
-        let bytes = bincode::serialize(&identity_key).map_err(|e| format!("Serialize: {}", e))?;
-
-        // Encrypt with master key
-        let encrypted = encrypt_with_master_key(&bytes, &master_key)?;
-
-        // Save to CryptoConf
-        let mut conf = load_crypto_conf();
-        conf.identity_key = Some(encrypted);
-        conf.sessions = None; // Invalidate sessions
-        save_crypto_conf(&conf)?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "message": "Identity key generated and stored (encrypted)",
-            "warning": "All existing sessions have been invalidated",
-            "cli_compatible": true
-        })
-        .to_string())
-    })();
-
-    match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
-    }
+pub fn remove_tool_signing_key() -> String {
+    storage_remove(LS_TOOL_SK);
+    ok_json(serde_json::json!({ "message": "tool signing key removed" }))
 }
 
-/// Get identity key from CryptoConf
-fn get_identity_key() -> Result<IdentityKey, String> {
-    let master_key = get_master_key()?;
-    let conf = load_crypto_conf();
+// ---------------------------------------------------------------------------
+// Signed HTTP claims  (mirrors `sdk/src/signed_http/v1`)
+// ---------------------------------------------------------------------------
 
-    let encrypted = conf
-        .identity_key
-        .ok_or("No identity key found; run crypto_generate_identity_key() first")?;
-
-    let bytes = decrypt_with_master_key(&encrypted, &master_key)?;
-
-    bincode::deserialize(&bytes).map_err(|e| format!("Deserialize identity key: {}", e))
+/// Minimal signed-HTTP claims structure.
+/// This is a simplified version of the SDK's `V1Claims` designed for
+/// browser-side use.
+#[derive(Serialize, Deserialize)]
+struct SignedHttpClaims {
+    version: u8,
+    method: String,
+    path: String,
+    query: String,
+    body_sha256: String,
+    iat_ms: u64,
+    exp_ms: u64,
+    nonce: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    leader_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_id: Option<String>,
 }
 
-// === X3DH Session (with persistent identity key) ===
-
+/// Sign an HTTP request's claims blob with the stored tool signing key.
+///
+/// Returns JSON with `sig_input` (base64url) and `signature` (base64url)
+/// that should be placed into `X-Nexus-Sig-Input` and `X-Nexus-Sig` headers.
 #[wasm_bindgen]
-pub fn crypto_auth(peer_bundle_bytes: &[u8]) -> String {
-    let result = (|| -> Result<String, String> {
-        // Load persistent identity key
-        let identity_key = get_identity_key()?;
+pub fn sign_http_request(
+    method: &str,
+    path: &str,
+    query: &str,
+    body: &[u8],
+    tool_id: &str,
+    key_id: &str,
+    ttl_ms: u64,
+) -> String {
+    let result = (|| -> Result<serde_json::Value, String> {
+        let sk_hex =
+            storage_get(LS_TOOL_SK).ok_or("no tool signing key; call tool_auth_keygen() first")?;
+        let sk_bytes = hex::decode(&sk_hex).map_err(|e| format!("hex decode: {e}"))?;
+        let sk_arr: [u8; 32] = sk_bytes
+            .try_into()
+            .map_err(|_| "corrupt tool signing key")?;
+        let signing = SigningKey::from_bytes(&sk_arr);
 
-        // Deserialize peer bundle
-        let peer_bundle: PreKeyBundle = bincode::deserialize(peer_bundle_bytes)
-            .map_err(|e| format!("Deserialize bundle: {}", e))?;
+        let now_ms = js_sys::Date::now() as u64;
+        let mut nonce_bytes = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
 
-        // X3DH handshake
-        let first_message = b"nexus auth";
-        let (initial_msg, session) = Session::initiate(&identity_key, &peer_bundle, first_message)
-            .map_err(|e| format!("X3DH failed: {}", e))?;
+        let body_hash = Sha256::digest(body);
 
-        let initial_message = match initial_msg {
-            Message::Initial(msg) => msg,
-            _ => return Err("Expected Initial message".into()),
+        let claims = SignedHttpClaims {
+            version: 1,
+            method: method.to_uppercase(),
+            path: path.to_string(),
+            query: query.to_string(),
+            body_sha256: hex::encode(body_hash),
+            iat_ms: now_ms,
+            exp_ms: now_ms + ttl_ms,
+            nonce: hex::encode(nonce_bytes),
+            leader_id: None,
+            tool_id: Some(tool_id.to_string()),
+            key_id: Some(key_id.to_string()),
         };
 
-        // Serialize initial message
-        let initial_message_bytes = bincode::serialize(&initial_message)
-            .map_err(|e| format!("Serialize message: {}", e))?;
+        let claims_bytes =
+            serde_json::to_vec(&claims).map_err(|e| format!("serialize claims: {e}"))?;
 
-        // Store session
-        let session_id = *session.id();
-        save_session(session_id, session)?;
+        use ed25519_dalek::Signer;
+        let signature = signing.sign(&claims_bytes);
+
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let sig_input_b64 = URL_SAFE_NO_PAD.encode(&claims_bytes);
+        let sig_b64 = URL_SAFE_NO_PAD.encode(signature.to_bytes());
 
         Ok(serde_json::json!({
-            "success": true,
-            "session_id": hex::encode(session_id),
-            "initial_message_b64": base64::engine::general_purpose::STANDARD.encode(&initial_message_bytes),
-            "cli_compatible": true
-        })
-        .to_string())
+            "sig_input": sig_input_b64,
+            "signature": sig_b64,
+            "headers": {
+                "X-Nexus-Sig-Version": "1",
+                "X-Nexus-Sig-Input": sig_input_b64,
+                "X-Nexus-Sig": sig_b64,
+            }
+        }))
     })();
 
     match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
+        Ok(v) => ok_json(v),
+        Err(e) => err_json(&e),
     }
 }
 
-// === Session Management ===
+// ---------------------------------------------------------------------------
+// Clear all stored crypto material
+// ---------------------------------------------------------------------------
 
-thread_local! {
-    pub(crate) static SESSIONS: std::cell::RefCell<HashMap<[u8; 32], Session>> = std::cell::RefCell::new(HashMap::new());
-}
-
-fn save_session(session_id: [u8; 32], session: Session) -> Result<(), String> {
-    SESSIONS.with(|sessions| {
-        sessions.borrow_mut().insert(session_id, session);
-    });
-
-    // Persist to CryptoConf
-    persist_sessions()
-}
-
-pub(crate) fn persist_sessions() -> Result<(), String> {
-    let master_key = get_master_key()?;
-    let mut conf = load_crypto_conf();
-
-    // Serialize all sessions
-    let sessions_bytes = SESSIONS.with(|sessions| {
-        let sessions = sessions.borrow();
-        bincode::serialize(&*sessions).map_err(|e| format!("Serialize sessions: {}", e))
-    })?;
-
-    // Encrypt
-    let encrypted = encrypt_with_master_key(&sessions_bytes, &master_key)?;
-    conf.sessions = Some(encrypted);
-
-    save_crypto_conf(&conf)
-}
-
-pub(crate) fn load_sessions() -> Result<(), String> {
-    let master_key = get_master_key()?;
-    let conf = load_crypto_conf();
-
-    if let Some(encrypted) = conf.sessions {
-        let bytes = decrypt_with_master_key(&encrypted, &master_key)?;
-        let sessions_map: HashMap<[u8; 32], Session> =
-            bincode::deserialize(&bytes).map_err(|e| format!("Deserialize sessions: {}", e))?;
-
-        SESSIONS.with(|sessions| {
-            *sessions.borrow_mut() = sessions_map;
-        });
-    }
-
-    Ok(())
-}
-
-#[wasm_bindgen]
-pub fn get_session_count() -> usize {
-    SESSIONS.with(|sessions| sessions.borrow().len())
-}
-
-/// Encrypt input ports with active session (CLI parity)
-#[wasm_bindgen]
-pub fn encrypt_entry_ports(input_json: &str, encrypted_ports_json: &str) -> String {
-    let result = (|| -> Result<String, String> {
-        // Load sessions if not already loaded
-        let _ = load_sessions();
-
-        let mut input_data: serde_json::Value =
-            serde_json::from_str(input_json).map_err(|e| e.to_string())?;
-        let encrypted_ports: HashMap<String, Vec<String>> =
-            serde_json::from_str(encrypted_ports_json).map_err(|e| e.to_string())?;
-
-        if encrypted_ports.is_empty() {
-            return Ok(serde_json::json!({
-                "success": true,
-                "input_data": input_data,
-                "encrypted_count": 0
-            })
-            .to_string());
-        }
-
-        let mut encrypted_count = 0;
-
-        SESSIONS.with(|sessions| {
-            let mut sessions = sessions.borrow_mut();
-
-            if sessions.is_empty() {
-                return Err("No active sessions; run crypto_auth() first".to_string());
-            }
-
-            let (_session_id, session) = sessions.iter_mut().next().ok_or("No sessions")?;
-
-            for (vertex, ports) in &encrypted_ports {
-                for port in ports {
-                    if let Some(slot) = input_data.get_mut(vertex).and_then(|v| v.get_mut(port)) {
-                        let plaintext = slot.take();
-                        let bytes = serde_json::to_vec(&plaintext).map_err(|e| e.to_string())?;
-
-                        let msg = session
-                            .encrypt(&bytes)
-                            .map_err(|e| format!("Encrypt: {}", e))?;
-
-                        let Message::Standard(pkt) = msg else {
-                            return Err("Expected StandardMessage".into());
-                        };
-
-                        // CLI parity: serialize StandardMessage directly as JSON object
-                        *slot = serde_json::to_value(&pkt).map_err(|e| e.to_string())?;
-                        encrypted_count += 1;
-                    }
-                }
-            }
-
-            session.commit_sender(None);
-            Ok(())
-        })?;
-
-        // Persist updated sessions
-        persist_sessions()?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "input_data": input_data,
-            "encrypted_count": encrypted_count
-        })
-        .to_string())
-    })();
-
-    match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
-    }
-}
-
-/// Decrypt output data with active session (CLI parity)
-#[wasm_bindgen]
-pub fn decrypt_output_data(encrypted_json: &str) -> String {
-    let result = (|| -> Result<String, String> {
-        // Load sessions if not already loaded
-        let _ = load_sessions();
-
-        // CLI parity: StandardMessage is serialized as JSON object, not bincode
-        let standard_msg: nexus_sdk::crypto::session::StandardMessage =
-            serde_json::from_str(encrypted_json)
-                .map_err(|e| format!("Parse StandardMessage: {}", e))?;
-
-        let decrypted_data = SESSIONS.with(|sessions| {
-            let mut sessions = sessions.borrow_mut();
-
-            if sessions.is_empty() {
-                return Err("No active sessions".to_string());
-            }
-
-            let (_session_id, session) = sessions.iter_mut().next().ok_or("No sessions")?;
-
-            let decrypted_bytes = session
-                .decrypt(&Message::Standard(standard_msg))
-                .map_err(|e| format!("Decrypt: {}", e))?;
-
-            let data: serde_json::Value = serde_json::from_slice(&decrypted_bytes)
-                .map_err(|e| format!("Parse JSON: {}", e))?;
-
-            session.commit_receiver(None, None);
-            Ok(data)
-        })?;
-
-        // Persist updated sessions
-        persist_sessions()?;
-
-        Ok(serde_json::json!({
-            "success": true,
-            "data": decrypted_data
-        })
-        .to_string())
-    })();
-
-    match result {
-        Ok(json) => json,
-        Err(e) => serde_json::json!({
-            "success": false,
-            "error": e
-        })
-        .to_string(),
-    }
-}
-
-/// Clear all crypto data (for testing)
+/// Wipe all Nexus crypto data from localStorage.
 #[wasm_bindgen]
 pub fn crypto_clear_all() -> String {
-    storage_remove(&get_storage_key(USER));
-    storage_remove(&get_storage_key(PASSPHRASE_USER));
-    storage_remove(SALT_KEY);
-    storage_remove(CRYPTO_CONF_KEY);
+    storage_remove(LS_SUI_PK);
+    storage_remove(LS_TOOL_SK);
+    ok_json(serde_json::json!({ "message": "all crypto data cleared" }))
+}
 
-    SESSIONS.with(|sessions| sessions.borrow_mut().clear());
+// ---------------------------------------------------------------------------
+// Private key parsing (mirrors sdk/src/signed_http/keys.rs logic)
+// ---------------------------------------------------------------------------
 
-    serde_json::json!({
-        "success": true,
-        "message": "All crypto data cleared"
-    })
-    .to_string()
+fn parse_ed25519_private_key(raw: &str) -> Result<SigningKey, String> {
+    let raw = raw.trim();
+    let raw_no_0x = raw.strip_prefix("0x").unwrap_or(raw);
+
+    let looks_hex = raw.starts_with("0x")
+        || ((raw_no_0x.len() == 64 || raw_no_0x.len() == 66)
+            && raw_no_0x.chars().all(|c| c.is_ascii_hexdigit()));
+
+    if looks_hex {
+        let bytes = hex::decode(raw_no_0x).map_err(|e| format!("hex: {e}"))?;
+        return signing_key_from_bytes(&bytes);
+    }
+
+    // base64 / base64url
+    let try_b64 = |engine: &base64::engine::general_purpose::GeneralPurpose| -> Option<Vec<u8>> {
+        engine.decode(raw.as_bytes()).ok()
+    };
+
+    use base64::engine::general_purpose::*;
+    let bytes = try_b64(&STANDARD)
+        .or_else(|| try_b64(&STANDARD_NO_PAD))
+        .or_else(|| try_b64(&URL_SAFE))
+        .or_else(|| try_b64(&URL_SAFE_NO_PAD))
+        .ok_or("expected hex or base64 encoded key")?;
+
+    signing_key_from_bytes(&bytes)
+}
+
+fn signing_key_from_bytes(bytes: &[u8]) -> Result<SigningKey, String> {
+    match bytes.len() {
+        32 => {
+            let arr: [u8; 32] = bytes.try_into().unwrap();
+            Ok(SigningKey::from_bytes(&arr))
+        }
+        33 => {
+            if bytes[0] != 0x00 {
+                return Err(format!(
+                    "unsupported Sui key scheme flag 0x{:02x} (expected 0x00 for Ed25519)",
+                    bytes[0]
+                ));
+            }
+            let arr: [u8; 32] = bytes[1..].try_into().unwrap();
+            Ok(SigningKey::from_bytes(&arr))
+        }
+        len => Err(format!("invalid key length {len}, expected 32 or 33 bytes")),
+    }
 }

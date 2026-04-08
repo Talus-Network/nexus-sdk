@@ -324,18 +324,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "argon2"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
-dependencies = [
- "base64ct",
- "blake2",
- "cpufeatures",
- "password-hash",
-]
-
-[[package]]
 name = "ark-bn254"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2269,6 +2257,7 @@ checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
+ "rand_core 0.6.4",
  "serde",
  "sha2 0.10.9",
  "subtle",
@@ -5536,12 +5525,10 @@ dependencies = [
 name = "nexus-sdk-wasm"
 version = "0.8.2"
 dependencies = [
- "aes-gcm",
  "anyhow",
- "argon2",
  "base64 0.21.7",
- "bincode",
  "console_error_panic_hook",
+ "ed25519-dalek",
  "getrandom 0.2.16",
  "hex",
  "js-sys",
@@ -5550,12 +5537,11 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.17",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "x25519-dalek",
- "zeroize",
 ]
 
 [[package]]
@@ -6109,17 +6095,6 @@ dependencies = [
  "strum 0.25.0",
  "typeshare",
  "zeroize",
-]
-
-[[package]]
-name = "password-hash"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
-dependencies = [
- "base64ct",
- "rand_core 0.6.4",
- "subtle",
 ]
 
 [[package]]
