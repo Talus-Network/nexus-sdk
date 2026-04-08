@@ -5,7 +5,7 @@ let wasmModule;
 
 beforeAll(() => {
   // Load the WASM module for Node.js using require
-  wasmModule = require("../pkg-node/nexus_cli_wasm.js");
+  wasmModule = require("../pkg-node/nexus_sdk_wasm.js");
 }, 1000); // 1 second timeout for WASM loading
 
 describe("DAG Validation Tests", () => {
@@ -60,12 +60,7 @@ describe("DAG Validation Tests", () => {
             tool_fqn: "xyz.taluslabs.math.i64.add@1",
           },
           name: "add_input_and_default",
-          entry_ports: [
-            {
-              name: "a",
-              encrypted: false,
-            },
-          ],
+          entry_ports: [{ name: "a" }],
         },
         {
           kind: {
@@ -159,7 +154,7 @@ describe("DAG Validation Tests", () => {
             tool_fqn: "com.test.test@1",
           },
           name: "a",
-          entry_ports: [{ name: "input", encrypted: false }],
+          entry_ports: [{ name: "input" }],
         },
         {
           kind: {
