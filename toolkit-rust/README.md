@@ -27,7 +27,7 @@ Add the following lines to your project's `Cargo.toml`:
 ```toml
 [dependencies.nexus-toolkit]
 git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v0.8.3"
+tag = "v0.8.4"
 package = "nexus-toolkit"
 ```
 
