@@ -17,7 +17,7 @@ you can include this crate in your project's `Cargo.toml` file:
 ```toml
 [dependencies.nexus-sdk]
 git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v0.8.2"
+tag = "v0.8.3"
 package = "nexus-sdk"
 ```
 
