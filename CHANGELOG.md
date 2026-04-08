@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- `nexus tool register offchain --from-meta <FILE|->` to register tools from a JSON metadata file or stdin, bypassing the live HTTP endpoint
+- `nexus tool auth list-keys --tool-fqn <FQN>` to query registered message-signing keys for a tool
+- `nexus tool auth register-key --skip-if-active` for idempotent key registration in CI pipelines
 - `nexus gas balance` command to check the balance of an invoker's gas funds
 - `nexus dag execution-cost` command to check the cost of a DAG execution
 
@@ -18,7 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- `ToolKeyEntry` and `ToolKeyList` types in `nexus::network_auth`
+- `list_tool_keys()` method on `NetworkAuthActions`
 - support for gas cost and balance related commands to the `NexusClient`
+
+### `nexus-toolkit`
+
+#### Added
+
+- Built-in `--meta` flag in the `bootstrap!` macro: prints a JSON array of tool metadata to stdout and exits without starting the HTTP server
 
 ## [`0.8.2`] - 2026-03-30
 
