@@ -19,6 +19,7 @@ mod storage_kind;
 mod tool;
 mod tool_meta;
 mod type_name;
+mod workflow;
 
 pub use {
     derive::*,
@@ -41,4 +42,10 @@ pub use {
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
     type_name::TypeName,
+    workflow::{
+        ExecutionTerminalRecord,
+        FailureEvidenceKind,
+        PostFailureAction,
+        WorkflowFailureClass,
+    },
 };
