@@ -7,7 +7,20 @@ use {
         events::{parse_bcs, NexusEvent},
         idents::primitives,
         sui,
-        types::NexusObjects,
+        types::{
+            normalize_json_string,
+            parse_address_value,
+            parse_bool_value,
+            parse_byte_vector_value,
+            parse_optional_string_value,
+            parse_published_move_enum_value,
+            parse_runtime_vertex_value,
+            parse_string_value,
+            parse_u64_value,
+            NexusObjects,
+            PostFailureAction,
+            WorkflowFailureClass,
+        },
     },
     anyhow::bail,
 };
@@ -77,6 +90,42 @@ impl FromSuiGrpcEvent for NexusEvent {
     }
 }
 
+/// Parse a nested Move-JSON payload into a terminal `_err_eval` summary.
+pub fn parse_terminal_err_eval_recorded_summary(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedSummary>> {
+    parse_nested_event_value(value, try_parse_terminal_err_eval_recorded_summary)
+}
+
+/// Parse a nested Move-JSON payload into a full terminal `_err_eval` event.
+pub fn parse_terminal_err_eval_recorded_event_value(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedEvent>> {
+    parse_nested_event_value(value, try_parse_terminal_err_eval_recorded_event)
+}
+
+/// Parse a nested Move-JSON payload into comparison-oriented terminal details.
+pub fn parse_terminal_err_eval_event_details(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalEventDetails>> {
+    parse_nested_event_value(value, try_parse_terminal_err_eval_event_details)
+}
+
+/// Parse a nested Move-JSON payload into submission-failure evidence.
+pub fn parse_submission_failure_evidence_recorded_event(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceRecordedEvent>> {
+    parse_nested_event_value(value, try_parse_submission_failure_evidence_recorded_event)
+}
+
+/// Parse a nested Move-JSON payload into comparison-oriented submission-failure
+/// details.
+pub fn parse_submission_failure_evidence_event_details(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceEventDetails>> {
+    parse_nested_event_value(value, try_parse_submission_failure_evidence_event_details)
+}
+
 fn normalize_event_name(event_type: &sui::types::StructTag) -> anyhow::Result<String> {
     let name = event_type.name().as_str();
 
@@ -99,6 +148,348 @@ fn normalize_event_name(event_type: &sui::types::StructTag) -> anyhow::Result<St
     };
 
     Ok(normalized.to_string())
+}
+
+fn parse_nested_event_value<T>(
+    value: serde_json::Value,
+    try_parse: fn(&serde_json::Value) -> anyhow::Result<Option<T>>,
+) -> anyhow::Result<Option<T>> {
+    if let Some(parsed) = try_parse(&value)? {
+        return Ok(Some(parsed));
+    }
+
+    match value {
+        serde_json::Value::Object(object) => {
+            for key in [
+                "event",
+                "parsedJson",
+                "parsed_json",
+                "fields",
+                "value",
+                "data",
+                "contents",
+            ] {
+                if let Some(nested) = object.get(key) {
+                    if let Some(parsed) = parse_nested_event_value(nested.clone(), try_parse)? {
+                        return Ok(Some(parsed));
+                    }
+                }
+            }
+
+            for nested in object.into_values() {
+                if let Some(parsed) = parse_nested_event_value(nested, try_parse)? {
+                    return Ok(Some(parsed));
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for nested in values {
+                if let Some(parsed) = parse_nested_event_value(nested, try_parse)? {
+                    return Ok(Some(parsed));
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(None)
+}
+
+fn try_parse_terminal_err_eval_recorded_summary(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedSummary>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(failure_class) = object.get("failure_class") else {
+        return Ok(None);
+    };
+    let Some(outcome) = object.get("outcome") else {
+        return Ok(None);
+    };
+    let Some(reason) = object.get("reason") else {
+        return Ok(None);
+    };
+    let Some(duplicate) = object.get("duplicate") else {
+        return Ok(None);
+    };
+
+    let vertex = parse_runtime_vertex_value(vertex)?
+        .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval vertex: {vertex}"))?;
+    let failure_class: WorkflowFailureClass = parse_published_move_enum_value(failure_class)?
+        .ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval failure_class: {failure_class}")
+        })?;
+    let outcome: PostFailureAction = parse_published_move_enum_value(outcome)?
+        .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval outcome: {outcome}"))?;
+    let reason = parse_string_value(reason)?
+        .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval reason: {reason}"))?;
+    let duplicate = parse_bool_value(duplicate)?.ok_or_else(|| {
+        anyhow::anyhow!("Could not parse terminal err_eval duplicate: {duplicate}")
+    })?;
+
+    Ok(Some(crate::events::TerminalErrEvalRecordedSummary {
+        vertex,
+        failure_class,
+        outcome,
+        reason: normalize_json_string(reason),
+        duplicate,
+    }))
+}
+
+fn try_parse_terminal_err_eval_recorded_event(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedEvent>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(dag) = object.get("dag") else {
+        return Ok(None);
+    };
+    let Some(execution) = object.get("execution") else {
+        return Ok(None);
+    };
+    let Some(walk_index) = object.get("walk_index") else {
+        return Ok(None);
+    };
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(leader) = object.get("leader") else {
+        return Ok(None);
+    };
+    let Some(failure_class) = object.get("failure_class") else {
+        return Ok(None);
+    };
+    let Some(outcome) = object.get("outcome") else {
+        return Ok(None);
+    };
+    let Some(reason) = object.get("reason") else {
+        return Ok(None);
+    };
+    let Some(err_eval_hash) = object.get("err_eval_hash") else {
+        return Ok(None);
+    };
+    let Some(duplicate) = object.get("duplicate") else {
+        return Ok(None);
+    };
+
+    Ok(Some(crate::events::TerminalErrEvalRecordedEvent {
+        dag: parse_address_value(dag)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval dag: {dag}"))?,
+        execution: parse_address_value(execution)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval execution: {execution}")
+        })?,
+        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval walk_index: {walk_index}")
+        })?,
+        vertex: parse_runtime_vertex_value(vertex)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval vertex: {vertex}"))?,
+        leader: parse_address_value(leader)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval leader: {leader}"))?,
+        failure_class: parse_published_move_enum_value(failure_class)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval failure_class: {failure_class}")
+        })?,
+        outcome: parse_published_move_enum_value(outcome)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval outcome: {outcome}")
+        })?,
+        reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval reason: {reason}")
+        })?),
+        err_eval_hash: parse_byte_vector_value(err_eval_hash)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval err_eval_hash: {err_eval_hash}")
+        })?,
+        duplicate: parse_bool_value(duplicate)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval duplicate: {duplicate}")
+        })?,
+    }))
+}
+
+fn try_parse_terminal_err_eval_event_details(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::TerminalErrEvalEventDetails>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(execution) = object.get("execution") else {
+        return Ok(None);
+    };
+    let Some(walk_index) = object.get("walk_index") else {
+        return Ok(None);
+    };
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(leader) = object.get("leader") else {
+        return Ok(None);
+    };
+    let Some(failure_class) = object.get("failure_class") else {
+        return Ok(None);
+    };
+    let Some(outcome) = object.get("outcome") else {
+        return Ok(None);
+    };
+    let Some(reason) = object.get("reason") else {
+        return Ok(None);
+    };
+    let Some(err_eval_hash) = object.get("err_eval_hash") else {
+        return Ok(None);
+    };
+    let Some(duplicate) = object.get("duplicate") else {
+        return Ok(None);
+    };
+
+    Ok(Some(crate::events::TerminalErrEvalEventDetails {
+        execution: parse_string_value(execution)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval execution: {execution}")
+        })?,
+        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval walk_index: {walk_index}")
+        })?,
+        vertex: parse_runtime_vertex_value(vertex)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval vertex: {vertex}"))?,
+        leader: parse_string_value(leader)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval leader: {leader}"))?,
+        failure_class: parse_published_move_enum_value(failure_class)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval failure_class: {failure_class}")
+        })?,
+        outcome: parse_published_move_enum_value(outcome)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval outcome: {outcome}")
+        })?,
+        reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval reason: {reason}")
+        })?),
+        err_eval_hash_hex: hex::encode(parse_byte_vector_value(err_eval_hash)?.ok_or_else(
+            || anyhow::anyhow!("Could not parse terminal err_eval err_eval_hash: {err_eval_hash}"),
+        )?),
+        duplicate: parse_bool_value(duplicate)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse terminal err_eval duplicate: {duplicate}")
+        })?,
+    }))
+}
+
+fn try_parse_submission_failure_evidence_recorded_event(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceRecordedEvent>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(execution) = object.get("execution") else {
+        return Ok(None);
+    };
+    let Some(walk_index) = object.get("walk_index") else {
+        return Ok(None);
+    };
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(failed_leader) = object.get("failed_leader") else {
+        return Ok(None);
+    };
+    let Some(winning_leader) = object.get("winning_leader") else {
+        return Ok(None);
+    };
+    let Some(reason) = object.get("reason") else {
+        return Ok(None);
+    };
+    let Some(err_eval_hash) = object.get("err_eval_hash") else {
+        return Ok(None);
+    };
+
+    Ok(Some(
+        crate::events::SubmissionFailureEvidenceRecordedEvent {
+            execution: parse_address_value(execution)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure execution: {execution}")
+            })?,
+            walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure walk_index: {walk_index}")
+            })?,
+            vertex: parse_runtime_vertex_value(vertex)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure vertex: {vertex}")
+            })?,
+            failed_leader: parse_address_value(failed_leader)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure failed_leader: {failed_leader}")
+            })?,
+            winning_leader: match parse_optional_string_value(winning_leader)? {
+                Some(Some(value)) => {
+                    Some(serde_json::from_value(serde_json::Value::String(value))?)
+                }
+                Some(None) => None,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Could not parse submission failure winning_leader: {winning_leader}"
+                    ))
+                }
+            },
+            reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure reason: {reason}")
+            })?),
+            err_eval_hash: parse_byte_vector_value(err_eval_hash)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse submission failure err_eval_hash: {err_eval_hash}")
+            })?,
+        },
+    ))
+}
+
+fn try_parse_submission_failure_evidence_event_details(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceEventDetails>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(execution) = object.get("execution") else {
+        return Ok(None);
+    };
+    let Some(walk_index) = object.get("walk_index") else {
+        return Ok(None);
+    };
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(failed_leader) = object.get("failed_leader") else {
+        return Ok(None);
+    };
+    let Some(winning_leader) = object.get("winning_leader") else {
+        return Ok(None);
+    };
+    let Some(reason) = object.get("reason") else {
+        return Ok(None);
+    };
+    let Some(err_eval_hash) = object.get("err_eval_hash") else {
+        return Ok(None);
+    };
+
+    Ok(Some(crate::events::SubmissionFailureEvidenceEventDetails {
+        execution: parse_string_value(execution)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure execution: {execution}")
+        })?,
+        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure walk_index: {walk_index}")
+        })?,
+        vertex: parse_runtime_vertex_value(vertex)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure vertex: {vertex}")
+        })?,
+        failed_leader: parse_string_value(failed_leader)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure failed_leader: {failed_leader}")
+        })?,
+        winning_leader: parse_optional_string_value(winning_leader)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure winning_leader: {winning_leader}")
+        })?,
+        reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse submission failure reason: {reason}")
+        })?),
+        err_eval_hash_hex: hex::encode(parse_byte_vector_value(err_eval_hash)?.ok_or_else(
+            || anyhow::anyhow!("Could not parse submission failure err_eval_hash: {err_eval_hash}"),
+        )?),
+    }))
 }
 
 /// Helper function to determine whether the given address is one of the Nexus
@@ -132,8 +523,14 @@ fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool
 mod tests {
     use {
         super::*,
-        crate::{events::*, idents::primitives, test_utils::sui_mocks, types::SharedObjectRef},
+        crate::{
+            events::*,
+            idents::primitives,
+            test_utils::sui_mocks,
+            types::{PostFailureAction, RuntimeVertex, SharedObjectRef, WorkflowFailureClass},
+        },
         serde::{Deserialize, Serialize},
+        serde_json::json,
     };
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -247,6 +644,66 @@ mod tests {
                 leader: lead,
             }) if r == registry && l == leader_cap_id && n == network && lead == leader
         ));
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_terminal_err_eval_recorded_event() {
+        let index = 1u64;
+        let digest = sui::types::Digest::generate(&mut rand::thread_rng());
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("dag").unwrap(),
+            sui::types::Identifier::new("TerminalErrEvalRecordedEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let data = Wrapper {
+            event: TerminalErrEvalRecordedEvent {
+                dag: sui::types::Address::ZERO,
+                execution: sui::types::Address::TWO,
+                walk_index: 4,
+                vertex: RuntimeVertex::plain("failable"),
+                leader: sui::types::Address::THREE,
+                failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "timeout".to_string(),
+                err_eval_hash: vec![9, 8, 7],
+                duplicate: false,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let nexus_event = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects).unwrap();
+
+        assert_eq!(nexus_event.generics, vec![]);
+        assert_eq!(nexus_event.id, (digest, index));
+        match nexus_event.data {
+            NexusEventKind::TerminalErrEvalRecorded(parsed) => {
+                assert_eq!(parsed.walk_index, 4);
+                assert_eq!(
+                    parsed.failure_class,
+                    WorkflowFailureClass::TerminalSubmissionFailure
+                );
+                assert_eq!(parsed.outcome, PostFailureAction::Terminate);
+                assert_eq!(parsed.reason, "timeout");
+                assert_eq!(parsed.err_eval_hash, vec![9, 8, 7]);
+                assert!(!parsed.duplicate);
+            }
+            _ => panic!("Expected TerminalErrEvalRecorded event"),
+        }
     }
 
     #[test]
@@ -668,5 +1125,360 @@ mod tests {
                 ],
             ),
         ]
+    }
+
+    #[test]
+    fn test_parse_terminal_err_eval_recorded_summary_nested_fields_shape() {
+        let parsed = parse_terminal_err_eval_recorded_summary(json!({
+            "event": {
+                "fields": {
+                    "vertex": {
+                        "_variant_name": "Plain",
+                        "vertex": "failable"
+                    },
+                    "failure_class": {
+                        "fields": {
+                            "@variant": "TerminalToolFailure"
+                        }
+                    },
+                    "outcome": {
+                        "fields": {
+                            "variant": "Terminate"
+                        }
+                    },
+                    "reason": "\"boom\"",
+                    "duplicate": {
+                        "value": false
+                    }
+                }
+            }
+        }))
+        .expect("summary should parse");
+
+        assert_eq!(
+            parsed,
+            Some(TerminalErrEvalRecordedSummary {
+                vertex: RuntimeVertex::plain("failable"),
+                failure_class: WorkflowFailureClass::TerminalToolFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "boom".to_string(),
+                duplicate: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_terminal_err_eval_recorded_summary_parsed_json_wrapper_shape() {
+        let parsed = parse_terminal_err_eval_recorded_summary(json!({
+            "parsedJson": {
+                "event": {
+                    "fields": {
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": "failable"
+                        },
+                        "failure_class": "terminal_tool_failure",
+                        "outcome": "terminate",
+                        "reason": "\"boom\"",
+                        "duplicate": false
+                    }
+                }
+            }
+        }))
+        .expect("parsedJson wrapper should parse");
+
+        assert_eq!(
+            parsed,
+            Some(TerminalErrEvalRecordedSummary {
+                vertex: RuntimeVertex::plain("failable"),
+                failure_class: WorkflowFailureClass::TerminalToolFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "boom".to_string(),
+                duplicate: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_terminal_err_eval_recorded_event_value_nested_trace_shape() {
+        let parsed = parse_terminal_err_eval_recorded_event_value(json!({
+            "trace": [{
+                "event": {
+                    "fields": {
+                        "dag": "0x1",
+                        "execution": "0x2",
+                        "walk_index": { "number": "4" },
+                        "vertex": {
+                            "fields": {
+                                "_variant_name": "WithIterator",
+                                "vertex": "failable",
+                                "iteration": "1",
+                                "out_of": 3
+                            }
+                        },
+                        "leader": { "value": "0x3" },
+                        "failure_class": "terminal_submission_failure",
+                        "outcome": "terminate",
+                        "reason": "\"timeout\"",
+                        "err_eval_hash": { "bytes": [9, 8, 7] },
+                        "duplicate": false
+                    }
+                }
+            }]
+        }))
+        .expect("event should parse");
+
+        assert_eq!(
+            parsed,
+            Some(TerminalErrEvalRecordedEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 4,
+                vertex: RuntimeVertex::with_iterator("failable", 1, 3),
+                leader: sui::types::Address::THREE,
+                failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "timeout".to_string(),
+                err_eval_hash: vec![9, 8, 7],
+                duplicate: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_terminal_err_eval_recorded_event_value_parsed_json_wrapper_shape() {
+        let parsed = parse_terminal_err_eval_recorded_event_value(json!({
+            "parsed_json": {
+                "event": {
+                    "fields": {
+                        "dag": "0x1",
+                        "execution": "0x2",
+                        "walk_index": "4",
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": { "name": "failable" }
+                        },
+                        "leader": "0x3",
+                        "failure_class": "terminal_submission_failure",
+                        "outcome": "terminate",
+                        "reason": "\"timeout\"",
+                        "err_eval_hash": { "bytes": [9, 8, 7] },
+                        "duplicate": false
+                    }
+                }
+            }
+        }))
+        .expect("parsed_json wrapper should parse");
+
+        assert_eq!(
+            parsed,
+            Some(TerminalErrEvalRecordedEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 4,
+                vertex: RuntimeVertex::plain("failable"),
+                leader: sui::types::Address::THREE,
+                failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "timeout".to_string(),
+                err_eval_hash: vec![9, 8, 7],
+                duplicate: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_terminal_err_eval_event_details_nested_trace_shape() {
+        let parsed = parse_terminal_err_eval_event_details(json!({
+            "trace": [{
+                "event": {
+                    "fields": {
+                        "execution": { "value": "0x2" },
+                        "walk_index": { "number": "4" },
+                        "vertex": {
+                            "fields": {
+                                "_variant_name": "WithIterator",
+                                "vertex": "failable",
+                                "iteration": "1",
+                                "out_of": 3
+                            }
+                        },
+                        "leader": { "value": "0x3" },
+                        "failure_class": "terminal_submission_failure",
+                        "outcome": "terminate",
+                        "reason": "\"timeout\"",
+                        "err_eval_hash": { "bytes": [9, 8, 7] },
+                        "duplicate": false
+                    }
+                }
+            }]
+        }))
+        .expect("detail payload should parse");
+
+        assert_eq!(
+            parsed,
+            Some(TerminalErrEvalEventDetails {
+                execution: "0x2".to_string(),
+                walk_index: 4,
+                vertex: RuntimeVertex::with_iterator("failable", 1, 3),
+                leader: "0x3".to_string(),
+                failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "timeout".to_string(),
+                err_eval_hash_hex: "090807".to_string(),
+                duplicate: false,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_submission_failure_evidence_recorded_event_nested_option_shape() {
+        let parsed = parse_submission_failure_evidence_recorded_event(json!({
+            "wrapper": {
+                "event": {
+                    "fields": {
+                        "execution": "0x2",
+                        "walk_index": "6",
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": { "name": "failable" }
+                        },
+                        "failed_leader": "0x3",
+                        "winning_leader": {
+                            "fields": {
+                                "_variant_name": "Some",
+                                "value": "0x4"
+                            }
+                        },
+                        "reason": "\"rpc timeout\"",
+                        "err_eval_hash": { "bytes": "0x0102ff" }
+                    }
+                }
+            }
+        }))
+        .expect("submission failure should parse");
+
+        assert_eq!(
+            parsed,
+            Some(SubmissionFailureEvidenceRecordedEvent {
+                execution: sui::types::Address::TWO,
+                walk_index: 6,
+                vertex: RuntimeVertex::plain("failable"),
+                failed_leader: sui::types::Address::THREE,
+                winning_leader: Some(sui::types::Address::from_static("0x4")),
+                reason: "rpc timeout".to_string(),
+                err_eval_hash: vec![1, 2, 255],
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_submission_failure_evidence_event_details_null_and_some_shapes() {
+        let parsed_some = parse_submission_failure_evidence_event_details(json!({
+            "wrapper": {
+                "event": {
+                    "fields": {
+                        "execution": "0x2",
+                        "walk_index": "6",
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": { "name": "failable" }
+                        },
+                        "failed_leader": { "value": "0x3" },
+                        "winning_leader": {
+                            "fields": {
+                                "_variant_name": "Some",
+                                "value": "0x4"
+                            }
+                        },
+                        "reason": "\"rpc timeout\"",
+                        "err_eval_hash": { "bytes": "0x0102ff" }
+                    }
+                }
+            }
+        }))
+        .expect("submission detail should parse");
+
+        assert_eq!(
+            parsed_some,
+            Some(SubmissionFailureEvidenceEventDetails {
+                execution: "0x2".to_string(),
+                walk_index: 6,
+                vertex: RuntimeVertex::plain("failable"),
+                failed_leader: "0x3".to_string(),
+                winning_leader: Some("0x4".to_string()),
+                reason: "rpc timeout".to_string(),
+                err_eval_hash_hex: "0102ff".to_string(),
+            })
+        );
+
+        let parsed_none = parse_submission_failure_evidence_event_details(json!({
+            "parsedJson": {
+                "event": {
+                    "fields": {
+                        "execution": "0x2",
+                        "walk_index": "6",
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": "failable"
+                        },
+                        "failed_leader": "0x3",
+                        "winning_leader": null,
+                        "reason": "\"rpc timeout\"",
+                        "err_eval_hash": { "bytes": "0x0102ff" }
+                    }
+                }
+            }
+        }))
+        .expect("submission detail with null winner should parse");
+
+        assert_eq!(
+            parsed_none,
+            Some(SubmissionFailureEvidenceEventDetails {
+                execution: "0x2".to_string(),
+                walk_index: 6,
+                vertex: RuntimeVertex::plain("failable"),
+                failed_leader: "0x3".to_string(),
+                winning_leader: None,
+                reason: "rpc timeout".to_string(),
+                err_eval_hash_hex: "0102ff".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_submission_failure_evidence_recorded_event_null_winning_leader() {
+        let parsed = parse_submission_failure_evidence_recorded_event(json!({
+            "parsedJson": {
+                "event": {
+                    "fields": {
+                        "execution": "0x2",
+                        "walk_index": "6",
+                        "vertex": {
+                            "_variant_name": "Plain",
+                            "vertex": "failable"
+                        },
+                        "failed_leader": "0x3",
+                        "winning_leader": null,
+                        "reason": "\"rpc timeout\"",
+                        "err_eval_hash": { "bytes": "0x0102ff" }
+                    }
+                }
+            }
+        }))
+        .expect("submission failure with null winner should parse");
+
+        assert_eq!(
+            parsed,
+            Some(SubmissionFailureEvidenceRecordedEvent {
+                execution: sui::types::Address::TWO,
+                walk_index: 6,
+                vertex: RuntimeVertex::plain("failable"),
+                failed_leader: sui::types::Address::THREE,
+                winning_leader: None,
+                reason: "rpc timeout".to_string(),
+                err_eval_hash: vec![1, 2, 255],
+            })
+        );
     }
 }

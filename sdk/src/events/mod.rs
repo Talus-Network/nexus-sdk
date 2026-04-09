@@ -138,6 +138,7 @@ events! {
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
+    TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
     WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
     WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
     EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
@@ -228,6 +229,88 @@ pub struct WalkFailedEvent {
     pub vertex: RuntimeVertex,
     /// The error message associated with the failure.
     pub reason: String,
+}
+
+/// Fired when the authoritative per-walk terminal `_err_eval` record is
+/// created or updated.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct TerminalErrEvalRecordedEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    /// Which vertex produced the terminal `_err_eval`.
+    pub vertex: RuntimeVertex,
+    /// Which leader submitted the terminal record.
+    pub leader: sui::types::Address,
+    /// How the workflow classified the failure.
+    pub failure_class: WorkflowFailureClass,
+    /// Which post-failure action was resolved onchain.
+    pub outcome: PostFailureAction,
+    /// The sanitized terminal reason string recorded onchain.
+    pub reason: String,
+    /// Hash of the `_err_eval` payload associated with this record.
+    pub err_eval_hash: Vec<u8>,
+    /// Whether this event reflects a duplicate submission converging on the
+    /// existing terminal record.
+    pub duplicate: bool,
+}
+
+/// Partial terminal `_err_eval` record shape often found inside nested trace
+/// payloads before event metadata is attached.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct TerminalErrEvalRecordedSummary {
+    /// Which vertex produced the terminal `_err_eval`.
+    pub vertex: RuntimeVertex,
+    /// How the workflow classified the failure.
+    pub failure_class: WorkflowFailureClass,
+    /// Which post-failure action was resolved onchain.
+    pub outcome: PostFailureAction,
+    /// The sanitized terminal reason string recorded onchain.
+    pub reason: String,
+    /// Whether this event reflects a duplicate submission converging on the
+    /// existing terminal record.
+    pub duplicate: bool,
+}
+
+/// Comparison-oriented terminal `_err_eval` details used by higher-level
+/// lineage reconstruction over nested event JSON payloads.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct TerminalErrEvalEventDetails {
+    pub execution: String,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub leader: String,
+    pub failure_class: WorkflowFailureClass,
+    pub outcome: PostFailureAction,
+    pub reason: String,
+    pub err_eval_hash_hex: String,
+    pub duplicate: bool,
+}
+
+/// Submission-failure evidence payload recorded for terminal submission
+/// failures.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SubmissionFailureEvidenceRecordedEvent {
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub failed_leader: sui::types::Address,
+    pub winning_leader: Option<sui::types::Address>,
+    pub reason: String,
+    pub err_eval_hash: Vec<u8>,
+}
+
+/// Comparison-oriented submission-failure details used by higher-level
+/// lineage reconstruction over nested event JSON payloads.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SubmissionFailureEvidenceEventDetails {
+    pub execution: String,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub failed_leader: String,
+    pub winning_leader: Option<String>,
+    pub reason: String,
+    pub err_eval_hash_hex: String,
 }
 
 /// Fired by the Nexus Workflow when a walk was aborted.
@@ -580,5 +663,43 @@ mod tests {
         let bytes = bcs::to_bytes(&dummy).unwrap();
         let result = parse_bcs("UnknownEvent", &bytes);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bcs_terminal_err_eval_recorded_event() {
+        let event = Wrapper {
+            event: TerminalErrEvalRecordedEvent {
+                dag: sui::types::Address::ZERO,
+                execution: sui::types::Address::TWO,
+                walk_index: 7,
+                vertex: RuntimeVertex::plain("failable"),
+                leader: sui::types::Address::THREE,
+                failure_class: WorkflowFailureClass::TerminalToolFailure,
+                outcome: PostFailureAction::TransientContinue,
+                reason: "terminal _err_eval".to_string(),
+                err_eval_hash: vec![1, 2, 3, 4],
+                duplicate: true,
+            },
+        };
+
+        let bytes = bcs::to_bytes(&event).unwrap();
+        let (parsed, distribution) =
+            super::parse_bcs("TerminalErrEvalRecordedEvent", &bytes).unwrap();
+
+        assert!(distribution.is_none());
+        match parsed {
+            crate::events::NexusEventKind::TerminalErrEvalRecorded(parsed) => {
+                assert_eq!(parsed.walk_index, 7);
+                assert_eq!(
+                    parsed.failure_class,
+                    WorkflowFailureClass::TerminalToolFailure
+                );
+                assert_eq!(parsed.outcome, PostFailureAction::TransientContinue);
+                assert_eq!(parsed.reason, "terminal _err_eval");
+                assert_eq!(parsed.err_eval_hash, vec![1, 2, 3, 4]);
+                assert!(parsed.duplicate);
+            }
+            _ => panic!("Expected TerminalErrEvalRecorded variant"),
+        }
     }
 }
