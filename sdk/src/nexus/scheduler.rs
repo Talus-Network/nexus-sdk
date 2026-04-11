@@ -3,18 +3,28 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::sui_framework,
+        idents::{sui_framework, workflow},
         nexus::{
             client::NexusClient,
-            crawler::Response,
+            crawler::{Crawler, DynamicMap, Response},
             error::NexusError,
             signer::ExecutedTransaction,
         },
         sui,
         transactions::scheduler as scheduler_tx,
-        types::{DataStorage, Task},
+        types::{
+            deserialize_sui_u64,
+            DagExecutionConfig,
+            DataStorage,
+            MoveFields,
+            MoveOption,
+            NexusObjects,
+            PolicySymbol,
+            Task,
+            TransitionConfigKey,
+        },
     },
-    anyhow::anyhow,
+    anyhow::{anyhow, bail},
     std::collections::HashMap,
 };
 
@@ -261,9 +271,8 @@ impl SchedulerActions {
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
 
-        let metadata_arg =
-            scheduler_tx::new_metadata(&mut tx, objects, metadata.clone().into_iter())
-                .map_err(NexusError::TransactionBuilding)?;
+        let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.clone())
+            .map_err(NexusError::TransactionBuilding)?;
 
         scheduler_tx::update_metadata(&mut tx, objects, &task_ref, metadata_arg)
             .map_err(NexusError::TransactionBuilding)?;
@@ -549,6 +558,101 @@ impl SchedulerActions {
     }
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+struct SchedulerOccurrence {
+    #[serde(deserialize_with = "deserialize_sui_u64")]
+    start_time_ms: u64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct SchedulerQueueEntry {
+    occurrence: SchedulerOccurrence,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct SchedulerQueueGeneratorState {
+    active: MoveOption<SchedulerQueueEntry>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct SchedulerPeriodicGeneratorState {
+    active: MoveOption<SchedulerOccurrence>,
+}
+
+pub fn active_scheduler_start_ms<F>(
+    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
+    expected_config: &str,
+    generator: GeneratorKind,
+    symbol_matches_generator: F,
+) -> anyhow::Result<Option<u64>>
+where
+    F: Fn(&PolicySymbol) -> bool,
+{
+    let mut candidates = configs.into_iter().filter(|(key, _)| {
+        key.config.matches_qualified_name(expected_config)
+            && key.transition.state.is_none()
+            && symbol_matches_generator(&key.transition.symbol)
+    });
+
+    let Some((_key, value)) = candidates.next() else {
+        bail!("Missing scheduler generator state config for {expected_config}");
+    };
+
+    let active_start_ms = match generator {
+        GeneratorKind::Queue => {
+            let MoveFields(state): MoveFields<SchedulerQueueGeneratorState> =
+                serde_json::from_value(value)?;
+            state.active.0.map(|entry| entry.occurrence.start_time_ms)
+        }
+        GeneratorKind::Periodic => {
+            let MoveFields(state): MoveFields<SchedulerPeriodicGeneratorState> =
+                serde_json::from_value(value)?;
+            state.active.0.map(|occ| occ.start_time_ms)
+        }
+    };
+
+    Ok(active_start_ms)
+}
+
+pub async fn fetch_begin_dag_execution_config(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    configured_automaton_id: &sui::types::Address,
+) -> anyhow::Result<DagExecutionConfig> {
+    let parent: DynamicMap<TransitionConfigKey<u64, PolicySymbol>, serde_json::Value> =
+        DynamicMap::new(*configured_automaton_id, 0);
+
+    let configs = crawler.get_dynamic_fields(&parent).await?;
+
+    extract_begin_dag_execution_config(configs, objects)
+}
+
+fn extract_begin_dag_execution_config(
+    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
+    objects: &NexusObjects,
+) -> anyhow::Result<DagExecutionConfig> {
+    let expected_config =
+        workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
+    let expected_symbol = workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS
+        .qualified_name(objects.workflow_type_origin_pkg_id());
+
+    let mut candidates = configs.into_iter().filter(|(key, _)| {
+        key.config.matches_qualified_name(&expected_config)
+            && key.transition.state.is_none()
+            && key
+                .transition
+                .symbol
+                .matches_qualified_name(&expected_symbol)
+    });
+
+    let Some((_key, value)) = candidates.next() else {
+        bail!("Missing execution policy config for BeginDagExecutionWitness");
+    };
+
+    let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
+    Ok(config)
+}
+
 fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
     response
         .events
@@ -656,6 +760,7 @@ mod tests {
             types::{
                 ConfiguredAutomaton,
                 ConstraintsData,
+                DagExecutionConfig,
                 DataStorage,
                 DeterministicAutomaton,
                 ExecutionData,
@@ -664,7 +769,10 @@ mod tests {
                 NexusObjects,
                 Policy,
                 PolicySymbol,
+                SchedulerEntryGroup,
                 TaskState,
+                TransitionConfigKey,
+                TransitionKey,
                 TypeName,
             },
         },
@@ -766,6 +874,80 @@ mod tests {
         generator_symbol(workflow_pkg_id, "QueueGeneratorWitness")
     }
 
+    fn scheduler_config(
+        config_name: &str,
+        start_time_ms: u64,
+        symbol: PolicySymbol,
+        generator: GeneratorKind,
+        wrapped: bool,
+    ) -> (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value) {
+        let inner = match generator {
+            GeneratorKind::Queue => json!({
+                "active": {
+                    "vec": [{
+                        "fields": {
+                            "occurrence": {
+                                "start_time_ms": start_time_ms.to_string()
+                            }
+                        }
+                    }]
+                }
+            }),
+            GeneratorKind::Periodic => json!({
+                "active": {
+                    "vec": [{
+                        "fields": {
+                            "start_time_ms": start_time_ms.to_string()
+                        }
+                    }]
+                }
+            }),
+        };
+
+        let value = if wrapped {
+            json!({ "fields": inner })
+        } else {
+            inner
+        };
+
+        (
+            TransitionConfigKey {
+                transition: TransitionKey {
+                    state: None,
+                    symbol,
+                },
+                config: TypeName::from(config_name.to_string()),
+            },
+            value,
+        )
+    }
+
+    fn begin_dag_execution_config_value(
+        dag: sui::types::Address,
+        network: sui::types::Address,
+        invoker: sui::types::Address,
+        wrapped: bool,
+    ) -> serde_json::Value {
+        let inner = json!({
+            "dag": dag,
+            "network": network,
+            "entry_group": {
+                "name": "default"
+            },
+            "inputs": {
+                "contents": []
+            },
+            "invoker": invoker,
+            "priority_fee_per_gas_unit": "5"
+        });
+
+        if wrapped {
+            json!({ "fields": inner })
+        } else {
+            inner
+        }
+    }
+
     fn event_bcs(
         primitives_pkg: sui::types::Address,
         workflow_pkg: sui::types::Address,
@@ -826,6 +1008,111 @@ mod tests {
         let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         (rpc_url, nexus_client)
+    }
+
+    #[test]
+    fn active_scheduler_start_ms_reads_wrapped_queue_state() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let expected = workflow::Scheduler::QUEUE_GENERATOR_STATE
+            .qualified_name(objects.workflow_type_origin_pkg_id());
+
+        let active = active_scheduler_start_ms(
+            vec![scheduler_config(
+                &expected,
+                42,
+                objects.scheduler_queue_generator_symbol(),
+                GeneratorKind::Queue,
+                true,
+            )],
+            &expected,
+            GeneratorKind::Queue,
+            |symbol| objects.scheduler_matches_queue_generator(symbol),
+        )
+        .unwrap();
+
+        assert_eq!(active, Some(42));
+    }
+
+    #[test]
+    fn active_scheduler_start_ms_reads_plain_periodic_state() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let expected = workflow::Scheduler::PERIODIC_GENERATOR_STATE
+            .qualified_name(objects.workflow_type_origin_pkg_id());
+
+        let active = active_scheduler_start_ms(
+            vec![scheduler_config(
+                &expected,
+                77,
+                objects.scheduler_periodic_generator_symbol(),
+                GeneratorKind::Periodic,
+                false,
+            )],
+            &expected,
+            GeneratorKind::Periodic,
+            |symbol| objects.scheduler_matches_periodic_generator(symbol),
+        )
+        .unwrap();
+
+        assert_eq!(active, Some(77));
+    }
+
+    #[test]
+    fn active_scheduler_start_ms_errors_when_config_is_missing() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let expected = workflow::Scheduler::QUEUE_GENERATOR_STATE
+            .qualified_name(objects.workflow_type_origin_pkg_id());
+
+        let err = active_scheduler_start_ms(vec![], &expected, GeneratorKind::Queue, |symbol| {
+            objects.scheduler_matches_queue_generator(symbol)
+        })
+        .expect_err("missing generator config must error");
+
+        assert!(err
+            .to_string()
+            .contains("Missing scheduler generator state config"));
+    }
+
+    #[test]
+    fn extract_begin_dag_execution_config_parses_wrapped_and_plain_json() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_address();
+        let network = sui_mocks::mock_sui_address();
+        let invoker = sui_mocks::mock_sui_address();
+        let expected_config = workflow::Dag::DAG_EXECUTION_CONFIG
+            .qualified_name(objects.workflow_type_origin_pkg_id());
+        let expected_symbol = workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS
+            .qualified_name(objects.workflow_type_origin_pkg_id());
+
+        for wrapped in [true, false] {
+            let parsed = extract_begin_dag_execution_config(
+                vec![(
+                    TransitionConfigKey {
+                        transition: TransitionKey {
+                            state: None,
+                            symbol: PolicySymbol::Witness(TypeName::new(&expected_symbol)),
+                        },
+                        config: TypeName::new(&expected_config),
+                    },
+                    begin_dag_execution_config_value(dag, network, invoker, wrapped),
+                )],
+                &objects,
+            )
+            .unwrap();
+
+            assert_eq!(
+                parsed,
+                DagExecutionConfig {
+                    dag,
+                    network,
+                    entry_group: SchedulerEntryGroup {
+                        name: "default".to_string(),
+                    },
+                    inputs: Map::default(),
+                    invoker,
+                    priority_fee_per_gas_unit: 5,
+                }
+            );
+        }
     }
 
     #[tokio::test]

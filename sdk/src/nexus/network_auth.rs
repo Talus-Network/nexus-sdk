@@ -21,7 +21,11 @@
 use {
     crate::{
         idents::workflow,
-        nexus::{client::NexusClient, crawler::Crawler, error::NexusError},
+        nexus::{
+            client::NexusClient,
+            crawler::{Crawler, Response},
+            error::NexusError,
+        },
         signed_http::v1::wire::{
             AllowedLeaderFileV1,
             AllowedLeaderKeyFileV1,
@@ -29,7 +33,7 @@ use {
         },
         sui,
         transactions,
-        types::{IdentityKey, KeyBinding, NetworkAuth, Tool},
+        types::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth, Tool},
         ToolFqn,
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
@@ -83,6 +87,19 @@ pub struct ToolKeyList {
     pub next_key_id: u64,
     /// All key entries, sorted by kid ascending.
     pub keys: Vec<ToolKeyEntry>,
+}
+
+/// Active Ed25519 key material resolved from a `KeyBinding`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActiveEd25519Key {
+    pub kid: u64,
+    pub public_key: [u8; 32],
+}
+
+/// A `KeyBinding` plus its validated active Ed25519 key, if one exists.
+pub struct ResolvedKeyBinding {
+    pub binding: Response<KeyBinding>,
+    pub active_key: Option<ActiveEd25519Key>,
 }
 
 pub struct NetworkAuthActions {
@@ -460,16 +477,7 @@ impl NetworkAuthActions {
         &self,
         binding_object_id: sui::types::Address,
     ) -> Result<Option<crate::nexus::crawler::Response<KeyBinding>>, NexusError> {
-        match self
-            .client
-            .crawler()
-            .get_object_contents_bcs::<KeyBinding>(binding_object_id)
-            .await
-        {
-            Ok(obj) => Ok(Some(obj)),
-            Err(e) if e.to_string().contains("not found") => Ok(None),
-            Err(e) => Err(NexusError::Rpc(e)),
-        }
+        try_get_key_binding_by_object_id(self.client.crawler(), binding_object_id).await
     }
 
     async fn export_allowed_leader_entry_file_v1(
@@ -574,6 +582,40 @@ impl NetworkAuthReader {
         Ok(Self::new(crawler, workflow_pkg_id, network_auth_object_id))
     }
 
+    /// Derive the deterministic `KeyBinding` object id for `identity`.
+    pub fn binding_object_id(
+        &self,
+        identity: &IdentityKey,
+    ) -> Result<sui::types::Address, NexusError> {
+        NetworkAuthCodec::new(self.workflow_pkg_id, self.network_auth_object_id)
+            .binding_object_id(identity)
+    }
+
+    /// Fetch the `KeyBinding` for `identity` if it exists.
+    pub async fn try_get_key_binding(
+        &self,
+        identity: &IdentityKey,
+    ) -> Result<Option<Response<KeyBinding>>, NexusError> {
+        let binding_object_id = self.binding_object_id(identity)?;
+        try_get_key_binding_by_object_id(&self.crawler, binding_object_id).await
+    }
+
+    /// Fetch the `KeyBinding` for `identity` and resolve its active Ed25519 key, if present.
+    pub async fn try_get_active_key_binding(
+        &self,
+        identity: &IdentityKey,
+    ) -> Result<Option<ResolvedKeyBinding>, NexusError> {
+        let Some(binding) = self.try_get_key_binding(identity).await? else {
+            return Ok(None);
+        };
+        let active_key = try_get_active_ed25519_key(&self.crawler, &binding).await?;
+
+        Ok(Some(ResolvedKeyBinding {
+            binding,
+            active_key,
+        }))
+    }
+
     /// List the leader capability IDs currently present in `network_auth.identities`.
     pub async fn list_leader_cap_ids_from_network_auth(
         &self,
@@ -665,62 +707,92 @@ impl NetworkAuthReader {
         leader_cap_id: sui::types::Address,
     ) -> Result<Option<AllowedLeaderFileV1>, NexusError> {
         let identity = IdentityKey::leader(leader_cap_id);
-        let binding_object_id = codec.binding_object_id(&identity)?;
-
-        let binding = self
-            .crawler
-            .get_object_contents_bcs::<KeyBinding>(binding_object_id)
-            .await
-            .map_err(|e| {
-                NexusError::Rpc(anyhow::anyhow!(
-                    "failed to fetch leader KeyBinding ({binding_object_id}): {e}"
-                ))
-            })?;
-
-        let Some(active_kid) = binding.data.active_key_id else {
-            return Ok(None);
+        let Some(binding) = self.try_get_active_key_binding(&identity).await? else {
+            let binding_object_id = codec.binding_object_id(&identity)?;
+            return Err(NexusError::Rpc(anyhow::anyhow!(
+                "failed to fetch leader KeyBinding ({binding_object_id}): not found"
+            )));
         };
 
-        let keys = self
-            .crawler
-            .get_dynamic_fields_bcs::<u64, crate::types::KeyRecord>(
-                binding.data.keys.id,
-                binding.data.keys.size(),
-            )
-            .await
-            .map_err(|e| {
-                NexusError::Rpc(anyhow::anyhow!(
-                    "failed to fetch leader key records ({binding_object_id}): {e}"
-                ))
-            })?;
-
-        let record = keys.get(&active_kid).ok_or_else(|| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "leader binding {binding_object_id} missing active key record kid={active_kid}"
-            ))
-        })?;
-
-        let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "leader binding {binding_object_id} active key is not 32 bytes"
-            ))
-        })?;
-
-        if record.scheme != KEY_SCHEME_ED25519 {
-            return Err(NexusError::Parsing(anyhow::anyhow!(
-                "leader binding {binding_object_id} active key uses unsupported scheme {}",
-                record.scheme
-            )));
-        }
+        let Some(active_key) = binding.active_key else {
+            return Ok(None);
+        };
 
         Ok(Some(AllowedLeaderFileV1 {
             leader_id: leader_cap_id.to_string(),
             keys: vec![AllowedLeaderKeyFileV1 {
-                kid: active_kid,
-                public_key: hex::encode(public_key),
+                kid: active_key.kid,
+                public_key: hex::encode(active_key.public_key),
             }],
         }))
     }
+}
+
+async fn try_get_key_binding_by_object_id(
+    crawler: &Crawler,
+    binding_object_id: sui::types::Address,
+) -> Result<Option<Response<KeyBinding>>, NexusError> {
+    match crawler
+        .get_object_contents_bcs::<KeyBinding>(binding_object_id)
+        .await
+    {
+        Ok(binding) => Ok(Some(binding)),
+        Err(e) if e.to_string().contains("not found") => Ok(None),
+        Err(e) => Err(NexusError::Rpc(e)),
+    }
+}
+
+async fn try_get_active_ed25519_key(
+    crawler: &Crawler,
+    binding: &Response<KeyBinding>,
+) -> Result<Option<ActiveEd25519Key>, NexusError> {
+    let Some(active_kid) = binding.data.active_key_id else {
+        return Ok(None);
+    };
+
+    let keys = crawler
+        .get_dynamic_fields_bcs::<u64, KeyRecord>(binding.data.keys.id, binding.data.keys.size())
+        .await
+        .map_err(|e| {
+            NexusError::Rpc(anyhow::anyhow!(
+                "failed to fetch key records ({}): {e}",
+                binding.object_id
+            ))
+        })?;
+
+    let record = keys.get(&active_kid).ok_or_else(|| {
+        NexusError::Parsing(anyhow::anyhow!(
+            "key binding {} is missing active key record kid={active_kid}",
+            binding.object_id
+        ))
+    })?;
+
+    let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
+        NexusError::Parsing(anyhow::anyhow!(
+            "key binding {} active key kid={active_kid} is not 32 bytes",
+            binding.object_id
+        ))
+    })?;
+
+    if record.scheme != KEY_SCHEME_ED25519 {
+        return Err(NexusError::Parsing(anyhow::anyhow!(
+            "key binding {} active key kid={active_kid} uses unsupported scheme {}",
+            binding.object_id,
+            record.scheme
+        )));
+    }
+
+    if record.revoked_at_ms.is_some() {
+        return Err(NexusError::Parsing(anyhow::anyhow!(
+            "key binding {} active key kid={active_kid} is revoked",
+            binding.object_id
+        )));
+    }
+
+    Ok(Some(ActiveEd25519Key {
+        kid: active_kid,
+        public_key,
+    }))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -972,6 +1044,85 @@ mod tests {
             object
         }
 
+        async fn build_reader(
+            workflow_pkg_id: sui::types::Address,
+            network_auth_object_id: sui::types::Address,
+            leader_cap_id: sui::types::Address,
+            active_kid: u64,
+            record: KeyRecord,
+        ) -> NetworkAuthReader {
+            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let identity = IdentityKey::leader(leader_cap_id);
+            let binding_object_id = codec.binding_object_id(&identity).unwrap();
+
+            let key_table_id = sui::types::Address::from_static("0x111");
+            let binding = KeyBinding {
+                id: sui::types::Address::from_static("0x222"),
+                identity,
+                description: None,
+                next_key_id: active_kid + 1,
+                active_key_id: Some(active_kid),
+                keys: MoveTable::new(key_table_id, 1),
+            };
+            let binding_bytes = bcs::to_bytes(&binding).unwrap();
+
+            let field_object_id = sui::types::Address::from_static("0x333");
+            let field_value = DynamicFieldValueBcs {
+                id: sui::types::Address::from_static("0x444"),
+                name: active_kid,
+                value: record,
+            };
+            let field_bytes = bcs::to_bytes(&field_value).unwrap();
+
+            let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+            let mut state_service = sui_mocks::grpc::MockStateService::new();
+
+            let binding_object_id_str = binding_object_id.to_string();
+            ledger_service
+                .expect_get_object()
+                .times(1)
+                .returning(move |request| {
+                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
+                    if requested_id != binding_object_id_str {
+                        return Err(Status::not_found(format!(
+                            "unexpected object id {requested_id}"
+                        )));
+                    }
+
+                    let object = object_with_contents(None, binding_bytes.clone());
+                    let mut response = sui::grpc::GetObjectResponse::default();
+                    response.object = Some(object);
+                    Ok(Response::new(response))
+                });
+
+            sui_mocks::grpc::mock_list_dynamic_fields(
+                &mut state_service,
+                vec![(active_kid, field_object_id)],
+            );
+
+            ledger_service
+                .expect_batch_get_objects()
+                .times(1)
+                .returning(move |_request| {
+                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
+                    let mut result = sui::grpc::GetObjectResult::default();
+                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
+
+                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                    response.objects = vec![result];
+                    Ok(Response::new(response))
+                });
+
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service),
+                state_service_mock: Some(state_service),
+                ..Default::default()
+            });
+
+            NetworkAuthReader::from_rpc_url(&rpc_url, workflow_pkg_id, network_auth_object_id)
+                .unwrap()
+        }
+
         async fn build_reader_and_syncer(
             out_path: PathBuf,
             workflow_pkg_id: sui::types::Address,
@@ -1065,6 +1216,48 @@ mod tests {
                 NetworkAuthReader::from_rpc_url(&rpc_url, workflow_pkg_id, network_auth_object_id)
                     .unwrap();
             AllowedLeadersFileSyncerV1::new(reader, out_path)
+        }
+
+        #[tokio::test]
+        async fn reader_try_get_active_key_binding_returns_validated_active_key() {
+            let mut rng = rand::thread_rng();
+            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let network_auth_object_id = sui::types::Address::generate(&mut rng);
+            let leader_cap_id = sui::types::Address::generate(&mut rng);
+            let active_kid = 5u64;
+            let public_key = [7u8; 32];
+            let reader = build_reader(
+                workflow_pkg_id,
+                network_auth_object_id,
+                leader_cap_id,
+                active_kid,
+                KeyRecord {
+                    scheme: 0,
+                    public_key: public_key.to_vec(),
+                    added_at_ms: 0,
+                    revoked_at_ms: None,
+                },
+            )
+            .await;
+
+            let identity = IdentityKey::leader(leader_cap_id);
+            let resolved = reader
+                .try_get_active_key_binding(&identity)
+                .await
+                .unwrap()
+                .expect("binding should exist");
+
+            assert_eq!(
+                reader.binding_object_id(&identity).unwrap(),
+                resolved.binding.object_id
+            );
+            assert_eq!(
+                resolved.active_key,
+                Some(ActiveEd25519Key {
+                    kid: active_kid,
+                    public_key,
+                })
+            );
         }
 
         #[tokio::test]
@@ -1181,22 +1374,13 @@ mod tests {
             let mut rng = rand::thread_rng();
             let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
 
-            let nexus_objects = crate::types::NexusObjects {
-                workflow_pkg_id,
-                primitives_pkg_id: sui::types::Address::generate(&mut rng),
-                interface_pkg_id: sui::types::Address::generate(&mut rng),
-                network_id: sui::types::Address::generate(&mut rng),
-                tool_registry: sui_mocks::mock_sui_object_ref(),
-                network_auth: sui::types::ObjectReference::new(
-                    network_auth_object_id,
-                    1,
-                    sui::types::Digest::generate(&mut rng),
-                ),
-                default_tap: sui_mocks::mock_sui_object_ref(),
-                gas_service: sui_mocks::mock_sui_object_ref(),
-                leader_registry: sui_mocks::mock_sui_object_ref(),
-                workflow_original_pkg_id: None,
-            };
+            let mut nexus_objects = crate::test_utils::sui_mocks::mock_nexus_objects();
+            nexus_objects.network_auth = sui::types::ObjectReference::new(
+                network_auth_object_id,
+                1,
+                sui::types::Digest::generate(&mut rng),
+            );
+            nexus_objects.workflow_pkg_id = workflow_pkg_id;
 
             let gas_coin = sui_mocks::mock_sui_object_ref();
             let client = NexusClient::builder()
@@ -1491,22 +1675,14 @@ mod tests {
             });
 
             let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
-            let nexus_objects = crate::types::NexusObjects {
-                workflow_pkg_id,
-                primitives_pkg_id: sui::types::Address::generate(&mut rng),
-                interface_pkg_id: sui::types::Address::generate(&mut rng),
-                network_id: sui::types::Address::generate(&mut rng),
-                tool_registry: sui_mocks::mock_sui_object_ref(),
-                network_auth: sui::types::ObjectReference::new(
-                    network_auth_object_id,
-                    1,
-                    sui::types::Digest::generate(&mut rng),
-                ),
-                default_tap: sui_mocks::mock_sui_object_ref(),
-                gas_service: sui_mocks::mock_sui_object_ref(),
-                leader_registry: sui_mocks::mock_sui_object_ref(),
-                workflow_original_pkg_id: None,
-            };
+            let mut nexus_objects = crate::test_utils::sui_mocks::mock_nexus_objects();
+
+            nexus_objects.network_auth = sui::types::ObjectReference::new(
+                network_auth_object_id,
+                1,
+                sui::types::Digest::generate(&mut rng),
+            );
+            nexus_objects.workflow_pkg_id = workflow_pkg_id;
 
             let gas_coin = sui_mocks::mock_sui_object_ref();
             let client = NexusClient::builder()
