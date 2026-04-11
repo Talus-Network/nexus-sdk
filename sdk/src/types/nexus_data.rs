@@ -96,6 +96,14 @@ impl NexusData {
             data: DataStorage::Walrus(WalrusStorage { data }),
         }
     }
+
+    pub fn storage_kind(&self) -> StorageKind {
+        self.data.storage_kind()
+    }
+
+    pub fn as_json(&self) -> &serde_json::Value {
+        self.data.as_json()
+    }
 }
 
 // == DataStorage ==
@@ -377,7 +385,7 @@ pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String
         .collect();
 
     // Sort them largest to smallest.
-    fields.sort_by(|a, b| b.1.cmp(&a.1));
+    fields.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let available_size = (MAX_TRANSACTION_SIZE - NEXUS_BASE_TRANSACTION_SIZE)
         .saturating_sub(ENTRY_PORTS_RESERVED_BYTES);

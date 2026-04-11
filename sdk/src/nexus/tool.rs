@@ -39,7 +39,7 @@ impl ToolActions {
             .map_err(NexusError::Rpc)?;
 
         // Derive and fetch the Tool object.
-        let tool_ref = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool_ref = self.client.fetch_tool_gas(tool_fqn).await?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
 

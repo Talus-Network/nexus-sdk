@@ -20,24 +20,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_nexus_conf() {
-        let mut rng = rand::thread_rng();
         let tempdir = tempfile::tempdir().unwrap().keep();
         let path = tempdir.join("conf.toml");
 
         assert!(!tokio::fs::try_exists(&path).await.unwrap());
 
-        let nexus_objects = NexusObjects {
-            workflow_pkg_id: sui::types::Address::generate(&mut rng),
-            primitives_pkg_id: sui::types::Address::generate(&mut rng),
-            interface_pkg_id: sui::types::Address::generate(&mut rng),
-            network_id: sui::types::Address::generate(&mut rng),
-            tool_registry: sui_mocks::mock_sui_object_ref(),
-            network_auth: sui_mocks::mock_sui_object_ref(),
-            default_tap: sui_mocks::mock_sui_object_ref(),
-            gas_service: sui_mocks::mock_sui_object_ref(),
-            leader_registry: sui_mocks::mock_sui_object_ref(),
-            workflow_original_pkg_id: None,
-        };
+        let nexus_objects = sui_mocks::mock_nexus_objects();
 
         let sui_conf = SuiConf {
             pk: Some("123".to_string().into()),

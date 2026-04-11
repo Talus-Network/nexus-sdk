@@ -36,6 +36,9 @@ pub const SIG_VERSION_V1: &str = "1";
 
 pub(super) const DOMAIN_REQUEST_V1: &[u8] = b"nexus.leader_tool.request.v1.";
 pub(super) const DOMAIN_RESPONSE_V1: &[u8] = b"nexus.leader_tool.response.v1.";
+const INLINE_STORAGE_TAG: &[u8] = b"inline";
+const RESPONSE_OUTCOME_SUCCESS_V1: u8 = 0;
+const RESPONSE_OUTCOME_ERR_EVAL_V1: u8 = 1;
 
 /// Verification policy knobs.
 ///
@@ -274,12 +277,9 @@ pub fn verify_invoke_request_v1(
         });
     }
 
-    let body_sha256 = sha256(body);
-    let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
+    let _claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
         .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-    if body_sha256 != claimed_body_sha256 {
-        return Err(SignedHttpError::BodyHashMismatch);
-    }
+    let _ = body;
 
     validate_time_window(claims.iat_ms, claims.exp_ms, opts)?;
 
@@ -297,13 +297,12 @@ pub fn verify_invoke_request_v1(
         }
     })?;
 
-    let msg = message_to_verify(DOMAIN_REQUEST_V1, &decoded.sig_input);
+    let sig_input_sha256 = sha256(&decoded.sig_input);
+    let msg = request_signature_message_v1(sig_input_sha256);
     let sig = Signature::from_bytes(&decoded.signature);
     verifying_key
         .verify_strict(&msg, &sig)
         .map_err(|_| SignedHttpError::InvalidSignature)?;
-
-    let sig_input_sha256 = sha256(&decoded.sig_input);
 
     Ok(VerifiedInvokeRequestV1 {
         claims,
@@ -351,7 +350,7 @@ pub fn verify_invoke_response_v1(
         });
     }
 
-    let body_sha256 = sha256(body);
+    let body_sha256 = response_body_sha256_for_claim(body);
     let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
         .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
     if body_sha256 != claimed_body_sha256 {
@@ -374,7 +373,12 @@ pub fn verify_invoke_response_v1(
         }
     })?;
 
-    let msg = message_to_verify(DOMAIN_RESPONSE_V1, &decoded.sig_input);
+    let msg = response_signature_message_v1(
+        claimed_req_hash,
+        claimed_body_sha256,
+        claims.status,
+        response_outcome_from_status_and_body_v1(claims.status, body),
+    );
     let sig = Signature::from_bytes(&decoded.signature);
     verifying_key
         .verify_strict(&msg, &sig)
@@ -398,7 +402,7 @@ pub fn sign_invoke_request_v1(
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
     let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
-    let msg = message_to_verify(DOMAIN_REQUEST_V1, &sig_input);
+    let msg = request_signature_message_v1(sha256(&sig_input));
     let sig: Signature = signing_key.sign(&msg);
     Ok((sig_input, sig.to_bytes()))
 }
@@ -411,7 +415,44 @@ pub fn sign_invoke_response_v1(
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
     let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
-    let msg = message_to_verify(DOMAIN_RESPONSE_V1, &sig_input);
+    let req_sig_input_sha256 = parse_hex_32(&claims.req_sig_input_sha256).map_err(|_| {
+        SignedHttpError::InvalidReqSigInputSha256Hex(claims.req_sig_input_sha256.clone())
+    })?;
+    let body_sha256 = parse_hex_32(&claims.body_sha256)
+        .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
+    let msg = response_signature_message_v1(
+        req_sig_input_sha256,
+        body_sha256,
+        claims.status,
+        response_outcome_v1(claims.status),
+    );
+    let sig: Signature = signing_key.sign(&msg);
+    Ok((sig_input, sig.to_bytes()))
+}
+
+/// Sign response claims using the actual response body to derive the signed
+/// outcome.
+///
+/// This preserves the HTTP transport status while still allowing a successful
+/// tool response body carrying the `_err_eval` variant to be signed as an
+/// err-eval outcome.
+pub fn sign_invoke_response_with_body_v1(
+    claims: &InvokeResponseClaimsV1,
+    body: &[u8],
+    signing_key: &SigningKey,
+) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
+    let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
+    let req_sig_input_sha256 = parse_hex_32(&claims.req_sig_input_sha256).map_err(|_| {
+        SignedHttpError::InvalidReqSigInputSha256Hex(claims.req_sig_input_sha256.clone())
+    })?;
+    let body_sha256 = parse_hex_32(&claims.body_sha256)
+        .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
+    let msg = response_signature_message_v1(
+        req_sig_input_sha256,
+        body_sha256,
+        claims.status,
+        response_outcome_from_status_and_body_v1(claims.status, body),
+    );
     let sig: Signature = signing_key.sign(&msg);
     Ok((sig_input, sig.to_bytes()))
 }
@@ -428,11 +469,131 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-pub(super) fn message_to_verify(domain: &[u8], sig_input: &[u8]) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(domain.len() + sig_input.len());
-    msg.extend_from_slice(domain);
-    msg.extend_from_slice(sig_input);
+pub fn request_signature_message_v1(sig_input_sha256: [u8; 32]) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(DOMAIN_REQUEST_V1.len() + sig_input_sha256.len());
+    msg.extend_from_slice(DOMAIN_REQUEST_V1);
+    msg.extend_from_slice(&sig_input_sha256);
     msg
+}
+
+pub fn response_signature_message_v1(
+    req_sig_input_sha256: [u8; 32],
+    body_sha256: [u8; 32],
+    status: u16,
+    outcome: u8,
+) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(
+        DOMAIN_RESPONSE_V1.len() + req_sig_input_sha256.len() + body_sha256.len() + 3,
+    );
+    msg.extend_from_slice(DOMAIN_RESPONSE_V1);
+    msg.extend_from_slice(&req_sig_input_sha256);
+    msg.extend_from_slice(&body_sha256);
+    msg.push((status % 256) as u8);
+    msg.push((status / 256) as u8);
+    msg.push(outcome);
+    msg
+}
+
+pub fn response_outcome_v1(status: u16) -> u8 {
+    if (200..300).contains(&status) {
+        RESPONSE_OUTCOME_SUCCESS_V1
+    } else {
+        RESPONSE_OUTCOME_ERR_EVAL_V1
+    }
+}
+
+pub fn response_outcome_from_status_and_body_v1(status: u16, body: &[u8]) -> u8 {
+    if !(200..300).contains(&status) {
+        return RESPONSE_OUTCOME_ERR_EVAL_V1;
+    }
+    if response_body_is_err_eval_v1(body) {
+        return RESPONSE_OUTCOME_ERR_EVAL_V1;
+    }
+    RESPONSE_OUTCOME_SUCCESS_V1
+}
+
+pub fn canonical_output_body_sha256_from_json_bytes(
+    body: &[u8],
+) -> Result<[u8; 32], serde_json::Error> {
+    let value = serde_json::from_slice::<serde_json::Value>(body)?;
+    canonical_output_body_sha256_from_json_value(&value)
+}
+
+pub fn response_body_sha256_for_claim(body: &[u8]) -> [u8; 32] {
+    canonical_output_body_sha256_from_json_bytes(body).unwrap_or_else(|_| sha256(body))
+}
+
+fn canonical_output_body_sha256_from_json_value(
+    value: &serde_json::Value,
+) -> Result<[u8; 32], serde_json::Error> {
+    let Some(value_as_object) = value.as_object() else {
+        return Ok(sha256(&[]));
+    };
+
+    let Some((variant, ports)) = value_as_object.iter().next() else {
+        return Ok(sha256(&[]));
+    };
+    let mut bytes = bcs::to_bytes(&variant.as_bytes().to_vec()).expect("Vec<u8> BCS");
+
+    let Some(ports) = ports.as_object() else {
+        return Ok(sha256(&bytes));
+    };
+
+    let mut port_names = ports.keys().cloned().collect::<Vec<_>>();
+    port_names.sort();
+
+    for port_name in port_names {
+        bytes.extend_from_slice(
+            &bcs::to_bytes(&port_name.as_bytes().to_vec()).expect("Vec<u8> BCS"),
+        );
+        bytes.extend_from_slice(
+            &bcs::to_bytes(&inline_nexus_data_wire(ports.get(&port_name).unwrap())?)
+                .expect("inline nexus data BCS"),
+        );
+    }
+
+    Ok(sha256(&bytes))
+}
+
+fn response_body_is_err_eval_v1(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return false;
+    };
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.len() == 1 && object.contains_key("_err_eval")
+}
+
+#[derive(Serialize)]
+struct InlineNexusDataWire {
+    storage: Vec<u8>,
+    one: Vec<u8>,
+    many: Vec<Vec<u8>>,
+}
+
+fn inline_nexus_data_wire(
+    value: &serde_json::Value,
+) -> Result<InlineNexusDataWire, serde_json::Error> {
+    let (one, many) = match value {
+        serde_json::Value::Array(values) => (
+            Vec::new(),
+            values
+                .iter()
+                .map(serde_json::to_string)
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .map(String::into_bytes)
+                .collect(),
+        ),
+        _ => (serde_json::to_string(value)?.into_bytes(), Vec::new()),
+    };
+
+    Ok(InlineNexusDataWire {
+        storage: INLINE_STORAGE_TAG.to_vec(),
+        one,
+        many,
+    })
 }
 
 pub(super) fn validate_time_window(

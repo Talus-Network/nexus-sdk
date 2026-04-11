@@ -139,6 +139,7 @@ events! {
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
     TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
+    VerificationVerdictEvent => VerificationVerdictRecorded, "VerificationVerdictEvent",
     WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
     WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
     EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
@@ -285,6 +286,55 @@ pub struct TerminalErrEvalEventDetails {
     pub reason: String,
     pub err_eval_hash_hex: String,
     pub duplicate: bool,
+}
+
+/// Verifier-aware submission verdict emitted by the workflow.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VerificationVerdictEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub leader: sui::types::Address,
+    pub submission_kind: VerificationSubmissionKind,
+    pub failure_evidence_kind: FailureEvidenceKind,
+    pub leader_verifier_mode: VerifierMode,
+    pub leader_verifier_method: String,
+    pub tool_verifier_mode: VerifierMode,
+    pub tool_verifier_method: String,
+    pub checked_leader_kid: Option<u64>,
+    pub checked_tool_kid: Option<u64>,
+    pub payload_or_reason_hash: Vec<u8>,
+    pub submission_role: VerificationSubmissionRole,
+    pub checked_identity: Vec<u8>,
+    pub policy_mode: VerifierMode,
+    pub verdict_reference: Vec<u8>,
+    pub verdict: VerificationVerdict,
+}
+
+/// Comparison-oriented verification-verdict details used by higher-level test
+/// helpers over nested event JSON payloads.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VerificationVerdictEventDetails {
+    pub dag: String,
+    pub execution: String,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub leader: String,
+    pub submission_kind: VerificationSubmissionKind,
+    pub failure_evidence_kind: FailureEvidenceKind,
+    pub leader_verifier_mode: VerifierMode,
+    pub leader_verifier_method: String,
+    pub tool_verifier_mode: VerifierMode,
+    pub tool_verifier_method: String,
+    pub checked_leader_kid: Option<u64>,
+    pub checked_tool_kid: Option<u64>,
+    pub payload_or_reason_hash_hex: String,
+    pub submission_role: VerificationSubmissionRole,
+    pub checked_identity_hex: String,
+    pub policy_mode: VerifierMode,
+    pub verdict_reference_hex: String,
+    pub verdict: VerificationVerdict,
 }
 
 /// Submission-failure evidence payload recorded for terminal submission
@@ -700,6 +750,49 @@ mod tests {
                 assert!(parsed.duplicate);
             }
             _ => panic!("Expected TerminalErrEvalRecorded variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bcs_verification_verdict_event() {
+        let event = Wrapper {
+            event: VerificationVerdictEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 7,
+                vertex: RuntimeVertex::plain("verified"),
+                leader: sui::types::Address::THREE,
+                submission_kind: VerificationSubmissionKind::Success,
+                failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
+                leader_verifier_mode: VerifierMode::LeaderRegisteredKey,
+                leader_verifier_method: "signed_http_v1".to_string(),
+                tool_verifier_mode: VerifierMode::None,
+                tool_verifier_method: String::new(),
+                checked_leader_kid: Some(11),
+                checked_tool_kid: Some(12),
+                payload_or_reason_hash: vec![1, 2, 3, 4],
+                submission_role: VerificationSubmissionRole::Tool,
+                checked_identity: vec![5, 6, 7],
+                policy_mode: VerifierMode::LeaderRegisteredKey,
+                verdict_reference: vec![8, 9],
+                verdict: VerificationVerdict::Accepted,
+            },
+        };
+
+        let bytes = bcs::to_bytes(&event).unwrap();
+        let (parsed, distribution) = super::parse_bcs("VerificationVerdictEvent", &bytes).unwrap();
+
+        assert!(distribution.is_none());
+        match parsed {
+            crate::events::NexusEventKind::VerificationVerdictRecorded(parsed) => {
+                assert_eq!(parsed.walk_index, 7);
+                assert_eq!(parsed.vertex, RuntimeVertex::plain("verified"));
+                assert_eq!(parsed.checked_leader_kid, Some(11));
+                assert_eq!(parsed.checked_tool_kid, Some(12));
+                assert_eq!(parsed.policy_mode, VerifierMode::LeaderRegisteredKey);
+                assert_eq!(parsed.verdict, VerificationVerdict::Accepted);
+            }
+            _ => panic!("Expected VerificationVerdictRecorded variant"),
         }
     }
 }

@@ -167,10 +167,10 @@ pub(crate) async fn inspect_dag_execution(
                     failure_class = e.failure_class.to_string().truecolor(100, 100, 100),
                     outcome = e.outcome.to_string().truecolor(100, 100, 100),
                     reason = e.reason.truecolor(100, 100, 100),
-                    duplicate_suffix = terminal_err_eval_duplicate_suffix(&event_kind),
+                    duplicate_suffix = terminal_err_eval_duplicate_suffix(event_kind),
                 );
 
-                json_trace.push(terminal_err_eval_trace_entry(&event_kind));
+                json_trace.push(terminal_err_eval_trace_entry(event_kind));
             }
 
             NexusEventKind::WalkAborted(e) => {

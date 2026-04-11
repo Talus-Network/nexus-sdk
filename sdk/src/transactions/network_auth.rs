@@ -15,7 +15,7 @@ use crate::{
 pub fn create_tool_binding_and_register_key(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    sender: sui::types::Address,
+    _sender: sui::types::Address,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -114,10 +114,17 @@ pub fn create_tool_binding_and_register_key(
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    // Transfer the newly created binding back to the sender.
-    let address = sui_framework::Address::address_from_type(tx, sender)?;
-
-    tx.transfer_objects(vec![binding], address);
+    let key_binding_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![key_binding_type],
+        ),
+        vec![binding],
+    );
 
     Ok(())
 }
@@ -135,11 +142,11 @@ pub fn register_tool_key_on_existing_binding(
     public_key: [u8; 32],
     pop_signature: [u8; 64],
 ) -> anyhow::Result<()> {
-    // `binding: &mut KeyBinding` (owned object)
-    let binding = tx.input(sui::tx::Input::owned(
+    // `binding: &mut KeyBinding` (shared object)
+    let binding = tx.input(sui::tx::Input::shared(
         *binding.object_id(),
         binding.version(),
-        *binding.digest(),
+        true,
     ));
 
     // `tool: &Tool`
@@ -208,7 +215,7 @@ pub fn register_tool_key_on_existing_binding(
 pub fn create_leader_binding_and_register_key(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    sender: sui::types::Address,
+    _sender: sui::types::Address,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
@@ -298,9 +305,17 @@ pub fn create_leader_binding_and_register_key(
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    // Transfer the newly created binding back to the sender.
-    let address = sui_framework::Address::address_from_type(tx, sender)?;
-    tx.transfer_objects(vec![binding], address);
+    let key_binding_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![key_binding_type],
+        ),
+        vec![binding],
+    );
 
     Ok(())
 }
@@ -317,11 +332,11 @@ pub fn register_leader_key_on_existing_binding(
     public_key: [u8; 32],
     pop_signature: [u8; 64],
 ) -> anyhow::Result<()> {
-    // `binding: &mut KeyBinding` (owned object)
-    let binding = tx.input(sui::tx::Input::owned(
+    // `binding: &mut KeyBinding` (shared object)
+    let binding = tx.input(sui::tx::Input::shared(
         *binding.object_id(),
         binding.version(),
-        *binding.digest(),
+        true,
     ));
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
@@ -407,6 +422,25 @@ mod tests {
             .any(|cmd| matches!(cmd, sui::types::Command::TransferObjects(_)))
     }
 
+    fn count_public_share_object(
+        commands: &[sui::types::Command],
+        binding_type: sui::types::TypeTag,
+    ) -> usize {
+        commands
+            .iter()
+            .filter(|cmd| {
+                matches!(
+                    cmd,
+                    sui::types::Command::MoveCall(call)
+                        if call.package == sui_framework::PACKAGE_ID
+                            && call.module == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module
+                            && call.function == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
+                            && call.type_arguments.as_slice() == [binding_type.clone()]
+                )
+            })
+            .count()
+    }
+
     #[test]
     fn test_create_tool_binding_and_register_key_builds_calls() {
         let objects = sui_mocks::mock_nexus_objects();
@@ -437,6 +471,8 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
+        let binding_type =
+            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
 
         assert!(
             count_move_calls(
@@ -473,7 +509,8 @@ mod tests {
             ),
             1
         );
-        assert!(has_transfer(&commands));
+        assert_eq!(count_public_share_object(&commands, binding_type), 1);
+        assert!(!has_transfer(&commands));
     }
 
     #[test]
@@ -505,6 +542,8 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
+        let binding_type =
+            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
         assert_eq!(
             count_move_calls(
                 &commands,
@@ -532,6 +571,7 @@ mod tests {
             ),
             1
         );
+        assert_eq!(count_public_share_object(&commands, binding_type), 0);
         assert!(!has_transfer(&commands));
     }
 
@@ -563,6 +603,8 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
+        let binding_type =
+            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
 
         assert!(
             count_move_calls(
@@ -599,7 +641,8 @@ mod tests {
             ),
             1
         );
-        assert!(has_transfer(&commands));
+        assert_eq!(count_public_share_object(&commands, binding_type), 1);
+        assert!(!has_transfer(&commands));
     }
 
     #[test]
@@ -629,6 +672,8 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
+        let binding_type =
+            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
         assert_eq!(
             count_move_calls(
                 &commands,
@@ -656,6 +701,7 @@ mod tests {
             ),
             1
         );
+        assert_eq!(count_public_share_object(&commands, binding_type), 0);
         assert!(!has_transfer(&commands));
     }
 }
