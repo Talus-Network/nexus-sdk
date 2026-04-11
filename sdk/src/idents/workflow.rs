@@ -1,7 +1,14 @@
 use crate::{
     idents::{pure_arg, sui_framework::Address, ModuleAndNameIdent},
     sui,
-    types::{EdgeKind, FailureEvidenceKind, PostFailureAction, RuntimeVertex},
+    types::{
+        EdgeKind,
+        FailureEvidenceKind,
+        PostFailureAction,
+        RuntimeVertex,
+        VerifierConfig,
+        VerifierMode,
+    },
     ToolFqn,
 };
 
@@ -388,6 +395,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_dag_execution_config"),
     };
+    /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
+    ///
+    /// `nexus_workflow::dag::on_chain_tool_result_submission_v1_bytes`
+    pub const ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("on_chain_tool_result_submission_v1_bytes"),
+    };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::OutputPort`
@@ -465,22 +479,21 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("runtime_vertex_with_iterator_from_string"),
     };
-    /// One of the functions to call when an off-chain tool is evaluated to submit
-    /// its result to the workflow.
+    /// Canonical off-chain tool-result submission entrypoint.
     ///
-    /// `nexus_workflow::dag::submit_off_chain_tool_eval_for_walk`
-    pub const SUBMIT_OFF_CHAIN_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_v1`
+    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("submit_off_chain_tool_eval_for_walk"),
+        name: sui::types::Identifier::from_static("submit_off_chain_tool_result_for_walk_v1"),
     };
-    /// Submit an off-chain tool evaluation with an explicit failure-evidence kind.
+    /// Canonical proof-none off-chain tool-result submission entrypoint.
     ///
-    /// `nexus_workflow::dag::submit_off_chain_tool_eval_for_walk_with_failure_evidence`
-    pub const SUBMIT_OFF_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE: ModuleAndNameIdent =
+    /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_without_verifier_v1`
+    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: DAG_MODULE,
             name: sui::types::Identifier::from_static(
-                "submit_off_chain_tool_eval_for_walk_with_failure_evidence",
+                "submit_off_chain_tool_result_for_walk_without_verifier_v1",
             ),
         };
     /// One of the functions to call when an on-chain tool is evaluated to submit
@@ -501,12 +514,54 @@ impl Dag {
                 "submit_on_chain_tool_eval_for_walk_with_failure_evidence",
             ),
         };
+    /// Canonical on-chain tool-result submission entrypoint.
+    ///
+    /// `nexus_workflow::dag::submit_on_chain_tool_result_for_walk_v1`
+    pub const SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
+    };
     /// Convert TaggedOutput to DAG types.
     ///
     /// `nexus_workflow::dag::tagged_output_to_dag_types`
     pub const TOOL_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
+    };
+    /// Create a verifier config.
+    ///
+    /// `nexus_workflow::dag::verifier_config`
+    pub const VERIFIER_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("verifier_config"),
+    };
+    /// Create the `VerifierMode::LeaderNautilusEnclave` variant.
+    ///
+    /// `nexus_workflow::dag::verifier_mode_leader_nautilus_enclave`
+    pub const VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("verifier_mode_leader_nautilus_enclave"),
+    };
+    /// Create the `VerifierMode::LeaderRegisteredKey` variant.
+    ///
+    /// `nexus_workflow::dag::verifier_mode_leader_registered_key`
+    pub const VERIFIER_MODE_LEADER_REGISTERED_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("verifier_mode_leader_registered_key"),
+    };
+    /// Create the `VerifierMode::None` variant.
+    ///
+    /// `nexus_workflow::dag::verifier_mode_none`
+    pub const VERIFIER_MODE_NONE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("verifier_mode_none"),
+    };
+    /// Create the `VerifierMode::ToolVerifierContract` variant.
+    ///
+    /// `nexus_workflow::dag::verifier_mode_tool_verifier_contract`
+    pub const VERIFIER_MODE_TOOL_VERIFIER_CONTRACT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("verifier_mode_tool_verifier_contract"),
     };
     /// The Vertex struct. Mostly used for creating generic types.
     ///
@@ -535,6 +590,20 @@ impl Dag {
     pub const VERTEX_ON_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("vertex_on_chain"),
+    };
+    /// Configure the DAG-wide default leader verifier policy.
+    ///
+    /// `nexus_workflow::dag::with_default_leader_verifier`
+    pub const WITH_DEFAULT_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_default_leader_verifier"),
+    };
+    /// Configure the DAG-wide default tool verifier policy.
+    ///
+    /// `nexus_workflow::dag::with_default_tool_verifier`
+    pub const WITH_DEFAULT_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_default_tool_verifier"),
     };
     /// Add a default value to a DAG. Default value is a Vertex + InputPort pair
     /// with NexusData as the value.
@@ -594,12 +663,26 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_vertex"),
     };
+    /// Configure the vertex-level leader verifier policy.
+    ///
+    /// `nexus_workflow::dag::with_vertex_leader_verifier`
+    pub const WITH_VERTEX_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_vertex_leader_verifier"),
+    };
     /// Configure a vertex-level post-failure action override.
     ///
     /// `nexus_workflow::dag::with_vertex_post_failure_action`
     pub const WITH_VERTEX_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_vertex_post_failure_action"),
+    };
+    /// Configure the vertex-level tool verifier policy.
+    ///
+    /// `nexus_workflow::dag::with_vertex_tool_verifier`
+    pub const WITH_VERTEX_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_vertex_tool_verifier"),
     };
 
     /// Create an EntryGroup from a string.
@@ -787,6 +870,45 @@ impl Dag {
             sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
             vec![],
         )
+    }
+
+    /// Create a verifier mode from an enum variant.
+    pub fn verifier_mode_from_enum(
+        tx: &mut sui::tx::TransactionBuilder,
+        workflow_pkg_id: sui::types::Address,
+        mode: &VerifierMode,
+    ) -> sui::types::Argument {
+        let ident = match mode {
+            VerifierMode::None => Self::VERIFIER_MODE_NONE,
+            VerifierMode::LeaderRegisteredKey => Self::VERIFIER_MODE_LEADER_REGISTERED_KEY,
+            VerifierMode::LeaderNautilusEnclave => Self::VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE,
+            VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
+        };
+
+        tx.move_call(
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            vec![],
+        )
+    }
+
+    /// Create a verifier config value from the Rust mirror.
+    pub fn verifier_config(
+        tx: &mut sui::tx::TransactionBuilder,
+        workflow_pkg_id: sui::types::Address,
+        config: &VerifierConfig,
+    ) -> anyhow::Result<sui::types::Argument> {
+        let mode = Self::verifier_mode_from_enum(tx, workflow_pkg_id, &config.mode);
+        let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
+
+        Ok(tx.move_call(
+            sui::tx::Function::new(
+                workflow_pkg_id,
+                Self::VERIFIER_CONFIG.module,
+                Self::VERIFIER_CONFIG.name,
+                vec![],
+            ),
+            vec![mode, method],
+        ))
     }
 
     /// Create a runtime vertex from an enum variant
@@ -1176,6 +1298,11 @@ impl NetworkAuth {
     pub const IDENTITY_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: NETWORK_AUTH_MODULE,
         name: sui::types::Identifier::from_static("IdentityKey"),
+    };
+    /// Move type `nexus_workflow::network_auth::KeyBinding`.
+    pub const KEY_BINDING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: NETWORK_AUTH_MODULE,
+        name: sui::types::Identifier::from_static("KeyBinding"),
     };
     /// The NetworkAuth struct type.
     ///

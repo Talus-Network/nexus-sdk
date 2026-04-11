@@ -89,3 +89,7 @@ split-debuginfo = "packed"
 strip = "debuginfo"
 # Exit process with SIGABRT when any thread panics
 panic = "abort"
+
+
+[patch.crates-io]
+core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }

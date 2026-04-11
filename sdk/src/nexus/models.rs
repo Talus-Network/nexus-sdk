@@ -2,12 +2,22 @@
 
 use {
     crate::{
-        nexus::crawler::{DynamicMap, Map},
+        nexus::crawler::{DynamicMap, Map, Set},
         sui,
-        types::{deserialize_sui_u64, serialize_sui_u64, NexusData, TypeName},
+        types::{
+            deserialize_sui_u64,
+            parse_string_value,
+            serialize_sui_u64,
+            strip_fields_owned,
+            MoveOption,
+            NexusData,
+            TypeName,
+            VerifierConfig,
+        },
         ToolFqn,
     },
     serde::{Deserialize, Serialize},
+    std::collections::HashMap,
 };
 
 /// Struct holding the DAG definition from our Move code.
@@ -19,6 +29,10 @@ pub struct Dag {
     pub defaults_to_input_ports: DynamicMap<DagVertexInputPort, NexusData>,
     pub edges: DynamicMap<TypeName, Vec<DagEdge>>,
     pub outputs: DynamicMap<TypeName, Vec<DagOutputVariantPort>>,
+    #[serde(default, skip_serializing_if = "VerifierConfig::is_none")]
+    pub leader_verifier: VerifierConfig,
+    #[serde(default, skip_serializing_if = "VerifierConfig::is_none")]
+    pub tool_verifier: VerifierConfig,
 }
 
 /// Struct holding the DAG execution information.
@@ -34,6 +48,33 @@ pub struct DagExecution {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DagVertexInfo {
     pub kind: DagVertexKind,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_verifier_config",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub leader_verifier: Option<VerifierConfig>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_verifier_config",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tool_verifier: Option<VerifierConfig>,
+    #[serde(default, skip_serializing_if = "Set::is_empty")]
+    pub input_ports: Set<DagInputPort>,
+}
+
+impl DagVertexInfo {
+    pub fn declared_input_port_names(&self) -> Vec<String> {
+        let mut ports = self
+            .input_ports
+            .inner()
+            .iter()
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
+        ports.sort();
+        ports
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -58,9 +99,53 @@ pub struct DagVertexInputPort {
     pub port: DagInputPort,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct DagInputPort {
     pub name: String,
+}
+
+impl<'de> Deserialize<'de> for DagInputPort {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Standard {
+            name: String,
+        }
+
+        if !deserializer.is_human_readable() {
+            let parsed = Standard::deserialize(deserializer)?;
+            return Ok(Self { name: parsed.name });
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Ok(parsed) = serde_json::from_value::<Standard>(value.clone()) {
+            return Ok(Self { name: parsed.name });
+        }
+
+        let value = strip_fields_owned(value);
+        let object = value
+            .as_object()
+            .ok_or_else(|| serde::de::Error::custom("DagInputPort must be an object"))?;
+        let name = object
+            .get("name")
+            .ok_or_else(|| serde::de::Error::custom("DagInputPort missing name"))?;
+        let name = parse_string_value(name)
+            .map_err(serde::de::Error::custom)?
+            .ok_or_else(|| serde::de::Error::custom("DagInputPort name did not parse"))?;
+
+        Ok(Self { name })
+    }
+}
+
+fn deserialize_optional_verifier_config<'de, D>(
+    deserializer: D,
+) -> Result<Option<VerifierConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    MoveOption::<VerifierConfig>::deserialize(deserializer).map(|value| value.0)
 }
 
 /// Enum distinguishing between a plain vertex and a vertex with an iterator.
@@ -71,12 +156,80 @@ pub enum DagPortData {
     Many { data: Map<String, NexusData> },
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BcsMapEntry<K, V> {
+    pub key: K,
+    pub value: V,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BcsMap<K, V> {
+    pub contents: Vec<BcsMapEntry<K, V>>,
+}
+
+impl<K, V> BcsMap<K, V>
+where
+    K: Eq + std::hash::Hash,
+{
+    pub fn get(&self, key: &K) -> Option<&V> {
+        self.contents
+            .iter()
+            .find(|entry| &entry.key == key)
+            .map(|entry| &entry.value)
+    }
+
+    pub fn into_inner(self) -> HashMap<K, V> {
+        self.contents
+            .into_iter()
+            .map(|entry| (entry.key, entry.value))
+            .collect()
+    }
+}
+
+/// BCS-facing DAG port data used for on-chain object decoding.
+///
+/// This keeps the raw Move enum layout in the SDK while allowing callers to
+/// choose the decoded value shape they need.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(bound(
+    deserialize = "T: serde::de::DeserializeOwned",
+    serialize = "T: Serialize"
+))]
+pub enum DagPortDataBcs<T> {
+    Single {
+        #[allow(dead_code)]
+        _variant_name: String,
+        data: T,
+        #[allow(dead_code)]
+        is_static: bool,
+    },
+    Many {
+        #[allow(dead_code)]
+        _variant_name: String,
+        data: BcsMap<u64, T>,
+        #[allow(dead_code)]
+        total_iterations: u64,
+    },
+}
+
 /// Struct holding the evaluations for a vertex in the DAG.
 ///
 /// See <sui/workflow/sources/dag.move:VertexEvaluations> for documentation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DagVertexEvaluations {
     pub ports_to_data: Map<TypeName, DagPortData>,
+}
+
+/// BCS-facing DAG evaluations object used for on-chain object decoding.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(bound(
+    deserialize = "T: serde::de::DeserializeOwned",
+    serialize = "T: Serialize"
+))]
+pub struct DagVertexEvaluationsBcs<T> {
+    #[allow(dead_code)]
+    pub id: sui::types::Address,
+    pub ports_to_data: BcsMap<TypeName, DagPortDataBcs<T>>,
 }
 
 /// Struct holding the edges in the DAG.
@@ -144,7 +297,12 @@ pub struct ClaimedGas {
 }
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::fqn, serde_json::json};
+    use {super::*, crate::fqn, serde_json::json, std::str::FromStr};
+
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    struct TestWireValue {
+        bytes: Vec<u8>,
+    }
 
     #[test]
     fn test_dag_vertex_kind_offchain_serde() {
@@ -173,6 +331,92 @@ mod tests {
         };
         let json = serde_json::to_string(&port_data).unwrap();
         let _deserialized: DagPortData = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn test_dag_input_port_deserializes_wrapped_name() {
+        let parsed: DagInputPort = serde_json::from_value(json!({
+            "name": {
+                "fields": {
+                    "ascii": [105, 110, 112, 117, 116]
+                }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            DagInputPort {
+                name: "input".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_dag_input_port_deserializes_plain_name() {
+        let parsed: DagInputPort = serde_json::from_value(json!({
+            "name": "plain_input"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            DagInputPort {
+                name: "plain_input".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_dag_vertex_evaluations_bcs_roundtrip() {
+        let value = DagVertexEvaluationsBcs {
+            id: sui::types::Address::from_str(
+                "0x0000000000000000000000000000000000000000000000000000000000000007",
+            )
+            .unwrap(),
+            ports_to_data: BcsMap {
+                contents: vec![
+                    BcsMapEntry {
+                        key: TypeName::new("plain_port"),
+                        value: DagPortDataBcs::Single {
+                            _variant_name: "Single".to_string(),
+                            data: TestWireValue {
+                                bytes: b"plain".to_vec(),
+                            },
+                            is_static: false,
+                        },
+                    },
+                    BcsMapEntry {
+                        key: TypeName::new("iter_port"),
+                        value: DagPortDataBcs::Many {
+                            _variant_name: "Many".to_string(),
+                            data: BcsMap {
+                                contents: vec![
+                                    BcsMapEntry {
+                                        key: 1,
+                                        value: TestWireValue {
+                                            bytes: b"one".to_vec(),
+                                        },
+                                    },
+                                    BcsMapEntry {
+                                        key: 2,
+                                        value: TestWireValue {
+                                            bytes: b"two".to_vec(),
+                                        },
+                                    },
+                                ],
+                            },
+                            total_iterations: 2,
+                        },
+                    },
+                ],
+            },
+        };
+
+        let encoded = bcs::to_bytes(&value).unwrap();
+        let decoded: DagVertexEvaluationsBcs<TestWireValue> = bcs::from_bytes(&encoded).unwrap();
+
+        assert_eq!(decoded, value);
     }
 
     #[test]

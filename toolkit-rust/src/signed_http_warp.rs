@@ -490,6 +490,7 @@ mod tests {
         assert_eq!(run_calls.load(Ordering::SeqCst), 1);
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn invoke_auth_reloads_on_config_change() {
         use {

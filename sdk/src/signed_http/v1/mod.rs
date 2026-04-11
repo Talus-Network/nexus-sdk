@@ -182,7 +182,7 @@
 //!     nonce: verified_req.claims.nonce.clone(),
 //!     req_sig_input_sha256: sha256_hex(&verified_req.sig_input),
 //!     status: 200,
-//!     body_sha256: sha256_hex(resp_body),
+//!     body_sha256: hex::encode(response_body_sha256_for_claim(resp_body)),
 //! };
 //! let (resp_sig_input, resp_sig) = sign_invoke_response_v1(&resp_claims, &tool_sk).unwrap();
 //! let resp_headers = encode_signature_headers_v1(&resp_sig_input, &resp_sig);

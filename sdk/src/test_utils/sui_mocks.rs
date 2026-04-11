@@ -34,12 +34,15 @@ pub fn mock_nexus_objects() -> NexusObjects {
         primitives_pkg_id: sui::types::Address::generate(&mut rng),
         interface_pkg_id: sui::types::Address::generate(&mut rng),
         network_id: sui::types::Address::generate(&mut rng),
+        registry_pkg_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
+        verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
         default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         workflow_original_pkg_id: None,
+        registry_original_pkg_id: None,
     }
 }
 

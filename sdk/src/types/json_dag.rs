@@ -5,7 +5,7 @@
 
 use {
     crate::{
-        types::{PostFailureAction, StorageKind},
+        types::{PostFailureAction, StorageKind, VerifierConfig},
         ToolFqn,
     },
     serde::Deserialize,
@@ -21,6 +21,8 @@ pub struct Dag {
     pub edges: Vec<Edge>,
     pub default_values: Option<Vec<DefaultValue>>,
     pub post_failure_action: Option<PostFailureAction>,
+    pub leader_verifier: Option<VerifierConfig>,
+    pub tool_verifier: Option<VerifierConfig>,
     /// If there are no entry groups specified, all specified input ports are
     /// considered to be part of the [`DEFAULT_ENTRY_GROUP`].
     pub entry_groups: Option<Vec<EntryGroup>>,
@@ -47,6 +49,8 @@ pub struct Vertex {
     pub name: String,
     pub entry_ports: Option<Vec<EntryPort>>,
     pub post_failure_action: Option<PostFailureAction>,
+    pub leader_verifier: Option<VerifierConfig>,
+    pub tool_verifier: Option<VerifierConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -111,7 +115,7 @@ pub struct ToPort {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::types::VerifierMode};
 
     #[test]
     fn test_dag_deserialize_post_failure_action() {
@@ -157,5 +161,38 @@ mod tests {
 
         assert_eq!(dag.post_failure_action, None);
         assert_eq!(dag.vertices[0].post_failure_action, None);
+    }
+
+    #[test]
+    fn test_dag_deserialize_verifier_config() {
+        let dag: Dag = serde_json::from_str(
+            r#"{
+                "leader_verifier": { "mode": "leader_registered_key", "method": "signed_http_v1" },
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root",
+                        "tool_verifier": { "mode": "tool_verifier_contract", "method": "demo_verifier_v1" }
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            dag.leader_verifier,
+            Some(VerifierConfig {
+                mode: VerifierMode::LeaderRegisteredKey,
+                method: "signed_http_v1".to_string(),
+            })
+        );
+        assert_eq!(
+            dag.vertices[0].tool_verifier,
+            Some(VerifierConfig {
+                mode: VerifierMode::ToolVerifierContract,
+                method: "demo_verifier_v1".to_string(),
+            })
+        );
     }
 }
