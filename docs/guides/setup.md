@@ -1,6 +1,6 @@
 # Nexus SDK Developer Setup Guide
 
-This guide will help you quickly set up your development environment and start using Nexus SDK, including initializing your wallet, funding it through a faucet, and accessing the `testnet` Sui explorer.
+This guide will help you quickly set up your development environment and start using Nexus SDK, including initializing your wallet, funding it, and accessing the Sui explorer.
 
 ## Installation and Setup
 
@@ -50,12 +50,28 @@ nexus --version
 
 ## Download the Nexus objects
 
+{% tabs %}
+{% tab title="Testnet" %}
+
 ```bash
 wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.4/objects.testnet.toml
 ```
 
-## Configure the Sui testnet
+{% endtab %}
 
+{% tab title="Mainnet" %}
+
+```bash
+wget -O ~/.nexus/objects.mainnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.4/objects.mainnet.toml
+```
+
+{% endtab %}
+{% endtabs %}
+
+## Configure the Sui network
+
+{% tabs %}
+{% tab title="Testnet" %}
 Configure your Nexus CLI to connect to the Sui `testnet` by running:
 
 ```bash
@@ -64,9 +80,23 @@ nexus conf set \
   --nexus.objects ~/.nexus/objects.testnet.toml
 ```
 
+{% endtab %}
+
+{% tab title="Mainnet" %}
+Configure your Nexus CLI to connect to the Sui `mainnet` by running:
+
+```bash
+nexus conf set \
+  --sui.rpc-url https://fullnode.mainnet.sui.io \
+  --nexus.objects ~/.nexus/objects.mainnet.toml
+```
+
+{% endtab %}
+{% endtabs %}
+
 ### Configure the Sui client
 
-After installing the Sui binaries, configure and activate your Sui `testnet` environment:
+After installing the Sui binaries, configure and activate your Sui environment:
 
 {% hint style="info" %}
 Assuming you have no prior sui configuration
@@ -77,12 +107,27 @@ sui client --yes
 
 {% endhint %}
 
+{% tabs %}
+{% tab title="Testnet" %}
+
 ```bash
 sui client new-env --alias testnet --rpc https://fullnode.testnet.sui.io
 sui client switch --env testnet
 ```
 
-## Create a wallet and request funds from the faucet
+{% endtab %}
+
+{% tab title="Mainnet" %}
+
+```bash
+sui client new-env --alias mainnet --rpc https://fullnode.mainnet.sui.io
+sui client switch --env mainnet
+```
+
+{% endtab %}
+{% endtabs %}
+
+## Create a wallet and fund it
 
 Create a new wallet with the following command:
 
@@ -103,7 +148,15 @@ BASE64_PK=$(sui keytool convert "$PK" --json | jq -er '.base64WithFlag')
 nexus conf set --sui.pk "$BASE64_PK"
 ```
 
+{% tabs %}
+{% tab title="Testnet" %}
 Request funds from the faucet by visiting [Sui faucet](https://faucet.sui.io/) and entering your wallet address. You'll need at least 2 coins: one for the Nexus gas budget and one for transaction gas fees.
+{% endtab %}
+
+{% tab title="Mainnet" %}
+You will need SUI tokens to pay for transaction gas fees and the Nexus gas budget. Acquire SUI through an exchange and transfer to your wallet address.
+{% endtab %}
+{% endtabs %}
 
 To check the balance, run:
 
