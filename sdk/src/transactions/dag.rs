@@ -185,17 +185,11 @@ pub fn create_default_value(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
-            // Default values cannot be secret. Sensitive data should be passed
-            // via entry ports at runtime.
-            false,
         )?,
         StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
             tx,
             objects.primitives_pkg_id,
             &default_value.value.data,
-            // Default values cannot be secret. Sensitive data should be passed
-            // via entry ports at runtime.
-            false,
         )?,
     };
 
@@ -243,28 +237,7 @@ pub fn create_edge(
     // `kind: EdgeKind`
     let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
 
-    if edge.from.encrypted {
-        // `dag.with_encrypted_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
-        return Ok(tx.move_call(
-            sui::tx::Function::new(
-                objects.workflow_pkg_id,
-                workflow::Dag::WITH_ENCRYPTED_EDGE.module,
-                workflow::Dag::WITH_ENCRYPTED_EDGE.name,
-                vec![],
-            ),
-            vec![
-                dag,
-                from_vertex,
-                from_variant,
-                from_port,
-                to_vertex,
-                to_port,
-                kind,
-            ],
-        ));
-    }
-
-    // `dag.with_edge(from_vertex, from_variant, from_port, encrypted, to_vertex, to_port)`
+    // `dag.with_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -304,19 +277,6 @@ pub fn create_output(
     // `port: OutputPort`
     let port =
         workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port)?;
-
-    if output.encrypted {
-        // `dag.with_encrypted_output(vertex, variant, port)`
-        return Ok(tx.move_call(
-            sui::tx::Function::new(
-                objects.workflow_pkg_id,
-                workflow::Dag::WITH_ENCRYPTED_OUTPUT.module,
-                workflow::Dag::WITH_ENCRYPTED_OUTPUT.name,
-                vec![],
-            ),
-            vec![dag, vertex, variant, port],
-        ));
-    }
 
     // `dag.with_output(vertex, variant, port)`
     Ok(tx.move_call(
@@ -370,11 +330,8 @@ pub fn mark_entry_input_port(
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
-    let entry_port = if entry_port.encrypted {
-        workflow::Dag::encrypted_input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
-    } else {
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?
-    };
+    let entry_port =
+        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
@@ -397,6 +354,7 @@ pub fn prepare_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     gas_service: sui::types::Argument,
+    tool_registry: sui::types::Argument,
     dag: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
@@ -460,18 +418,11 @@ pub fn prepare_execution(
 
         for (port_name, value) in data {
             // `port: InputPort`
-            let port = match value.is_encrypted() {
-                true => workflow::Dag::encrypted_input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    port_name.as_str(),
-                )?,
-                false => workflow::Dag::input_port_from_str(
-                    tx,
-                    objects.workflow_pkg_id,
-                    port_name.as_str(),
-                )?,
-            };
+            let port = workflow::Dag::input_port_from_str(
+                tx,
+                objects.workflow_pkg_id,
+                port_name.as_str(),
+            )?;
 
             // `value: NexusData`
             let value = match value.storage_kind() {
@@ -479,13 +430,11 @@ pub fn prepare_execution(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
                     value.as_json(),
-                    value.is_encrypted(),
                 )?,
             };
 
@@ -528,6 +477,7 @@ pub fn prepare_execution(
             default_tap,
             dag,
             gas_service,
+            tool_registry,
             network,
             entry_group,
             with_vertex_inputs,
@@ -537,43 +487,27 @@ pub fn prepare_execution(
     ))
 }
 
-/// PTB template to sync gas state for the given tools.
-pub fn sync_gas_state_for_tools(
+/// PTB template to lock gas state for the given tools.
+pub fn lock_gas_state_for_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    gas_service: sui::types::Argument,
     execution_gas: sui::types::Argument,
     invoker_gas: sui::types::Argument,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tools_gas: Vec<sui::types::Argument>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     ticket: sui::types::Argument,
 ) {
-    for (tool_gas_id, tool_gas_version) in tools_gas {
-        // `tool_gas: &mut ToolGas`
-        let tool_gas = tx.input(sui::tx::Input::shared(
-            *tool_gas_id,
-            *tool_gas_version,
-            true,
-        ));
-
-        // `nexus_workflow::gas::register_tool_gas_for_tool()`
+    for tool_gas in tools_gas {
+        // `nexus_workflow::gas::lock_gas_state_for_tool()`
         tx.move_call(
             sui::tx::Function::new(
                 objects.workflow_pkg_id,
-                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.module,
-                workflow::Gas::SYNC_GAS_STATE_FOR_TOOL.name,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.module,
+                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.name,
                 vec![],
             ),
-            vec![
-                execution_gas,
-                tool_gas,
-                invoker_gas,
-                gas_service,
-                dag,
-                execution,
-                ticket,
-            ],
+            vec![execution_gas, tool_gas, invoker_gas, dag, execution, ticket],
         );
     }
 }
@@ -603,6 +537,13 @@ pub fn execute(
         true,
     ));
 
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
     // `clock: &Clock`
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
@@ -614,6 +555,7 @@ pub fn execute(
         tx,
         objects,
         gas_service,
+        tool_registry,
         dag,
         priority_fee_per_gas_unit,
         entry_group,
@@ -643,10 +585,15 @@ pub fn execute(
         true,
     ));
 
-    sync_gas_state_for_tools(
+    // `tools_gas: Vec<&mut ToolGas>`
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    lock_gas_state_for_tools(
         tx,
         objects,
-        gas_service,
         execution_gas,
         invoker_gas,
         tools_gas,
@@ -654,6 +601,13 @@ pub fn execute(
         execution,
         ticket,
     );
+
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
 
     // `nexus_workflow::dag::request_network_to_execute_walks()`
     tx.move_call(
@@ -663,7 +617,7 @@ pub fn execute(
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
             vec![],
         ),
-        vec![dag, execution, ticket, clock],
+        vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -840,7 +794,6 @@ mod tests {
                 vertex: "vertex1".to_string(),
                 output_variant: "variant1".to_string(),
                 output_port: "port1".to_string(),
-                encrypted: false,
             },
             to: ToPort {
                 vertex: "vertex2".to_string(),
@@ -901,7 +854,6 @@ mod tests {
         let vertex = "vertex1";
         let entry_port = &EntryPort {
             name: "test".to_string(),
-            encrypted: false,
         };
         let entry_group = "group1";
 
@@ -945,7 +897,7 @@ mod tests {
             "vertex1".to_string(),
             HashMap::from([(
                 "port1".to_string(),
-                serde_json::json!({"kind": "inline", "encryption_mode": 0, "data": { "key": "value"} })
+                serde_json::json!({"kind": "inline", "data": { "key": "value"} })
                     .try_into()
                     .expect("Failed to convert JSON to DataStorage"),
             )]),
@@ -988,14 +940,13 @@ mod tests {
     }
 
     #[test]
-    fn test_create_output_unencrypted() {
+    fn test_create_output() {
         let objects = sui_mocks::mock_nexus_objects();
         let dag = sui::types::Argument::Result(0);
         let output = FromPort {
             vertex: "vertex1".to_string(),
             output_variant: "variant1".to_string(),
             output_port: "port1".to_string(),
-            encrypted: false,
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -1015,35 +966,5 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Dag::WITH_OUTPUT.module);
         assert_eq!(call.function, workflow::Dag::WITH_OUTPUT.name);
-    }
-
-    #[test]
-    fn test_create_output_encrypted() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
-        let output = FromPort {
-            vertex: "vertex1".to_string(),
-            output_variant: "variant1".to_string(),
-            output_port: "port1".to_string(),
-            encrypted: true,
-        };
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        create_output(&mut tx, &objects, dag, &output).unwrap();
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
-
-        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
-            panic!("Expected last command to be a MoveCall to create an encrypted output");
-        };
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_ENCRYPTED_OUTPUT.module);
-        assert_eq!(call.function, workflow::Dag::WITH_ENCRYPTED_OUTPUT.name);
     }
 }

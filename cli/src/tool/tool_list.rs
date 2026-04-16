@@ -1,7 +1,7 @@
 use {
     crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
     nexus_sdk::{
-        nexus::crawler::TableVec,
+        nexus::crawler::DynamicMap,
         types::{Tool, ToolRef},
     },
 };
@@ -18,7 +18,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     #[derive(Deserialize)]
     struct ToolRegistry {
-        fqns: TableVec<ToolFqn>,
+        timeouts: DynamicMap<ToolFqn, String>,
     }
 
     let tool_registry = match crawler
@@ -33,8 +33,8 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         }
     };
 
-    let fqns = match crawler.get_table_vec(&tool_registry.fqns).await {
-        Ok(fqns) => fqns,
+    let fqns = match crawler.get_dynamic_fields(&tool_registry.timeouts).await {
+        Ok(timeouts) => timeouts.into_keys().collect::<Vec<_>>(),
         Err(e) => {
             tools_handle.error();
 

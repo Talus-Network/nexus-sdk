@@ -7,7 +7,7 @@ use {
     schemars::JsonSchema,
     serde::{de::DeserializeOwned, Serialize},
     serde_json::{json, Value},
-    std::future::Future,
+    std::{future::Future, time::Duration},
     warp::http::StatusCode,
 };
 
@@ -62,6 +62,10 @@ pub trait NexusTool: Send + Sync + 'static {
     type Output: JsonSchema + Serialize + Send;
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
+    /// Returns the Tool timeout duration. Defaults to 10 seconds.
+    fn timeout() -> Duration {
+        Duration::from_secs(10)
+    }
     /// Invokes the tool with the given input. It is an asynchronous function
     /// that returns the output of the tool.
     ///
@@ -115,6 +119,7 @@ pub trait NexusTool: Send + Sync + 'static {
     fn meta(url: Url) -> Value {
         let fqn = Self::fqn();
         let url = url.to_string();
+        let timeout = Self::timeout().as_millis() as u64;
         let description = Self::description();
         let input_schema = schemars::schema_for!(Self::Input);
         let output_schema = schemars::schema_for!(Self::Output);
@@ -123,6 +128,7 @@ pub trait NexusTool: Send + Sync + 'static {
             {
                 "fqn": fqn,
                 "url": url,
+                "timeout": timeout,
                 "description": description,
                 "input_schema": input_schema,
                 "output_schema": output_schema,

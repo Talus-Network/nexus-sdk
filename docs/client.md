@@ -1,6 +1,6 @@
 # 🪐 [`NexusClient`] (Rust)
 
-The [`NexusClient`] provides a high-level interface for interacting with Nexus. It wraps key functionality including transaction signing and execution, gas management, cryptographic handshakes, and DAG workflow execution.
+The [`NexusClient`] provides a high-level interface for interacting with Nexus. It wraps key functionality including transaction signing and execution, gas management, and DAG workflow execution.
 
 ---
 
@@ -8,8 +8,7 @@ The [`NexusClient`] provides a high-level interface for interacting with Nexus. 
 
 The [`NexusClient`] provides access to:
 
-- [`GasActions`]: manage gas coins and budgets
-- [`CryptoActions`]: perform cryptographic handshakes with Nexus
+- [`GasActions`]: manage gas coins, budgets and tickets
 - [`WorkflowActions`]: publish and execute workflows (DAGs)
 - [`SchedulerActions`]: create and manage scheduler tasks, occurrences, and periodic schedules
 - [`NetworkAuthActions`]: manage message-signing key bindings for Tools/Leader nodes
@@ -17,7 +16,7 @@ The [`NexusClient`] provides access to:
 You can initialize a `NexusClient` via [`NexusClient::builder()`] with:
 
 - a Sui **ed25519 private key**
-- an RPC URL (and optional GraphQL URL for event fetching)
+- an RPC URL
 - one or more gas coins + a gas budget
 - the on-chain [`NexusObjects`]
 
@@ -53,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
 - register/rotate a Tool message-signing key on-chain, and
 - export a local allowlist file of permitted Leader nodes for Tool-side verification (no RPC at runtime).
+- continuously sync an allowlist file from on-chain `network_auth` (polling).
 
 This is the same functionality exposed via the CLI under `nexus tool auth ...`.
 
@@ -101,39 +101,6 @@ println!("Gas budget added in tx: {:?}", result.tx_digest);
 
 ---
 
-## 🔐 Cryptographic Actions
-
-These actions manage secure handshakes and session setup.
-
-### Perform a Handshake
-
-```rust
-use nexus_sdk::crypto::x3dh::IdentityKey;
-
-let ik = IdentityKey::generate();
-
-let handshake = nexus_client.crypto().handshake(&ik).await?;
-
-println!("Session established!");
-println!("Claim TX: {:?}", handshake.claim_tx_digest);
-println!("Associate TX: {:?}", handshake.associate_tx_digest);
-
-assert!(handshake.session);
-```
-
-**What it does:**
-
-1. Claims a pre-key object from Nexus.
-1. Fetches the corresponding [`PreKeyBundle`].
-1. Initiates an [`X3DH`] handshake to create a secure [`Session`].
-1. Associates the pre-key with the sender on-chain.
-
-**Returns:**
-
-[`HandshakeResult`]: includes session data and transaction digests for claim and association steps.
-
----
-
 ## ⚡ Workflow Actions
 
 The [`WorkflowActions`] API allows you to publish, execute, and inspect **DAG-based workflows** on Nexus.
@@ -165,7 +132,6 @@ println!("Published DAG ID: {:?}", publish_result.dag_object_id);
 
 ```rust
 use nexus_sdk::types::{PortsData, StorageConf};
-use nexus_sdk::crypto::session::Session;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -174,7 +140,6 @@ let mut entry_data: HashMap<String, PortsData> = /* your input data */
 
 // Prepare storage and session
 let storage_conf = StorageConf::default();
-let session = Arc::new(Mutex::new(Session::default()));
 
 let execute_result = nexus_client
     .workflow()
@@ -183,7 +148,6 @@ let execute_result = nexus_client
         entry_data,
         None, // use default entry group
         &storage_conf,
-        session,
     )
     .await?;
 
@@ -400,7 +364,6 @@ nexus_client
 | Module             | Purpose                                                 |
 | ------------------ | ------------------------------------------------------- |
 | `nexus::client`    | Core client, builder, signer, gas management            |
-| `nexus::crypto`    | Cryptographic operations (X3DH, sessions, handshakes)   |
 | `nexus::gas`       | Gas management for Nexus workflows                      |
 | `nexus::workflow`  | DAG workflow publishing, execution, and event streaming |
 | `nexus::scheduler` | Scheduler tasks, occurrences, and periodic schedules    |

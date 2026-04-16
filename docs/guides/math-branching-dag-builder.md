@@ -101,8 +101,7 @@ First, we define all the nodes (steps) in our graph. Each vertex needs a unique 
       // 'b' will be provided by a default value.
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         }
       ]
     },
@@ -359,8 +358,7 @@ Combining these sections gives us the complete `math_branching.json`:
       "name": "add_input_and_default",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         }
       ]
     },

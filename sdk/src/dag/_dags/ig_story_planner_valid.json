@@ -34,8 +34,7 @@
       "name": "ig_post_reader",
       "entry_ports": [
         {
-          "name": "post_id",
-          "encrypted": false
+          "name": "post_id"
         }
       ]
     },

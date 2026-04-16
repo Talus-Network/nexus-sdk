@@ -3,15 +3,12 @@
 //! [`crate::types::NexusData`]
 
 use {
-    crate::{
-        crypto::session::Session,
-        types::{DataStorage, NexusData, StorageConf, TypeName},
-    },
+    crate::types::{DataStorage, NexusData, StorageConf, TypeName},
     futures::future::try_join_all,
     serde::{Deserialize, Serialize},
-    std::{collections::HashMap, sync::Arc},
-    tokio::sync::Mutex,
+    std::collections::HashMap,
 };
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsData {
     values: HashMap<String, NexusData>,
@@ -33,14 +30,12 @@ impl PortsData {
     pub async fn commit_all(
         self,
         storage_conf: &StorageConf,
-        session: Arc<Mutex<Session>>,
     ) -> anyhow::Result<HashMap<String, DataStorage>> {
         let commit_futures = self.values.into_iter().map(|(key, data)| {
             let storage_conf = storage_conf.clone();
-            let session = Arc::clone(&session);
 
             async move {
-                match data.commit(&storage_conf, session).await {
+                match data.commit(&storage_conf).await {
                     Ok(storage) => Ok((key, storage)),
                     Err(e) => Err(e),
                 }
@@ -59,14 +54,12 @@ impl PortsData {
     pub async fn fetch_all(
         self,
         storage_conf: &StorageConf,
-        session: Arc<Mutex<Session>>,
     ) -> anyhow::Result<HashMap<String, DataStorage>> {
         let fetch_futures = self.values.into_iter().map(|(key, data)| {
             let storage_conf = storage_conf.clone();
-            let session = Arc::clone(&session);
 
             async move {
-                match data.fetch(&storage_conf, session).await {
+                match data.fetch(&storage_conf).await {
                     Ok(storage) => Ok((key, storage)),
                     Err(e) => Err(e),
                 }
@@ -154,7 +147,7 @@ impl serde::Serialize for PortsData {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::test_utils::nexus_mocks, serde_json::json};
+    use {super::*, serde_json::json};
 
     fn sample_ports_data() -> PortsData {
         let mut values = HashMap::new();
@@ -172,7 +165,7 @@ mod tests {
 
         assert_eq!(
             json,
-            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[],"encryption_mode":0}}]}"#
+            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[]}}]}"#
         );
 
         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
@@ -209,12 +202,8 @@ mod tests {
         let ports_data = PortsData { values };
 
         let storage_conf = StorageConf::default();
-        let (session, _) = nexus_mocks::mock_session();
 
-        let result = ports_data
-            .clone()
-            .commit_all(&storage_conf, session.clone())
-            .await;
+        let result = ports_data.clone().commit_all(&storage_conf).await;
         assert!(result.is_ok());
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
@@ -231,12 +220,8 @@ mod tests {
         let ports_data = PortsData { values };
 
         let storage_conf = StorageConf::default();
-        let (session, _) = nexus_mocks::mock_session();
 
-        let result = ports_data
-            .clone()
-            .fetch_all(&storage_conf, session.clone())
-            .await;
+        let result = ports_data.clone().fetch_all(&storage_conf).await;
         assert!(result.is_ok());
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
@@ -249,9 +234,8 @@ mod tests {
             values: HashMap::new(),
         };
         let storage_conf = StorageConf::default();
-        let (session, _) = nexus_mocks::mock_session();
 
-        let result = ports_data.commit_all(&storage_conf, session).await;
+        let result = ports_data.commit_all(&storage_conf).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -262,9 +246,8 @@ mod tests {
             values: HashMap::new(),
         };
         let storage_conf = StorageConf::default();
-        let (session, _) = nexus_mocks::mock_session();
 
-        let result = ports_data.fetch_all(&storage_conf, session).await;
+        let result = ports_data.fetch_all(&storage_conf).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }

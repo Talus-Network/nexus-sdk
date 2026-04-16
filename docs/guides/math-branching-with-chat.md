@@ -33,8 +33,7 @@ First, let's add both the number-to-message tool and the chat completion tool to
       "name": "chat_completion",
       "entry_ports": [
         {
-          "name": "api_key",
-          "encrypted": true
+          "name": "api_key"
         }
       ]
     },
@@ -292,7 +291,6 @@ Here's the complete DAG definition that combines all the components we've discus
       "entry_ports": [
         {
           "name": "a"
-          "encrypted": false
         }
       ]
     },
@@ -304,12 +302,10 @@ Here's the complete DAG definition that combines all the components we've discus
       "name": "mul_inputs",
       "entry_ports": [
         {
-          "name": "a",
-          "encrypted": false
+          "name": "a"
         },
         {
-          "name": "b",
-          "encrypted": false
+          "name": "b"
         }
       ]
     },
@@ -349,8 +345,7 @@ Here's the complete DAG definition that combines all the components we've discus
       "name": "chat_completion",
       "entry_ports": [
         {
-          "name": "api_key",
-          "encrypted": true
+          "name": "api_key"
         }
       ]
     },
@@ -609,7 +604,7 @@ The `--inspect` flag will show you detailed information about the execution, inc
 - Any errors that occurred
 - The final chat completion response
 
-The `api_key` entry port is defined as `encrypted` in the JSON structure, so the CLI will encrypt the data before sending it to the Nexus network.
+Note that the `api_key` entry port is contains sensitive data which will be sent on-chain. For production apps, we suggest using tools that contain the API keys internally.
 
 ### 2. Integration with Applications
 
@@ -620,7 +615,6 @@ To integrate this DAG into your application:
 1. **Handle API Keys**: Securely manage the OpenAI API key. Consider using environment variables or a secrets management service.
 
 1. **Create Entry Points**: Implement the two entry points in your application:
-
    - Addition path: Takes a single number and adds -3
    - Multiplication path: Takes two numbers and multiplies them
 

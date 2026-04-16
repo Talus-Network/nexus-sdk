@@ -8,16 +8,13 @@
       "name": "counter_increment_first",
       "entry_ports": [
         {
-          "name": "0",
-          "encrypted": false
+          "name": "0"
         },
         {
-          "name": "1",
-          "encrypted": false
+          "name": "1"
         },
         {
-          "name": "2",
-          "encrypted": false
+          "name": "2"
         }
       ]
     },
@@ -29,12 +26,10 @@
       "name": "counter_increment_second",
       "entry_ports": [
         {
-          "name": "0",
-          "encrypted": false
+          "name": "0"
         },
         {
-          "name": "2",
-          "encrypted": false
+          "name": "2"
         }
       ]
     }
@@ -53,4 +48,3 @@
     }
   ]
 }
-  

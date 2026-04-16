@@ -170,12 +170,26 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("pause_time_constraint_for_task"),
     };
+    /// The PeriodicGeneratorState struct type.
+    ///
+    /// `nexus_workflow::scheduler::PeriodicGeneratorState`
+    pub const PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("PeriodicGeneratorState"),
+    };
     /// Witness type registered for periodic generators.
     ///
     /// `nexus_workflow::scheduler::PeriodicGeneratorWitness`
     pub const PERIODIC_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("PeriodicGeneratorWitness"),
+    };
+    /// The QueueGeneratorState struct type.
+    ///
+    /// `nexus_workflow::scheduler::QueueGeneratorState`
+    pub const QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("QueueGeneratorState"),
     };
     /// Witness type registered for queue-based generators.
     ///
@@ -248,6 +262,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("DAGExecution"),
     };
+    /// The DagExecutionConfig struct type.
+    ///
+    /// `nexus_workflow::dag::DagExecutionConfig`
+    pub const DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("DagExecutionConfig"),
+    };
     /// Create a break edge kind.
     ///
     /// `nexus_workflow::dag::edge_kind_break`
@@ -283,12 +304,12 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("edge_kind_normal"),
     };
-    /// Create an encrypted InputPort from an ASCII string.
+    /// Create a static edge kind.
     ///
-    /// `nexus_workflow::dag::encrypted_input_port_from_string`
-    pub const ENCRYPTED_INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::edge_kind_static`
+    pub const EDGE_KIND_STATIC: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("encrypted_input_port_from_string"),
+        name: sui::types::Identifier::from_static("edge_kind_static"),
     };
     /// The EntryGroup struct. Mostly used for creating generic types.
     ///
@@ -317,6 +338,20 @@ impl Dag {
     pub const INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
+    };
+    /// Stamp a worksheet as the leader before tool execution.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_worksheet`
+    pub const LEADER_STAMP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
+    };
+    /// Stamp a worksheet as the leader during a dry run.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_worksheet_for_dry_run`
+    pub const LEADER_STAMP_WORKSHEET_FOR_DRY_RUN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_worksheet_for_dry_run"),
     };
     /// Create a new DAG object.
     ///
@@ -359,6 +394,13 @@ impl Dag {
     pub const OUTPUT_VARIANT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("output_variant_from_string"),
+    };
+    /// Stamp the worksheet with the execution ID before onchain tool execution.
+    ///
+    /// `nexus_workflow::dag::pre_stamp_execution`
+    pub const PRE_STAMP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("pre_stamp_execution"),
     };
     /// Function to call to continue to the next vertex in the given walk.
     ///
@@ -454,20 +496,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_edge"),
     };
-    /// Add an encrypted Edge to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_encrypted_edge`
-    pub const WITH_ENCRYPTED_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_encrypted_edge"),
-    };
-    /// Add an encrypted output to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_encrypted_output`
-    pub const WITH_ENCRYPTED_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_encrypted_output"),
-    };
     /// Mark a vertex as an entry vertex and assign it to a group.
     ///
     /// `nexus_workflow::dag::with_entry_in_group`
@@ -537,25 +565,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::INPUT_PORT_FROM_STRING.module,
                 Self::INPUT_PORT_FROM_STRING.name,
-                vec![],
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an encrypted InputPort from a string.
-    pub fn encrypted_input_port_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::ENCRYPTED_INPUT_PORT_FROM_STRING.module,
-                Self::ENCRYPTED_INPUT_PORT_FROM_STRING.name,
                 vec![],
             ),
             vec![str],
@@ -668,6 +677,7 @@ impl Dag {
             EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
             EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
             EdgeKind::Break => Self::EDGE_KIND_BREAK,
+            EdgeKind::Static => Self::EDGE_KIND_STATIC,
         };
 
         tx.move_call(
@@ -791,6 +801,13 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("unregister"),
     };
+    /// Update a tool's timeout.
+    ///
+    /// `nexus_workflow::tool_registry::update_tool_timeout`
+    pub const UPDATE_TOOL_TIMEOUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_tool_timeout"),
+    };
 }
 
 // == `nexus_workflow::leader_cap` ==
@@ -830,6 +847,13 @@ impl Gas {
     pub const ADD_GAS_BUDGET: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("add_gas_budget"),
+    };
+    /// Assert that an aborted execution was fully refunded.
+    ///
+    /// `nexus_workflow::gas::assert_aborted_execution_fully_refunded`
+    pub const ASSERT_ABORTED_EXECUTION_FULLY_REFUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("assert_aborted_execution_fully_refunded"),
     };
     /// Claim leader gas for this evaluation.
     ///
@@ -887,6 +911,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("ExecutionGas"),
     };
+    /// Finalize gas settlement by transferring funds to a tool vault.
+    ///
+    /// `nexus_workflow::gas::finalize_gas_state_for_vertex`
+    pub const FINALIZE_GAS_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("finalize_gas_state_for_vertex"),
+    };
     /// GasService type for lookups.
     ///
     /// `nexus_workflow::gas::GasService`
@@ -901,12 +932,26 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("InvokerGas"),
     };
+    /// Lock gas for a tool in the current execution.
+    ///
+    /// `nexus_workflow::gas::lock_gas_state_for_tool`
+    pub const LOCK_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("lock_gas_state_for_tool"),
+    };
     /// OverGas owner cap generic.
     ///
     /// `nexus_workflow::gas::OverGas`
     pub const OVER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("OverGas"),
+    };
+    /// Refund gas for an aborted execution in a tool's context.
+    ///
+    /// `nexus_workflow::gas::refund_aborted_execution_gas_for_tool`
+    pub const REFUND_ABORTED_EXECUTION_GAS_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("refund_aborted_execution_gas_for_tool"),
     };
     /// Create an Execution scope.
     ///
@@ -935,13 +980,6 @@ impl Gas {
     pub const SET_SINGLE_INVOCATION_COST_MIST: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
-    };
-    /// Sync gas for a tool in the current execution.
-    ///
-    /// `nexus_workflow::gas::sync_gas_state_for_tool`
-    pub const SYNC_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("sync_gas_state_for_tool"),
     };
 
     /// Convert an object ID to an InvokerAddress scope.
@@ -1016,10 +1054,6 @@ impl GasExtension {
     };
 }
 
-// == `nexus_workflow::pre_key_vault` ==
-
-pub struct PreKeyVault;
-
 // == `nexus_workflow::network_auth` ==
 
 pub struct NetworkAuth;
@@ -1077,44 +1111,75 @@ impl NetworkAuth {
     };
 }
 
-const PRE_KEY_VAULT_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("pre_key_vault");
+// == `nexus_workflow::leader` ==
 
-impl PreKeyVault {
-    /// Associate a pre key with the sender and fire an initial message.
+pub struct Leader;
+
+const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
+
+impl Leader {
+    /// Allow an address to request leader capabilities.
     ///
-    /// `nexus_workflow::pre_key_vault::associate_pre_key`
-    pub const ASSOCIATE_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("associate_pre_key"),
+    /// `nexus_workflow::leader::allow_address`
+    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("allow_address"),
     };
-    /// Claim a pre key for the tx sender.
+    /// Disallow an address from requesting leader capabilities.
     ///
-    /// `nexus_workflow::pre_key_vault::claim_pre_key_for_self`
-    pub const CLAIM_PRE_KEY_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("claim_pre_key_for_self"),
+    /// `nexus_workflow::leader::disallow_address`
+    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("disallow_address"),
     };
-    /// Fulfill a requested pre key for a user.
+    /// Create empty metadata for a leader.
     ///
-    /// `nexus_workflow::pre_key_vault::fulfill_pre_key_for_user`
-    pub const FULFILL_PRE_KEY_FOR_USER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("fulfill_pre_key_for_user"),
+    /// `nexus_workflow::leader::empty_metadata`
+    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("empty_metadata"),
     };
-    /// OverCrypto owner cap generic.
+    /// Admin capability type for modifying leader allowlist.
     ///
-    /// `nexus_workflow::pre_key_vault::OverCrypto`
-    pub const OVER_CRYPTO: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("OverCrypto"),
+    /// `nexus_workflow::leader::LeaderCapabilitiesAdminCap`
+    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
     };
-    /// PreKeyVault type for lookups.
+    /// LeaderRegistry type for lookups.
     ///
-    /// `nexus_workflow::pre_key_vault::PreKeyVault`
-    pub const PRE_KEY_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: PRE_KEY_VAULT_MODULE,
-        name: sui::types::Identifier::from_static("PreKeyVault"),
+    /// `nexus_workflow::leader::LeaderRegistry`
+    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderRegistry"),
+    };
+    /// Create metadata with the provided map.
+    ///
+    /// `nexus_workflow::leader::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("new_metadata"),
+    };
+    /// Register the caller as a leader and stake.
+    ///
+    /// `nexus_workflow::leader::register`
+    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("register"),
+    };
+    /// Stake SUI into a leader's pool.
+    ///
+    /// `nexus_workflow::leader::stake`
+    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("stake"),
+    };
+    /// Update or register a leader node.
+    ///
+    /// `nexus_workflow::leader::upsert_self`
+    pub const UPSERT_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("upsert_self"),
     };
 }
 

@@ -6,10 +6,11 @@ mod tool_register_offchain;
 mod tool_register_onchain;
 mod tool_set_invocation_cost;
 mod tool_unregister;
+mod tool_update_timeout;
 mod tool_validate;
 
 use {
-    crate::prelude::*,
+    crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_list::*,
@@ -67,16 +68,44 @@ pub(crate) enum ToolAuthCommand {
         )]
         description: Option<String>,
 
+        #[arg(
+            long = "skip-if-active",
+            help = "Skip registration if the same public key is already the active key (idempotent). Useful in CI to avoid re-registering an unchanged key."
+        )]
+        skip_if_active: bool,
+
         #[command(flatten)]
         gas: GasArgs,
+    },
+
+    #[command(about = "List all registered message-signing keys for a tool.")]
+    ListKeys {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
     },
 
     #[command(
         about = "Export a leader allowlist file for tool-side verification (no RPC at runtime)."
     )]
     ExportAllowedLeaders {
-        /// One or more leader addresses to include.
-        #[arg(long = "leader", value_name = "ADDRESS")]
+        #[arg(
+            long = "all",
+            help = "Export allowlist entries for all leaders registered in network_auth (recommended).",
+            conflicts_with = "leaders"
+        )]
+        all: bool,
+
+        /// One or more leader capability IDs (`leader_cap::OverNetwork` object IDs) to include.
+        #[arg(
+            long = "leader",
+            value_name = "LEADER_CAP_ID",
+            required_unless_present = "all"
+        )]
         leaders: Vec<sui::types::Address>,
 
         #[arg(
@@ -86,14 +115,51 @@ pub(crate) enum ToolAuthCommand {
         )]
         out: PathBuf,
     },
+
+    #[command(
+        about = "Sync an allowed leaders allowlist file from on-chain network_auth (polling)."
+    )]
+    SyncAllowedLeaders {
+        #[arg(
+            long = "out",
+            help = "Output path for the allowlist JSON file.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
+
+        #[arg(
+            long = "interval",
+            default_value = "30s",
+            help = "Polling interval (e.g. 500ms, 5s, 2m, 1h).",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration)
+        )]
+        interval: std::time::Duration,
+
+        #[arg(long = "once", help = "Sync once and exit.")]
+        once: bool,
+    },
 }
 
 #[derive(Subcommand)]
 pub(crate) enum RegisterCommand {
     #[command(about = "Register an offchain tool")]
     Offchain {
-        #[arg(long = "url", short = 'u', help = "The URL of the offchain tool")]
-        url: reqwest::Url,
+        #[arg(
+            long = "url",
+            short = 'u',
+            help = "The URL of the offchain tool. Required unless --from-meta is provided.",
+            required_unless_present = "from_meta"
+        )]
+        url: Option<reqwest::Url>,
+
+        #[arg(
+            long = "from-meta",
+            help = "Path to a JSON file containing tool metadata (as produced by the tool binary's --meta flag), or '-' to read from stdin. Skips the live HTTP validation step.",
+            value_name = "FILE|-",
+            conflicts_with = "batch"
+        )]
+        from_meta: Option<String>,
 
         #[arg(
             long = "collateral-coin",
@@ -114,7 +180,7 @@ pub(crate) enum RegisterCommand {
 
         #[arg(
             long = "batch",
-            help = "Should all tools on a webserver be registered at once?"
+            help = "Should all tools on a webserver be registered at once? Incompatible with --from-meta."
         )]
         batch: bool,
 
@@ -156,6 +222,16 @@ pub(crate) enum RegisterCommand {
             value_name = "DESCRIPTION"
         )]
         description: String,
+
+        #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The timeout duration for the tool execution. Defaults to 5 seconds. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+            default_value = "5s"
+        )]
+        timeout: std::time::Duration,
 
         #[arg(
             long = "witness-id",
@@ -328,6 +404,34 @@ pub(crate) enum ToolCommand {
         #[command(subcommand)]
         cmd: ToolAuthCommand,
     },
+
+    #[command(about = "Update a tool's timeout duration.")]
+    UpdateTimeout {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to update the timeout for.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "The OwnerCap<OverTool> object ID that must be owned by the sender.",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+        #[arg(
+            long = "timeout",
+            short = 'i',
+            help = "The new timeout duration for the tool execution. Value must be between 1 second and 2 minutes.",
+            value_name = "DURATION",
+            value_parser = ValueParser::from(humantime::parse_duration),
+        )]
+        timeout: std::time::Duration,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 /// Handle the provided tool command. The [ToolCommand] instance is passed from
@@ -351,6 +455,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         ToolCommand::Register { tool_type } => match tool_type {
             RegisterCommand::Offchain {
                 url,
+                from_meta,
                 collateral_coin,
                 invocation_cost,
                 batch,
@@ -359,6 +464,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             } => {
                 register_off_chain_tool(
                     url,
+                    from_meta,
                     collateral_coin,
                     invocation_cost,
                     batch,
@@ -373,6 +479,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 module,
                 tool_fqn,
                 description,
+                timeout,
                 witness_id,
                 collateral_coin,
                 no_save,
@@ -383,6 +490,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     module,
                     tool_fqn,
                     description,
+                    timeout,
                     witness_id,
                     collateral_coin,
                     no_save,
@@ -439,5 +547,22 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool auth` ==
         ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
+
+        // == `$ nexus tool update-timeout` ==
+        ToolCommand::UpdateTimeout {
+            tool_fqn,
+            owner_cap,
+            timeout,
+            gas,
+        } => {
+            update_tool_timeout(
+                tool_fqn,
+                owner_cap,
+                timeout,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }

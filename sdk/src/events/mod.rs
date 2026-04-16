@@ -4,11 +4,35 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-mod fetching;
-mod graphql;
 mod parsing;
+mod polling;
 
-pub use {fetching::*, graphql::*, parsing::*};
+pub use {parsing::*, polling::*};
+
+/// Distribution metadata for distributed events. This contains metadata about
+/// the event deadline as well as the priority in which leaders should attempt
+/// to execute the event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DistributedEventMetadata {
+    /// The execution window duration.
+    #[serde(
+        rename = "deadline_ms",
+        deserialize_with = "deserialize_u64_to_duration",
+        serialize_with = "serialize_duration_to_u64"
+    )]
+    pub deadline: chrono::Duration,
+    /// The timestamp by which the event was requested.
+    #[serde(
+        rename = "requested_at_ms",
+        deserialize_with = "deserialize_u64_to_datetime",
+        serialize_with = "serialize_datetime_to_u64"
+    )]
+    pub requested_at: chrono::DateTime<chrono::Utc>,
+    /// The priority list of leader addresses.
+    pub leaders: Vec<sui::types::Address>,
+    /// The task ID.
+    pub task_id: sui::types::Address,
+}
 
 /// Struct holding the Sui event ID, the event generic arguments and the data
 /// as one of [NexusEventKind].
@@ -21,6 +45,9 @@ pub struct NexusEvent {
     pub generics: Vec<sui::types::TypeTag>,
     /// The event data.
     pub data: NexusEventKind,
+    /// If the event is a distributed event, this field holds the distribution
+    /// metadata.
+    pub distribution: Option<DistributedEventMetadata>,
 }
 
 macro_rules! events {
@@ -54,17 +81,43 @@ macro_rules! events {
 
         // == Parsing from BCS ==
 
-        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<NexusEventKind> {
+        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<(NexusEventKind, Option<DistributedEventMetadata>)> {
             #[derive(Deserialize)]
             struct Wrapper<T> {
                 event: T,
             }
 
+            #[derive(Deserialize)]
+            struct DistributedWrapper<T> {
+                event: T,
+                deadline_ms: u64,
+                requested_at_ms: u64,
+                task_id: sui::types::Address,
+                leaders: Vec<sui::types::Address>,
+            }
+
+
             match name {
                 $(
                     stringify!($struct_name) => {
-                        let obj: Wrapper<$struct_name> = bcs::from_bytes(bytes)?;
-                        Ok(NexusEventKind::$variant(obj.event))
+                        match bcs::from_bytes::<DistributedWrapper<$struct_name>>(bytes) {
+                            Ok(distributed) => {
+                                let metadata = DistributedEventMetadata {
+                                    deadline: chrono::Duration::milliseconds(distributed.deadline_ms as i64),
+                                    requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(distributed.requested_at_ms as i64)
+                                        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
+                                    task_id: distributed.task_id,
+                                    leaders: distributed.leaders,
+                                };
+
+                                Ok((NexusEventKind::$variant(distributed.event), Some(metadata)))
+                            }
+                            Err(_) => {
+                                 let obj: Wrapper<$struct_name> = bcs::from_bytes(bytes)?;
+
+                                 Ok((NexusEventKind::$variant(obj.event), None))
+                            }
+                        }
                     }
                 )*
                 _ => bail!("Unknown event: {}", name),
@@ -85,6 +138,8 @@ events! {
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
+    WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
+    WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
     EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
     ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
     MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
@@ -95,23 +150,10 @@ events! {
     OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
-    GasSettlementUpdateEvent => GasSettlementUpdate, "GasSettlementUpdateEvent",
-    PreKeyVaultCreatedEvent => PreKeyVaultCreated, "PreKeyVaultCreatedEvent",
-    PreKeyRequestedEvent => PreKeyRequested, "PreKeyRequestedEvent",
-    PreKeyFulfilledEvent => PreKeyFulfilled, "PreKeyFulfilledEvent",
-    PreKeyAssociatedEvent => PreKeyAssociated, "PreKeyAssociatedEvent",
+    LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
+    GasLockUpdateEvent => GasLockUpdate, "GasLockUpdateEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
-
-    // These events are unused for now.
-    // "DAGVertexAdded" => DAGVertexAdded(serde_json::Value),
-    // "DAGEdgeAdded" => DAGEdgeAdded(serde_json::Value),
-    // "DAGOutputAdded" => DAGOutputAdded(serde_json::Value),
-    // "DAGEntryVertexInputPortAdded" => DAGEntryVertexInputPortAdded(serde_json::Value),
-    // "DAGDefaultValueAdded" => DAGDefaultValueAdded(serde_json::Value),
-    // "LeaderClaimedGas" => LeaderClaimedGas(serde_json::Value),
-    // "AllowedOwnerAdded" => AllowedOwnerAdded(serde_json::Value),
-    // "AllowedOwnerRemoved" => AllowedOwnerRemoved(serde_json::Value),
 }
 
 // == Event definitions ==
@@ -123,16 +165,15 @@ pub struct RequestWalkExecutionEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
     pub invoker: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
     /// This field defines the package ID, module and name of the Agent that
     /// holds the DAG. Used to confirm the tool evaluation with the Agent.
     pub worksheet_from_type: TypeName,
+    /// UID of the TAP witness object that created the worksheet used to start
+    /// this execution.
+    pub worksheet_from_uid: sui::types::Address,
 }
 
 /// Fired via the Nexus `interface` package when a new Agent is registered.
@@ -168,10 +209,6 @@ pub struct ToolUnregisteredEvent {
 pub struct WalkAdvancedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was just executed.
     pub vertex: RuntimeVertex,
@@ -186,15 +223,31 @@ pub struct WalkAdvancedEvent {
 pub struct WalkFailedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was being executed when the failure happened.
     pub vertex: RuntimeVertex,
     /// The error message associated with the failure.
     pub reason: String,
+}
+
+/// Fired by the Nexus Workflow when a walk was aborted.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkAbortedEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    /// Which vertex was being executed when the abort happened.
+    pub vertex: RuntimeVertex,
+}
+
+/// Fired by the Nexus Workflow when a walk was cancelled.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalkCancelledEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    /// Which vertex was being executed when the cancellation happened.
+    pub vertex: RuntimeVertex,
 }
 
 /// Fired by the Nexus Workflow when a walk has halted in an end state. This
@@ -203,10 +256,6 @@ pub struct WalkFailedEvent {
 pub struct EndStateReachedEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub walk_index: u64,
     /// Which vertex was just executed.
     pub vertex: RuntimeVertex,
@@ -225,31 +274,16 @@ pub struct ExecutionFinishedEvent {
     pub execution: sui::types::Address,
     pub has_any_walk_failed: bool,
     pub has_any_walk_succeeded: bool,
+    pub was_aborted: bool,
 }
 
 /// Request wrapper emitted when scheduling an occurrence.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RequestScheduledOccurrenceEvent {
     pub request: OccurrenceScheduledEvent,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub request_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub deadline_ms: u64,
 }
 
@@ -257,25 +291,9 @@ pub struct RequestScheduledOccurrenceEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RequestScheduledWalkEvent {
     pub request: RequestWalkExecutionEvent,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub request_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub deadline_ms: u64,
 }
 
@@ -291,25 +309,9 @@ pub struct OccurrenceScheduledEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MissedOccurrenceEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_time_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub pruned_at: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
 }
@@ -337,10 +339,6 @@ pub struct TaskResumedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskCanceledEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub cleared_occurrences: u64,
     pub had_periodic: bool,
 }
@@ -349,26 +347,10 @@ pub struct TaskCanceledEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OccurrenceConsumedEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub start_time_ms: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub priority_fee_per_gas_unit: u64,
     pub generator: PolicySymbol,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
     pub executed_at: u64,
 }
 
@@ -376,35 +358,11 @@ pub struct OccurrenceConsumedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PeriodicScheduleConfiguredEvent {
     pub task: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub period_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub deadline_offset_ms: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub max_iterations: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub generated: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub priority_fee_per_gas_unit: Option<u64>,
-    #[serde(
-        deserialize_with = "deserialize_sui_option_u64",
-        serialize_with = "serialize_sui_option_u64"
-    )]
     pub last_generated_start_ms: Option<u64>,
 }
 
@@ -415,16 +373,25 @@ pub struct FoundingLeaderCapCreatedEvent {
     pub network: sui::types::Address,
 }
 
+/// Fired by the Nexus Workflow when a leader capability is issued and transferred.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaderCapIssuedEvent {
+    pub registry: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
+    pub network: sui::types::Address,
+    pub leader: sui::types::Address,
+}
+
 /// Fired by the Gas service when the gas settlement is updated. This event is
 /// used to determine whether a tool invocation was paid for by the caller.
 /// Combination of `execution` and `vertex` uniquely identifies the tool
 /// invocation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct GasSettlementUpdateEvent {
+pub struct GasLockUpdateEvent {
     pub execution: sui::types::Address,
-    pub tool_fqn: ToolFqn,
     pub vertex: RuntimeVertex,
-    pub was_settled: bool,
+    pub tool_fqn: ToolFqn,
+    pub was_locked: bool,
 }
 
 /// Fired when the leader claims gas from a user's budget.
@@ -432,58 +399,7 @@ pub struct GasSettlementUpdateEvent {
 pub struct LeaderClaimedGasEvent {
     pub network: sui::types::Address,
     pub amount: u64,
-    /// Optional reason for auditing purposes.
-    #[serde(default)]
     pub purpose: String,
-}
-
-/// Fired by the Nexus Workflow when a new pre key vault is created. This happens
-/// on initial network setup.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyVaultCreatedEvent {
-    pub vault: sui::types::Address,
-    pub crypto_cap: sui::types::Address,
-}
-
-/// Fired by the Nexus Workflow when a pre key is requested. The pre key bytes
-/// are still empty at this point and will be fulfilled by the leader.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyRequestedEvent {
-    /// The address of the user that requested the pre key.
-    pub requested_by: sui::types::Address,
-}
-
-/// Fired by the Nexus Workflow when a pre key request is fulfilled by the
-/// leader. Carries the pending pre key bytes that the user can then associate.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyFulfilledEvent {
-    /// The address of the user that requested the pre key.
-    pub requested_by: sui::types::Address,
-    /// Bytes of the fulfilled pre key.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub pre_key_bytes: Vec<u8>,
-}
-
-/// Fired by the Nexus Workflow when a pre key is associated with a user.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PreKeyAssociatedEvent {
-    /// The address of the user the pre key is associated with.
-    pub claimed_by: sui::types::Address,
-    /// Bytes of the pre key.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub pre_key: Vec<u8>,
-    /// Bytes of the initial message.
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
-    pub initial_message: Vec<u8>,
 }
 
 /// Fired by the Nexus Workflow when a new DAG is created.
@@ -519,6 +435,20 @@ mod tests {
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     pub struct AnotherEvent {
         pub text: String,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    struct Wrapper<T> {
+        event: T,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    struct DistributedWrapper<T> {
+        event: T,
+        deadline_ms: u64,
+        requested_at_ms: u64,
+        task_id: sui::types::Address,
+        leaders: Vec<sui::types::Address>,
     }
 
     #[test]
@@ -558,31 +488,95 @@ mod tests {
 
     #[test]
     fn test_nexus_event_kind_bcs_deser() {
-        let dummy = DummyEvent { value: 99 };
-        let another = AnotherEvent {
-            text: "xyz".to_string(),
+        let dummy = Wrapper {
+            event: DummyEvent { value: 99 },
+        };
+        let another = Wrapper {
+            event: AnotherEvent {
+                text: "xyz".to_string(),
+            },
         };
 
         let dummy_bytes = bcs::to_bytes(&dummy).unwrap();
         let another_bytes = bcs::to_bytes(&another).unwrap();
 
-        let parsed_dummy = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
-        let parsed_another = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+        let (parsed_dummy, dis1) = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
+        let (parsed_another, dis2) = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+
+        assert!(dis1.is_none());
+        assert!(dis2.is_none());
 
         match parsed_dummy {
-            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy),
+            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy.event),
             _ => panic!("Expected Dummy variant"),
         }
 
         match parsed_another {
-            NexusEventKind::Another(ev) => assert_eq!(ev, another),
+            NexusEventKind::Another(ev) => assert_eq!(ev, another.event),
+            _ => panic!("Expected Another variant"),
+        }
+    }
+
+    #[test]
+    fn test_distributed_nexus_event_kind_bcs_deser() {
+        let dummy = DistributedWrapper {
+            event: DummyEvent { value: 99 },
+            deadline_ms: 0,
+            requested_at_ms: 0,
+            task_id: sui::types::Address::TWO,
+            leaders: vec![sui::types::Address::TWO],
+        };
+        let another = DistributedWrapper {
+            event: AnotherEvent {
+                text: "xyz".to_string(),
+            },
+            deadline_ms: 100,
+            requested_at_ms: 1500,
+            task_id: sui::types::Address::ZERO,
+            leaders: vec![sui::types::Address::ZERO],
+        };
+
+        let dummy_bytes = bcs::to_bytes(&dummy).unwrap();
+        let another_bytes = bcs::to_bytes(&another).unwrap();
+
+        let (parsed_dummy, dis1) = parse_bcs("DummyEvent", &dummy_bytes).unwrap();
+        let (parsed_another, dis2) = parse_bcs("AnotherEvent", &another_bytes).unwrap();
+
+        let dis1 = dis1.expect("Expected distribution metadata for dummy event");
+        let dis2 = dis2.expect("Expected distribution metadata for another event");
+
+        assert_eq!(dis1.leaders, vec![sui::types::Address::TWO]);
+        assert_eq!(dis1.task_id, sui::types::Address::TWO);
+        assert_eq!(dis1.deadline, chrono::Duration::milliseconds(0));
+        assert_eq!(
+            dis1.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
+        );
+
+        assert_eq!(dis2.leaders, vec![sui::types::Address::ZERO]);
+        assert_eq!(dis2.task_id, sui::types::Address::ZERO);
+        assert_eq!(dis2.deadline, chrono::Duration::milliseconds(100));
+        assert_eq!(
+            dis2.requested_at,
+            chrono::DateTime::<chrono::Utc>::from_timestamp(1, 500_000_000).unwrap()
+        );
+
+        match parsed_dummy {
+            NexusEventKind::Dummy(ev) => assert_eq!(ev, dummy.event),
+            _ => panic!("Expected Dummy variant"),
+        }
+
+        match parsed_another {
+            NexusEventKind::Another(ev) => assert_eq!(ev, another.event),
             _ => panic!("Expected Another variant"),
         }
     }
 
     #[test]
     fn test_parse_bcs_unknown_event() {
-        let dummy = DummyEvent { value: 123 };
+        let dummy = Wrapper {
+            event: DummyEvent { value: 123 },
+        };
         let bytes = bcs::to_bytes(&dummy).unwrap();
         let result = parse_bcs("UnknownEvent", &bytes);
         assert!(result.is_err());

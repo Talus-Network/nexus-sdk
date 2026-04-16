@@ -5,7 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [`0.6.0`] - Unreleased
+## [`0.8.4`] - 2026-04-08
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool register offchain --from-meta <FILE|->` to register tools from a JSON metadata file or stdin, bypassing the live HTTP endpoint
+- `nexus tool auth list-keys --tool-fqn <FQN>` to query registered message-signing keys for a tool
+- `nexus tool auth register-key --skip-if-active` for idempotent key registration in CI pipelines
+
+### `nexus-sdk`
+
+#### Added
+
+- `ToolKeyEntry` and `ToolKeyList` types in `nexus::network_auth`
+- `list_tool_keys()` method on `NetworkAuthActions`
+
+### `nexus-toolkit`
+
+#### Added
+
+- Built-in `--meta` flag in the `bootstrap!` macro: prints a JSON array of tool metadata to stdout and exits without starting the HTTP server
+
+## [`0.8.3`] - 2026-04-08
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus gas balance` command to check the balance of an invoker's gas funds
+- `nexus dag execution-cost` command to check the cost of a DAG execution
+
+### `nexus-sdk`
+
+#### Added
+
+- support for gas cost and balance related commands to the `NexusClient`
+
+## [`0.8.2`] - 2026-03-30
+
+### `nexus-cli`
+
+#### Added
+
+- Sui testnet presets and automatic Nexus objects fetching
+
+#### Fixed
+
+- `ToolRegistry` struct to correctly deserialize timeout
+
+## [`0.8.0`] - 2026-03-27
+
+### `nexus-cli`
+
+#### Added
+
+- `nexus tool update-timeout` command to update a tool's timeout duration
+
+### `nexus-sdk`
+
+#### Added
+
+- support and tests for `Static` edge kinds
+- support for configurable tool timeouts
+- leader stamp identifiers
+
+#### Fixed
+
+- issue with event poller where rpc failures would cause it to exceed the max batch size and fail to make progress
+- another poller issue where the checkpoint stream would start from the first checkpoint, restreaming all events
+
+## [`0.7.0`] - 2026-03-13
+
+### `nexus-cli`
+
+#### Removed
+
+- `sui_gql_url` config field
+
+### `nexus-sdk`
+
+#### Changed
+
+- transaction templates adjusted to allow for locking and finalizing gas payments
+- `GasSettlementUpdate` event replaced with `GasLockUpdate`
+- removed graphql client and changed event fetching to poll GRPC
+- bump Sui version to `mainnet-v1.67.3`
+
+## [`0.6.0`] - 2026-02-24
 
 ### `nexus-sdk`
 
@@ -14,13 +102,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `signed_http` feature and module for application layer HTTP request/response signatures.
 - `network_auth` helpers, types, and PTB templates for tool key registration and leader allowlists.
 - derived gas service identifiers and PTB templates
+- `secret_store` module providing a minimal at-rest secret wrapper with optional encryption.
 - `NexusClient` code for gas tickets
+- support for distribution by fetching `DistributedEventWrapper` events
+- `leader_registry` to `NexusObjects` and as argument to PTB templates that require it
+- `InterfacePackageConfig` and `InterfaceVersionKey` type mirrors
+- Support for `LeaderCapIssuedEvent`
+- `bcs` support in `Crawler`
+
+#### Removed
+
+- X3DH+DR encryption
 
 #### Changed
 
 - adjusted transaction templates and events to support tools as derived objects
 - removed all `Tool*` types for a unified `Tool` type that supports both offchain and onchain tools and `ToolRef` type to differentiate
 - `NexusClient::workflow::execute` to work with derived gas service
+- replaced `secret_core` with `secret_store` for at-rest secrets.
+- bump sui version to 1.65.2
+- `signed_http` is agnostic to the leader that makes the request and can be used with any leader.
 
 #### Fixed
 
@@ -35,15 +136,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SharedObjectRef` type to represent shared object references with mutability information
 - `AnnounceInterfacePackageEvent` now has `shared_objects` field of type `Vec<SharedObjectRef>` that carries the reference type information
 - added support for tagged_output in sdk
+- `nexus secrets` command group for local at-rest secrets:
+  - `nexus secrets status` / `enable` / `disable` / `rotate` / `wipe`
+- `nexus tool auth sync-allowed-leaders` to keep tool config in sync with onchain
 
 #### Changed
 
 - `nexus tool list` now works with derived objects
-- extracted gas tickets related logic to the `NexusClient`
+- at-rest secret storage now auto-creates a master key in the OS keyring on first secret write (when possible); if the keyring is unavailable, it warns and writes plaintext.
 
 #### Removed
 
-- `nexus network create` as it was outdated and no longer relevant
+- `nexus crypto set-passphrase` command (passphrase-based encryption).
+- `nexus crypto init-key` and `nexus crypto key-status` (moved to `nexus secrets`).
 
 ### `nexus-toolkit-rust`
 

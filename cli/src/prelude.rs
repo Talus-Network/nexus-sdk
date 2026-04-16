@@ -1,14 +1,9 @@
 pub(crate) use {
-    crate::{cli_conf::*, error::NexusCliError, utils::secrets::Secret},
+    crate::{cli_conf::*, error::NexusCliError},
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{
-        crypto::{session::Session, x3dh::IdentityKey},
-        sui::traits::*,
-        types::NexusObjects,
-        *,
-    },
+    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -24,10 +19,10 @@ pub(crate) use {
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
-pub(crate) const CRYPTO_CONF_PATH: &str = "~/.nexus/crypto.toml";
 
 /// Various Nexus RPC URLs.
-pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev";
+pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev/";
+pub(crate) const TESTNET_NEXUS_RPC_URL: &str = "https://rpc-testnet.taluslabs.dev/";
 
 /// objects.toml locations for each network.
 pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
@@ -36,7 +31,12 @@ pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
     "/objects.devnet.toml"
 );
 
-pub(crate) const _TESTNET_OBJECTS_TOML: &str = "";
+pub(crate) const TESTNET_OBJECTS_TOML: &str = concat!(
+    "https://storage.googleapis.com/production-talus-sui-objects/v",
+    env!("CARGO_PKG_VERSION"),
+    "/objects.testnet.toml"
+);
+
 pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
 
 /// What is the default gas budget to use? (0.1 SUI)

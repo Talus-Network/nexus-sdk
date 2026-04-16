@@ -1,6 +1,10 @@
 use {
     super::{engine::*, error::*, wire::*},
     ed25519_dalek::SigningKey,
+    std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
 };
 
 fn sk_from_byte(byte: u8) -> SigningKey {
@@ -174,6 +178,7 @@ fn engine_end_to_end_roundtrip_happy_path() {
         SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         },
         FixedClockV1 { now_ms: 1_500 },
     );
@@ -278,6 +283,7 @@ fn engine_verify_response_fails_without_tool_key_then_succeeds() {
         SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         },
         FixedClockV1 { now_ms: 1_500 },
     );
@@ -372,6 +378,7 @@ fn engine_replay_in_flight_then_cached_return() {
         SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         },
         FixedClockV1 { now_ms: 1_500 },
     );
@@ -426,11 +433,6 @@ fn engine_replay_in_flight_then_cached_return() {
 
     assert_eq!(cached.status, signed_first.status);
     assert_eq!(cached.body, signed_first.body);
-    assert_eq!(cached.headers.sig_b64, signed_first.headers.sig_b64);
-    assert_eq!(
-        cached.headers.sig_input_b64,
-        signed_first.headers.sig_input_b64
-    );
 
     outbound
         .verify_response(
@@ -444,6 +446,334 @@ fn engine_replay_in_flight_then_cached_return() {
             },
         )
         .unwrap();
+}
+
+#[test]
+fn engine_replay_cross_leader_cached_return_is_bound_to_request() {
+    let leader_a_id = "0x1111";
+    let leader_b_id = "0x2222";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_a_sk = sk_from_byte(7);
+    let leader_a_pk = leader_a_sk.verifying_key().to_bytes();
+    let leader_b_sk = sk_from_byte(8);
+    let leader_b_pk = leader_b_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![
+            AllowedLeaderFileV1 {
+                leader_id: leader_a_id.to_string(),
+                keys: vec![AllowedLeaderKeyFileV1 {
+                    kid: 0,
+                    public_key: hex::encode(leader_a_pk),
+                }],
+            },
+            AllowedLeaderFileV1 {
+                leader_id: leader_b_id.to_string(),
+                keys: vec![AllowedLeaderKeyFileV1 {
+                    kid: 0,
+                    public_key: hex::encode(leader_b_pk),
+                }],
+            },
+        ],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker_a = engine.invoker(leader_a_id.to_string(), 0, leader_a_sk);
+    let invoker_b = engine.invoker(leader_b_id.to_string(), 0, leader_b_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"hello":"world"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound_a = invoker_a
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    let inbound_a = match responder
+        .authenticate_invoke(
+            http.clone(),
+            &req_body,
+            headers_ref_for_encoded(outbound_a.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+
+    let signed_a = inbound_a.finish(200, br#"{"ok":true}"#.to_vec()).unwrap();
+    outbound_a
+        .verify_response(
+            signed_a.status,
+            headers_ref_for_encoded(&signed_a.headers),
+            &signed_a.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+
+    let outbound_b = invoker_b
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    let cached = match responder
+        .authenticate_invoke(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound_b.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Return(resp) => resp,
+        _ => panic!("expected cached Return"),
+    };
+
+    let verified_b = outbound_b
+        .verify_response(
+            cached.status,
+            headers_ref_for_encoded(&cached.headers),
+            &cached.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+    assert_eq!(verified_b.owner_leader_id, leader_a_id);
+}
+
+#[test]
+fn engine_in_flight_lease_can_be_stolen_by_another_leader() {
+    #[derive(Clone)]
+    struct AtomicClockV1 {
+        now_ms: Arc<AtomicU64>,
+    }
+
+    impl ClockV1 for AtomicClockV1 {
+        fn now_ms(&self) -> u64 {
+            self.now_ms.load(Ordering::SeqCst)
+        }
+    }
+
+    let leader_a_id = "0x1111";
+    let leader_b_id = "0x2222";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_a_sk = sk_from_byte(7);
+    let leader_a_pk = leader_a_sk.verifying_key().to_bytes();
+    let leader_b_sk = sk_from_byte(8);
+    let leader_b_pk = leader_b_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![
+            AllowedLeaderFileV1 {
+                leader_id: leader_a_id.to_string(),
+                keys: vec![AllowedLeaderKeyFileV1 {
+                    kid: 0,
+                    public_key: hex::encode(leader_a_pk),
+                }],
+            },
+            AllowedLeaderFileV1 {
+                leader_id: leader_b_id.to_string(),
+                keys: vec![AllowedLeaderKeyFileV1 {
+                    kid: 0,
+                    public_key: hex::encode(leader_b_pk),
+                }],
+            },
+        ],
+    })
+    .unwrap();
+
+    let now_ms = Arc::new(AtomicU64::new(1_000));
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 100_000,
+            replay_cache_ttl_ms: 100_000,
+            in_flight_lease_ms: 50,
+        },
+        AtomicClockV1 {
+            now_ms: Arc::clone(&now_ms),
+        },
+    );
+
+    let invoker_a = engine.invoker(leader_a_id.to_string(), 0, leader_a_sk);
+    let invoker_b = engine.invoker(leader_b_id.to_string(), 0, leader_b_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"hello":"world"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound_a = invoker_a
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    let inbound_a = match responder
+        .authenticate_invoke(
+            http.clone(),
+            &req_body,
+            headers_ref_for_encoded(outbound_a.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+
+    now_ms.store(1_040, Ordering::SeqCst);
+    let outbound_b1 = invoker_b
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    match responder
+        .authenticate_invoke(
+            http.clone(),
+            &req_body,
+            headers_ref_for_encoded(outbound_b1.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Reject(rej) => {
+            assert_eq!(rej.kind, ResponderRejectionKindV1::InFlight);
+            assert_eq!(rej.owner_leader_id.as_deref(), Some(leader_a_id));
+        }
+        _ => panic!("expected InFlight rejection"),
+    }
+
+    now_ms.store(1_050, Ordering::SeqCst);
+    let outbound_b2 = invoker_b
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    let inbound_b = match responder
+        .authenticate_invoke(
+            http.clone(),
+            &req_body,
+            headers_ref_for_encoded(outbound_b2.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed after lease expiry"),
+    };
+
+    let stale = inbound_a.finish(200, br#"{"ok":true}"#.to_vec()).unwrap();
+    assert_eq!(stale.status, 409);
+    let verified_stale = outbound_a
+        .verify_response(
+            stale.status,
+            headers_ref_for_encoded(&stale.headers),
+            &stale.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+    assert_eq!(verified_stale.owner_leader_id, leader_b_id);
+
+    let signed_b = inbound_b.finish(200, br#"{"ok":true}"#.to_vec()).unwrap();
+    assert_eq!(signed_b.status, 200);
+    let verified_b = outbound_b2
+        .verify_response(
+            signed_b.status,
+            headers_ref_for_encoded(&signed_b.headers),
+            &signed_b.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+    assert_eq!(verified_b.owner_leader_id, leader_b_id);
+
+    now_ms.store(1_060, Ordering::SeqCst);
+    let outbound_a_retry = invoker_a
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+    let cached = match responder
+        .authenticate_invoke(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound_a_retry.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Return(resp) => resp,
+        _ => panic!("expected cached Return"),
+    };
+    let verified_cached = outbound_a_retry
+        .verify_response(
+            cached.status,
+            headers_ref_for_encoded(&cached.headers),
+            &cached.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+    assert_eq!(verified_cached.owner_leader_id, leader_b_id);
 }
 
 #[test]
@@ -472,6 +802,7 @@ fn engine_replay_conflict_is_rejected() {
         SignedHttpPolicyV1 {
             max_clock_skew_ms: 0,
             max_validity_ms: 10_000,
+            ..Default::default()
         },
         FixedClockV1 { now_ms: 1_500 },
     );

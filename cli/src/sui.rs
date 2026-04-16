@@ -177,6 +177,9 @@ pub(crate) async fn get_nexus_objects(
         Some(url) if url.as_str() == DEVNET_NEXUS_RPC_URL => {
             fetch_objects_from_url(DEVNET_OBJECTS_TOML).await
         }
+        Some(url) if url.as_str() == TESTNET_NEXUS_RPC_URL => {
+            fetch_objects_from_url(TESTNET_OBJECTS_TOML).await
+        }
         _ => Err(anyhow!(
             "Nexus objects are not configured for this network."
         )),
@@ -269,22 +272,17 @@ pub(crate) async fn get_nexus_client(
     let pk = get_signing_key(&conf).await?;
     let owner = pk.public_key().derive_address();
     let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
-    let nexus_objects = get_nexus_objects(&mut conf).await?;
-    let rpc_url = client.lock().await.uri().to_string();
+    let mut nexus_objects = get_nexus_objects(&mut conf).await?;
 
-    // Try to get the `SUI_GQL_URL` from the environment, otherwise use
-    // the configuration.
-    let Some(gql_url) = std::env::var("SUI_GQL_URL")
-        .ok()
-        .or_else(|| conf.sui.gql_url.as_ref().map(|u| u.to_string()))
-    else {
-        return Err(NexusCliError::Any(anyhow!(
-            "{message}\n\n{command}",
-            message =
-                "The Sui GraphQL URL is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf set --sui.gql-url <url>".to_string().bold(),
-        )));
-    };
+    nexus_objects
+        .resolve_workflow_original_pkg_id(&client)
+        .await
+        .map_err(|e| {
+            NexusCliError::Any(anyhow!(
+                "Failed to resolve workflow original package ID: {e}"
+            ))
+        })?;
+    let rpc_url = client.lock().await.uri().to_string();
 
     // Create Nexus client.
     let nexus_client = NexusClient::builder()
@@ -292,7 +290,6 @@ pub(crate) async fn get_nexus_client(
         .with_nexus_objects(nexus_objects.clone())
         .with_gas(vec![gas_coin], sui_gas_budget)
         .with_rpc_url(&rpc_url)
-        .with_gql_url(&gql_url)
         .build()
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -335,8 +332,8 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [pre_key_vault]
-                object_id = "0x9"
+                [leader_registry]
+                object_id = "0x10"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
@@ -404,12 +401,12 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            *objects.pre_key_vault.object_id(),
-            sui::types::Address::from_static("0x9")
+            *objects.leader_registry.object_id(),
+            sui::types::Address::from_static("0x10")
         );
-        assert_eq!(objects.pre_key_vault.version(), 1);
+        assert_eq!(objects.leader_registry.version(), 1);
         assert_eq!(
-            *objects.pre_key_vault.digest(),
+            *objects.leader_registry.digest(),
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
 

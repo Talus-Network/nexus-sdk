@@ -823,7 +823,7 @@ mod tests {
             ..Default::default()
         });
 
-        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         (rpc_url, nexus_client)
     }
@@ -1415,6 +1415,7 @@ mod tests {
                 task: sui::types::Address::generate(&mut rng),
                 generator: PolicySymbol::Uid(workflow_pkg),
             }),
+            distribution: None,
         }]);
 
         let err = extract_task_id(&response).expect_err("missing event");
@@ -1443,6 +1444,7 @@ mod tests {
             id: (sui::types::Digest::generate(&mut rng), 0),
             generics: vec![],
             data: scheduled.clone(),
+            distribution: None,
         }]);
         assert!(matches!(
             extract_occurrence_event(&response),
@@ -1456,6 +1458,7 @@ mod tests {
                 task: task_id,
                 generator: PolicySymbol::Uid(workflow_pkg),
             }),
+            distribution: None,
         }]);
         assert!(matches!(
             extract_occurrence_event(&direct),

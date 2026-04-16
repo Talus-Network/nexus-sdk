@@ -29,6 +29,26 @@ pub fn load_config_() -> anyhow::Result<Arc<ToolkitRuntimeConfig>> {
     ToolkitRuntimeConfig::from_env().map(Arc::new)
 }
 
+/// Build a placeholder URL for `--meta` output from a tool's [`NexusTool::path()`].
+///
+/// The URL is a `http://localhost`-based placeholder — the real URL is set
+/// during registration via `--url`. This function normalises the path so that
+/// a missing leading `/` does not corrupt the URL's authority component.
+///
+/// **This is an internal function used by [bootstrap!] macro and should not be
+/// used directly.**
+#[doc(hidden)]
+pub fn meta_placeholder_url_(path: &str) -> Url {
+    let base = if path.is_empty() {
+        "http://localhost/".to_string()
+    } else if path.starts_with('/') {
+        format!("http://localhost{path}")
+    } else {
+        format!("http://localhost/{path}")
+    };
+    Url::parse(&base).expect("placeholder URL must be valid")
+}
+
 fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (StatusCode, Vec<u8>) {
     match serde_json::to_vec(&value) {
         Ok(body) => (status, body),
@@ -56,7 +76,7 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
-/// - Applies replay protection via `(leader_id, nonce)` (retries are safe; conflicting replays are rejected).
+/// - Applies replay protection via `(tool_id, nonce)` (retries are safe; conflicting replays are rejected).
 /// - Signs the JSON response with the tool's Ed25519 signing key so the Leader can verify provenance.
 ///   This includes error responses after the request has been authenticated (e.g. `403`, `422`, `500`).
 ///
@@ -78,6 +98,16 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 ///     }
 ///   }
 /// }
+/// ```
+///
+/// ## `--meta` flag
+/// When the binary is invoked with `--meta`, the macro prints a JSON array of
+/// tool metadata (one entry per tool) to stdout and exits immediately — no HTTP
+/// server is started. This is used by CI pipelines to extract registration data
+/// from a Docker image without running the tool.
+///
+/// ```shell
+/// ./my-tool --meta   # prints JSON array and exits
 /// ```
 ///
 /// ## Request body limits
@@ -140,6 +170,28 @@ macro_rules! bootstrap {
     }};
     ($addr:expr, [$tool:ty $(, $next_tool:ty)* $(,)?]) => {{
         let _ = $crate::env_logger::try_init();
+
+        // Handle --meta: print tool metadata as a JSON array and exit
+        // without starting the HTTP server. Used by CI to extract
+        // registration data from a Docker image. Uses `return` to exit
+        // the enclosing function (typically `main`).
+        if ::std::env::args().any(|a| a == "--meta") {
+            let meta = $crate::serde_json::json!([
+                <$tool as $crate::NexusTool>::meta(
+                    $crate::runtime::meta_placeholder_url_(<$tool as $crate::NexusTool>::path())
+                )
+                $(
+                    , <$next_tool as $crate::NexusTool>::meta(
+                        $crate::runtime::meta_placeholder_url_(<$next_tool as $crate::NexusTool>::path())
+                    )
+                )*
+            ]);
+
+            println!("{}", $crate::serde_json::to_string_pretty(&meta)
+                .expect("meta serialization must not fail"));
+            return;
+        }
+
         use {
             ::std::sync::Arc,
             $crate::warp::{http::StatusCode, Filter},
@@ -677,7 +729,7 @@ mod tests {
         verify_signed_response(&resp1, &tool_id, req_hash, tool_pk);
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
-        // Exact retry returns cached bytes and does not re-run authorization or tool code.
+        // Exact retry returns a cached result and does not re-run authorization or tool code.
         let resp2 = warp::test::request()
             .method("POST")
             .path("/invoke")
@@ -690,15 +742,8 @@ mod tests {
             .await;
 
         assert_eq!(resp2.status(), StatusCode::FORBIDDEN);
+        verify_signed_response(&resp2, &tool_id, req_hash, tool_pk);
         assert_eq!(resp2.body(), resp1.body());
-        assert_eq!(
-            resp2.headers().get(HEADER_SIG_INPUT),
-            resp1.headers().get(HEADER_SIG_INPUT)
-        );
-        assert_eq!(
-            resp2.headers().get(HEADER_SIG),
-            resp1.headers().get(HEADER_SIG)
-        );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
         // Cleanup
@@ -778,18 +823,48 @@ mod tests {
             .await;
 
         assert_eq!(resp3.status(), StatusCode::FORBIDDEN);
+        verify_signed_response(&resp3, &tool_id, req_hash1, tool_pk);
         assert_eq!(resp3.body(), resp1.body());
-        assert_eq!(
-            resp3.headers().get(HEADER_SIG_INPUT),
-            resp1.headers().get(HEADER_SIG_INPUT)
-        );
-        assert_eq!(
-            resp3.headers().get(HEADER_SIG),
-            resp1.headers().get(HEADER_SIG)
-        );
         assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
 
         // Cleanup
         let _ = fs::remove_file(&path);
+    }
+
+    /// Verifies that an empty path produces `http://localhost/`.
+    /// Guards against the default `NexusTool::path()` returning `""` being
+    /// mishandled (e.g., producing `http://localhost` without trailing slash).
+    #[test]
+    fn meta_placeholder_url_empty_path() {
+        let url = super::meta_placeholder_url_("");
+        assert_eq!(url.as_str(), "http://localhost/");
+    }
+
+    /// Verifies that a path without a leading slash gets one inserted.
+    /// Guards against `format!("http://localhost{path}")` producing a URL
+    /// whose authority is `localhostpath` instead of `localhost`.
+    #[test]
+    fn meta_placeholder_url_no_leading_slash() {
+        let url = super::meta_placeholder_url_("path");
+        assert_eq!(url.host_str(), Some("localhost"));
+        assert_eq!(url.path(), "/path");
+    }
+
+    /// Verifies that a path with a leading slash is used as-is.
+    /// Guards against double-slash (`//path`) when the slash is already present.
+    #[test]
+    fn meta_placeholder_url_with_leading_slash() {
+        let url = super::meta_placeholder_url_("/foo/");
+        assert_eq!(url.host_str(), Some("localhost"));
+        assert_eq!(url.path(), "/foo/");
+    }
+
+    /// Verifies that a path with a leading slash and no trailing slash works.
+    /// Guards against off-by-one in the slash normalization logic.
+    #[test]
+    fn meta_placeholder_url_leading_slash_no_trailing() {
+        let url = super::meta_placeholder_url_("/foo");
+        assert_eq!(url.host_str(), Some("localhost"));
+        assert_eq!(url.path(), "/foo");
     }
 }

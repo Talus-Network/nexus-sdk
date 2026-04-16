@@ -81,14 +81,12 @@ enum HeterogeneousValue {
     AnotherValue(AnotherPlainValue),
 }
 
-// TODO: <https://github.com/Talus-Network/nexus-sdk/issues/318>
 #[tokio::test]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
     let test_utils::containers::SuiInstance {
         rpc_port,
         faucet_port,
-        pg: _pg,
         container: _container,
         ..
     } = test_utils::containers::setup_sui_instance().await;

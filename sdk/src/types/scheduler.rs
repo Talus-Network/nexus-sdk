@@ -6,7 +6,10 @@ use {
         TypeName,
     },
     crate::{
-        nexus::crawler::{Bag, Map, ObjectBag, TableVec},
+        nexus::{
+            crawler::{Bag, Map, ObjectBag, TableVec},
+            models::DagInputPort,
+        },
         sui,
         types::NexusData,
     },
@@ -19,20 +22,13 @@ pub struct DagExecutionConfig {
     pub dag: sui::types::Address,
     pub network: sui::types::Address,
     pub entry_group: SchedulerEntryGroup,
-    pub inputs: Map<TypeName, Map<InputPort, NexusData>>,
+    pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
     pub invoker: sui::types::Address,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub priority_fee_per_gas_unit: u64,
-}
-
-/// Representation of `nexus_workflow::dag::InputPort`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct InputPort {
-    pub name: String,
-    pub encrypted: bool,
 }
 
 /// Representation of `nexus_workflow::scheduler::Task`.
@@ -110,7 +106,7 @@ impl<'de> Deserialize<'de> for PolicySymbol {
             };
         }
 
-        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
+        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Deserialize)]
         struct Fields<T> {
             #[serde(rename = "pos0")]
@@ -178,7 +174,7 @@ impl Serialize for PolicySymbol {
             };
         }
 
-        // Human readable formats (GraphQL/JSON) use the { variant, fields: { pos0 } } shape.
+        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Serialize)]
         struct Fields<'a, T> {
             #[serde(rename = "pos0")]

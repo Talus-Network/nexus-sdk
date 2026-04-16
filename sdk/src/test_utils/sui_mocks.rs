@@ -38,7 +38,8 @@ pub fn mock_nexus_objects() -> NexusObjects {
         network_auth: mock_sui_object_ref(),
         default_tap: mock_sui_object_ref(),
         gas_service: mock_sui_object_ref(),
-        pre_key_vault: mock_sui_object_ref(),
+        leader_registry: mock_sui_object_ref(),
+        workflow_original_pkg_id: None,
     }
 }
 
@@ -79,6 +80,7 @@ pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::type
 pub mod grpc {
     use {
         super::*,
+        crate::events::NexusEventKind,
         mockall::mock,
         serde::Serialize,
         std::time::SystemTime,
@@ -252,9 +254,16 @@ pub mod grpc {
     }
 
     pub fn mock_server(mocks: ServerMocks) -> String {
-        let port = portpicker::pick_unused_port().expect("No ports free");
-        let addr = format!("127.0.0.1:{}", port);
-        let thread_addr = addr.clone();
+        // Bind a listener first so the returned URL is immediately connectable.
+        //
+        // This avoids flaky tests under parallel execution where `pick_unused_port` can race and
+        // where the server may not yet be bound by the time the client connects.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("local addr");
+        listener.set_nonblocking(true).expect("set nonblocking");
+        let listener =
+            tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
         let ledger_service = mocks.ledger_service_mock.map(LedgerServiceServer::new);
         let execution_service = mocks
@@ -271,7 +280,7 @@ pub mod grpc {
                 .add_optional_service(execution_service)
                 .add_optional_service(subscription_service)
                 .add_optional_service(state_service)
-                .serve(thread_addr.parse().unwrap())
+                .serve_with_incoming(incoming)
                 .await
                 .unwrap();
         });
@@ -279,6 +288,7 @@ pub mod grpc {
         format!("http://{}", addr)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn mock_execute_transaction_and_wait_for_checkpoint(
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
@@ -516,7 +526,6 @@ pub mod grpc {
     ) {
         state_service
             .expect_list_dynamic_fields()
-            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::ListDynamicFieldsResponse::default();
                 let mut dynamic_fields = Vec::new();
@@ -532,6 +541,103 @@ pub mod grpc {
 
                 response.set_dynamic_fields(dynamic_fields);
                 Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_events_get_checkpoint(
+        ledger_service: &mut MockLedgerService,
+        objects: NexusObjects,
+        nexus_events: Vec<NexusEventKind>,
+        cp: u64,
+    ) {
+        ledger_service
+            .expect_get_checkpoint()
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetCheckpointResponse::default();
+                let mut checkpoint = sui::grpc::Checkpoint::default();
+                let mut transactions = vec![];
+                for _ in 0..10 {
+                    let mut transaction = sui::grpc::ExecutedTransaction::default();
+                    transaction.set_digest(sui::types::Digest::ZERO);
+                    transactions.push(transaction);
+                }
+                checkpoint.set_transactions(transactions);
+                checkpoint.set_sequence_number(cp);
+                response.set_checkpoint(checkpoint);
+                Ok(tonic::Response::new(response))
+            });
+
+        ledger_service
+            .expect_batch_get_transactions()
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+                let mut result = sui::grpc::GetTransactionResult::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(sui::types::Digest::ZERO);
+                transaction.set_checkpoint(1);
+                let mut events = vec![];
+
+                #[derive(Serialize)]
+                struct Wrapper<T> {
+                    event: T,
+                }
+
+                for event in nexus_events.clone() {
+                    let t = format!(
+                        "{}::event::EventWrapper<{}::dag::{}>",
+                        objects.primitives_pkg_id,
+                        objects.workflow_pkg_id,
+                        event.name()
+                    );
+
+                    let mut grpc_event = sui::grpc::Event::default();
+                    grpc_event.set_package_id(objects.workflow_pkg_id);
+                    grpc_event.set_module("dag".to_string());
+                    grpc_event.set_sender(sui::types::Address::ZERO);
+                    grpc_event.set_event_type(t);
+                    grpc_event.set_contents(match event {
+                        NexusEventKind::WalkAdvanced(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::EndStateReached(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::ExecutionFinished(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::DAGCreated(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        _ => panic!("Unsupported event type for BCS serialization"),
+                    });
+                    events.push(grpc_event);
+                }
+                let mut tx_events = sui::grpc::TransactionEvents::default();
+                tx_events.set_events(events);
+                transaction.set_events(tx_events);
+                result.set_transaction(transaction);
+                response.set_transactions(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_events_stream(sub_service: &mut MockSubscriptionService, cp: u64) {
+        sub_service
+            .expect_subscribe_checkpoints()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
+                let mut checkpoint = sui::grpc::Checkpoint::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(sui::types::Digest::ZERO);
+                checkpoint.set_transactions(vec![transaction]);
+                checkpoint.set_sequence_number(cp);
+                response.set_checkpoint(checkpoint);
+
+                let output = Ok(response);
+                let stream = futures::stream::repeat(output.clone());
+
+                Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
     }
 
@@ -555,81 +661,5 @@ pub mod grpc {
         };
 
         prost_types::Value { kind: Some(kind) }
-    }
-}
-
-/// Mocking GQL endpoints for deeper testing.
-pub mod gql {
-    use {
-        crate::{events::NexusEventKind, sui},
-        mockito::{Mock, ServerGuard},
-        serde_json::json,
-    };
-
-    pub fn mock_event_query(
-        server: &mut ServerGuard,
-        primitives_pkg_id: sui::types::Address,
-        events: Vec<NexusEventKind>,
-        digest: Option<sui::types::Digest>,
-        end_cursor: Option<&str>,
-    ) -> Mock {
-        let mut rng = rand::thread_rng();
-
-        let mock_events = events
-            .iter()
-            .enumerate()
-            .map(|(id, event)| {
-                json!({
-                    "sequenceNumber": id,
-                    "transaction": {
-                        "digest": digest.unwrap_or_else(|| sui::types::Digest::generate(&mut rng)),
-                    },
-                    "transactionModule": {
-                        "package": {
-                            "address": primitives_pkg_id,
-                        }
-                    },
-                    "contents": {
-                        "json": serde_json::to_value(event).unwrap(),
-                        "type": {
-                            "repr": sui::types::StructTag::new(
-                                primitives_pkg_id,
-                                sui::types::Identifier::from_static("event"),
-                                sui::types::Identifier::from_static("EventWrapper"),
-                                vec![
-                                    sui::types::TypeTag::Struct(
-                                        Box::new(sui::types::StructTag::new(
-                                            primitives_pkg_id,
-                                            sui::types::Identifier::from_static("test"),
-                                            event.name().parse().unwrap(),
-                                            vec![],
-                                        )),
-                                    ),
-                                ],
-                            )
-                        }
-                    }
-                })
-            })
-            .collect::<Vec<serde_json::Value>>();
-
-        server
-            .mock("POST", "/graphql")
-            .with_status(200)
-            .with_body(
-                json!({
-                    "data": {
-                        "events": {
-                            "nodes": mock_events,
-                            "pageInfo": {
-                                "endCursor": end_cursor.unwrap_or("12345"),
-                            }
-                        },
-                    },
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create()
     }
 }

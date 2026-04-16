@@ -1,16 +1,14 @@
 //! Module that defines serde serialization and deserialization for [`NexusData`]
 //!
 //! We represent nexus data onchain as a struct of
-//! `{ storage: u8[], one: u8[], many: u8[][], encryption_mode: u8 }`.
+//! `{ storage: u8[], one: u8[], many: u8[][] }`.
 //!
 //! However, storage has a special value [NEXUS_DATA_INLINE_STORAGE_TAG].
 //! Therefore we represent [NexusData] as an enum within the codebase.
 //!
 //! `one` and `many` are mutually exclusive, meaning that if one is
 //! present, the other cannot be. The `one` field is used for single values,
-//! while the `many` field is used for arrays of values. The `encryption_mode`
-//! field indicates whether (and how) the data is encrypted and should be
-//! decrypted before use.
+//! while the `many` field is used for arrays of values.
 
 /// This is a hard-coded identifier for inline data in nexus.
 /// Inline means you can parse it as is, without any additional processing.
@@ -30,7 +28,6 @@ use {
         serialize_encoded_bytes,
         serialize_encoded_bytes_vec,
         DataStorage,
-        EncryptionMode,
         InlineStorage,
         NexusData,
         WalrusStorage,
@@ -57,20 +54,6 @@ struct NexusDataAsStruct {
         serialize_with = "serialize_encoded_bytes_vec"
     )]
     many: Vec<Vec<u8>>,
-    encryption_mode: u8,
-}
-
-impl NexusDataAsStruct {
-    fn mode(&self) -> Result<EncryptionMode, serde::de::value::Error> {
-        match self.encryption_mode {
-            0 => Ok(EncryptionMode::Plain),
-            1 => Ok(EncryptionMode::Standard),
-            2 => Ok(EncryptionMode::LimitedPersistent),
-            other => Err(serde::de::Error::custom(format!(
-                "Invalid encryption_mode value: {other}"
-            ))),
-        }
-    }
 }
 
 /// Check if a string represents a large number (u128/u256 range).
@@ -100,7 +83,7 @@ impl<'de> Deserialize<'de> for NexusData {
         D: Deserializer<'de>,
     {
         let data: NexusDataAsStruct = Deserialize::deserialize(deserializer)?;
-        let encryption_mode = data.mode().map_err(serde::de::Error::custom)?;
+
         let NexusDataAsStruct {
             storage, one, many, ..
         } = data;
@@ -114,7 +97,9 @@ impl<'de> Deserialize<'de> for NexusData {
             // We also trim the value to remove any leading or trailing whitespace.
             let adjusted_value = wrap_large_numbers_as_string(&str);
 
-            serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?
+            serde_json::from_str(&adjusted_value).map_err(|e| {
+                serde::de::Error::custom(format!("NexusData contains invalid JSON: {e}"))
+            })?
         } else {
             // If we're dealing with multiple values, we assume that
             // the data is an array of JSON strings that can be parsed.
@@ -127,8 +112,9 @@ impl<'de> Deserialize<'de> for NexusData {
                 // We also trim the value to remove any leading or trailing whitespace.
                 let adjusted_value = wrap_large_numbers_as_string(&str);
 
-                values
-                    .push(serde_json::from_str(&adjusted_value).map_err(serde::de::Error::custom)?);
+                values.push(serde_json::from_str(&adjusted_value).map_err(|e| {
+                    serde::de::Error::custom(format!("NexusData contains invalid JSON: {e}"))
+                })?);
             }
 
             serde_json::Value::Array(values)
@@ -136,16 +122,10 @@ impl<'de> Deserialize<'de> for NexusData {
 
         match storage.as_ref() {
             NEXUS_DATA_INLINE_STORAGE_TAG => Ok(NexusData {
-                data: DataStorage::Inline(InlineStorage {
-                    data: value,
-                    encryption_mode,
-                }),
+                data: DataStorage::Inline(InlineStorage { data: value }),
             }),
             NEXUS_DATA_WALRUS_STORAGE_TAG => Ok(NexusData {
-                data: DataStorage::Walrus(WalrusStorage {
-                    data: value,
-                    encryption_mode,
-                }),
+                data: DataStorage::Walrus(WalrusStorage { data: value }),
             }),
             // Add more...
             _ => unimplemented!("Unknown storage type"),
@@ -163,8 +143,6 @@ impl Serialize for NexusData {
             DataStorage::Walrus(storage) => &storage.data,
             // Add more...
         };
-
-        let encryption_mode = self.data.encryption_mode() as u8;
 
         let storage = match &self.data {
             DataStorage::Inline { .. } => NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
@@ -197,13 +175,7 @@ impl Serialize for NexusData {
             }
         };
 
-        NexusDataAsStruct {
-            storage,
-            one,
-            many,
-            encryption_mode,
-        }
-        .serialize(serializer)
+        NexusDataAsStruct { storage, one, many }.serialize(serializer)
     }
 }
 
@@ -220,7 +192,6 @@ mod tests {
                 data: serde_json::json!({
                     "key": "value"
                 }),
-                encryption_mode: EncryptionMode::Plain,
             }),
         };
 
@@ -241,7 +212,7 @@ mod tests {
         // {"key":"value"} is "eyJrZXkiOiJ2YWx1ZSJ9"
         assert_eq!(
             serialized,
-            r#"{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[],"encryption_mode":0}"#
+            r#"{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[]}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -255,13 +226,12 @@ mod tests {
                     { "key": "value" },
                     { "key": "value" }
                 ]),
-                encryption_mode: EncryptionMode::Standard,
             }),
         };
 
         assert_eq!(
             dag_data,
-            NexusData::new_inline_encrypted(serde_json::json!([
+            NexusData::new_inline(serde_json::json!([
                 { "key": "value" },
                 { "key": "value" }
             ]))
@@ -271,7 +241,7 @@ mod tests {
 
         assert_eq!(
             serialized,
-            r#"{"storage":"aW5saW5l","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"],"encryption_mode":1}"#
+            r#"{"storage":"aW5saW5l","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"]}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -287,7 +257,6 @@ mod tests {
                 data: serde_json::json!({
                     "key": "value"
                 }),
-                encryption_mode: EncryptionMode::Plain,
             }),
         };
 
@@ -305,7 +274,7 @@ mod tests {
         // {"key":"value"} is [123,34,107,101,121,34,58,34,118,97,108,117,101,34,125]
         assert_eq!(
             serialized,
-            r#"{"storage":"d2FscnVz","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[],"encryption_mode":0}"#
+            r#"{"storage":"d2FscnVz","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[]}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();
@@ -319,13 +288,12 @@ mod tests {
                     { "key": "value" },
                     { "key": "value" }
                 ]),
-                encryption_mode: EncryptionMode::Standard,
             }),
         };
 
         assert_eq!(
             dag_data,
-            NexusData::new_walrus_encrypted(serde_json::json!([
+            NexusData::new_walrus(serde_json::json!([
                 { "key": "value" },
                 { "key": "value" }
             ]))
@@ -335,7 +303,7 @@ mod tests {
 
         assert_eq!(
             serialized,
-            r#"{"storage":"d2FscnVz","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"],"encryption_mode":1}"#
+            r#"{"storage":"d2FscnVz","one":"","many":["eyJrZXkiOiJ2YWx1ZSJ9","eyJrZXkiOiJ2YWx1ZSJ9"]}"#
         );
 
         let deserialized = serde_json::from_str(&serialized).unwrap();

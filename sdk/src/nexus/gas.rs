@@ -2,14 +2,26 @@
 //!
 //! - [`GasActions::add_budget`] to add gas budget for Nexus workflows.
 
-use crate::{
-    nexus::{client::NexusClient, error::NexusError},
-    sui,
-    transactions::gas,
+use {
+    crate::{
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            models::{GasFunds, InvokerGas, Scope},
+        },
+        sui,
+        transactions::gas,
+        types::derive_invoker_gas_id,
+    },
+    std::collections::HashMap,
 };
 
 pub struct AddBudgetResult {
     pub tx_digest: sui::types::Digest,
+}
+
+pub struct BalanceResult {
+    pub funds: HashMap<Scope, GasFunds>,
 }
 
 pub struct BuyExpiryTicketResult {
@@ -100,6 +112,33 @@ impl GasActions {
         Ok(AddBudgetResult {
             tx_digest: response.digest,
         })
+    }
+
+    /// Check the current invoker's budget balance.
+    pub async fn balance(&self) -> Result<BalanceResult, NexusError> {
+        // Derive the `InvokerGas` object ID.
+        let gas_service_object_id = *self.client.nexus_objects.gas_service.object_id();
+        let invoker_address = self.client.signer.get_active_address();
+        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)
+            .map_err(NexusError::Parsing)?;
+
+        let crawler = self.client.crawler();
+        let invoker_gas = crawler
+            .get_object::<InvokerGas>(invoker_gas_id)
+            .await
+            .map_err(|e| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "InvokerGas doesn't yet exist, consider uploading some budget first: {e}"
+                ))
+            })?
+            .data;
+
+        let funds = crawler
+            .get_dynamic_fields(&invoker_gas.vault)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        Ok(BalanceResult { funds })
     }
 
     /// Enable the expiry gas extension for the specified tool.
@@ -504,6 +543,19 @@ impl GasActions {
 
 #[cfg(test)]
 mod tests {
+    use {
+        crate::{
+            fqn,
+            nexus::{
+                crawler::DynamicMap,
+                models::{GasFunds, InvokerGas, Scope},
+            },
+            sui,
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+        serde_json::json,
+    };
+
     #[tokio::test]
     async fn test_gas_actions_enable_expiry_extension() {
         let mut rng = rand::thread_rng();
@@ -564,7 +616,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -635,7 +687,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -705,7 +757,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -776,7 +828,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -847,7 +899,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -857,11 +909,6 @@ mod tests {
 
         assert_eq!(result.tx_digest, tx_digest);
     }
-    use crate::{
-        fqn,
-        sui,
-        test_utils::{nexus_mocks, sui_mocks},
-    };
 
     #[tokio::test]
     async fn test_gas_actions_add_budget() {
@@ -910,7 +957,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -982,7 +1029,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url, None).await;
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .gas()
@@ -991,5 +1038,75 @@ mod tests {
             .expect("Failed to buy expiry ticket");
 
         assert_eq!(result.tx_digest, tx_digest);
+    }
+
+    #[tokio::test]
+    async fn test_gas_actions_balance() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let invoker_gas_ref = sui_mocks::mock_sui_object_ref();
+        let invoker_gas_vault_id = sui_mocks::mock_sui_address();
+        let invoker_address = sui_mocks::mock_sui_address();
+        let gas_funds_object_ref = sui_mocks::mock_sui_object_ref();
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        // Mock InvokerGas object response
+        let invoker_gas = InvokerGas {
+            vault: DynamicMap::new(invoker_gas_vault_id, 1),
+        };
+
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            invoker_gas_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!(invoker_gas),
+        );
+
+        // InvokerGas.vault
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(
+                Scope::InvokerAddress(invoker_address),
+                *gas_funds_object_ref.object_id(),
+            )],
+        );
+
+        // GasFunds
+        let gas_funds = GasFunds {
+            bal: 100_000,
+            locked: 10_000,
+        };
+
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                gas_funds_object_ref.clone(),
+                sui::types::Owner::Shared(0),
+                json!({ "value": gas_funds }),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .balance()
+            .await
+            .expect("Failed to fetch gas balance");
+
+        assert_eq!(result.funds.len(), 1);
+        let (scope, funds) = result.funds.iter().next().unwrap();
+        assert_eq!(funds.bal, 100_000);
+        assert_eq!(funds.locked, 10_000);
+        assert_eq!(scope, &Scope::InvokerAddress(invoker_address));
     }
 }

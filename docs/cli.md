@@ -159,11 +159,24 @@ If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the C
 
 ---
 
-**`nexus tool auth export-allowed-leaders --leader <address>... --out <path>`**
+**`nexus tool auth export-allowed-leaders (--all | --leader <address>...) --out <path>`**
 
 Exports a local allowlist file (JSON) of permitted Leader nodes and their active signing keys.
 
+Use `--all` to export entries for all leaders registered in `network_auth` (recommended), or pass one or more `--leader` capability IDs.
+
 This file is consumed by the Rust toolkit runtime (`allowed_leaders_path`) so the Tool can verify signed requests without performing Sui RPC calls at runtime.
+
+---
+
+**`nexus tool auth sync-allowed-leaders --out <path> [--interval <duration>] [--once]`**
+
+Continuously syncs an `allowed_leaders.json` file from on-chain `network_auth` (polling).
+
+- `--interval` accepts human durations like `500ms`, `5s`, `2m`, `1h` (default: `30s`).
+- Use `--once` to sync a single time and exit.
+
+This is useful for running as a sidecar next to a Tool so leader allowlists stay up-to-date without restarting the Tool.
 
 ---
 
@@ -174,6 +187,16 @@ List all Nexus Tools available in the Tool Registry. This reads the dynamic obje
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
+
+---
+
+**`nexus tool update-timeout --tool-fqn <fqn> --timeout <duration> [--owner-cap <object_id>]`**
+
+Updates the timeout duration for the specified Tool. This timeout tells the Nexus execution engine how long to wait for a response from the Tool before considering the invocation failed.
+
+- `--tool-fqn` specifies the fully qualified name of the tool.
+- `--timeout` sets the new timeout duration.
+- `--owner-cap` optionally specifies the owner capability ID for the tool. This must be provided unless the owner cap is saved in the CLI configuration file.
 
 ---
 
@@ -223,8 +246,6 @@ The input `<data>` is a JSON string with the following structure:
 - Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
-Data for encrypted ports are automatically encrypted before being sent on-chain.
-
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
 
 The `--remote` argument accepts a list of `{vertex}.{port}` strings that refer to entry ports and their vertices. The data associated with these ports is stored remotely based on the configured preferred remote storage provider. Note that it is required that the user configure these remote storage providers via the `$ nexus conf set --help` command.
@@ -242,6 +263,12 @@ This command requires that a wallet is connected to the CLI...
 **`nexus dag inspect-execution --dag-execution-id <id> --execution-digest <digest>`**
 
 Inspects a DAG execution process based on the provided `DAGExecution` object ID and the transaction digest from submitting the execution transaction.
+
+---
+
+**`nexus dag execution-cost --dag-execution-id <id>`**
+
+Checks the cost of a DAG execution based on the provided `DAGExecution` object ID. This cost is broken down per transaction digest and includes the execution cost and the priority fee.
 
 ---
 
@@ -276,8 +303,6 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
-
-Data for encrypted entry ports is automatically encrypted when a session is available.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
@@ -339,50 +364,6 @@ Removes the periodic schedule while leaving any existing sporadic occurrences un
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
 {% endhint %}
 
-### `nexus crypto`
-
-Set of commands for managing the CLI’s encrypted secrets (master key, passphrase, identity key) and establishing secure sessions that power DAG data encryption.
-
----
-
-**`nexus crypto auth [--sui-gas-coin <object_id>] [--sui-gas-budget <mist>]`**
-
-Runs the two-step handshake with the Nexus network to claim a pre-key, perform X3DH with your local identity key, and store a fresh Double Ratchet session on disk. The claimed pre-key bundle is what enables the CLI to complete a Signal-style secure session with the network: X3DH bootstraps shared secrets, and the Double Ratchet derived from that bundle encrypts every DAG payload going forward. The command returns both claim/associate transaction digests and prints the initial message in JSON format, enabling you to audit the handshake.
-
-Before sending the associate transaction, the CLI automatically generates an identity key if one is missing and persists the session in `~/.nexus/crypto.toml`. All subsequent `nexus dag` commands load that session to encrypt entry-port payloads or decrypt remote results, so run `auth` whenever you rotate keys or see “No active sessions found.”
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI and spends gas for **two** programmable transactions. Use `--sui-gas-coin` / `--sui-gas-budget` if you need explicit control.
-{% endhint %}
-
----
-
-**`nexus crypto generate-identity-key`**
-
-Creates a brand-new long-term identity key and stores it (encrypted) inside `~/.nexus/crypto.toml`. Because peers can no longer trust sessions tied to the previous identity, the CLI makes it clear that all stored sessions become invalid. Run `nexus crypto auth` immediately after to populate a replacement session.
-
----
-
-**`nexus crypto init-key [--force]`**
-
-Generates a random 32‑byte master key with [`OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html) and writes it to the OS keyring under the `nexus-cli-store/master-key` entry. The master key controls access to every encrypted field (`Secret<T>`) in the CLI configuration. Rotating it without also wiping the encrypted data would leave the ciphertext inaccessible, so this command automatically truncates the cryptographic configuration after a successful write.
-
-Use `--force` to overwrite an existing raw key or stored passphrase; doing so deletes all saved sessions and identity material because it can no longer be decrypted.
-
----
-
-**`nexus crypto set-passphrase [--stdin] [--force]`**
-
-Stores a user-provided passphrase in the OS keyring (`nexus-cli-store/passphrase`) and derives the same 32‑byte master key via Argon2id whenever secrets need to be decrypted. By default the command prompts interactively; `--stdin` allows piping from scripts or CI.
-
-Like `init-key`, it refuses to overwrite an existing persistent key unless `--force`. Empty or whitespace-only passphrases are rejected to avoid unusable configs.
-
----
-
-**`nexus crypto key-status`**
-
-Reports where the current master key will be loaded from, following the same priority order as the runtime resolver: `NEXUS_CLI_STORE_PASSPHRASE` environment variable, keyring passphrase entry, or raw key entry. If a raw key is in use the CLI prints the first 8 hex characters so you can distinguish multiple installations; otherwise it notes the source or that no persistent key exists yet.
-
 ---
 
 ### `nexus gas`
@@ -394,6 +375,16 @@ Set of commands to manage Nexus gas budgets and tickets.
 **`nexus gas add-budget --coin <object_id>`**
 
 Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus gas balance`**
+
+Check the balance of the invoker's gas funds. This command reads all the funds that the invoker has uploaded as gas budget and prints them per usage scope.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
