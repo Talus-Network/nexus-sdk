@@ -52,15 +52,19 @@ nexus --version
 
 {% tabs %}
 {% tab title="Testnet" %}
+
 ```bash
 wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.4/objects.testnet.toml
 ```
+
 {% endtab %}
 
 {% tab title="Mainnet" %}
+
 ```bash
 wget -O ~/.nexus/objects.mainnet.toml https://storage.googleapis.com/production-talus-sui-objects/v0.8.4/objects.mainnet.toml
 ```
+
 {% endtab %}
 {% endtabs %}
 
@@ -75,6 +79,7 @@ nexus conf set \
   --sui.rpc-url https://fullnode.testnet.sui.io \
   --nexus.objects ~/.nexus/objects.testnet.toml
 ```
+
 {% endtab %}
 
 {% tab title="Mainnet" %}
@@ -85,6 +90,7 @@ nexus conf set \
   --sui.rpc-url https://fullnode.mainnet.sui.io \
   --nexus.objects ~/.nexus/objects.mainnet.toml
 ```
+
 {% endtab %}
 {% endtabs %}
 
@@ -103,17 +109,21 @@ sui client --yes
 
 {% tabs %}
 {% tab title="Testnet" %}
+
 ```bash
 sui client new-env --alias testnet --rpc https://fullnode.testnet.sui.io
 sui client switch --env testnet
 ```
+
 {% endtab %}
 
 {% tab title="Mainnet" %}
+
 ```bash
 sui client new-env --alias mainnet --rpc https://fullnode.mainnet.sui.io
 sui client switch --env mainnet
 ```
+
 {% endtab %}
 {% endtabs %}
 
