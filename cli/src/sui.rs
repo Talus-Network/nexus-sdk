@@ -180,6 +180,9 @@ pub(crate) async fn get_nexus_objects(
         Some(url) if url.as_str() == TESTNET_NEXUS_RPC_URL => {
             fetch_objects_from_url(TESTNET_OBJECTS_TOML).await
         }
+        Some(url) if url.as_str() == MAINNET_NEXUS_RPC_URL => {
+            fetch_objects_from_url(MAINNET_OBJECTS_TOML).await
+        }
         _ => Err(anyhow!(
             "Nexus objects are not configured for this network."
         )),

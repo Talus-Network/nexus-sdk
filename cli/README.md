@@ -36,7 +36,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v0.8.4 \
+  --tag v1.0.0-testnet.1 \
   --locked
 ```
 

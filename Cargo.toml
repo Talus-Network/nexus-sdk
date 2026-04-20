@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "0.8.4"
+version = "1.0.0"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
