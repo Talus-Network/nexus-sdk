@@ -1167,6 +1167,13 @@ impl Leader {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("register"),
     };
+    /// Set a leader's status.
+    ///
+    /// `nexus_workflow::leader::set_status`
+    pub const SET_STATUS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("set_status"),
+    };
     /// Stake SUI into a leader's pool.
     ///
     /// `nexus_workflow::leader::stake`
@@ -1174,12 +1181,26 @@ impl Leader {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("stake"),
     };
-    /// Update or register a leader node.
+    /// Create `LeaderStatus::ACTIVE`.
     ///
-    /// `nexus_workflow::leader::upsert_self`
-    pub const UPSERT_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::leader::status_active`
+    pub const STATUS_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("upsert_self"),
+        name: sui::types::Identifier::from_static("status_active"),
+    };
+    /// Create `LeaderStatus::SLASHED`.
+    ///
+    /// `nexus_workflow::leader::status_slashed`
+    pub const STATUS_SLASHED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("status_slashed"),
+    };
+    /// Create `LeaderStatus::SUSPENDED`.
+    ///
+    /// `nexus_workflow::leader::status_suspended`
+    pub const STATUS_SUSPENDED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("status_suspended"),
     };
 }
 
