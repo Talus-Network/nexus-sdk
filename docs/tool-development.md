@@ -16,6 +16,10 @@ These guidelines are not meant to be technical specifications but rather a set o
   - ✅: `err`, `err_http`
   - ❌: `error`, `failure`, `http_exception`
 
+### Erroneous Output Variants
+
+While not strictly required, it's a best practice to create a separate output variant for errors. Any output variant with the `err` prefix is treated as erroneous and handled differently by Nexus. Specifically, all ports in an error variant are automatically passed on-chain, regardless of whether edges or outputs are defined in the DAG.
+
 ## Interface Design
 
 ### ... should be as generic as possible
