@@ -48,6 +48,7 @@ num-format = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
+prettytable = "0.10"
 prometheus = "0.14"
 prost-types = "0.14.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }

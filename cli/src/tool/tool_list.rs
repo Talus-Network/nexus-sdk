@@ -1,9 +1,7 @@
 use {
-    crate::{command_title, display::json_output, item, loading, prelude::*, sui::*},
-    nexus_sdk::{
-        nexus::crawler::DynamicMap,
-        types::{Tool, ToolRef},
-    },
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    nexus_sdk::{nexus::crawler::DynamicMap, types::Tool},
+    prettytable::{row, Table},
 };
 
 /// List tools available in the tool registry.
@@ -66,39 +64,40 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     tools_handle.success();
 
+    notify_success!("Successfully fetched {} tools", tools.len());
+
     let mut tools_json = Vec::new();
+
+    let mut table = Table::new();
+
+    table.add_row(row![
+        "FQN",
+        "Reference",
+        "Timeout",
+        "Registered At",
+        "Unregistered At"
+    ]);
 
     for tool in tools {
         let tool = tool.data;
 
-        let tool_type = if matches!(tool.reference, ToolRef::Sui { .. }) {
-            "OnChain"
-        } else {
-            "OffChain"
-        };
-
-        let unregistered = match tool.unregistered_at {
-            Some(unregistered_at) => format!(
-                "(Unregistered at '{}') ",
-                unregistered_at.timestamp_millis()
-            ),
-            None => "".to_string(),
-        };
-
         tools_json.push(json!(tool));
 
-        item!(
-            "{unregistered}{tool_type} Tool '{fqn}' at '{reference}' registered '{registered_at}' - {description} {timeout}",
-            unregistered = unregistered.truecolor(100, 100, 100),
-            tool_type = tool_type.truecolor(100, 100, 100),
-            fqn = tool.fqn.to_string().truecolor(100, 100, 100),
-            reference = tool.reference.to_string().truecolor(100, 100, 100),
-            registered_at = tool.registered_at.to_string().truecolor(100, 100, 100),
-            description = tool.description.truecolor(100, 100, 100),
-            timeout = timeouts
-                .get(&tool.fqn)
-                .unwrap_or(&"N/A".to_string())
-        );
+        table.add_row(row![
+            tool.fqn.to_string(),
+            tool.reference.to_string(),
+            format!(
+                "{} ms",
+                timeouts.get(&tool.fqn).unwrap_or(&"N/A".to_string())
+            ),
+            tool.registered_at.to_string(),
+            tool.unregistered_at
+                .map_or("N/A".to_string(), |t| t.to_string())
+        ]);
+    }
+
+    if !JSON_MODE.load(Ordering::Relaxed) {
+        table.printstd();
     }
 
     json_output(&tools_json)?;
