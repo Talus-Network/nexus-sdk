@@ -182,7 +182,7 @@ We can no longer assign outputs to be on the math tools because they now have ou
   "outputs": [
     {
       "vertex": "chat_completion",
-      "output_variant": "ok",
+      "output_variant": "text",
       "output_port": "completion"
     }
   ]
@@ -556,7 +556,7 @@ Here's the complete DAG definition that combines all the components we've discus
   "outputs": [
     {
       "vertex": "chat_completion",
-      "output_variant": "ok",
+      "output_variant": "text",
       "output_port": "completion"
     }
   ]
