@@ -1,0 +1,103 @@
+name: DSL (Rust + TypeScript)
+
+# CI for the DAG DSL work: nexus-dag-dsl + nexus-dsl-codegen Rust crates
+# and the @nexus/dag-dsl TypeScript package. Runs on any PR that touches
+# those paths, and on main.
+#
+# The cross-language round-trip test lives in the TS side
+# (ts-dsl/tests/roundtrip.test.ts); it parses every committed DAG JSON
+# fixture from sdk/src/dag/_dags/ and asserts structural equality after
+# serialize → deserialize. That test is the anchor of the one-source-of-
+# truth contract between Rust and TS (see plan's D11/D16).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "dag-dsl/**"
+      - "dsl-codegen/**"
+      - "ts-dsl/**"
+      - "sdk/src/types/json_dag.rs"
+      - "sdk/src/dag/_dags/**"
+      - ".github/workflows/dsl-ci.yml"
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust crates (dag-dsl, dsl-codegen)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read nightly toolchain
+        id: nightly
+        run: echo "VERSION=$(cat .nightly-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install nightly toolchain (for rustfmt)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.nightly.outputs.VERSION }}
+          components: rustfmt
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+
+      - name: just dag-dsl check
+        run: just dag-dsl check
+      - name: just dag-dsl clippy
+        run: just dag-dsl clippy
+      - name: just dag-dsl test
+        run: just dag-dsl test
+      - name: just dag-dsl fmt-check
+        run: just dag-dsl fmt-check
+
+      - name: just dsl-codegen check
+        run: just dsl-codegen check
+      - name: just dsl-codegen clippy
+        run: just dsl-codegen clippy
+      - name: just dsl-codegen test
+        run: just dsl-codegen test
+      - name: just dsl-codegen fmt-check
+        run: just dsl-codegen fmt-check
+
+  typescript:
+    name: TypeScript (ts-dsl)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts-dsl
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ts-dsl/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test (includes cross-language fixture round-trip)
+        run: npm test

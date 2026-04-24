@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/compile_fail/scope_consume_mismatched_payload.rs:68:29
+   |
+68 |         scope.consume(item, c.inp.name);
+   |               -------       ^^^^^^^^^^ expected `InPort<i64>`, found `InPort<String>`
+   |               |
+   |               arguments to this method are incorrect
+   |
+   = note: expected struct `InPort<i64>`
+              found struct `InPort<String>`
+note: method defined here
+  --> src/typed.rs
+   |
+   |     pub fn consume<T>(&mut self, item: ItemPort<T>, to: InPort<T>) -> &mut Self {
+   |            ^^^^^^^
