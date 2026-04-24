@@ -5468,6 +5468,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-dsl-codegen"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "clap",
+ "nexus-sdk",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "nexus-sdk"
 version = "1.0.0"
 dependencies = [

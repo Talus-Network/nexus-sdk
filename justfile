@@ -17,6 +17,9 @@ mod sdk 'sdk/.just'
 # Commands concerning the Nexus DAG DSL
 mod dag-dsl 'dag-dsl/.just'
 
+# Commands concerning the Nexus DSL codegen CLI
+mod dsl-codegen 'dsl-codegen/.just'
+
 # Pre-commit hooks
 mod pre-commit '.pre-commit/.just'
 

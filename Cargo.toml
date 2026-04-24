@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["toolkit-rust", "cli", "sdk", "dag-dsl"]
+members = ["toolkit-rust", "cli", "sdk", "dag-dsl", "dsl-codegen"]
 
 [workspace.package]
 edition = "2021"
@@ -80,6 +80,7 @@ zeroize = "1.7"
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
 nexus-dag-dsl = { path = "dag-dsl" }
+nexus-dsl-codegen = { path = "dsl-codegen" }
 
 [profile.release]
 # debug = 1 means line tables only, which is minimum needed for good stack traces

@@ -1,0 +1,29 @@
+[package]
+name = "nexus-dsl-codegen"
+description = "Codegen CLI that emits Rust and TypeScript DSL tool descriptors from tool-meta.json."
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "nexus-dsl-codegen"
+path = "src/main.rs"
+
+[dependencies]
+# See dag-dsl/Cargo.toml for the `nexus` feature rationale.
+nexus-sdk = { workspace = true, features = ["tool_fqn", "types", "nexus"] }
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+tempfile.workspace = true
