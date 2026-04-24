@@ -50,6 +50,7 @@
 
 mod builder;
 mod error;
+mod scoped;
 mod typed;
 
 // Public re-exports from the SDK so callers don't need to depend on
@@ -75,6 +76,7 @@ pub use {
         },
         ToolFqn,
     },
+    scoped::{DoWhileScope, ForEachScope, ItemHandle, StateHandle},
     typed::{
         Err,
         InPort,

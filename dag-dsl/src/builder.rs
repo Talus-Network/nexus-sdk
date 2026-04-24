@@ -143,12 +143,35 @@ pub struct DagBuilder {
     outputs: Vec<FromPort>,
     // Used for fast duplicate-vertex detection during construction.
     vertex_names: HashSet<String>,
+    // Monotonic counter used by the scoped layer to name anonymous scopes
+    // (`foreach_N`, `dowhile_N`). Crate-private accessor below.
+    scope_counter: u64,
 }
 
 impl DagBuilder {
     /// Create an empty builder.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Allocate the next anonymous scope index — used by the scoped layer to
+    /// name auto-generated loop scopes (`foreach_N`, `dowhile_N`). Returned
+    /// indices are monotonic per-builder.
+    pub(crate) fn next_scope_index(&mut self) -> u64 {
+        let i = self.scope_counter;
+        self.scope_counter += 1;
+        i
+    }
+
+    /// Accessor for the accumulated vertices (useful for tests and
+    /// inspection before [`DagBuilder::build`]).
+    pub fn vertices(&self) -> &[Vertex] {
+        &self.vertices
+    }
+
+    /// Accessor for the accumulated edges.
+    pub fn edges(&self) -> &[Edge] {
+        &self.edges
     }
 
     /// Add an off-chain tool vertex with the given name and FQN.
