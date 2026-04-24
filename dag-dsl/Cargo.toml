@@ -27,3 +27,4 @@ thiserror.workspace = true
 [dev-dependencies]
 assert_matches = "1.5.0"
 serde_json.workspace = true
+trybuild = "1.0"

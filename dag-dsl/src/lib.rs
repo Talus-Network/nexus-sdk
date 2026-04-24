@@ -50,6 +50,7 @@
 
 mod builder;
 mod error;
+mod typed;
 
 // Public re-exports from the SDK so callers don't need to depend on
 // `nexus-sdk` directly for the wire types they build against.
@@ -73,5 +74,15 @@ pub use {
             DEFAULT_ENTRY_GROUP,
         },
         ToolFqn,
+    },
+    typed::{
+        Err,
+        InPort,
+        Ok,
+        OutPort,
+        ToolDescriptor,
+        TypedDagBuilder,
+        TypedVertexRef,
+        UntypedVertexRef,
     },
 };
