@@ -148,8 +148,7 @@ pub struct ToPort {
 /// responsibility of downstream validators that know the FQN grammar.
 #[cfg(feature = "dag_schema")]
 pub fn dag_json_schema() -> serde_json::Value {
-    serde_json::to_value(schemars::schema_for!(Dag))
-        .expect("Dag JSON schema serializes to JSON")
+    serde_json::to_value(schemars::schema_for!(Dag)).expect("Dag JSON schema serializes to JSON")
 }
 
 #[cfg(test)]
@@ -288,10 +287,7 @@ mod tests {
             .get("required")
             .and_then(|v| v.as_array())
             .expect("schema exposes required array");
-        let required_names: Vec<&str> = required_fields
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+        let required_names: Vec<&str> = required_fields.iter().filter_map(|v| v.as_str()).collect();
         assert!(required_names.contains(&"vertices"));
         assert!(required_names.contains(&"edges"));
         assert!(!required_names.contains(&"default_values"));
