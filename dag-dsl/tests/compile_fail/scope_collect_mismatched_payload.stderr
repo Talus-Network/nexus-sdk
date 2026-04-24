@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+   --> tests/compile_fail/scope_collect_mismatched_payload.rs:102:40
+    |
+102 |         scope.collect(per.out.ok.name, agg.inp.vec);
+    |               -------                  ^^^^^^^^^^^ expected `InPort<Vec<i64>>`, found `InPort<Vec<String>>`
+    |               |
+    |               arguments to this method are incorrect
+    |
+    = note: expected struct `InPort<Vec<i64>>`
+               found struct `InPort<Vec<String>>`
+note: method defined here
+   --> src/typed.rs
+    |
+    |     pub fn collect<V, T>(&mut self, from: OutPort<V, T>, to: InPort<Vec<T>>) -> &mut Self {
+    |            ^^^^^^^

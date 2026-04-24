@@ -394,4 +394,491 @@ impl TypedDagBuilder {
     pub fn build(self) -> Result<Dag, Vec<DagError>> {
         self.inner.build()
     }
+
+    // -----------------------------------------------------------------------
+    // Scoped surface (typed)
+    // -----------------------------------------------------------------------
+
+    /// Enter a typed for-each scope. The source's per-iteration item is
+    /// passed to the closure as an [`ItemPort<T>`] where `T` is inferred
+    /// from the source's payload `Vec<T>`. Consume the item via
+    /// [`TypedForEachScope::consume`] to emit a `ForEach` edge whose
+    /// destination's payload type is checked at compile time.
+    pub fn for_each<V, T, F>(&mut self, source: OutPort<V, Vec<T>>, body: F) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        let name = format!("foreach_{}", self.inner.next_scope_index());
+        self.for_each_named_impl(name, source, body)
+    }
+
+    /// Enter a typed for-each scope with an explicit scope name. The name
+    /// becomes the prefix of every scope-local vertex's wire-format name
+    /// (`<name>.<vertex_name>`).
+    pub fn for_each_named<V, T, F>(
+        &mut self,
+        name: impl Into<String>,
+        source: OutPort<V, Vec<T>>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        self.for_each_named_impl(name.into(), source, body)
+    }
+
+    fn for_each_named_impl<V, T, F>(
+        &mut self,
+        name: String,
+        source: OutPort<V, Vec<T>>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        let item = ItemPort::<T> {
+            source: source.untyped(),
+            _marker: PhantomData,
+        };
+        let mut scope = TypedForEachScope {
+            builder: &mut self.inner,
+            prefix: name,
+        };
+        body(&mut scope, item);
+        self
+    }
+
+    /// Enter a typed do-while scope. The seed's payload becomes the loop
+    /// state type; the closure receives a [`StatePort<T>`] used to feed
+    /// the loop body's state input.
+    pub fn do_while<V, T, F>(&mut self, seed: OutPort<V, T>, body: F) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        let name = format!("dowhile_{}", self.inner.next_scope_index());
+        self.do_while_named_impl(name, seed, body)
+    }
+
+    /// Enter a typed do-while scope with an explicit scope name.
+    pub fn do_while_named<V, T, F>(
+        &mut self,
+        name: impl Into<String>,
+        seed: OutPort<V, T>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        self.do_while_named_impl(name.into(), seed, body)
+    }
+
+    fn do_while_named_impl<V, T, F>(
+        &mut self,
+        name: String,
+        seed: OutPort<V, T>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        let state = StatePort::<T> {
+            source: seed.untyped(),
+            _marker: PhantomData,
+        };
+        let mut scope = TypedDoWhileScope {
+            builder: &mut self.inner,
+            prefix: name,
+        };
+        body(&mut scope, state);
+        self
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typed scope handles
+// ---------------------------------------------------------------------------
+
+/// Per-iteration item handle produced by [`TypedDagBuilder::for_each`].
+///
+/// Wraps the scope's source output port and carries the per-iteration
+/// payload type `T` as a phantom. Consume it via
+/// [`TypedForEachScope::consume`] to emit a `ForEach` edge whose
+/// destination must have matching payload type.
+#[derive(Debug)]
+pub struct ItemPort<T> {
+    source: OutPortRef,
+    _marker: PhantomData<fn(T)>,
+}
+
+impl<T> Clone for ItemPort<T> {
+    fn clone(&self) -> Self {
+        Self {
+            source: self.source.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> ItemPort<T> {
+    /// Lower to the relaxed [`OutPortRef`], discarding the payload type
+    /// parameter.
+    pub fn untyped(self) -> OutPortRef {
+        self.source
+    }
+}
+
+/// Per-iteration state handle produced by [`TypedDagBuilder::do_while`].
+///
+/// Wraps the seed output port and carries the loop-state payload type
+/// `T` as a phantom. Feed it into the loop body via
+/// [`TypedDoWhileScope::feed_state`].
+#[derive(Debug)]
+pub struct StatePort<T> {
+    source: OutPortRef,
+    _marker: PhantomData<fn(T)>,
+}
+
+impl<T> Clone for StatePort<T> {
+    fn clone(&self) -> Self {
+        Self {
+            source: self.source.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> StatePort<T> {
+    /// Lower to the relaxed [`OutPortRef`], discarding the payload type
+    /// parameter.
+    pub fn untyped(self) -> OutPortRef {
+        self.source
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typed for-each scope
+// ---------------------------------------------------------------------------
+
+/// Typed for-each scope — passed to the closure given to
+/// [`TypedDagBuilder::for_each`] / [`for_each_named`].
+///
+/// Vertices added in this scope are auto-prefixed with the scope's path
+/// joined by `.`. Edges from the [`ItemPort`] are automatically tagged
+/// `ForEach`; outbound edges via [`collect`] are tagged `Collect`. Type
+/// checks on port payloads apply the same way as on the flat
+/// [`TypedDagBuilder::connect`] family.
+///
+/// [`for_each_named`]: TypedDagBuilder::for_each_named
+/// [`collect`]: Self::collect
+pub struct TypedForEachScope<'a> {
+    builder: &'a mut DagBuilder,
+    prefix: String,
+}
+
+impl<'a> TypedForEachScope<'a> {
+    /// Add an off-chain tool vertex with a typed descriptor, prefixed by
+    /// the scope's path.
+    pub fn add<D: ToolDescriptor>(&mut self, name: impl Into<String>) -> TypedVertexRef<D> {
+        let full_name = prefix_join(&self.prefix, name.into());
+        self.builder.offchain(&full_name, D::fqn());
+        TypedVertexRef {
+            inp: D::inputs_for(&full_name),
+            out: D::outputs_for(&full_name),
+            name: full_name,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Add an on-chain tool vertex with a typed descriptor, prefixed by
+    /// the scope's path.
+    pub fn add_onchain<D: ToolDescriptor>(&mut self, name: impl Into<String>) -> TypedVertexRef<D> {
+        let full_name = prefix_join(&self.prefix, name.into());
+        self.builder.onchain(&full_name, D::fqn());
+        TypedVertexRef {
+            inp: D::inputs_for(&full_name),
+            out: D::outputs_for(&full_name),
+            name: full_name,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Escape hatch: add an off-chain tool vertex with no descriptor,
+    /// prefixed by the scope's path.
+    pub fn add_untyped(&mut self, name: impl Into<String>, fqn: ToolFqn) -> UntypedVertexRef {
+        let full_name = prefix_join(&self.prefix, name.into());
+        UntypedVertexRef {
+            inner: self.builder.offchain(full_name, fqn),
+        }
+    }
+
+    /// Consume the per-iteration item — emits a `ForEach` edge from the
+    /// scope's source to `to`. Destination's payload type must match the
+    /// item's `T`.
+    pub fn consume<T>(&mut self, item: ItemPort<T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge_for_each(item.source, to.untyped());
+        self
+    }
+
+    /// Add a normal (data-flow) edge inside the loop body.
+    pub fn connect<V, T>(&mut self, from: OutPort<V, T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Emit a `Collect` edge — gathers one value per iteration into a
+    /// `Vec<T>` at `to`. Must point to a destination outside the loop
+    /// body.
+    pub fn collect<V, T>(&mut self, from: OutPort<V, T>, to: InPort<Vec<T>>) -> &mut Self {
+        self.builder.edge_collect(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Declare an entry port on a scope-local typed vertex.
+    pub fn entry_port<D: ToolDescriptor>(
+        &mut self,
+        vertex: &TypedVertexRef<D>,
+        port: impl Into<String>,
+    ) -> &mut Self {
+        let handle = VertexRef::named(vertex.name.clone());
+        self.builder.entry_port(&handle, port);
+        self
+    }
+
+    /// Provide an inline-JSON default for a typed input port.
+    pub fn inline_default<T>(&mut self, port: InPort<T>, value: T) -> &mut Self
+    where
+        T: serde::Serialize,
+    {
+        let handle = VertexRef::named(port.vertex);
+        let value = serde_json::to_value(value).expect("port payload serializes to JSON");
+        self.builder.inline_default(&handle, port.port, value);
+        self
+    }
+
+    /// Enter a nested typed for-each scope.
+    pub fn for_each<V, T, F>(&mut self, source: OutPort<V, Vec<T>>, body: F) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        let name = format!("foreach_{}", self.builder.next_scope_index());
+        self.for_each_named_impl(name, source, body)
+    }
+
+    /// Enter a nested typed for-each scope with an explicit name.
+    pub fn for_each_named<V, T, F>(
+        &mut self,
+        name: impl Into<String>,
+        source: OutPort<V, Vec<T>>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        self.for_each_named_impl(name.into(), source, body)
+    }
+
+    fn for_each_named_impl<V, T, F>(
+        &mut self,
+        name: String,
+        source: OutPort<V, Vec<T>>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedForEachScope<'_>, ItemPort<T>),
+    {
+        let combined = prefix_join(&self.prefix, name);
+        let item = ItemPort::<T> {
+            source: source.untyped(),
+            _marker: PhantomData,
+        };
+        let mut inner = TypedForEachScope {
+            builder: self.builder,
+            prefix: combined,
+        };
+        body(&mut inner, item);
+        self
+    }
+
+    /// Enter a typed do-while scope nested inside this for-each scope.
+    pub fn do_while<V, T, F>(&mut self, seed: OutPort<V, T>, body: F) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        let name = format!("dowhile_{}", self.builder.next_scope_index());
+        self.do_while_named_impl(name, seed, body)
+    }
+
+    /// Enter a typed do-while scope with an explicit name nested inside
+    /// this for-each scope.
+    pub fn do_while_named<V, T, F>(
+        &mut self,
+        name: impl Into<String>,
+        seed: OutPort<V, T>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        self.do_while_named_impl(name.into(), seed, body)
+    }
+
+    fn do_while_named_impl<V, T, F>(
+        &mut self,
+        name: String,
+        seed: OutPort<V, T>,
+        body: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut TypedDoWhileScope<'_>, StatePort<T>),
+    {
+        let combined = prefix_join(&self.prefix, name);
+        let state = StatePort::<T> {
+            source: seed.untyped(),
+            _marker: PhantomData,
+        };
+        let mut inner = TypedDoWhileScope {
+            builder: self.builder,
+            prefix: combined,
+        };
+        body(&mut inner, state);
+        self
+    }
+
+    /// Borrow the underlying relaxed [`DagBuilder`] for mixed
+    /// typed/untyped authoring inside this scope.
+    pub fn raw(&mut self) -> &mut DagBuilder {
+        self.builder
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typed do-while scope
+// ---------------------------------------------------------------------------
+
+/// Typed do-while scope — passed to the closure given to
+/// [`TypedDagBuilder::do_while`] / [`do_while_named`].
+///
+/// Vertices added here are auto-prefixed. Back-edges via
+/// [`continue_with`] are `DoWhile`-tagged, loop-exit edges via
+/// [`break_to`] are `Break`-tagged, and external inputs via
+/// [`static_input`] are `Static`-tagged. Type checks apply to each edge
+/// as with the flat `connect_*` family.
+///
+/// [`do_while_named`]: TypedDagBuilder::do_while_named
+/// [`continue_with`]: Self::continue_with
+/// [`break_to`]: Self::break_to
+/// [`static_input`]: Self::static_input
+pub struct TypedDoWhileScope<'a> {
+    builder: &'a mut DagBuilder,
+    prefix: String,
+}
+
+impl<'a> TypedDoWhileScope<'a> {
+    /// Add an off-chain tool vertex with a typed descriptor, prefixed by
+    /// the scope's path.
+    pub fn add<D: ToolDescriptor>(&mut self, name: impl Into<String>) -> TypedVertexRef<D> {
+        let full_name = prefix_join(&self.prefix, name.into());
+        self.builder.offchain(&full_name, D::fqn());
+        TypedVertexRef {
+            inp: D::inputs_for(&full_name),
+            out: D::outputs_for(&full_name),
+            name: full_name,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Add an on-chain tool vertex with a typed descriptor.
+    pub fn add_onchain<D: ToolDescriptor>(&mut self, name: impl Into<String>) -> TypedVertexRef<D> {
+        let full_name = prefix_join(&self.prefix, name.into());
+        self.builder.onchain(&full_name, D::fqn());
+        TypedVertexRef {
+            inp: D::inputs_for(&full_name),
+            out: D::outputs_for(&full_name),
+            name: full_name,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Escape hatch: add an off-chain untyped vertex, prefixed.
+    pub fn add_untyped(&mut self, name: impl Into<String>, fqn: ToolFqn) -> UntypedVertexRef {
+        let full_name = prefix_join(&self.prefix, name.into());
+        UntypedVertexRef {
+            inner: self.builder.offchain(full_name, fqn),
+        }
+    }
+
+    /// Seed the loop body's state input from the scope's state handle —
+    /// emits a normal edge. Payload type on both sides must match.
+    pub fn feed_state<T>(&mut self, state: StatePort<T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge(state.source, to.untyped());
+        self
+    }
+
+    /// Emit a `DoWhile` back-edge — the loop's "continue" condition.
+    /// Source and destination payload types must match.
+    pub fn continue_with<V, T>(&mut self, from: OutPort<V, T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge_do_while(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Emit a `Break` edge — exits the loop body. Source and destination
+    /// payload types must match.
+    pub fn break_to<V, T>(&mut self, from: OutPort<V, T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge_break(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Emit a `Static` edge — provides a fixed value from outside the
+    /// loop into the loop body. Source and destination payload types
+    /// must match.
+    pub fn static_input<V, T>(&mut self, from: OutPort<V, T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge_static(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Add a normal (data-flow) edge inside the loop body.
+    pub fn connect<V, T>(&mut self, from: OutPort<V, T>, to: InPort<T>) -> &mut Self {
+        self.builder.edge(from.untyped(), to.untyped());
+        self
+    }
+
+    /// Declare an entry port on a scope-local typed vertex.
+    pub fn entry_port<D: ToolDescriptor>(
+        &mut self,
+        vertex: &TypedVertexRef<D>,
+        port: impl Into<String>,
+    ) -> &mut Self {
+        let handle = VertexRef::named(vertex.name.clone());
+        self.builder.entry_port(&handle, port);
+        self
+    }
+
+    /// Provide an inline-JSON default for a typed input port.
+    pub fn inline_default<T>(&mut self, port: InPort<T>, value: T) -> &mut Self
+    where
+        T: serde::Serialize,
+    {
+        let handle = VertexRef::named(port.vertex);
+        let value = serde_json::to_value(value).expect("port payload serializes to JSON");
+        self.builder.inline_default(&handle, port.port, value);
+        self
+    }
+
+    /// Borrow the underlying relaxed [`DagBuilder`] for mixed
+    /// typed/untyped authoring inside this scope.
+    pub fn raw(&mut self) -> &mut DagBuilder {
+        self.builder
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn prefix_join(prefix: &str, name: String) -> String {
+    if prefix.is_empty() {
+        name
+    } else {
+        format!("{}.{}", prefix, name)
+    }
 }
