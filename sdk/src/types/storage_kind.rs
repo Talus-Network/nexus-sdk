@@ -7,6 +7,7 @@ use {
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StorageKind {
     Inline,

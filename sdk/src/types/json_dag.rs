@@ -13,6 +13,7 @@ pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
 
 /// Struct representing the Nexus DAG JSON file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct Dag {
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
@@ -29,18 +30,27 @@ pub struct Dag {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 #[serde(tag = "variant", rename_all = "snake_case")]
 pub enum VertexKind {
-    OffChain { tool_fqn: ToolFqn },
-    OnChain { tool_fqn: ToolFqn },
+    OffChain {
+        #[cfg_attr(feature = "dag_schema", schemars(with = "String"))]
+        tool_fqn: ToolFqn,
+    },
+    OnChain {
+        #[cfg_attr(feature = "dag_schema", schemars(with = "String"))]
+        tool_fqn: ToolFqn,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct EntryPort {
     pub name: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct Vertex {
     pub kind: VertexKind,
     pub name: String,
@@ -49,6 +59,7 @@ pub struct Vertex {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct EntryGroup {
     pub name: String,
     /// List of vertex names that are part of this entry group. All entry ports
@@ -57,6 +68,7 @@ pub struct EntryGroup {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct DefaultValue {
     pub vertex: String,
     pub input_port: String,
@@ -64,6 +76,7 @@ pub struct DefaultValue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 #[serde(tag = "storage", rename_all = "snake_case")]
 pub struct Data {
     pub storage: StorageKind,
@@ -71,6 +84,7 @@ pub struct Data {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct Edge {
     pub from: FromPort,
     pub to: ToPort,
@@ -81,6 +95,7 @@ pub struct Edge {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
     #[default]
@@ -106,6 +121,7 @@ impl EdgeKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct FromPort {
     pub vertex: String,
     pub output_variant: String,
@@ -113,9 +129,27 @@ pub struct FromPort {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "dag_schema", derive(schemars::JsonSchema))]
 pub struct ToPort {
     pub vertex: String,
     pub input_port: String,
+}
+
+/// Generate the canonical JSON Schema for the [`Dag`] wire format.
+///
+/// Returns the schema as a [`serde_json::Value`] — callers can serialize it to
+/// JSON, commit it as an artifact alongside the source, or feed it to an
+/// external validator. The schema is the canonical wire contract: external
+/// language bindings (e.g. a TypeScript DSL mirror) and external tools should
+/// validate against this single definition rather than reinventing one.
+///
+/// `ToolFqn` appears as a plain string in the schema (matching its
+/// wire-format representation); any tighter pattern-level checking is the
+/// responsibility of downstream validators that know the FQN grammar.
+#[cfg(feature = "dag_schema")]
+pub fn dag_json_schema() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(Dag))
+        .expect("Dag JSON schema serializes to JSON")
 }
 
 #[cfg(test)]
@@ -212,5 +246,56 @@ mod tests {
         assert!(!EdgeKind::DoWhile.is_normal());
         assert!(!EdgeKind::Break.is_normal());
         assert!(!EdgeKind::Static.is_normal());
+    }
+
+    /// Verify the generated JSON Schema for [`Dag`] has the expected
+    /// top-level shape: an object with required `vertices` and `edges`
+    /// properties and declared optional `default_values`, `entry_groups`,
+    /// `outputs` properties.
+    ///
+    /// What breaks if this test is deleted: a future refactor of the [`Dag`]
+    /// struct (field renames, additions, or changes to the serde attributes
+    /// controlling whether a field is required) could silently shift the
+    /// generated schema away from the documented wire contract. External
+    /// consumers that validate DAG JSON against this schema (e.g. the
+    /// TypeScript DSL mirror, any language-neutral codegen) would then
+    /// diverge from what Rust actually accepts.
+    #[cfg(feature = "dag_schema")]
+    #[test]
+    fn dag_json_schema_exposes_expected_top_level_shape() {
+        let schema = super::dag_json_schema();
+        assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("object"));
+
+        let properties = schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .expect("schema exposes properties");
+
+        for required in ["vertices", "edges"] {
+            assert!(
+                properties.contains_key(required),
+                "schema missing required property `{required}`"
+            );
+        }
+        for optional in ["default_values", "entry_groups", "outputs"] {
+            assert!(
+                properties.contains_key(optional),
+                "schema missing optional property `{optional}`"
+            );
+        }
+
+        let required_fields = schema
+            .get("required")
+            .and_then(|v| v.as_array())
+            .expect("schema exposes required array");
+        let required_names: Vec<&str> = required_fields
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(required_names.contains(&"vertices"));
+        assert!(required_names.contains(&"edges"));
+        assert!(!required_names.contains(&"default_values"));
+        assert!(!required_names.contains(&"entry_groups"));
+        assert!(!required_names.contains(&"outputs"));
     }
 }

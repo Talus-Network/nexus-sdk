@@ -56,6 +56,14 @@ dag = ["petgraph"]
 # Used for onchain tool registration.
 schema_gen = ["sui_types", "serde_json"]
 
+# JSON Schema generation for the `Dag` wire format. Purely additive: adds
+# `schemars::JsonSchema` impls to the `Dag` wire types (in `types`) and to
+# `StorageKind`. Users who want a schema must enable `types` (where `Dag`
+# lives) alongside this feature; this feature does not imply `types` because
+# the current `types` module contains code gated to `nexus` and would not
+# compile standalone.
+dag_schema = ["schemars"]
+
 # Provides various Nexus utilities like deployment and execution of workflows.
 nexus = ["transactions", "events", "dag", "bcs", "prost-types", "signed_http"]
 
@@ -90,6 +98,7 @@ full = [
     "walrus",
     "dag",
     "schema_gen",
+    "dag_schema",
     "nexus",
 ]
 
@@ -198,6 +207,10 @@ workspace = true
 optional = true
 
 [dependencies.regex]
+workspace = true
+optional = true
+
+[dependencies.schemars]
 workspace = true
 optional = true
 
