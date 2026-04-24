@@ -14,6 +14,9 @@ mod toolkit-rust 'toolkit-rust/.just'
 # Commands concerning the Nexus SDK
 mod sdk 'sdk/.just'
 
+# Commands concerning the Nexus DAG DSL
+mod dag-dsl 'dag-dsl/.just'
+
 # Pre-commit hooks
 mod pre-commit '.pre-commit/.just'
 

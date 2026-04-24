@@ -1,0 +1,29 @@
+[package]
+name = "nexus-dag-dsl"
+description = "Type-safe DSL for constructing Nexus DAGs in Rust."
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# NOTE: the `nexus` feature is pulled in to work around a latent feature-gating
+# issue where enabling `types` alone fails to compile — `types/scheduler.rs`
+# and `types/nexus_objects.rs` unconditionally reference `crate::nexus::...`,
+# which is only present when the `nexus` feature is enabled. This feature set
+# is heavier than the DSL strictly needs; once the `types` feature can compile
+# without `nexus`, drop `"nexus"` here to shrink the DSL's dependency surface.
+nexus-sdk = { workspace = true, features = ["tool_fqn", "types", "dag", "nexus"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+serde_json.workspace = true

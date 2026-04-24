@@ -5455,6 +5455,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-dag-dsl"
+version = "1.0.0"
+dependencies = [
+ "assert_matches",
+ "nexus-sdk",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "nexus-sdk"
 version = "1.0.0"
 dependencies = [
