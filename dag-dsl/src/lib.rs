@@ -50,9 +50,14 @@
 
 mod builder;
 mod error;
+mod macros;
 mod scoped;
 mod typed;
 
+// Re-exported for the `tool_descriptor!` macro's internal use. Not part of
+// the stable API.
+#[doc(hidden)]
+pub use paste as __paste;
 // Public re-exports from the SDK so callers don't need to depend on
 // `nexus-sdk` directly for the wire types they build against.
 pub use {

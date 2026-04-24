@@ -20,6 +20,7 @@ categories.workspace = true
 # is heavier than the DSL strictly needs; once the `types` feature can compile
 # without `nexus`, drop `"nexus"` here to shrink the DSL's dependency surface.
 nexus-sdk = { workspace = true, features = ["tool_fqn", "types", "dag", "nexus"] }
+paste = "1.0"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
