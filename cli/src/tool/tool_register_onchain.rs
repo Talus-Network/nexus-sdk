@@ -604,7 +604,12 @@ fn customize_output_variant(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::test_utils::sui_mocks, std::sync::atomic::Ordering};
+    use {
+        super::*,
+        nexus_sdk::test_utils::sui_mocks,
+        serial_test::serial,
+        std::sync::atomic::Ordering,
+    };
 
     #[test]
     fn test_build_final_schema_with_custom_names() {
@@ -1277,16 +1282,35 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_tool_owner_caps_success() {
         let mut rng = rand::thread_rng();
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let over_tool_id = sui::types::Address::generate(&mut rng);
+        let original_home = std::env::var_os("HOME");
+        let temp_home = tempfile::tempdir().expect("temp home directory");
+
+        std::env::set_var("HOME", temp_home.path());
 
         // Call save_tool_owner_caps.
         let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;
 
         // Should succeed.
         assert!(result.is_ok());
+
+        let conf = CliConf::load().await.expect("saved CLI config should load");
+        assert_eq!(
+            conf.tools.get(&fqn),
+            Some(&ToolOwnerCaps {
+                over_tool: over_tool_id,
+                over_gas: None,
+            })
+        );
+
+        match original_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
     }
 }

@@ -4,7 +4,10 @@
 //! configuration structure is correct.
 
 use {
-    crate::{types::StorageKind, ToolFqn},
+    crate::{
+        types::{PostFailureAction, StorageKind},
+        ToolFqn,
+    },
     serde::Deserialize,
 };
 
@@ -17,6 +20,7 @@ pub struct Dag {
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
     pub default_values: Option<Vec<DefaultValue>>,
+    pub post_failure_action: Option<PostFailureAction>,
     /// If there are no entry groups specified, all specified input ports are
     /// considered to be part of the [`DEFAULT_ENTRY_GROUP`].
     pub entry_groups: Option<Vec<EntryGroup>>,
@@ -42,6 +46,7 @@ pub struct Vertex {
     pub kind: VertexKind,
     pub name: String,
     pub entry_ports: Option<Vec<EntryPort>>,
+    pub post_failure_action: Option<PostFailureAction>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -102,4 +107,55 @@ pub struct FromPort {
 pub struct ToPort {
     pub vertex: String,
     pub input_port: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dag_deserialize_post_failure_action() {
+        let dag: Dag = serde_json::from_str(
+            r#"{
+                "post_failure_action": "continue",
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root",
+                        "post_failure_action": "terminate"
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            dag.post_failure_action,
+            Some(PostFailureAction::TransientContinue)
+        );
+        assert_eq!(
+            dag.vertices[0].post_failure_action,
+            Some(PostFailureAction::Terminate)
+        );
+    }
+
+    #[test]
+    fn test_dag_deserialize_without_post_failure_action() {
+        let dag: Dag = serde_json::from_str(
+            r#"{
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root"
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(dag.post_failure_action, None);
+        assert_eq!(dag.vertices[0].post_failure_action, None);
+    }
 }
