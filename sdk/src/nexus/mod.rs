@@ -14,5 +14,6 @@ pub mod registered_key;
 pub mod registry;
 pub mod scheduler;
 pub mod signer;
+pub mod tap;
 pub mod tool;
 pub mod workflow;

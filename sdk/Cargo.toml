@@ -40,7 +40,18 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module.
-types = ["sui_types", "sui_idents", "enum_dispatch", "walrus", "futures", "jsonschema", "zeroize"]
+types = [
+    "sui_types",
+    "sui_idents",
+    "enum_dispatch",
+    "walrus",
+    "futures",
+    "jsonschema",
+    "zeroize",
+    "bcs",
+    "hex",
+    "sha2",
+]
 
 # Events feature enables the use of the `events` module.
 events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing"]

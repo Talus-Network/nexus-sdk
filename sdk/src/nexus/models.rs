@@ -334,6 +334,7 @@ mod tests {
     }
 
     #[test]
+<<<<<<< Updated upstream
     fn test_dag_input_port_deserializes_wrapped_name() {
         let parsed: DagInputPort = serde_json::from_value(json!({
             "name": {
@@ -368,6 +369,8 @@ mod tests {
     }
 
     #[test]
+=======
+>>>>>>> Stashed changes
     fn test_dag_vertex_evaluations_bcs_roundtrip() {
         let value = DagVertexEvaluationsBcs {
             id: sui::types::Address::from_str(
