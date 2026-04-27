@@ -2,6 +2,7 @@ mod derive;
 mod interface_package_config;
 mod interface_version;
 mod json_dag;
+mod leader_registry;
 mod move_collections;
 mod move_json;
 mod network_auth;
@@ -16,6 +17,7 @@ mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
+mod tap;
 mod tool;
 mod tool_meta;
 mod type_name;
@@ -26,6 +28,7 @@ pub use {
     interface_package_config::InterfacePackageConfig,
     interface_version::*,
     json_dag::*,
+    leader_registry::*,
     move_collections::*,
     move_json::*,
     network_auth::*,
@@ -39,6 +42,7 @@ pub use {
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
+    tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
     type_name::TypeName,

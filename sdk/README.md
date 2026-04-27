@@ -34,6 +34,28 @@ See the end-to-end guide:
 
 - [Tool communication guide](https://github.com/Talus-Network/nexus-sdk/blob/main/docs/guides/tool-communication.md)
 
+## Standard TAP Payments
+
+The SDK models the current standard TAP payment interface, including the
+mandatory agent payment vault created for every TAP agent.
+
+Relevant helpers include:
+
+- `tap_payment_source_for_address(...)` for direct
+  `create_agent_skill_payment` source bytes accepted by the Move policy.
+- `TapPaymentSource::invoker(...)` and `TapPaymentSource::agent_vault(...)`
+  for typed payment-source payloads used by SDK models and non-direct policy
+  surfaces.
+- `TapAgentPaymentVault` plus `fetch_tap_agent_payment_vault(...)`.
+- `tap::deposit_agent_payment_vault(...)` and
+  `tap::withdraw_agent_payment_vault(...)` PTB builders.
+- `gas::add_agent_budget(...)` for standard TAP agent-scoped gas funding.
+
+Direct standard TAP payment creation currently follows the Move policy exactly:
+user-funded sources are empty or payer-address BCS, and agent-funded direct
+sources are agent-id address BCS. Agent-vault settlement uses the dedicated
+vault payment builder rather than typed source bytes in the direct builder.
+
 <!-- List of references -->
 
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust

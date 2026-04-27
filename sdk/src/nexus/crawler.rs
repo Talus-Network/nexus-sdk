@@ -233,6 +233,71 @@ impl Crawler {
             .collect()
     }
 
+    /// Fetch owned objects of a specific type for an owner and deserialize JSON contents.
+    pub async fn get_owned_objects<T>(
+        &self,
+        owner: sui::types::Address,
+        object_type: sui::types::StructTag,
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "json",
+        ]);
+        let mut results = Vec::new();
+        let mut page_token = None;
+
+        loop {
+            let mut request = sui::grpc::ListOwnedObjectsRequest::default()
+                .with_owner(owner)
+                .with_page_size(1000)
+                .with_object_type(object_type.clone())
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_owned_objects(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| anyhow!("Could not fetch owned objects for '{owner}': {e}"))?;
+
+            drop(client);
+            page_token = response.next_page_token;
+
+            for object in response.objects {
+                let object_id = Self::parse_object_id(&object)?;
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+                let data = Self::parse_object_content::<T>(self, &object)?;
+                results.push(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data,
+                    digest,
+                    balance,
+                });
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch all dynamic object fields for a given parent and parse them into a
     /// HashMap<K, V>.
     pub async fn get_dynamic_fields<K, V>(
@@ -340,6 +405,64 @@ impl Crawler {
         Ok(out)
     }
 
+    /// Fetch all dynamic-field values for a parent object without attempting to decode keys.
+    pub async fn get_dynamic_field_values_bcs<V>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<(Option<String>, V)>>
+    where
+        V: DeserializeOwned,
+    {
+        let mut results = Vec::new();
+        let mut page_token = None;
+        let field_mask =
+            sui::grpc::FieldMask::from_paths(["field_id", "kind", "value", "value_type"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                let value = field.value_opt().ok_or_else(|| {
+                    anyhow!("Dynamic field value missing for parent '{parent_id}'")
+                })?;
+                let Some(bytes) = value.value_opt() else {
+                    bail!("Dynamic field value BCS missing for parent '{parent_id}'");
+                };
+                let decoded = bcs::from_bytes::<V>(bytes).map_err(|e| {
+                    anyhow!("Could not parse dynamic field value for parent '{parent_id}': {e}")
+                })?;
+                results.push((field.value_type, decoded));
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch all dynamic object fields for a given parent and parse them into a
     /// HashMap<K, V>. Since the values are objects, they need to be fetched
     /// first.
@@ -368,6 +491,48 @@ impl Crawler {
             .map(|(name, _, _)| name)
             .zip(child_objects)
             .collect())
+    }
+
+    /// Fetch all dynamic object fields for a parent object id without requiring
+    /// a local dynamic-object-map wrapper.
+    pub async fn get_dynamic_object_fields<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<HashMap<K, Response<V>>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let names_and_ids = self.fetch_dynamic_fields::<K>(parent_id, 0).await?;
+        let mut names = Vec::with_capacity(names_and_ids.len());
+        let mut child_ids = Vec::with_capacity(names_and_ids.len());
+
+        for (name, child_id, _) in names_and_ids {
+            let Some(child_id) = child_id else {
+                bail!("Dynamic object field child ID missing for parent '{parent_id}'");
+            };
+            names.push(name);
+            child_ids.push(child_id);
+        }
+
+        let child_objects = self.get_objects::<V>(&child_ids).await?;
+        Ok(names.into_iter().zip(child_objects).collect())
+    }
+
+    /// Fetch one dynamic object field child for a parent object id.
+    pub async fn get_dynamic_object_field<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        key: K,
+    ) -> anyhow::Result<Response<V>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        self.get_dynamic_object_fields::<K, V>(parent_id)
+            .await?
+            .remove(&key)
+            .ok_or_else(|| anyhow!("Dynamic object field not found for parent '{parent_id}'"))
     }
 
     /// Fetch all items in a `TableVec<T>` and return them as a `Vec<T>`.

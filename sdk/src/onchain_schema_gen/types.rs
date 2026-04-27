@@ -161,6 +161,26 @@ pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     }
 }
 
+/// Check whether a parameter is one of the hidden fixed-tool internal arguments
+/// that should not appear in the user-facing input schema.
+pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
+    };
+
+    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
+        return false;
+    };
+
+    (*struct_tag.address() == sui_framework::PACKAGE_ID
+        && struct_tag.module().as_str() == "tx_context"
+        && struct_tag.name().as_str() == "TxContext")
+        || (struct_tag.module().as_str() == "proof_of_uid"
+            && struct_tag.name().as_str() == "ProofOfUID")
+        || (struct_tag.module().as_str() == "tap"
+            && struct_tag.name().as_str() == "VertexAuthorizationCheckCap")
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, sui::grpc::open_signature_body::Type};
@@ -263,6 +283,30 @@ mod tests {
         let schema = convert_move_type_to_schema(&ascii_string).unwrap();
         assert_eq!(schema["type"], "string");
         assert_eq!(schema["description"], "0x1::ascii::String");
+    }
+
+    #[test]
+    fn hidden_internal_tool_params_are_detected() {
+        assert!(is_hidden_internal_tool_param(&make_struct(
+            "0x2",
+            "tx_context",
+            "TxContext"
+        )));
+        assert!(is_hidden_internal_tool_param(&make_struct(
+            "0x42",
+            "proof_of_uid",
+            "ProofOfUID"
+        )));
+        assert!(is_hidden_internal_tool_param(&make_struct(
+            "0x43",
+            "tap",
+            "VertexAuthorizationCheckCap"
+        )));
+        assert!(!is_hidden_internal_tool_param(&make_struct(
+            "0x44",
+            "counter",
+            "RandomCounter"
+        )));
     }
 
     #[test]

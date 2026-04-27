@@ -240,6 +240,8 @@ mod tests {
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
         assert!(move_contents.contains("public fun execute("));
+        assert!(move_contents.contains("use nexus_interface::tap::VertexAuthorizationCheckCap;"));
+        assert!(move_contents.contains("_cap: VertexAuthorizationCheckCap"));
         assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
         assert!(move_contents.contains("): TaggedOutput"));
         assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));

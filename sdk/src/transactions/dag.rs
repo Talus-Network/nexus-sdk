@@ -2,7 +2,9 @@ use {
     crate::{
         idents::{move_std, primitives, pure_arg, sui_framework, workflow},
         sui,
+        transactions::tap,
         types::{
+            Agent,
             Dag,
             DataStorage,
             DefaultValue,
@@ -20,8 +22,10 @@ use {
             PostFailureAction,
             PreparedToolOutputV1,
             RuntimeVertex,
+            SkillId,
             Storable,
             StorageKind,
+            TapVertexAuthorizationPlanEntry,
             VerifierConfig,
             Vertex,
             VertexKind,
@@ -89,6 +93,109 @@ impl PreparedToolOutput {
             output_ports_data: HashMap::from([(TERMINAL_ERR_EVAL_REASON_PORT.to_string(), reason)]),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StandardTapExecuteInput {
+    pub agent_id: Agent,
+    pub skill_id: SkillId,
+    pub payment_source: Vec<u8>,
+    pub payment_coin: Option<sui::types::ObjectReference>,
+    pub payment_coin_balance: Option<u64>,
+    pub payment_max_budget: u64,
+    pub payment_refund_mode: u8,
+    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
+}
+
+fn standard_tap_authorization_grant_ref_type(objects: &NexusObjects) -> sui::types::TypeTag {
+    workflow::into_type_tag(
+        objects.workflow_pkg_id,
+        workflow::Dag::STANDARD_TAP_AUTHORIZATION_GRANT_REF,
+    )
+}
+
+fn prepare_option_address(
+    tx: &mut sui::tx::TransactionBuilder,
+    value: Option<sui::types::Address>,
+) -> anyhow::Result<sui::types::Argument> {
+    let element = sui::types::TypeTag::Address;
+    match value {
+        Some(value) => {
+            let value = tx.input(pure_arg(&value)?);
+            Ok(move_std::Option::some(tx, element, value))
+        }
+        None => Ok(move_std::Option::none(tx, element)),
+    }
+}
+
+fn prepare_option_interface_revision(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    value: Option<crate::types::InterfaceRevision>,
+) -> anyhow::Result<sui::types::Argument> {
+    let element = crate::idents::tap::interface_revision_type(objects.interface_pkg_id);
+    match value {
+        Some(value) => {
+            let value = crate::transactions::tap::interface_revision(tx, objects, value)?;
+            Ok(move_std::Option::some(tx, element, value))
+        }
+        None => Ok(move_std::Option::none(tx, element)),
+    }
+}
+
+fn standard_tap_authorization_grant_ref(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    entry: &TapVertexAuthorizationPlanEntry,
+) -> anyhow::Result<sui::types::Argument> {
+    let vertex =
+        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, &entry.vertex)?;
+    let grant_id = tx.input(pure_arg(&entry.grant_id)?);
+    let tool_package = tx.input(pure_arg(&entry.tool_package)?);
+    let tool_module = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_module)?;
+    let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
+    let operation_hash = tx.input(pure_arg(&entry.operation_hash)?);
+    let constraints_hash = tx.input(pure_arg(&entry.constraints_hash)?);
+    let leader_assignment_id = prepare_option_address(tx, entry.leader_assignment_id)?;
+    let endpoint_revision =
+        prepare_option_interface_revision(tx, objects, entry.endpoint_revision)?;
+    let payment_id = prepare_option_address(tx, entry.payment_id)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::STANDARD_TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.module,
+            workflow::Dag::STANDARD_TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.name,
+            vec![],
+        ),
+        vec![
+            vertex,
+            grant_id,
+            tool_package,
+            tool_module,
+            tool_function,
+            operation_hash,
+            constraints_hash,
+            leader_assignment_id,
+            endpoint_revision,
+            payment_id,
+        ],
+    ))
+}
+
+fn standard_tap_authorization_plan(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    entries: &[TapVertexAuthorizationPlanEntry],
+) -> anyhow::Result<sui::types::Argument> {
+    let element_type = standard_tap_authorization_grant_ref_type(objects);
+    let mut args = Vec::with_capacity(entries.len());
+    for entry in entries {
+        args.push(standard_tap_authorization_grant_ref(tx, objects, entry)?);
+    }
+
+    Ok(tx.make_move_vec(Some(element_type), args))
 }
 
 /// PTB template for creating a new empty DAG.
@@ -779,6 +886,63 @@ fn prepare_verifier_decision(
     )
 }
 
+fn prepare_failure_evidence_kind_option(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    value: Option<&FailureEvidenceKind>,
+) -> sui::types::Argument {
+    let element = workflow::into_type_tag(
+        objects.workflow_pkg_id,
+        workflow::Dag::FAILURE_EVIDENCE_KIND,
+    );
+
+    match value {
+        Some(kind) => {
+            let kind = create_failure_evidence_kind(tx, objects, kind);
+            move_std::Option::some(tx, element, kind)
+        }
+        None => move_std::Option::none(tx, element),
+    }
+}
+
+fn prepare_object_id(
+    tx: &mut sui::tx::TransactionBuilder,
+    object_id: sui::types::Address,
+) -> anyhow::Result<sui::types::Argument> {
+    sui_framework::Object::id_from_object_id(tx, object_id)
+}
+
+pub fn prepare_on_chain_tool_result_submission_v1_bytes(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    output_variant: sui::types::Argument,
+    output_ports_data: sui::types::Argument,
+    failure_evidence_kind: Option<&FailureEvidenceKind>,
+    submitted_failure_reason: &Option<Vec<u8>>,
+    tool_witness_id: sui::types::Address,
+) -> anyhow::Result<sui::types::Argument> {
+    let failure_evidence_kind =
+        prepare_failure_evidence_kind_option(tx, objects, failure_evidence_kind);
+    let submitted_failure_reason = prepare_move_option_vec_u8(tx, submitted_failure_reason);
+    let tool_witness_id = prepare_object_id(tx, tool_witness_id)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.module,
+            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name,
+            vec![],
+        ),
+        vec![
+            output_variant,
+            output_ports_data,
+            failure_evidence_kind,
+            submitted_failure_reason,
+            tool_witness_id,
+        ],
+    ))
+}
+
 fn prepare_verifier_contract_result(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -1190,6 +1354,43 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     Ok(())
 }
 
+pub fn leader_stamp_standard_tap_worksheet(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    leader_registry: sui::types::Argument,
+    execution: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::LEADER_STAMP_STANDARD_TAP_WORKSHEET.module,
+            workflow::Dag::LEADER_STAMP_STANDARD_TAP_WORKSHEET.name,
+            vec![],
+        ),
+        vec![leader_registry, execution, worksheet, leader_cap],
+    )
+}
+
+pub fn pre_stamp_standard_tap_execution(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.module,
+            workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.name,
+            vec![],
+        ),
+        vec![execution, worksheet, leader_cap],
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn submit_on_chain_tool_result_for_walk_v1(
     tx: &mut sui::tx::TransactionBuilder,
@@ -1212,6 +1413,59 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let (output_variant, output_ports_data) = prepare_tool_output(tx, objects, prepared_output)?;
+    let failure_evidence_kind =
+        prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
+    let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
+    let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
+            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            worksheet,
+            leader_cap,
+            request_walk_execution,
+            walk_index,
+            expected_vertex,
+            output_variant,
+            output_ports_data,
+            failure_evidence_kind,
+            submitted_failure_reason,
+            tool_witness_id,
+            clock,
+        ],
+    );
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    request_walk_execution: sui::types::Argument,
+    walk_index: u64,
+    expected_vertex: sui::types::Argument,
+    output_variant: sui::types::Argument,
+    output_ports_data: sui::types::Argument,
+    failure_evidence_kind: Option<&FailureEvidenceKind>,
+    submitted_failure_reason: Option<Vec<u8>>,
+    tool_witness_id: sui::types::Address,
+    clock: sui::types::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.input(pure_arg(&walk_index)?);
     let failure_evidence_kind =
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
@@ -1466,26 +1720,22 @@ pub fn mark_entry_input_port(
     ))
 }
 
-/// PTB template to prepare a DAG execution.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_execution(
+pub fn prepare_standard_tap_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    gas_service: sui::types::Argument,
     tool_registry: sui::types::Argument,
+    tap_registry: sui::types::Argument,
+    agent: sui::types::Argument,
     dag: sui::types::Argument,
+    dag_id: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    payment_coin: sui::types::Argument,
     clock: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
-    // `self: &mut DefaultTAP`
-    let default_tap = tx.input(sui::tx::Input::shared(
-        *objects.default_tap.object_id(),
-        objects.default_tap.version(),
-        true,
-    ));
-
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
@@ -1520,10 +1770,7 @@ pub fn prepare_execution(
     );
 
     for (vertex_name, data) in input_data {
-        // `vertex: Vertex`
         let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
-
-        // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.move_call(
             sui::tx::Function::new(
                 sui_framework::PACKAGE_ID,
@@ -1535,14 +1782,12 @@ pub fn prepare_execution(
         );
 
         for (port_name, value) in data {
-            // `port: InputPort`
             let port = workflow::Dag::input_port_from_str(
                 tx,
                 objects.workflow_pkg_id,
                 port_name.as_str(),
             )?;
 
-            // `value: NexusData`
             let value = match value.storage_kind() {
                 StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
@@ -1556,7 +1801,6 @@ pub fn prepare_execution(
                 )?,
             };
 
-            // `with_vertex_input.insert(port, value)`
             tx.move_call(
                 sui::tx::Function::new(
                     sui_framework::PACKAGE_ID,
@@ -1568,7 +1812,6 @@ pub fn prepare_execution(
             );
         }
 
-        // `with_vertex_inputs.insert(vertex, with_vertex_input)`
         tx.move_call(
             sui::tx::Function::new(
                 sui_framework::PACKAGE_ID,
@@ -1580,156 +1823,207 @@ pub fn prepare_execution(
         );
     }
 
-    // `priority_fee_per_gas_unit: u64`
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let standard_agent_id = tap::agent_id_from_address(tx, objects, standard.agent_id)?;
+    let standard_skill_id = tap::skill_id_from_u64(tx, objects, standard.skill_id)?;
+    let authorization_plan_hash = tx.input(pure_arg(&standard.authorization_plan_hash)?);
+    let authorization_plan =
+        standard_tap_authorization_plan(tx, objects, &standard.authorization_plan)?;
 
-    // `workflow::default_tap::begin_dag_execution()`
-    Ok(tx.move_call(
+    let config = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.module,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.name,
             vec![],
         ),
         vec![
-            default_tap,
-            dag,
-            gas_service,
-            tool_registry,
+            dag_id,
             network,
             entry_group,
             with_vertex_inputs,
             priority_fee_per_gas_unit,
+            standard_agent_id,
+            standard_skill_id,
+            authorization_plan_hash,
+            authorization_plan,
+        ],
+    );
+
+    let payment_source = tx.input(pure_arg(&standard.payment_source)?);
+    let payment_max_budget = tx.input(pure_arg(&standard.payment_max_budget)?);
+    let payment_refund_mode = tx.input(pure_arg(&standard.payment_refund_mode)?);
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.module,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            tap_registry,
+            agent,
+            tool_registry,
+            config,
+            payment_coin,
+            payment_source,
+            payment_max_budget,
+            payment_refund_mode,
             clock,
         ],
     ))
 }
 
-/// PTB template to lock gas state for the given tools.
+/// PTB template to lock execution payment state for the given tools.
 #[allow(clippy::too_many_arguments)]
-pub fn lock_gas_state_for_tools(
+pub fn lock_payment_state_for_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution_gas: sui::types::Argument,
-    invoker_gas: sui::types::Argument,
+    agent: sui::types::Argument,
     tools_gas: Vec<sui::types::Argument>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     ticket: sui::types::Argument,
 ) {
     for tool_gas in tools_gas {
-        // `nexus_workflow::gas::lock_gas_state_for_tool()`
+        // `nexus_workflow::gas::lock_payment_state_for_tool()`
         tx.move_call(
             sui::tx::Function::new(
                 objects.workflow_pkg_id,
-                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.module,
-                workflow::Gas::LOCK_GAS_STATE_FOR_TOOL.name,
+                workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module,
+                workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name,
                 vec![],
             ),
-            vec![execution_gas, tool_gas, invoker_gas, dag, execution, ticket],
+            vec![tool_gas, agent, dag, execution, ticket],
         );
     }
 }
 
-/// PTB template to execute a DAG.
 #[allow(clippy::too_many_arguments)]
-pub fn execute(
+pub fn execute_standard_tap(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
+    agent: &sui::types::ObjectReference,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-    invoker_gas: &sui::types::ObjectReference,
+    standard: &StandardTapExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> anyhow::Result<()> {
-    // `dag: &DAG`
+    let dag_id = sui_framework::Object::id_from_object_id(tx, *dag.object_id())?;
     let dag = tx.input(sui::tx::Input::shared(
         *dag.object_id(),
         dag.version(),
         false,
     ));
 
-    // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
+    let agent = tx.input(sui::tx::Input::shared(
+        *agent.object_id(),
+        agent.version(),
         true,
     ));
 
-    // `tool_registry: &ToolRegistry`
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         false,
     ));
 
-    // `clock: &Clock`
+    let tap_registry = tx.input(sui::tx::Input::shared(
+        *objects
+            .tap_registry()
+            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?
+            .object_id(),
+        objects
+            .tap_registry()
+            .expect("tap registry checked above")
+            .version(),
+        false,
+    ));
+
     let clock = tx.input(sui::tx::Input::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
     ));
 
-    let results = prepare_execution(
+    let payment_coin = if let Some(payment_coin_ref) = standard.payment_coin.as_ref() {
+        let owned_payment_coin = tx.input(sui::tx::Input::owned(
+            *payment_coin_ref.object_id(),
+            payment_coin_ref.version(),
+            *payment_coin_ref.digest(),
+        ));
+        match standard.payment_coin_balance {
+            Some(balance) if balance > standard.payment_max_budget => {
+                let payment_amount = tx.input(pure_arg(&standard.payment_max_budget)?);
+                tx.split_coins(owned_payment_coin, vec![payment_amount])
+                    .nested(0)
+                    .ok_or_else(|| anyhow::anyhow!("failed to split standard TAP payment coin"))?
+            }
+            _ => owned_payment_coin,
+        }
+    } else {
+        let payment_amount = tx.input(pure_arg(&standard.payment_max_budget)?);
+        tx.split_coins(tx.gas(), vec![payment_amount])
+            .nested(0)
+            .ok_or_else(|| anyhow::anyhow!("failed to split standard TAP payment coin"))?
+    };
+
+    let results = prepare_standard_tap_execution(
         tx,
         objects,
-        gas_service,
         tool_registry,
+        tap_registry,
+        agent,
         dag,
+        dag_id,
         priority_fee_per_gas_unit,
         entry_group,
         input_data,
+        standard,
+        payment_coin,
         clock,
     )?;
 
-    // `ticket: RequestWalkExecution`
-    let Some(ticket) = results.nested(0) else {
-        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
+    let Some(execution) = results.nested(0) else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive standard execution argument"
+        ));
     };
-
-    // `execution: DAGExecution`
-    let Some(execution) = results.nested(1) else {
-        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    let Some(ticket) = results.nested(1) else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive standard ticket argument"
+        ));
     };
-
-    // `execution_gas: ExecutionGas`
-    let Some(execution_gas) = results.nested(2) else {
-        return Err(anyhow::anyhow!("Failed to receive execution gas argument"));
-    };
-
-    // `invoker_gas: &mut InvokerGas`
-    let invoker_gas = tx.input(sui::tx::Input::shared(
-        *invoker_gas.object_id(),
-        invoker_gas.version(),
-        true,
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        false,
     ));
-
-    // `tools_gas: Vec<&mut ToolGas>`
+    crate::transactions::gas::snapshot_dag_tool_costs(
+        tx,
+        objects,
+        gas_service,
+        agent,
+        execution,
+        dag,
+    );
     let tools_gas = tools_gas
         .iter()
         .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
         .collect();
 
-    lock_gas_state_for_tools(
-        tx,
-        objects,
-        execution_gas,
-        invoker_gas,
-        tools_gas,
-        dag,
-        execution,
-        ticket,
-    );
+    lock_payment_state_for_tools(tx, objects, agent, tools_gas, dag, execution, ticket);
 
-    // `leader_registry: &LeaderRegistry`
     let leader_registry = tx.input(sui::tx::Input::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
-    // `nexus_workflow::dag::request_network_to_execute_walks()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -1740,11 +2034,8 @@ pub fn execute(
         vec![dag, execution, ticket, leader_registry, clock],
     );
 
-    // `DAGExecution`
     let execution_type =
         workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
-
-    // `sui::transfer::public_share_object<DAGExecution>`
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -1753,21 +2044,6 @@ pub fn execute(
             vec![execution_type],
         ),
         vec![execution],
-    );
-
-    // `ExecutionGas`
-    let execution_gas_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::EXECUTION_GAS);
-
-    // `sui::transfer::public_share_object<ExecutionGas>`
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![execution_gas_type],
-        ),
-        vec![execution_gas],
     );
 
     Ok(())
@@ -1790,6 +2066,7 @@ mod tests {
                 VerifierMode,
             },
         },
+        assert_matches::assert_matches,
         std::collections::HashMap,
     };
 
@@ -1872,6 +2149,34 @@ mod tests {
             let actual: sui::types::Address =
                 bcs::from_bytes(value).expect("address BCS should deserialize");
             assert_eq!(actual, expected);
+        }
+
+        fn expect_u64(&self, argument: &sui::types::Argument, expected: u64) {
+            let sui::types::Input::Pure { value } = self.input(argument) else {
+                panic!("expected pure input, got {:?}", self.input(argument));
+            };
+
+            let actual: u64 = bcs::from_bytes(value).expect("u64 BCS should deserialize");
+            assert_eq!(actual, expected);
+        }
+
+        fn expect_shared_object(
+            &self,
+            argument: &sui::types::Argument,
+            expected: &sui::types::ObjectReference,
+            expected_mutable: bool,
+        ) {
+            let sui::types::Input::Shared {
+                object_id,
+                initial_shared_version,
+                mutable,
+            } = self.input(argument)
+            else {
+                panic!("expected shared input, got {:?}", self.input(argument));
+            };
+            assert_eq!(object_id, expected.object_id());
+            assert_eq!(*initial_shared_version, expected.version());
+            assert_eq!(*mutable, expected_mutable);
         }
 
         fn expect_string(&self, argument: &sui::types::Argument, expected: &str) {
@@ -2589,7 +2894,58 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(inspector.commands().len() - 1);
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_on_chain_submit_call_uses_sdk_move_values(
+            &inspector,
+            call,
+            objects.workflow_pkg_id,
+            witness,
+        );
+    }
+
+    #[test]
+    fn test_submit_on_chain_tool_result_for_walk_v1_with_args_constructs_move_values() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        submit_on_chain_tool_result_for_walk_v1_with_args(
+            &mut tx,
+            &objects,
+            sui::types::Argument::Result(0),
+            sui::types::Argument::Result(1),
+            sui::types::Argument::Result(2),
+            sui::types::Argument::Result(3),
+            sui::types::Argument::Result(4),
+            sui::types::Argument::Result(5),
+            9,
+            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
+            sui::types::Argument::Result(8),
+            None,
+            None,
+            witness,
+            sui::types::Argument::Result(9),
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_on_chain_submit_call_uses_sdk_move_values(
+            &inspector,
+            call,
+            objects.workflow_pkg_id,
+            witness,
+        );
+    }
+
+    fn assert_on_chain_submit_call_uses_sdk_move_values(
+        inspector: &TxInspector,
+        call: &sui::types::MoveCall,
+        workflow_pkg_id: sui::types::Address,
+        witness: sui::types::Address,
+    ) {
+        assert_eq!(call.package, workflow_pkg_id);
         assert_eq!(
             call.module,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
@@ -2608,6 +2964,88 @@ mod tests {
             call.arguments[12],
             sui::types::Argument::Result(_)
         ));
+
+        let failure_option = match call.arguments[10] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected failure option to be a command result, got {other:?}"),
+        };
+        assert_eq!(failure_option.package, move_std::PACKAGE_ID);
+        assert_eq!(failure_option.module, move_std::Option::NONE.module);
+        assert_eq!(failure_option.function, move_std::Option::NONE.name);
+        assert_eq!(
+            failure_option.type_arguments,
+            vec![workflow::into_type_tag(
+                workflow_pkg_id,
+                workflow::Dag::FAILURE_EVIDENCE_KIND
+            )]
+        );
+
+        let witness_id = match call.arguments[12] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected witness ID to be a command result, got {other:?}"),
+        };
+        assert_eq!(witness_id.package, sui_framework::PACKAGE_ID);
+        assert_eq!(
+            witness_id.function,
+            sui_framework::Object::ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&witness_id.arguments[0], witness);
+    }
+
+    #[test]
+    fn test_prepare_on_chain_tool_result_submission_v1_bytes_constructs_move_values() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        let submission = prepare_on_chain_tool_result_submission_v1_bytes(
+            &mut tx,
+            &objects,
+            sui::types::Argument::Result(0),
+            sui::types::Argument::Result(1),
+            None,
+            &None,
+            witness,
+        )
+        .expect("submission bytes helper should build");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let submission_call = match submission {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected submission to be a command result, got {other:?}"),
+        };
+
+        assert_eq!(submission_call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            submission_call.function,
+            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name
+        );
+
+        let failure_option = match submission_call.arguments[2] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected failure option to be a command result, got {other:?}"),
+        };
+        assert_eq!(failure_option.package, move_std::PACKAGE_ID);
+        assert_eq!(failure_option.module, move_std::Option::NONE.module);
+        assert_eq!(failure_option.function, move_std::Option::NONE.name);
+        assert_eq!(
+            failure_option.type_arguments,
+            vec![workflow::into_type_tag(
+                objects.workflow_pkg_id,
+                workflow::Dag::FAILURE_EVIDENCE_KIND
+            )]
+        );
+
+        let witness_id = match submission_call.arguments[4] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected witness ID to be a command result, got {other:?}"),
+        };
+        assert_eq!(witness_id.package, sui_framework::PACKAGE_ID);
+        assert_eq!(
+            witness_id.function,
+            sui_framework::Object::ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&witness_id.arguments[0], witness);
     }
 
     #[test]
@@ -2894,12 +3332,12 @@ mod tests {
     }
 
     #[test]
-    fn test_execute() {
+    fn test_execute_standard_tap() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
         let entry_group = "group1";
         let mut input_data = HashMap::new();
-        let invoker_gas = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
 
         input_data.insert(
@@ -2913,38 +3351,213 @@ mod tests {
         );
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let priority_fee_per_gas_unit = 0;
-        execute(
+        let standard = StandardTapExecuteInput {
+            agent_id: Agent(sui_mocks::mock_sui_address()),
+            skill_id: 11,
+            payment_source: vec![1, 2],
+            payment_coin: None,
+            payment_coin_balance: None,
+            payment_max_budget: 55,
+            payment_refund_mode: 7,
+            authorization_plan_hash: Some(vec![9, 8]),
+            authorization_plan: Vec::new(),
+        };
+
+        execute_standard_tap(
             &mut tx,
             &nexus_objects,
             &dag,
-            priority_fee_per_gas_unit,
+            &agent,
+            0,
             entry_group,
             &input_data,
-            &invoker_gas,
+            &standard,
             &tools_gas,
         )
         .unwrap();
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
 
-        let sui::types::Command::MoveCall(call) = &commands.get(12).unwrap() else {
-            panic!("Expected last command to be a MoveCall to execute a DAG");
-        };
-
-        assert_eq!(call.package, nexus_objects.workflow_pkg_id);
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let begin_index = inspector
+            .commands()
+            .iter()
+            .position(|command| match command {
+                sui::types::Command::MoveCall(call) => {
+                    call.function == workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name
+                }
+                _ => false,
+            })
+            .expect("standard begin call");
+        let config_index = begin_index - 1;
+        let request_index = inspector
+            .commands()
+            .iter()
+            .position(|command| match command {
+                sui::types::Command::MoveCall(call) => {
+                    call.function == workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+                }
+                _ => false,
+            })
+            .expect("request walk call");
+        let config_call = inspector.move_call(config_index);
         assert_eq!(
-            call.module,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION.module
+            config_call.function,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.name
+        );
+        assert_eq!(config_call.arguments.len(), 9);
+        let sui::types::Argument::Result(dag_id_index) = config_call.arguments[0] else {
+            panic!("expected dag ID to come from object::id_from_address");
+        };
+        let dag_id_call = inspector.move_call(dag_id_index as usize);
+        assert_eq!(dag_id_call.package, sui_framework::PACKAGE_ID);
+        assert_eq!(
+            dag_id_call.module,
+            sui_framework::Object::ID_FROM_ADDRESS.module
         );
         assert_eq!(
-            call.function,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION.name
+            dag_id_call.function,
+            sui_framework::Object::ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
+        let sui::types::Argument::Result(agent_id_index) = config_call.arguments[5] else {
+            panic!("expected agent ID to come from tap::agent_id_from_address");
+        };
+        let agent_id_call = inspector.move_call(agent_id_index as usize);
+        assert_eq!(agent_id_call.package, nexus_objects.interface_pkg_id);
+        assert_eq!(
+            agent_id_call.module,
+            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.module
+        );
+        assert_eq!(
+            agent_id_call.function,
+            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&agent_id_call.arguments[0], standard.agent_id.id());
+
+        let sui::types::Argument::Result(skill_id_index) = config_call.arguments[6] else {
+            panic!("expected skill ID to come from tap::skill_id_from_u64");
+        };
+        let skill_id_call = inspector.move_call(skill_id_index as usize);
+        assert_eq!(skill_id_call.package, nexus_objects.interface_pkg_id);
+        assert_eq!(
+            skill_id_call.module,
+            crate::idents::tap::TapStandard::SKILL_ID_FROM_U64.module
+        );
+        assert_eq!(
+            skill_id_call.function,
+            crate::idents::tap::TapStandard::SKILL_ID_FROM_U64.name
+        );
+        inspector.expect_u64(&skill_id_call.arguments[0], standard.skill_id);
+
+        let begin_call = inspector.move_call(begin_index);
+        assert_eq!(
+            begin_call.function,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name
+        );
+        assert_eq!(begin_call.arguments.len(), 10);
+        inspector.expect_shared_object(&begin_call.arguments[2], &agent, true);
+        assert_matches!(
+            &begin_call.arguments[5],
+            sui::types::Argument::NestedResult(_, 0)
+        );
+        let sui::types::Input::Pure { value } = inspector.input(&begin_call.arguments[6]) else {
+            panic!("expected payment source input");
+        };
+        let payment_source: Vec<u8> = bcs::from_bytes(value).expect("payment source BCS");
+        assert_eq!(payment_source, standard.payment_source);
+
+        let request_call = inspector.move_call(request_index);
+        assert_eq!(
+            request_call.function,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+        );
+
+        assert!(!inspector.commands().iter().any(|command| {
+            matches!(
+                command,
+                sui::types::Command::MoveCall(call)
+                    if call.function == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
+                        && call.type_arguments.first()
+                            == Some(&sui::types::TypeTag::Struct(Box::new(
+                                sui::types::StructTag::new(
+                                    nexus_objects.interface_pkg_id,
+                                    crate::idents::tap::STANDARD_TAP_MODULE,
+                                    sui::types::Identifier::from_static("ExecutionPayment"),
+                                    vec![],
+                                ),
+                            )))
+            )
+        }));
+    }
+
+    #[test]
+    fn standard_tap_builders_do_not_use_legacy_workflow_witness_stamp_idents() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let entry_group = "group1";
+        let mut input_data = HashMap::new();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
+
+        input_data.insert(
+            "vertex1".to_string(),
+            HashMap::from([(
+                "port1".to_string(),
+                serde_json::json!({"kind": "inline", "data": { "key": "value"} })
+                    .try_into()
+                    .expect("Failed to convert JSON to DataStorage"),
+            )]),
+        );
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let standard = StandardTapExecuteInput {
+            agent_id: Agent(sui_mocks::mock_sui_address()),
+            skill_id: 11,
+            payment_source: vec![1],
+            payment_coin: None,
+            payment_coin_balance: None,
+            payment_max_budget: 3,
+            payment_refund_mode: 4,
+            authorization_plan_hash: None,
+            authorization_plan: Vec::new(),
+        };
+        execute_standard_tap(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            &agent,
+            0,
+            entry_group,
+            &input_data,
+            &standard,
+            &tools_gas,
+        )
+        .expect("standard TAP builder succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            calls.iter().any(|call| {
+                call.package == nexus_objects.workflow_pkg_id
+                    && call.module == workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.module
+                    && call.function == workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name
+            }),
+            "standard DAG execution must use the standard TAP entrypoint"
+        );
+        assert!(
+            !calls.iter().any(|call| {
+                call.package == nexus_objects.workflow_pkg_id
+                    && call.module == workflow::Dag::LEADER_STAMP_WORKSHEET.module
+                    && (call.function == workflow::Dag::LEADER_STAMP_WORKSHEET.name
+                        || call.function == workflow::Dag::LEADER_STAMP_WORKSHEET_FOR_DRY_RUN.name)
+            }),
+            "standard TAP builders must not call legacy witness worksheet stamp helpers"
         );
     }
 

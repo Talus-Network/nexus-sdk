@@ -2,21 +2,27 @@
 
 use {
     crate::{
+        events::RequestWalkStandardTapContext,
         nexus::crawler::{DynamicMap, Map, Set},
         sui,
         types::{
-            deserialize_sui_u64,
             parse_string_value,
-            serialize_sui_u64,
             strip_fields_owned,
+            Agent,
+            InterfaceRevision,
             MoveOption,
             NexusData,
+            SkillId,
+            TapVertexAuthorizationPlan,
+            TapVertexAuthorizationPlanEntry,
             TypeName,
             VerifierConfig,
         },
         ToolFqn,
     },
+    anyhow::bail,
     serde::{Deserialize, Serialize},
+    serde_json::Value,
     std::collections::HashMap,
 };
 
@@ -38,11 +44,83 @@ pub struct Dag {
 /// Struct holding the DAG execution information.
 ///
 /// See <sui/workflow/sources/dag.move:DAGExecution> for documentation.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DagExecution {
     /// The address of the sender of the transaction to trigger this DAG
     /// execution.
     pub invoker: sui::types::Address,
+    #[serde(default = "empty_move_option")]
+    pub tap_agent_id: MoveOption<Agent>,
+    #[serde(default = "empty_move_option")]
+    #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
+    pub tap_skill_id: MoveOption<SkillId>,
+    #[serde(default = "empty_move_option")]
+    pub tap_interface_revision: MoveOption<InterfaceRevision>,
+    #[serde(default = "empty_move_option")]
+    pub tap_endpoint_object_id: MoveOption<sui::types::Address>,
+    #[serde(default = "empty_move_option")]
+    pub tap_payment_id: MoveOption<sui::types::Address>,
+    #[serde(default = "empty_move_option")]
+    pub tap_selected_dag_id: MoveOption<sui::types::Address>,
+    #[serde(default = "empty_move_option")]
+    pub tap_authorization_plan_hash: MoveOption<Vec<u8>>,
+    #[serde(default)]
+    pub tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
+    #[serde(default = "empty_move_option")]
+    pub tap_scheduled_task_id: MoveOption<sui::types::Address>,
+    #[serde(default = "empty_move_option")]
+    #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
+    pub tap_scheduled_occurrence_index: MoveOption<u64>,
+}
+
+impl DagExecution {
+    pub fn standard_tap_context(&self) -> anyhow::Result<Option<RequestWalkStandardTapContext>> {
+        if self.tap_agent_id.0.is_none()
+            && self.tap_skill_id.0.is_none()
+            && self.tap_interface_revision.0.is_none()
+            && self.tap_endpoint_object_id.0.is_none()
+            && self.tap_payment_id.0.is_none()
+            && self.tap_selected_dag_id.0.is_none()
+            && self.tap_authorization_plan_hash.0.is_none()
+            && self.tap_authorization_plan.is_empty()
+            && self.tap_scheduled_task_id.0.is_none()
+            && self.tap_scheduled_occurrence_index.0.is_none()
+        {
+            return Ok(None);
+        }
+
+        let Some(agent_id) = self.tap_agent_id.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_agent_id");
+        };
+        let Some(skill_id) = self.tap_skill_id.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_skill_id");
+        };
+        let Some(interface_revision) = self.tap_interface_revision.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_interface_revision");
+        };
+        let Some(endpoint_object_id) = self.tap_endpoint_object_id.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_endpoint_object_id");
+        };
+        let Some(payment_id) = self.tap_payment_id.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_payment_id");
+        };
+        let Some(selected_dag_id) = self.tap_selected_dag_id.0 else {
+            bail!("DAGExecution has partial standard TAP context: missing tap_selected_dag_id");
+        };
+
+        Ok(Some(RequestWalkStandardTapContext {
+            agent_id,
+            skill_id,
+            interface_revision,
+            endpoint_object_id,
+            payment_id,
+            selected_dag_id,
+            authorization_plan_hash: self.tap_authorization_plan_hash.0.clone(),
+            authorization_plan: TapVertexAuthorizationPlan(self.tap_authorization_plan.clone()),
+            scheduled_task_id: self.tap_scheduled_task_id.0,
+            scheduled_occurrence_index: self.tap_scheduled_occurrence_index.0,
+        }))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -148,6 +226,57 @@ where
     MoveOption::<VerifierConfig>::deserialize(deserializer).map(|value| value.0)
 }
 
+fn deserialize_move_option_sui_u64<'de, D>(deserializer: D) -> Result<MoveOption<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return MoveOption::<u64>::deserialize(deserializer);
+    }
+
+    fn parse_value(value: Value) -> Result<Option<u64>, String> {
+        let value = strip_fields_owned(value);
+        match value {
+            Value::Null => Ok(None),
+            Value::String(value) => value
+                .parse::<u64>()
+                .map(Some)
+                .map_err(|e| format!("invalid number: {e}")),
+            Value::Number(value) => value
+                .as_u64()
+                .map(Some)
+                .ok_or_else(|| "expected unsigned number".to_string()),
+            Value::Array(mut values) => values
+                .drain(..)
+                .next()
+                .map(parse_value)
+                .transpose()
+                .map(|value| value.flatten()),
+            Value::Object(mut object) => {
+                if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
+                    return parse_value(vec);
+                }
+                if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
+                    return parse_value(inner);
+                }
+                if object.contains_key("none") || object.contains_key("None") {
+                    return Ok(None);
+                }
+                Err("expected Move Option<u64>".to_string())
+            }
+            other => Err(format!("unexpected value for Option<u64>: {other}")),
+        }
+    }
+
+    parse_value(Deserialize::deserialize(deserializer)?)
+        .map(MoveOption)
+        .map_err(serde::de::Error::custom)
+}
+
+fn empty_move_option<T>() -> MoveOption<T> {
+    MoveOption(None)
+}
+
 /// Enum distinguishing between a plain vertex and a vertex with an iterator.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "_variant_name")]
@@ -249,55 +378,14 @@ pub struct DagOutputVariantPort {
     pub port: TypeName,
 }
 
-// == `GasService` related types ==
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Scope {
-    Execution(sui::types::Address),
-    WorksheetType(TypeName),
-    InvokerAddress(sui::types::Address),
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InvokerGas {
-    pub vault: DynamicMap<Scope, GasFunds>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct GasFunds {
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub bal: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub locked: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ExecutionGas {
-    pub claimed_leader_gas: DynamicMap<Vec<u8>, ClaimedGas>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ClaimedGas {
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub execution: u64,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub priority: u64,
-}
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::fqn, serde_json::json, std::str::FromStr};
+    use {
+        super::*,
+        crate::{events::RequestWalkStandardTapContext, fqn, types::InterfaceRevision},
+        serde_json::json,
+        std::str::FromStr,
+    };
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     struct TestWireValue {
@@ -420,26 +508,100 @@ mod tests {
     }
 
     #[test]
-    fn test_gas_funds_serde() {
-        let gas_funds = GasFunds {
-            bal: 1000,
-            locked: 500,
+    fn dag_execution_standard_tap_context_requires_complete_fields() {
+        let execution = DagExecution {
+            invoker: sui::types::Address::from_static("0x1"),
+            tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+            tap_skill_id: MoveOption(Some(11)),
+            tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
+            tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static("0xc"))),
+            tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
+            tap_selected_dag_id: MoveOption(Some(sui::types::Address::from_static("0xe"))),
+            tap_authorization_plan_hash: MoveOption(Some(vec![1, 2, 3])),
+            tap_authorization_plan: Vec::new(),
+            tap_scheduled_task_id: MoveOption(Some(sui::types::Address::from_static("0xf"))),
+            tap_scheduled_occurrence_index: MoveOption(Some(2)),
         };
-        let json = serde_json::to_string(&gas_funds).unwrap();
-        let deserialized: GasFunds = serde_json::from_str(&json).unwrap();
-        assert_eq!(gas_funds.bal, deserialized.bal);
-        assert_eq!(gas_funds.locked, deserialized.locked);
+
+        let context = execution
+            .standard_tap_context()
+            .expect("complete standard context should parse")
+            .expect("context should be present");
+
+        assert_eq!(
+            context,
+            RequestWalkStandardTapContext {
+                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                skill_id: 11,
+                interface_revision: InterfaceRevision(7),
+                endpoint_object_id: sui::types::Address::from_static("0xc"),
+                payment_id: sui::types::Address::from_static("0xd"),
+                selected_dag_id: sui::types::Address::from_static("0xe"),
+                authorization_plan_hash: Some(vec![1, 2, 3]),
+                authorization_plan: TapVertexAuthorizationPlan::default(),
+                scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
+                scheduled_occurrence_index: Some(2),
+            }
+        );
     }
 
     #[test]
-    fn test_claimed_gas_serde() {
-        let claimed = ClaimedGas {
-            execution: 2000,
-            priority: 300,
+    fn dag_execution_scheduled_occurrence_index_accepts_sui_move_json_string_option() {
+        let execution: DagExecution = serde_json::from_value(serde_json::json!({
+            "invoker": "0x1",
+            "tap_skill_id": { "vec": ["11"] },
+            "tap_scheduled_occurrence_index": { "vec": ["2"] }
+        }))
+        .expect("DAGExecution should parse Move JSON option-u64 strings");
+
+        assert_eq!(execution.tap_skill_id.0, Some(11));
+        assert_eq!(execution.tap_scheduled_occurrence_index.0, Some(2));
+    }
+
+    #[test]
+    fn dag_execution_standard_tap_context_rejects_partial_fields() {
+        let execution = DagExecution {
+            invoker: sui::types::Address::from_static("0x1"),
+            tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+            tap_skill_id: MoveOption(None),
+            tap_interface_revision: MoveOption(None),
+            tap_endpoint_object_id: MoveOption(None),
+            tap_payment_id: MoveOption(None),
+            tap_selected_dag_id: MoveOption(None),
+            tap_authorization_plan_hash: MoveOption(None),
+            tap_authorization_plan: Vec::new(),
+            tap_scheduled_task_id: MoveOption(None),
+            tap_scheduled_occurrence_index: MoveOption(None),
         };
-        let json = serde_json::to_string(&claimed).unwrap();
-        let deserialized: ClaimedGas = serde_json::from_str(&json).unwrap();
-        assert_eq!(claimed.execution, deserialized.execution);
-        assert_eq!(claimed.priority, deserialized.priority);
+
+        let error = execution
+            .standard_tap_context()
+            .expect_err("partial standard context should error");
+        assert!(error.to_string().contains("missing tap_skill_id"));
+    }
+
+    #[test]
+    fn dag_execution_missing_standard_tap_fields_default_to_none() {
+        let execution: DagExecution = serde_json::from_value(json!({
+            "invoker": "0x1"
+        }))
+        .expect("missing standard TAP fields should default to none");
+
+        assert_eq!(execution.tap_agent_id.0, None);
+        assert_eq!(execution.tap_skill_id.0, None);
+        assert_eq!(execution.tap_interface_revision.0, None);
+        assert_eq!(execution.tap_endpoint_object_id.0, None);
+        assert_eq!(execution.tap_payment_id.0, None);
+        assert_eq!(execution.tap_selected_dag_id.0, None);
+        assert_eq!(execution.tap_authorization_plan_hash.0, None);
+        assert!(execution.tap_authorization_plan.is_empty());
+        assert_eq!(execution.tap_scheduled_task_id.0, None);
+        assert_eq!(execution.tap_scheduled_occurrence_index.0, None);
+        assert_eq!(
+            execution
+                .standard_tap_context()
+                .expect("empty standard TAP context should parse"),
+            None
+        );
     }
 }

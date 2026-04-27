@@ -113,7 +113,7 @@ pub(crate) async fn get_signing_key(
 pub(crate) async fn fetch_coins_for_address(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
-) -> AnyResult<Vec<sui::types::ObjectReference>, NexusCliError> {
+) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
     let coins_handle = loading!("Fetching coins...");
 
     let request = sui::grpc::ListOwnedObjectsRequest::default()
@@ -124,6 +124,7 @@ pub(crate) async fn fetch_coins_for_address(
             "object_id",
             "version",
             "digest",
+            "balance",
         ]));
 
     let mut client = client.lock().await;
@@ -150,10 +151,13 @@ pub(crate) async fn fetch_coins_for_address(
         .objects()
         .iter()
         .filter_map(|object| {
-            Some(sui::types::ObjectReference::new(
-                object.object_id_opt()?.parse().ok()?,
-                object.version_opt()?,
-                object.digest_opt()?.parse().ok()?,
+            Some((
+                sui::types::ObjectReference::new(
+                    object.object_id_opt()?.parse().ok()?,
+                    object.version_opt()?,
+                    object.digest_opt()?.parse().ok()?,
+                ),
+                object.balance_opt().unwrap_or(0),
             ))
         })
         .collect())
@@ -233,6 +237,27 @@ pub(crate) async fn fetch_coin(
     by_address: Option<sui::types::Address>,
     by_order: usize,
 ) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
+    fetch_coin_with_balance(client, owner, by_address, by_order)
+        .await
+        .map(|(coin, _)| coin)
+}
+
+pub(crate) async fn fetch_coin_with_balance(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
+) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
+    fetch_coin_with_balance_excluding(client, owner, by_address, by_order, &[]).await
+}
+
+pub(crate) async fn fetch_coin_with_balance_excluding(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
+    excluded: &[sui::types::Address],
+) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
     let mut coins = fetch_coins_for_address(client, owner).await?;
 
     if coins.is_empty() {
@@ -241,18 +266,19 @@ pub(crate) async fn fetch_coin(
         )));
     }
 
-    // If object gas coing object ID was specified, use it. If it was specified
+    // If object gas coin object ID was specified, use it. If it was specified
     // and could not be found, return error.
     match by_address {
         Some(id) => {
             let coin = coins
                 .into_iter()
-                .find(|coin| *coin.object_id() == id)
+                .find(|(coin, _)| *coin.object_id() == id)
                 .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?;
 
             Ok(coin)
         }
         None => {
+            coins.retain(|(coin, _)| !excluded.contains(coin.object_id()));
             if by_order >= coins.len() {
                 return Err(NexusCliError::Any(anyhow!(
                     "The wallet does not have enough coins to select coin #{by_order}"
@@ -315,6 +341,7 @@ mod tests {
                 primitives_pkg_id = "0x1"
                 workflow_pkg_id = "0x2"
                 interface_pkg_id = "0x3"
+                registry_pkg_id = "0x11"
                 network_id = "0x4"
 
                 [tool_registry]
@@ -327,10 +354,14 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [default_tap]
-                object_id = "0x7"
+                [tap_registry]
+                object_id = "0x70"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [default_tap_target]
+                agent_id = "0xa1"
+                skill_id = 177
 
                 [gas_service]
                 object_id = "0x8"
@@ -339,6 +370,11 @@ mod tests {
 
                 [leader_registry]
                 object_id = "0x10"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [verifier_registry]
+                object_id = "0x12"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
@@ -368,6 +404,7 @@ mod tests {
         assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
         assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
+        assert_eq!(objects.registry_pkg_id(), "0x11".parse().unwrap());
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(
             *objects.tool_registry.object_id(),
@@ -388,13 +425,18 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            *objects.default_tap.object_id(),
-            sui::types::Address::from_static("0x7")
+            objects.tap_registry().map(|registry| *registry.object_id()),
+            Some(sui::types::Address::from_static("0x70"))
         );
-        assert_eq!(objects.default_tap.version(), 1);
         assert_eq!(
-            *objects.default_tap.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+            objects.default_tap_target().map(|target| target.agent_id),
+            Some(nexus_sdk::types::Agent(sui::types::Address::from_static(
+                "0xa1"
+            )))
+        );
+        assert_eq!(
+            objects.default_tap_target().map(|target| target.skill_id),
+            Some(177)
         );
         assert_eq!(
             *objects.gas_service.object_id(),
@@ -413,6 +455,10 @@ mod tests {
         assert_eq!(
             *objects.leader_registry.digest(),
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.verifier_registry.object_id(),
+            sui::types::Address::from_static("0x12")
         );
 
         mock.assert_async().await;

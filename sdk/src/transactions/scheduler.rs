@@ -110,6 +110,24 @@ pub fn new_task(
     ))
 }
 
+/// PTB helper to attach a TAP scheduled-task link to a scheduler task data bag.
+pub fn attach_tap_scheduled_task_link(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: sui::types::Argument,
+    scheduled_task: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.module,
+            workflow::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.name,
+            vec![],
+        ),
+        vec![task, scheduled_task],
+    ))
+}
+
 /// PTB template to update an existing task metadata bag.
 pub fn update_metadata(
     tx: &mut sui::tx::TransactionBuilder,
@@ -311,7 +329,7 @@ pub fn new_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS,
+        workflow::Dag::BEGIN_DEFAULT_STANDARD_TAP_EXECUTION_WITNESS,
     );
 
     let execution_symbol = tx.move_call(
@@ -389,7 +407,7 @@ pub fn new_execution_policy(
         ],
     );
 
-    register_begin_execution(tx, objects, execution, config)?;
+    register_begin_default_standard_tap_execution(tx, objects, execution, config)?;
 
     Ok(execution)
 }
@@ -833,8 +851,8 @@ pub fn check_periodic_occurrence(
     ))
 }
 
-/// PTB template to register DAG execution config on the execution policy.
-pub fn register_begin_execution(
+/// PTB template to register default standard TAP DAG execution config on the execution policy.
+pub fn register_begin_default_standard_tap_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     policy: sui::types::Argument,
@@ -843,46 +861,85 @@ pub fn register_begin_execution(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.module,
-            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.name,
+            workflow::Dag::REGISTER_BEGIN_DEFAULT_STANDARD_TAP_EXECUTION.module,
+            workflow::Dag::REGISTER_BEGIN_DEFAULT_STANDARD_TAP_EXECUTION.name,
             vec![],
         ),
         vec![policy, config],
     ))
 }
 
-/// PTB template to invoke DAG execution from the scheduler via the Default TAP.
+/// PTB template to invoke DAG execution from the scheduler through the standard default target.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_dag_execution_from_scheduler(
+pub fn prepare_default_standard_tap_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    gas_service: sui::types::Argument,
     tool_registry: sui::types::Argument,
+    tap_registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    task: sui::types::Argument,
+    dag: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    payment_coin: sui::types::Argument,
+    payment_source: Vec<u8>,
+    payment_max_budget: u64,
+    payment_refund_mode: u8,
+    clock: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_source = tx.input(pure_arg(&payment_source)?);
+    let payment_max_budget = tx.input(pure_arg(&payment_max_budget)?);
+    let payment_refund_mode = tx.input(pure_arg(&payment_refund_mode)?);
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULER.module,
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULER.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            tap_registry,
+            agent,
+            tool_registry,
+            task,
+            leader_cap,
+            payment_coin,
+            payment_source,
+            payment_max_budget,
+            payment_refund_mode,
+            clock,
+        ],
+    ))
+}
+
+/// PTB template to invoke DAG execution from the scheduler using a durable TAP scheduled payment.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_default_standard_tap_execution_from_scheduled_payment(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool_registry: sui::types::Argument,
+    tap_registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    scheduled_task: sui::types::Argument,
     task: sui::types::Argument,
     dag: sui::types::Argument,
     leader_cap: sui::types::Argument,
     clock: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
-    // `self: &mut DefaultTAP`
-    let tap = tx.input(sui::tx::Input::shared(
-        *objects.default_tap.object_id(),
-        objects.default_tap.version(),
-        true,
-    ));
-
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.module,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name,
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
             vec![],
         ),
         vec![
-            tap,
-            task,
             dag,
-            gas_service,
+            tap_registry,
+            agent,
+            scheduled_task,
             tool_registry,
+            task,
             leader_cap,
             clock,
         ],
@@ -896,11 +953,11 @@ pub fn execute_scheduled_occurrence(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
+    agent: &sui::types::ObjectReference,
+    scheduled_task: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
-    amount_execution: u64,
-    amount_priority: u64,
+    _amount_priority: u64,
     generator: OccurrenceGenerator,
-    invoker_gas: &sui::types::ObjectReference,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> anyhow::Result<()> {
     // Create shared inputs once so subsequent commands reuse the same arguments.
@@ -941,17 +998,23 @@ pub fn execute_scheduled_occurrence(
         ),
     };
 
-    // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
-        *objects.gas_service.object_id(),
-        objects.gas_service.version(),
-        true,
-    ));
-
     // `tool_registry: &ToolRegistry`
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
+        false,
+    ));
+
+    // `tap_registry: &TapRegistry`
+    let tap_registry = tx.input(sui::tx::Input::shared(
+        *objects
+            .tap_registry()
+            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?
+            .object_id(),
+        objects
+            .tap_registry()
+            .expect("tap registry checked above")
+            .version(),
         false,
     ));
 
@@ -961,46 +1024,51 @@ pub fn execute_scheduled_occurrence(
         dag.version(),
         false,
     ));
-
-    // `leader_cap: &CloneableOwnerCap<OverNetwork>`
+    let agent = tx.input(sui::tx::Input::shared(
+        *agent.object_id(),
+        agent.version(),
+        true,
+    ));
+    let scheduled_task = tx.input(sui::tx::Input::shared(
+        *scheduled_task.object_id(),
+        scheduled_task.version(),
+        true,
+    ));
     let leader_cap = tx.input(sui::tx::Input::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
         false,
     ));
 
-    let results = prepare_dag_execution_from_scheduler(
+    let results = prepare_default_standard_tap_execution_from_scheduled_payment(
         tx,
         objects,
-        gas_service,
         tool_registry,
+        tap_registry,
+        agent,
+        scheduled_task,
         task,
         dag,
         leader_cap,
         clock,
     )?;
 
-    // `ticket: RequestWalkExecution`
-    let Some(ticket) = results.nested(0) else {
-        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
-    };
-
     // `execution: DAGExecution`
-    let Some(execution) = results.nested(1) else {
+    let Some(execution) = results.nested(0) else {
         return Err(anyhow::anyhow!("Failed to receive execution argument"));
     };
 
-    // `execution_gas: ExecutionGas`
-    let Some(execution_gas) = results.nested(2) else {
-        return Err(anyhow::anyhow!("Failed to receive execution gas argument"));
+    // `ticket: RequestWalkExecution`
+    let Some(ticket) = results.nested(1) else {
+        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
     };
 
-    // `invoker_gas: &mut InvokerGas`
-    let invoker_gas = tx.input(sui::tx::Input::shared(
-        *invoker_gas.object_id(),
-        invoker_gas.version(),
-        true,
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        false,
     ));
+    transactions::gas::snapshot_dag_tool_costs(tx, objects, gas_service, agent, execution, dag);
 
     // `tools_gas: Vec<&mut ToolGas>`
     let tools_gas = tools_gas
@@ -1008,42 +1076,9 @@ pub fn execute_scheduled_occurrence(
         .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
         .collect();
 
-    transactions::dag::lock_gas_state_for_tools(
-        tx,
-        objects,
-        execution_gas,
-        invoker_gas,
-        tools_gas,
-        dag,
-        execution,
-        ticket,
+    transactions::dag::lock_payment_state_for_tools(
+        tx, objects, agent, tools_gas, dag, execution, ticket,
     );
-
-    if amount_execution > 0 || amount_priority > 0 {
-        // `amount_execution: u64`
-        let amount_execution_arg = tx.input(pure_arg(&amount_execution)?);
-
-        // `amount_priority: u64`
-        let amount_priority_arg = tx.input(pure_arg(&amount_priority)?);
-
-        // `nexus_workflow::gas::claim_leader_gas_for_self()`
-        tx.move_call(
-            sui::tx::Function::new(
-                objects.workflow_pkg_id,
-                workflow::Gas::CLAIM_LEADER_GAS_FOR_SELF.module,
-                workflow::Gas::CLAIM_LEADER_GAS_FOR_SELF.name,
-                vec![],
-            ),
-            vec![
-                execution_gas,
-                invoker_gas,
-                execution,
-                leader_cap,
-                amount_execution_arg,
-                amount_priority_arg,
-            ],
-        );
-    }
 
     // `nexus_workflow::dag::request_network_to_execute_walks()`
     tx.move_call(
@@ -1069,21 +1104,6 @@ pub fn execute_scheduled_occurrence(
             vec![execution_type],
         ),
         vec![execution],
-    );
-
-    // `ExecutionGas`
-    let execution_gas_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::EXECUTION_GAS);
-
-    // `sui::transfer::public_share_object<ExecutionGas>`
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![execution_gas_type],
-        ),
-        vec![execution_gas],
     );
 
     // Consume the proof to satisfy Move's non-drop requirement and reset task policies.
@@ -1655,12 +1675,12 @@ mod tests {
     }
 
     #[test]
-    fn register_begin_execution_routes_through_default_tap() {
+    fn register_begin_default_standard_tap_execution_routes_through_dag() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let policy = tx.input(pure_arg(&13_u64).unwrap());
         let config = tx.input(pure_arg(&14_u64).unwrap());
-        register_begin_execution(&mut tx, &objects, policy, config)
+        register_begin_default_standard_tap_execution(&mut tx, &objects, policy, config)
             .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
@@ -1668,11 +1688,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.module
+            workflow::Dag::REGISTER_BEGIN_DEFAULT_STANDARD_TAP_EXECUTION.module
         );
         assert_eq!(
             call.function,
-            workflow::DefaultTap::REGISTER_BEGIN_EXECUTION.name
+            workflow::Dag::REGISTER_BEGIN_DEFAULT_STANDARD_TAP_EXECUTION.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_u64(&call.arguments[0], 13);
@@ -1684,8 +1704,9 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let invoker_gas = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -1694,19 +1715,34 @@ mod tests {
             &objects,
             &task,
             &dag,
+            &agent,
+            &scheduled_task,
             &leader_cap,
-            100,
-            200,
+            0,
             OccurrenceGenerator::Queue,
-            &invoker_gas,
             &tools_gas,
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        assert_eq!(inspector.commands().len(), 8);
+        assert_eq!(inspector.commands().len(), 7);
 
-        let scheduler_call = inspector.move_call(0);
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let scheduler_call = calls
+            .iter()
+            .find(|call| {
+                call.module == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+                    && call.function == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+            })
+            .expect("queue occurrence check call");
         assert_eq!(
             scheduler_call.module,
             workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
@@ -1724,38 +1760,57 @@ mod tests {
         );
         inspector.expect_clock(&scheduler_call.arguments[2]);
 
-        let tap_call = inspector.move_call(1);
+        let tap_call = calls
+            .iter()
+            .find(|call| {
+                call.module
+                    == workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                    && call.function
+                        == workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            })
+            .expect("scheduler TAP preparation call");
         assert_eq!(
             tap_call.module,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.module
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.module
         );
         assert_eq!(
             tap_call.function,
-            workflow::DefaultTap::PREPARE_DAG_EXECUTION_FROM_SCHEDULER.name
+            workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
-        assert_eq!(tap_call.arguments.len(), 7);
-        inspector.expect_shared_object(&tap_call.arguments[0], &objects.default_tap, true);
-        inspector.expect_shared_object(&tap_call.arguments[1], &task, true);
+        assert_eq!(tap_call.arguments.len(), 8);
         let sui::types::Input::Shared {
             object_id,
             initial_shared_version,
             mutable,
-        } = inspector.input(&tap_call.arguments[2])
+        } = inspector.input(&tap_call.arguments[0])
         else {
             panic!(
                 "expected shared DAG object, got {:?}",
-                inspector.input(&tap_call.arguments[2])
+                inspector.input(&tap_call.arguments[0])
             );
         };
         assert_eq!(object_id, dag.object_id());
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
-        inspector.expect_shared_object(&tap_call.arguments[3], &objects.gas_service, true);
+        inspector.expect_shared_object(
+            &tap_call.arguments[1],
+            objects.tap_registry().expect("mock has tap registry"),
+            false,
+        );
+        inspector.expect_shared_object(&tap_call.arguments[2], &agent, true);
+        inspector.expect_shared_object(&tap_call.arguments[3], &scheduled_task, true);
         inspector.expect_shared_object(&tap_call.arguments[4], &objects.tool_registry, false);
-        inspector.expect_shared_object(&tap_call.arguments[5], &leader_cap, false);
-        inspector.expect_clock(&tap_call.arguments[6]);
+        inspector.expect_shared_object(&tap_call.arguments[5], &task, true);
+        inspector.expect_shared_object(&tap_call.arguments[6], &leader_cap, false);
+        inspector.expect_clock(&tap_call.arguments[7]);
 
-        let finish_call = inspector.move_call(7);
+        let finish_call = calls
+            .iter()
+            .find(|call| {
+                call.module == workflow::Scheduler::FINISH.module
+                    && call.function == workflow::Scheduler::FINISH.name
+            })
+            .expect("scheduler finish call");
         assert_eq!(finish_call.module, workflow::Scheduler::FINISH.module);
         assert_eq!(finish_call.function, workflow::Scheduler::FINISH.name);
         assert_eq!(finish_call.arguments.len(), 2);
@@ -1764,12 +1819,13 @@ mod tests {
     }
 
     #[test]
-    fn execute_scheduled_occurrence_supports_periodic_generators() {
+    fn execute_scheduled_occurrence_prepares_standard_tap_after_scheduler_check() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let invoker_gas = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
 
@@ -1778,11 +1834,74 @@ mod tests {
             &objects,
             &task,
             &dag,
+            &agent,
+            &scheduled_task,
             &leader_cap,
-            10,
-            20,
+            0,
+            OccurrenceGenerator::Queue,
+            &tools_gas,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let scheduler_idx = calls
+            .iter()
+            .position(|call| {
+                call.module == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+                    && call.function == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+            })
+            .expect("queue occurrence check call");
+        let tap_idx = calls
+            .iter()
+            .position(|call| {
+                call.module
+                    == workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                    && call.function
+                        == workflow::Dag::PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            })
+            .expect("scheduler TAP preparation call");
+        let finish_idx = calls
+            .iter()
+            .position(|call| {
+                call.module == workflow::Scheduler::FINISH.module
+                    && call.function == workflow::Scheduler::FINISH.name
+            })
+            .expect("scheduler finish call");
+
+        assert!(scheduler_idx < tap_idx);
+        assert!(tap_idx < finish_idx);
+    }
+
+    #[test]
+    fn execute_scheduled_occurrence_supports_periodic_generators() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let scheduled_task = sui_mocks::mock_sui_object_ref();
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        execute_scheduled_occurrence(
+            &mut tx,
+            &objects,
+            &task,
+            &dag,
+            &agent,
+            &scheduled_task,
+            &leader_cap,
+            0,
             OccurrenceGenerator::Periodic,
-            &invoker_gas,
             &tools_gas,
         )
         .expect("ptb construction succeeds");

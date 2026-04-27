@@ -98,6 +98,18 @@ pub(crate) enum DagCommand {
             default_value_t = 0u64
         )]
         priority_fee_per_gas_unit: u64,
+        #[arg(
+            long = "payment-coin",
+            help = "SUI coin object ID to lock as the standard TAP execution payment.",
+            value_name = "OBJECT_ID"
+        )]
+        payment_coin: Option<sui::types::Address>,
+        #[arg(
+            long = "payment-budget",
+            help = "Optional payment budget in MIST. Defaults to the full payment coin balance.",
+            value_name = "AMOUNT"
+        )]
+        payment_budget: Option<u64>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -123,9 +135,7 @@ pub(crate) enum DagCommand {
         execution_checkpoint: u64,
     },
 
-    #[command(
-        about = "Calculate the total gas cost of a Nexus DAG execution based on the provided DAGExecution object ID."
-    )]
+    #[command(about = "Show the standard TAP execution payment consumed by a DAG execution.")]
     ExecutionCost {
         /// The object ID of the Nexus DAGExecution object.
         #[arg(
@@ -158,6 +168,8 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             remote,
             inspect,
             priority_fee_per_gas_unit,
+            payment_coin,
+            payment_budget,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -170,6 +182,8 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 remote,
                 inspect,
                 priority_fee_per_gas_unit,
+                payment_coin,
+                payment_budget,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )

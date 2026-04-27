@@ -5,6 +5,70 @@ use crate::{
 
 pub const PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x1");
 
+// == `std::option` ==
+
+pub struct Option;
+
+const OPTION_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("option");
+
+impl Option {
+    /// `std::option::none`
+    pub const NONE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OPTION_MODULE,
+        name: sui::types::Identifier::from_static("none"),
+    };
+    /// `std::option::Option`
+    pub const OPTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OPTION_MODULE,
+        name: sui::types::Identifier::from_static("Option"),
+    };
+    /// `std::option::some`
+    pub const SOME: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OPTION_MODULE,
+        name: sui::types::Identifier::from_static("some"),
+    };
+
+    pub fn type_tag(element: sui::types::TypeTag) -> sui::types::TypeTag {
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            PACKAGE_ID,
+            Self::OPTION.module,
+            Self::OPTION.name,
+            vec![element],
+        )))
+    }
+
+    pub fn none(
+        tx: &mut sui::tx::TransactionBuilder,
+        element: sui::types::TypeTag,
+    ) -> sui::types::Argument {
+        tx.move_call(
+            sui::tx::Function::new(
+                PACKAGE_ID,
+                Self::NONE.module,
+                Self::NONE.name,
+                vec![element],
+            ),
+            vec![],
+        )
+    }
+
+    pub fn some(
+        tx: &mut sui::tx::TransactionBuilder,
+        element: sui::types::TypeTag,
+        value: sui::types::Argument,
+    ) -> sui::types::Argument {
+        tx.move_call(
+            sui::tx::Function::new(
+                PACKAGE_ID,
+                Self::SOME.module,
+                Self::SOME.name,
+                vec![element],
+            ),
+            vec![value],
+        )
+    }
+}
+
 // == `std::ascii` ==
 
 pub struct Ascii;
@@ -63,25 +127,6 @@ impl Vector {
     pub const SINGLETON: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VECTOR_MODULE,
         name: sui::types::Identifier::from_static("singleton"),
-    };
-}
-
-// == `std::option` ==
-
-pub struct Option;
-
-const OPTION_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("option");
-
-impl Option {
-    /// `std::option::none`
-    pub const NONE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OPTION_MODULE,
-        name: sui::types::Identifier::from_static("none"),
-    };
-    /// `std::option::some`
-    pub const SOME: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OPTION_MODULE,
-        name: sui::types::Identifier::from_static("some"),
     };
 }
 

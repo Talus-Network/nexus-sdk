@@ -14,7 +14,7 @@ use {
             workflow::WorkflowActions,
         },
         sui,
-        types::{derive_invoker_gas_id, derive_tool_gas_id, derive_tool_id, NexusObjects},
+        types::{derive_tool_gas_id, derive_tool_id, NexusObjects},
         ToolFqn,
     },
     std::{
@@ -165,6 +165,7 @@ impl NexusClientBuilder {
             nexus_objects: Arc::clone(&nexus_objects),
             reference_gas_price,
             crawler: Crawler::new(client),
+            rpc_url: rpc_url.clone(),
             event_poller: EventPoller::new(&rpc_url, Arc::clone(&nexus_objects)),
         })
     }
@@ -183,6 +184,8 @@ pub struct NexusClient {
     pub(super) reference_gas_price: u64,
     /// Provide access to an instantiated object crawler.
     pub(super) crawler: Crawler,
+    /// RPC URL used by the client.
+    pub(super) rpc_url: String,
     /// Provide access to an instantiated event poller.
     pub(super) event_poller: EventPoller,
 }
@@ -228,9 +231,21 @@ impl NexusClient {
         }
     }
 
+    /// Return a [`TapActions`] instance for standard TAP operations.
+    pub fn tap(&self) -> crate::nexus::tap::TapActions {
+        crate::nexus::tap::TapActions {
+            client: self.clone(),
+        }
+    }
+
     /// Return a [`Crawler`] instance for object crawling operations.
     pub fn crawler(&self) -> &Crawler {
         &self.crawler
+    }
+
+    /// Return the RPC URL configured for this client.
+    pub fn rpc_url(&self) -> &str {
+        &self.rpc_url
     }
 
     /// Return a [`Signer`] instance for signing transactions.
@@ -329,24 +344,6 @@ impl NexusClient {
             .map_err(NexusError::Rpc)?;
 
         Ok(tool_gas.object_ref())
-    }
-
-    /// Derive and fetch an [`InvokerGas`] object for the current signer address.
-    pub(crate) async fn fetch_invoker_gas(
-        &self,
-    ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
-        let crawler = self.crawler();
-        let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
-        let invoker_address = self.signer.get_active_address();
-
-        let invoker_gas_id = derive_invoker_gas_id(gas_service_object_id, invoker_address)
-            .map_err(NexusError::Parsing)?;
-        let invoker_gas = crawler
-            .get_object_metadata(invoker_gas_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        Ok(invoker_gas.object_ref())
     }
 }
 

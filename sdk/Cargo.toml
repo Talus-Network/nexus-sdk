@@ -31,6 +31,12 @@ sui_types = [
     "sui-transaction-builder",
 ]
 
+move_publish = [
+    "sui_types",
+    "sui_move_build",
+    "move_package_alt",
+]
+
 # Sui idents feature enables the use of the `idents` module and adds sui-sdk
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
@@ -40,7 +46,18 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module.
-types = ["sui_types", "sui_idents", "enum_dispatch", "walrus", "futures", "jsonschema", "zeroize"]
+types = [
+    "sui_types",
+    "sui_idents",
+    "enum_dispatch",
+    "walrus",
+    "futures",
+    "jsonschema",
+    "zeroize",
+    "bcs",
+    "hex",
+    "sha2",
+]
 
 # Events feature enables the use of the `events` module.
 events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing"]
@@ -57,7 +74,15 @@ dag = ["petgraph"]
 schema_gen = ["sui_types", "serde_json"]
 
 # Provides various Nexus utilities like deployment and execution of workflows.
-nexus = ["transactions", "events", "dag", "bcs", "prost-types", "signed_http"]
+nexus = [
+    "transactions",
+    "events",
+    "dag",
+    "bcs",
+    "prost-types",
+    "signed_http",
+    "move_publish",
+]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
 # tempfile, tokio-retry, sui_move_build, sui_package_management and
@@ -83,6 +108,7 @@ full = [
     "tool_fqn",
     "signed_http",
     "sui_types",
+    "move_publish",
     "sui_idents",
     "types",
     "events",

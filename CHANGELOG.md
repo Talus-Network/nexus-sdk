@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Terminal `_err_eval` event handling in DAG execution inspection, including
   failure class, post-failure action, reason, duplicate-submission status, and
   `_err_eval` hash output.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG,
+  creates and shares a standard endpoint object, and writes a complete
+  endpoint-bound artifact for operator handoff.
 
 #### Changed
 
@@ -22,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output.
 - On-chain tool registration config persistence is now covered by a serialized
   test to avoid cross-test config interference.
+- Generated standard fixed-tool templates now include the hidden
+  `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by
+  endpoint-declared authorization-aware fixed tools.
 
 ### `nexus-sdk`
 
@@ -56,6 +62,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the verifier-aware workflow entrypoint.
 - Additional signed HTTP tests for response signing verification and
   multi-variant output handling.
+- SDK-owned standard TAP authorization-plan models and current-vertex grant
+  resolution helpers for fixed-tool execution.
+- High-level standard TAP package publishing, DAG publishing orchestration,
+  standard endpoint creation, and complete publish-artifact construction.
+- Standard TAP transaction helpers for endpoint creation and SDK-owned
+  authorization-cap fixed-tool submit and dry-run PTB sequencing.
+- Compatibility-focused parser fixtures for current standard TAP event BCS
+  layouts, including Move `Option<T>` event fields used by request, payment,
+  authorization, and scheduled-execution events.
+- Standard TAP agent payment vault models, fetch helper, deposit/withdraw PTB
+  builders, and typed payment source helpers for invoker-funded and
+  agent-vault-funded settlement.
+- Agent-scoped workflow gas helpers for standard TAP funding.
+- Durable scheduled TAP models, events, fetch helpers, and transaction builders
+  for address-funded and agent-vault-funded scheduled prepayment, scheduled
+  occurrence payment conversion, scheduled occurrence completion, and
+  scheduler-task link attachment.
+- SDK-level `fetch_task_tap_scheduled_task_link` and
+  `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain
+  scheduled task state without local-only BCS parsing.
 
 #### Changed
 
@@ -91,15 +117,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime config hot reload now moves filesystem metadata checks and config
   parsing onto Tokio's blocking pool and reduces fallback polling frequency,
   while keeping notify-driven reloads as the fast path.
+- Standard fixed-tool schema generation hides TAP authorization-cap and
+  workflow worksheet internal arguments from user-facing input schemas.
+- CLI and SDK object metadata now resolve default DAG execution through
+  `tap_registry` and `default_tap_target` rather than a `default_tap` object.
+- Legacy `TapV1` and `AnnounceInterfacePackageEvent` support is retained only
+  as compatibility for historical data; active standard builders use standard
+  TAP idents.
+- SDK parser sample coverage now uses generated current-layout standard TAP
+  event fixtures instead of stale hard-coded witness-era bytes.
+- scheduler and peer TAP PTB tests now assert standard TAP calls by
+  package/module/function and current BCS argument layout rather than brittle
+  absolute command indexes.
+- Standard TAP payment validation now accepts typed invoker and agent-vault
+  payment sources while preserving legacy address-BCS compatibility.
+- `TapExecutionPayment` decoding now tolerates source kind, source identity,
+  locked budget, and final-state fields emitted by the updated TAP interface.
+- `TapScheduledSkillTask` decoding now mirrors the durable on-chain
+  `ScheduledSkillTask` shape, including payment source, remaining reserve,
+  in-flight occurrence, occurrence records, and final state.
+- Scheduled occurrence transaction helpers now chain scheduler occurrence
+  checks with standard TAP scheduled-payment preparation instead of requiring
+  leader-built local payment arguments.
+- `DagExecution` decoding accepts Sui Move JSON `Option<u64>` scheduled
+  occurrence indexes, including string-valued `vec` forms emitted by object
+  JSON.
+- Standard TAP SDK models and PTB builders now match the Move package split:
+  general TAP identities, payments, endpoint, worksheet, authorization, and
+  schedule types resolve through `nexus_interface::tap`, while registry storage
+  records remain under `nexus_registry::tap`.
 
 #### Fixed
 
 - Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
+- SDK test fixtures now track the current standard TAP event and PTB layouts,
+  fixing parsing and PTB-order regressions exposed after the standard TAP
+  cutover.
+- Raw `TapRegistryObject` BCS decoding now models Move `Option<T>` layout for
+  `default_target`, fixing default TAP target recovery from shared registry
+  objects used by leader bootstrap and scheduler flows.
 
 #### Removed
 
 - Stale `OnChainToolResultSubmissionV1` SDK type/export and obsolete onchain
   BCS-envelope/split-submit Move identifiers.
+- Active SDK `DefaultTap`/`TapV1` default execution builders and
+  `NexusObjects.default_tap` deployment metadata requirements.
+- active payment-auth parameters, wrapped-style `SkillId(...)` construction,
+  and public `InvokerGas`/`ExecutionGas` caller paths from SDK and CLI TAP
+  flows.
 
 ### `docs`
 
@@ -107,6 +173,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Comprehensive DAG construction guide sections for `post_failure_action`, `leader_verifier`, and `tool_verifier` configuration at both DAG and vertex levels
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
+- Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers,
+  object models, and CI coverage workflow into the commit-scoped TAP lifecycle
+  coverage matrix.
 
 ### Code
 

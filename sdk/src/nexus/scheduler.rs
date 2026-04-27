@@ -20,6 +20,7 @@ use {
             MoveOption,
             NexusObjects,
             PolicySymbol,
+            TapScheduledTaskLink,
             Task,
             TransitionConfigKey,
         },
@@ -145,6 +146,47 @@ pub struct UpdateMetadataResult {
 pub struct TaskStateResult {
     pub tx_digest: sui::types::Digest,
     pub state: TaskStateAction,
+}
+
+/// Fetch the TAP scheduled-task link stored under a scheduler task data bag.
+///
+/// This is the SDK-owned decode boundary used by the leader during scheduled
+/// occurrence recovery. Callers should not parse the task data bag locally.
+pub async fn fetch_task_tap_scheduled_task_link(
+    crawler: &Crawler,
+    task: &Response<Task>,
+) -> anyhow::Result<TapScheduledTaskLink> {
+    let mut links = select_tap_scheduled_task_links(
+        crawler
+            .get_dynamic_field_values_bcs::<TapScheduledTaskLink>(task.data.data.id())
+            .await?,
+    );
+    match links.len() {
+        1 => Ok(links.remove(0)),
+        0 => bail!(
+            "scheduler task '{}' has no TAP scheduled-task link",
+            task.object_id
+        ),
+        count => bail!(
+            "scheduler task '{}' has {count} TAP scheduled-task links",
+            task.object_id
+        ),
+    }
+}
+
+fn select_tap_scheduled_task_links(
+    values: Vec<(Option<String>, TapScheduledTaskLink)>,
+) -> Vec<TapScheduledTaskLink> {
+    values
+        .into_iter()
+        .filter_map(|(value_type, link)| {
+            let is_link = value_type
+                .as_deref()
+                .map(|value_type| value_type.ends_with("::scheduler::TapScheduledTaskLink"))
+                .unwrap_or(true);
+            is_link.then_some(link)
+        })
+        .collect()
 }
 
 impl SchedulerActions {
@@ -614,7 +656,7 @@ where
     Ok(active_start_ms)
 }
 
-pub async fn fetch_begin_dag_execution_config(
+pub async fn fetch_begin_default_standard_tap_execution_config(
     crawler: &Crawler,
     objects: &NexusObjects,
     configured_automaton_id: &sui::types::Address,
@@ -624,16 +666,16 @@ pub async fn fetch_begin_dag_execution_config(
 
     let configs = crawler.get_dynamic_fields(&parent).await?;
 
-    extract_begin_dag_execution_config(configs, objects)
+    extract_begin_default_standard_tap_execution_config(configs, objects)
 }
 
-fn extract_begin_dag_execution_config(
+fn extract_begin_default_standard_tap_execution_config(
     configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
     objects: &NexusObjects,
 ) -> anyhow::Result<DagExecutionConfig> {
     let expected_config =
         workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
-    let expected_symbol = workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS
+    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_STANDARD_TAP_EXECUTION_WITNESS
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
     let mut candidates = configs.into_iter().filter(|(key, _)| {
@@ -646,7 +688,7 @@ fn extract_begin_dag_execution_config(
     });
 
     let Some((_key, value)) = candidates.next() else {
-        bail!("Missing execution policy config for BeginDagExecutionWitness");
+        bail!("Missing execution policy config for BeginDefaultStandardTapExecutionWitness");
     };
 
     let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
@@ -760,7 +802,6 @@ mod tests {
             types::{
                 ConfiguredAutomaton,
                 ConstraintsData,
-                DagExecutionConfig,
                 DataStorage,
                 DeterministicAutomaton,
                 ExecutionData,
@@ -769,7 +810,6 @@ mod tests {
                 NexusObjects,
                 Policy,
                 PolicySymbol,
-                SchedulerEntryGroup,
                 TaskState,
                 TransitionConfigKey,
                 TransitionKey,
@@ -922,32 +962,6 @@ mod tests {
         )
     }
 
-    fn begin_dag_execution_config_value(
-        dag: sui::types::Address,
-        network: sui::types::Address,
-        invoker: sui::types::Address,
-        wrapped: bool,
-    ) -> serde_json::Value {
-        let inner = json!({
-            "dag": dag,
-            "network": network,
-            "entry_group": {
-                "name": "default"
-            },
-            "inputs": {
-                "contents": []
-            },
-            "invoker": invoker,
-            "priority_fee_per_gas_unit": "5"
-        });
-
-        if wrapped {
-            json!({ "fields": inner })
-        } else {
-            inner
-        }
-    }
-
     fn event_bcs(
         primitives_pkg: sui::types::Address,
         workflow_pkg: sui::types::Address,
@@ -1070,49 +1084,6 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Missing scheduler generator state config"));
-    }
-
-    #[test]
-    fn extract_begin_dag_execution_config_parses_wrapped_and_plain_json() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui_mocks::mock_sui_address();
-        let network = sui_mocks::mock_sui_address();
-        let invoker = sui_mocks::mock_sui_address();
-        let expected_config = workflow::Dag::DAG_EXECUTION_CONFIG
-            .qualified_name(objects.workflow_type_origin_pkg_id());
-        let expected_symbol = workflow::DefaultTap::BEGIN_DAG_EXECUTION_WITNESS
-            .qualified_name(objects.workflow_type_origin_pkg_id());
-
-        for wrapped in [true, false] {
-            let parsed = extract_begin_dag_execution_config(
-                vec![(
-                    TransitionConfigKey {
-                        transition: TransitionKey {
-                            state: None,
-                            symbol: PolicySymbol::Witness(TypeName::new(&expected_symbol)),
-                        },
-                        config: TypeName::new(&expected_config),
-                    },
-                    begin_dag_execution_config_value(dag, network, invoker, wrapped),
-                )],
-                &objects,
-            )
-            .unwrap();
-
-            assert_eq!(
-                parsed,
-                DagExecutionConfig {
-                    dag,
-                    network,
-                    entry_group: SchedulerEntryGroup {
-                        name: "default".to_string(),
-                    },
-                    inputs: Map::default(),
-                    invoker,
-                    priority_fee_per_gas_unit: 5,
-                }
-            );
-        }
     }
 
     #[tokio::test]
@@ -1754,5 +1725,39 @@ mod tests {
 
         let empty = dummy_executed_transaction(vec![]);
         assert!(extract_occurrence_event(&empty).is_none());
+    }
+
+    #[test]
+    fn scheduler_tap_link_selector_filters_dynamic_field_values() {
+        let mut rng = thread_rng();
+        let link = TapScheduledTaskLink {
+            scheduled_task_id: sui::types::Address::generate(&mut rng),
+            agent_id: crate::types::Agent(sui::types::Address::generate(&mut rng)),
+            skill_id: 7,
+            input_commitment: vec![1, 2, 3],
+            source_kind: crate::types::TapPaymentSourceKind::Invoker,
+        };
+
+        let selected = select_tap_scheduled_task_links(vec![
+            (
+                Some("0x2::bag::Bag".to_string()),
+                TapScheduledTaskLink {
+                    scheduled_task_id: sui::types::Address::ZERO,
+                    agent_id: crate::types::Agent(sui::types::Address::ZERO),
+                    skill_id: 0,
+                    input_commitment: vec![],
+                    source_kind: crate::types::TapPaymentSourceKind::AgentVault,
+                },
+            ),
+            (
+                Some(format!(
+                    "{}::scheduler::TapScheduledTaskLink",
+                    sui::types::Address::generate(&mut rng)
+                )),
+                link.clone(),
+            ),
+        ]);
+
+        assert_eq!(selected, vec![link]);
     }
 }

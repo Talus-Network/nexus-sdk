@@ -1,4 +1,5 @@
 use {
+    super::move_json::parse_string_value,
     base64::{prelude::BASE64_STANDARD, Engine},
     serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
     serde_json::Value,
@@ -164,6 +165,51 @@ where
 {
     let bytes = value.as_bytes();
     serialize_encoded_bytes(bytes, serializer)
+}
+
+/// Deserialize Move `std::ascii::String` into a Rust `String`.
+pub fn deserialize_move_ascii_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct MoveAsciiString {
+        bytes: Vec<u8>,
+    }
+
+    if !deserializer.is_human_readable() {
+        let value = MoveAsciiString::deserialize(deserializer)?;
+        return String::from_utf8(value.bytes).map_err(serde::de::Error::custom);
+    }
+
+    let value = Value::deserialize(deserializer)?;
+    let Some(parsed) = parse_string_value(&value).map_err(serde::de::Error::custom)? else {
+        return Err(serde::de::Error::custom(
+            "could not parse Move ascii string",
+        ));
+    };
+
+    Ok(parsed)
+}
+
+/// Serialize a Rust `String` into Move `std::ascii::String`.
+pub fn serialize_move_ascii_string<S>(value: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    #[derive(Serialize)]
+    struct MoveAsciiString<'a> {
+        bytes: &'a [u8],
+    }
+
+    if serializer.is_human_readable() {
+        return value.serialize(serializer);
+    }
+
+    MoveAsciiString {
+        bytes: value.as_bytes(),
+    }
+    .serialize(serializer)
 }
 
 /// Deserialize a timestamp in milliseconds since epoch stored as a string
