@@ -5,7 +5,7 @@ use super::{scheduler::PolicySymbol, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(feature = "sui_idents")]
-use crate::idents::{workflow, ModuleAndNameIdent};
+use crate::idents::{tap, workflow, ModuleAndNameIdent};
 use {
     crate::sui,
     serde::{Deserialize, Serialize},
@@ -24,6 +24,8 @@ pub struct NexusObjects {
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub default_tap: sui::types::ObjectReference,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_registry: Option<sui::types::ObjectReference>,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -70,6 +72,12 @@ impl NexusObjects {
     pub fn workflow_type_origin_pkg_id(&self) -> sui::types::Address {
         self.workflow_original_pkg_id
             .unwrap_or(self.workflow_pkg_id)
+    }
+
+    /// Returns the shared standard TAP registry object reference when the
+    /// deployment metadata includes it.
+    pub fn tap_registry(&self) -> Option<&sui::types::ObjectReference> {
+        self.tap_registry.as_ref()
     }
 
     /// Returns true when the given address matches any known workflow
@@ -187,7 +195,7 @@ impl NexusObjects {
 
 #[cfg(feature = "sui_idents")]
 impl NexusObjects {
-    /// Returns true when the event payload originates from the configured workflow or interface package.
+    /// Returns true when the event payload originates from a configured Nexus package.
     pub fn is_event_from_nexus(&self, event: &sui::types::Event) -> bool {
         let Some(sui::types::TypeTag::Struct(inner_tag)) = event.type_.type_params().first() else {
             return false;
@@ -210,6 +218,12 @@ impl NexusObjects {
             };
 
             return self.is_workflow_package(*witness.address());
+        }
+
+        if *inner_tag.address() == self.interface_pkg_id
+            && inner_tag.module() == &tap::STANDARD_TAP_MODULE
+        {
+            return true;
         }
 
         false
@@ -290,6 +304,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
+            tap_registry: None,
             gas_service: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
@@ -356,6 +371,30 @@ mod tests {
         );
 
         assert!(objects.is_event_from_nexus(&interface_event));
+
+        let standard_tap_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.interface_pkg_id,
+                tap::STANDARD_TAP_MODULE,
+                tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
+                vec![],
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&standard_tap_event));
+
+        let unrelated_interface_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.interface_pkg_id,
+                sui::types::Identifier::from_static("unrelated"),
+                sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
+                vec![],
+            ),
+        );
+
+        assert!(!objects.is_event_from_nexus(&unrelated_interface_event));
 
         let unrelated_event = wrap_event(
             &objects,

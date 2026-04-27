@@ -39,6 +39,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
         default_tap: mock_sui_object_ref(),
+        tap_registry: Some(mock_sui_object_ref()),
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         workflow_original_pkg_id: None,

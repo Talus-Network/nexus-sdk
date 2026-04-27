@@ -262,6 +262,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("abort_expired_execution"),
     };
+    /// Begin DAG execution through the standard TAP path using a prepared config.
+    ///
+    /// `nexus_workflow::dag::begin_standard_tap_execution_with_config`
+    pub const BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("begin_standard_tap_execution_with_config"),
+    };
     /// The DAG struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::DAG`
@@ -367,6 +374,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
+    /// Stamp a standard TAP worksheet as the leader before tool execution.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_standard_tap_worksheet`
+    pub const LEADER_STAMP_STANDARD_TAP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_standard_tap_worksheet"),
+    };
     /// Stamp a worksheet as the leader before tool execution.
     ///
     /// `nexus_workflow::dag::leader_stamp_worksheet`
@@ -394,6 +408,13 @@ impl Dag {
     pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_dag_execution_config"),
+    };
+    /// Create a new standard TAP execution config value.
+    ///
+    /// `nexus_workflow::dag::new_standard_tap_execution_config`
+    pub const NEW_STANDARD_TAP_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("new_standard_tap_execution_config"),
     };
     /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
     ///
@@ -451,6 +472,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("pre_stamp_execution"),
     };
+    /// Stamp standard TAP execution context before tool execution.
+    ///
+    /// `nexus_workflow::dag::pre_stamp_standard_tap_execution`
+    pub const PRE_STAMP_STANDARD_TAP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("pre_stamp_standard_tap_execution"),
+    };
     /// Function to call to continue to the next vertex in the given walk.
     ///
     /// `nexus_workflow::dag::request_network_to_execute_walks`
@@ -478,6 +506,13 @@ impl Dag {
     pub const RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("runtime_vertex_with_iterator_from_string"),
+    };
+    /// The StandardTapExecutionConfig struct type.
+    ///
+    /// `nexus_workflow::dag::StandardTapExecutionConfig`
+    pub const STANDARD_TAP_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("StandardTapExecutionConfig"),
     };
     /// Canonical off-chain tool-result submission entrypoint.
     ///
@@ -1100,6 +1135,13 @@ impl Gas {
     pub const CLAIM_LEADER_GAS_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("claim_leader_gas_for_self"),
+    };
+    /// Derive an `ExecutionGas` object.
+    ///
+    /// `nexus_workflow::gas::create_execution_gas`
+    pub const CREATE_EXECUTION_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("create_execution_gas"),
     };
     /// Derive an `InvokerGas` object.
     ///

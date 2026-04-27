@@ -20,15 +20,18 @@ use {
             crawler::{Crawler, Response},
             error::NexusError,
             models::{ClaimedGas, Dag, DagVertexInfo, ExecutionGas},
+            tap,
         },
         sui,
         transactions::dag,
         types::{
             derive_execution_gas_id,
+            AgentId,
             Dag as JsonDag,
             DataStorage,
             PortsData,
             RuntimeVertex,
+            SkillId,
             StorageConf,
             VerifierConfig,
             VerifierMode,
@@ -54,6 +57,15 @@ pub struct ExecuteResult {
     pub tx_digest: sui::types::Digest,
     pub execution_object_id: sui::types::Address,
     pub tx_checkpoint: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct StandardTapExecuteOptions {
+    pub payment_source: Vec<u8>,
+    pub payment_auth: Vec<u8>,
+    pub payment_max_budget: u64,
+    pub payment_refund_mode: u8,
+    pub authorization_plan_hash: Option<Vec<u8>>,
 }
 
 pub struct InspectExecutionResult {
@@ -492,6 +504,132 @@ impl WorkflowActions {
         self.client.gas.release_gas_coin(gas_coin).await;
 
         // == Find the created DAG execution object ID ==
+
+        let execution_object_id = response
+            .objects
+            .into_iter()
+            .find_map(|obj| {
+                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
+                    return None;
+                };
+
+                if nexus_objects.is_workflow_package(*object_type.address())
+                    && *object_type.module() == workflow::Dag::DAG_EXECUTION.module
+                    && *object_type.name() == workflow::Dag::DAG_EXECUTION.name
+                {
+                    Some(obj.object_id())
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!("DAG execution object ID not found in TX response"))
+            })?;
+
+        Ok(ExecuteResult {
+            tx_digest: response.digest,
+            execution_object_id,
+            tx_checkpoint: response.checkpoint,
+        })
+    }
+
+    /// Execute the active standard TAP skill for `(agent_id, skill_id)`.
+    ///
+    /// This resolves the registered DAG from the configured TAP registry, then
+    /// calls the standard workflow entry instead of the legacy default TAP entry.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn execute_standard_tap(
+        &self,
+        agent_id: AgentId,
+        skill_id: SkillId,
+        entry_data: HashMap<String, PortsData>,
+        priority_fee_per_gas_unit: u64,
+        entry_group: Option<&str>,
+        storage_conf: &StorageConf,
+        options: StandardTapExecuteOptions,
+    ) -> Result<ExecuteResult, NexusError> {
+        let mut input_data = HashMap::new();
+
+        for (vertex, ports_data) in entry_data {
+            let committed_data = ports_data.commit_all(storage_conf).await.map_err(|e| {
+                NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
+            })?;
+
+            input_data.insert(vertex, committed_data);
+        }
+
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let target = tap::fetch_configured_active_tap_skill_execution_target(
+            self.client.crawler(),
+            nexus_objects,
+            agent_id,
+            skill_id,
+        )
+        .await
+        .map_err(NexusError::Rpc)?
+        .data;
+
+        let dag = self
+            .client
+            .crawler()
+            .get_object::<Dag>(target.skill.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let invoker_gas = self.client.fetch_invoker_gas().await?;
+        let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let standard = dag::StandardTapExecuteInput {
+            agent_id,
+            skill_id,
+            payment_source: options.payment_source,
+            payment_auth: options.payment_auth,
+            payment_max_budget: options.payment_max_budget,
+            payment_refund_mode: options.payment_refund_mode,
+            authorization_plan_hash: options.authorization_plan_hash,
+        };
+
+        if let Err(e) = dag::execute_standard_tap(
+            &mut tx,
+            nexus_objects,
+            &dag.object_ref(),
+            priority_fee_per_gas_unit,
+            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
+            &input_data,
+            &standard,
+            &invoker_gas,
+            &tools_gas,
+        ) {
+            return Err(NexusError::TransactionBuilding(e));
+        }
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+
+        let signature = self.client.signer.sign_tx(&tx).await?;
+
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
 
         let execution_object_id = response
             .objects

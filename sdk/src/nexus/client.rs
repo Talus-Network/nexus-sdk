@@ -165,6 +165,7 @@ impl NexusClientBuilder {
             nexus_objects: Arc::clone(&nexus_objects),
             reference_gas_price,
             crawler: Crawler::new(client),
+            rpc_url: rpc_url.clone(),
             event_poller: EventPoller::new(&rpc_url, Arc::clone(&nexus_objects)),
         })
     }
@@ -183,6 +184,8 @@ pub struct NexusClient {
     pub(super) reference_gas_price: u64,
     /// Provide access to an instantiated object crawler.
     pub(super) crawler: Crawler,
+    /// RPC URL used by the client.
+    pub(super) rpc_url: String,
     /// Provide access to an instantiated event poller.
     pub(super) event_poller: EventPoller,
 }
@@ -231,6 +234,11 @@ impl NexusClient {
     /// Return a [`Crawler`] instance for object crawling operations.
     pub fn crawler(&self) -> &Crawler {
         &self.crawler
+    }
+
+    /// Return the RPC URL configured for this client.
+    pub fn rpc_url(&self) -> &str {
+        &self.rpc_url
     }
 
     /// Return a [`Signer`] instance for signing transactions.

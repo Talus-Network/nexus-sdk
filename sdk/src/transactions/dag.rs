@@ -3,6 +3,7 @@ use {
         idents::{move_std, primitives, pure_arg, sui_framework, workflow},
         sui,
         types::{
+            AgentId,
             Dag,
             DataStorage,
             DefaultValue,
@@ -17,6 +18,7 @@ use {
             PostFailureAction,
             PreparedToolOutputV1,
             RuntimeVertex,
+            SkillId,
             Storable,
             StorageKind,
             VerifierConfig,
@@ -57,6 +59,17 @@ impl PreparedToolOutput {
             output_ports_data: HashMap::from([(TERMINAL_ERR_EVAL_REASON_PORT.to_string(), reason)]),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StandardTapExecuteInput {
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub payment_source: Vec<u8>,
+    pub payment_auth: Vec<u8>,
+    pub payment_max_budget: u64,
+    pub payment_refund_mode: u8,
+    pub authorization_plan_hash: Option<Vec<u8>>,
 }
 
 /// PTB template for creating a new empty DAG.
@@ -771,6 +784,43 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
     Ok(())
 }
 
+pub fn leader_stamp_standard_tap_worksheet(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    leader_registry: sui::types::Argument,
+    execution: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::LEADER_STAMP_STANDARD_TAP_WORKSHEET.module,
+            workflow::Dag::LEADER_STAMP_STANDARD_TAP_WORKSHEET.name,
+            vec![],
+        ),
+        vec![leader_registry, execution, worksheet, leader_cap],
+    )
+}
+
+pub fn pre_stamp_standard_tap_execution(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.module,
+            workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.name,
+            vec![],
+        ),
+        vec![execution, worksheet, leader_cap],
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn submit_on_chain_tool_result_for_walk_v1(
     tx: &mut sui::tx::TransactionBuilder,
@@ -1273,6 +1323,156 @@ pub fn prepare_execution(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_standard_tap_execution(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool_registry: sui::types::Argument,
+    tap_registry: sui::types::Argument,
+    dag: sui::types::Argument,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    clock: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    // `network: ID`
+    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `entry_group: EntryGroup`
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+
+    // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
+    let inner_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
+    ];
+
+    let outer_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::VEC_MAP.module,
+            sui_framework::VecMap::VEC_MAP.name,
+            inner_vec_map_type.clone(),
+        ))),
+    ];
+
+    let with_vertex_inputs = tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::EMPTY.module,
+            sui_framework::VecMap::EMPTY.name,
+            outer_vec_map_type.clone(),
+        ),
+        vec![],
+    );
+
+    for (vertex_name, data) in input_data {
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+        let with_vertex_input = tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::EMPTY.module,
+                sui_framework::VecMap::EMPTY.name,
+                inner_vec_map_type.clone(),
+            ),
+            vec![],
+        );
+
+        for (port_name, value) in data {
+            let port = workflow::Dag::input_port_from_str(
+                tx,
+                objects.workflow_pkg_id,
+                port_name.as_str(),
+            )?;
+
+            let value = match value.storage_kind() {
+                StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                )?,
+                StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                )?,
+            };
+
+            tx.move_call(
+                sui::tx::Function::new(
+                    sui_framework::PACKAGE_ID,
+                    sui_framework::VecMap::INSERT.module,
+                    sui_framework::VecMap::INSERT.name,
+                    inner_vec_map_type.clone(),
+                ),
+                vec![with_vertex_input, port, value],
+            );
+        }
+
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::INSERT.module,
+                sui_framework::VecMap::INSERT.name,
+                outer_vec_map_type.clone(),
+            ),
+            vec![with_vertex_inputs, vertex, with_vertex_input],
+        );
+    }
+
+    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let standard_agent_id = tx.input(pure_arg(&standard.agent_id)?);
+    let standard_skill_id = tx.input(pure_arg(&standard.skill_id)?);
+    let authorization_plan_hash = tx.input(pure_arg(&standard.authorization_plan_hash)?);
+
+    let config = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.module,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            network,
+            entry_group,
+            with_vertex_inputs,
+            priority_fee_per_gas_unit,
+            standard_agent_id,
+            standard_skill_id,
+            authorization_plan_hash,
+        ],
+    );
+
+    let payment_source = tx.input(pure_arg(&standard.payment_source)?);
+    let payment_auth = tx.input(pure_arg(&standard.payment_auth)?);
+    let payment_max_budget = tx.input(pure_arg(&standard.payment_max_budget)?);
+    let payment_refund_mode = tx.input(pure_arg(&standard.payment_refund_mode)?);
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.module,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            tap_registry,
+            tool_registry,
+            config,
+            payment_source,
+            payment_auth,
+            payment_max_budget,
+            payment_refund_mode,
+            clock,
+        ],
+    ))
+}
+
 /// PTB template to lock gas state for the given tools.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_gas_state_for_tools(
@@ -1436,6 +1636,172 @@ pub fn execute(
             vec![execution_gas_type],
         ),
         vec![execution_gas],
+    );
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn execute_standard_tap(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    invoker_gas: &sui::types::ObjectReference,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    let dag = tx.input(sui::tx::Input::shared(
+        *dag.object_id(),
+        dag.version(),
+        false,
+    ));
+
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
+    let tap_registry = tx.input(sui::tx::Input::shared(
+        *objects
+            .tap_registry()
+            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?
+            .object_id(),
+        objects
+            .tap_registry()
+            .expect("tap registry checked above")
+            .version(),
+        false,
+    ));
+
+    let clock = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    let results = prepare_standard_tap_execution(
+        tx,
+        objects,
+        tool_registry,
+        tap_registry,
+        dag,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
+        standard,
+        clock,
+    )?;
+
+    let Some(execution) = results.nested(0) else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive standard execution argument"
+        ));
+    };
+    let Some(ticket) = results.nested(1) else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive standard ticket argument"
+        ));
+    };
+    let Some(payment) = results.nested(2) else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive standard payment argument"
+        ));
+    };
+
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        true,
+    ));
+    let execution_gas = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::CREATE_EXECUTION_GAS.module,
+            workflow::Gas::CREATE_EXECUTION_GAS.name,
+            vec![],
+        ),
+        vec![gas_service, dag, execution],
+    );
+
+    let invoker_gas = tx.input(sui::tx::Input::shared(
+        *invoker_gas.object_id(),
+        invoker_gas.version(),
+        true,
+    ));
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    lock_gas_state_for_tools(
+        tx,
+        objects,
+        execution_gas,
+        invoker_gas,
+        tools_gas,
+        dag,
+        execution,
+        ticket,
+    );
+
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            vec![],
+        ),
+        vec![dag, execution, ticket, leader_registry, clock],
+    );
+
+    let execution_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_type],
+        ),
+        vec![execution],
+    );
+
+    let execution_gas_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Gas::EXECUTION_GAS);
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_gas_type],
+        ),
+        vec![execution_gas],
+    );
+
+    let payment_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        objects.interface_pkg_id,
+        crate::idents::tap::STANDARD_TAP_MODULE,
+        sui::types::Identifier::from_static("ExecutionPayment"),
+        vec![],
+    )));
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![payment_type],
+        ),
+        vec![payment],
     );
 
     Ok(())
@@ -2466,6 +2832,137 @@ mod tests {
         assert_eq!(
             call.function,
             workflow::DefaultTap::PREPARE_DAG_EXECUTION.name
+        );
+    }
+
+    #[test]
+    fn test_execute_standard_tap() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let entry_group = "group1";
+        let mut input_data = HashMap::new();
+        let invoker_gas = sui_mocks::mock_sui_object_ref();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
+
+        input_data.insert(
+            "vertex1".to_string(),
+            HashMap::from([(
+                "port1".to_string(),
+                serde_json::json!({"kind": "inline", "data": { "key": "value"} })
+                    .try_into()
+                    .expect("Failed to convert JSON to DataStorage"),
+            )]),
+        );
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let standard = StandardTapExecuteInput {
+            agent_id: AgentId(sui_mocks::mock_sui_address()),
+            skill_id: SkillId(sui_mocks::mock_sui_address()),
+            payment_source: vec![1, 2],
+            payment_auth: vec![3, 4],
+            payment_max_budget: 55,
+            payment_refund_mode: 7,
+            authorization_plan_hash: Some(vec![9, 8]),
+        };
+
+        execute_standard_tap(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            0,
+            entry_group,
+            &input_data,
+            &standard,
+            &invoker_gas,
+            &tools_gas,
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let begin_index = inspector
+            .commands()
+            .iter()
+            .position(|command| match command {
+                sui::types::Command::MoveCall(call) => {
+                    call.function == workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name
+                }
+                _ => false,
+            })
+            .expect("standard begin call");
+        let config_index = begin_index - 1;
+        let request_index = inspector
+            .commands()
+            .iter()
+            .position(|command| match command {
+                sui::types::Command::MoveCall(call) => {
+                    call.function == workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+                }
+                _ => false,
+            })
+            .expect("request walk call");
+        let share_payment_index = inspector
+            .commands()
+            .iter()
+            .rposition(|command| match command {
+                sui::types::Command::MoveCall(call) => {
+                    call.function == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
+                        && call.type_arguments.first()
+                            == Some(&sui::types::TypeTag::Struct(Box::new(
+                                sui::types::StructTag::new(
+                                    nexus_objects.interface_pkg_id,
+                                    crate::idents::tap::STANDARD_TAP_MODULE,
+                                    sui::types::Identifier::from_static("ExecutionPayment"),
+                                    vec![],
+                                ),
+                            )))
+                }
+                _ => false,
+            })
+            .expect("share payment call");
+
+        let config_call = inspector.move_call(config_index);
+        assert_eq!(
+            config_call.function,
+            workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.name
+        );
+        inspector.expect_address(&config_call.arguments[5], standard.agent_id.0);
+        inspector.expect_address(&config_call.arguments[6], standard.skill_id.0);
+
+        let begin_call = inspector.move_call(begin_index);
+        assert_eq!(
+            begin_call.function,
+            workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name
+        );
+        let sui::types::Input::Pure { value } = inspector.input(&begin_call.arguments[4]) else {
+            panic!("expected payment source input");
+        };
+        let payment_source: Vec<u8> = bcs::from_bytes(value).expect("payment source BCS");
+        assert_eq!(payment_source, standard.payment_source);
+        let sui::types::Input::Pure { value } = inspector.input(&begin_call.arguments[5]) else {
+            panic!("expected payment auth input");
+        };
+        let payment_auth: Vec<u8> = bcs::from_bytes(value).expect("payment auth BCS");
+        assert_eq!(payment_auth, standard.payment_auth);
+
+        let request_call = inspector.move_call(request_index);
+        assert_eq!(
+            request_call.function,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+        );
+
+        let share_payment_call = inspector.move_call(share_payment_index);
+        assert_eq!(
+            share_payment_call.function,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
+        );
+        assert_eq!(
+            share_payment_call.type_arguments[0],
+            sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+                nexus_objects.interface_pkg_id,
+                crate::idents::tap::STANDARD_TAP_MODULE,
+                sui::types::Identifier::from_static("ExecutionPayment"),
+                vec![],
+            )))
         );
     }
 

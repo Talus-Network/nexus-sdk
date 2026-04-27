@@ -8,6 +8,7 @@ mod gas;
 mod prelude;
 mod scheduler;
 mod sui;
+mod tap;
 mod tool;
 mod workflow;
 
@@ -43,6 +44,8 @@ enum Command {
     Scheduler(scheduler::SchedulerCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
+    #[command(subcommand, about = "Prepare and operate standard TAP skills")]
+    Tap(tap::TapCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),
 }
@@ -87,6 +90,7 @@ async fn main() {
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Gas(gas) => gas::handle(gas).await,
         Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
+        Command::Tap(tap) => tap::handle(tap).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 

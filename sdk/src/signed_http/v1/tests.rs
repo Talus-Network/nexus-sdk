@@ -1,6 +1,6 @@
 use {
     super::{engine::*, error::*, wire::*},
-    ed25519_dalek::{Signer as _, SigningKey},
+    ed25519_dalek::SigningKey,
     std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,

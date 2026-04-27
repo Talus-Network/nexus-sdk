@@ -4,7 +4,7 @@ use {
     crate::{
         nexus::crawler::{prost_value_to_json_value, Crawler},
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
-        types::{MoveTable, SharedObjectRef, TypeName, VerifierConfig},
+        types::{LeaderRegistry, MoveTable, SharedObjectRef, TypeName, VerifierConfig},
     },
     anyhow::{anyhow, bail},
     serde::Deserialize,
@@ -14,6 +14,13 @@ use {
 #[derive(serde::Deserialize)]
 struct OwnerCapJson {
     what_for: sui::types::Address,
+}
+
+/// Decode the registry network ID from a published `LeaderRegistry` Move object.
+pub fn extract_network_id_from_leader_registry(
+    leader_registry_object: &sui::types::Object,
+) -> anyhow::Result<sui::types::Address> {
+    LeaderRegistry::from_object(leader_registry_object).map(|registry| registry.network_id())
 }
 
 pub async fn find_owned_capability_by_what_for(
@@ -248,6 +255,34 @@ pub async fn fetch_external_verifier_runtime_metadata(
 mod tests {
     use {super::*, crate::test_utils::sui_mocks};
 
+    fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
+        let object_id = sui::types::Address::generate(rand::thread_rng());
+        bcs::to_bytes(&LeaderRegistry::new_for_test(object_id, network)).unwrap()
+    }
+
+    fn leader_registry_object(network: sui::types::Address) -> sui::types::Object {
+        let contents = sample_leader_registry_bytes(network);
+        let move_struct = sui::types::MoveStruct::new(
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0x1"),
+                sui::types::Identifier::from_static("leader"),
+                sui::types::Identifier::from_static("LeaderRegistry"),
+                vec![],
+            ),
+            true,
+            0,
+            contents,
+        )
+        .expect("leader registry contents should include an object id");
+
+        sui::types::Object::new(
+            sui::types::ObjectData::Struct(move_struct),
+            sui::types::Owner::Address(sui::types::Address::ZERO),
+            sui::types::Digest::generate(rand::thread_rng()),
+            0,
+        )
+    }
+
     fn owned_capability_object(
         object_ref: sui::types::ObjectReference,
         owner: sui::types::Address,
@@ -399,5 +434,15 @@ mod tests {
             false,
         );
         assert_eq!(object_version(&object), Some(object_ref.version()));
+    }
+
+    #[test]
+    fn extracts_network_id_from_leader_registry_object_contents() {
+        let network = sui::types::Address::generate(rand::thread_rng());
+        let object = leader_registry_object(network);
+
+        let decoded = extract_network_id_from_leader_registry(&object).unwrap();
+
+        assert_eq!(decoded, network);
     }
 }
