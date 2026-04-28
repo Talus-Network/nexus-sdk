@@ -255,38 +255,6 @@ pub struct TerminalErrEvalRecordedEvent {
     pub duplicate: bool,
 }
 
-/// Partial terminal `_err_eval` record shape often found inside nested trace
-/// payloads before event metadata is attached.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct TerminalErrEvalRecordedSummary {
-    /// Which vertex produced the terminal `_err_eval`.
-    pub vertex: RuntimeVertex,
-    /// How the workflow classified the failure.
-    pub failure_class: WorkflowFailureClass,
-    /// Which post-failure action was resolved onchain.
-    pub outcome: PostFailureAction,
-    /// The sanitized terminal reason string recorded onchain.
-    pub reason: String,
-    /// Whether this event reflects a duplicate submission converging on the
-    /// existing terminal record.
-    pub duplicate: bool,
-}
-
-/// Comparison-oriented terminal `_err_eval` details used by higher-level
-/// lineage reconstruction over nested event JSON payloads.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct TerminalErrEvalEventDetails {
-    pub execution: String,
-    pub walk_index: u64,
-    pub vertex: RuntimeVertex,
-    pub leader: String,
-    pub failure_class: WorkflowFailureClass,
-    pub outcome: PostFailureAction,
-    pub reason: String,
-    pub err_eval_hash_hex: String,
-    pub duplicate: bool,
-}
-
 /// Submission-failure evidence payload recorded for terminal submission
 /// failures.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -298,19 +266,6 @@ pub struct SubmissionFailureEvidenceRecordedEvent {
     pub winning_leader: Option<sui::types::Address>,
     pub reason: String,
     pub err_eval_hash: Vec<u8>,
-}
-
-/// Comparison-oriented submission-failure details used by higher-level
-/// lineage reconstruction over nested event JSON payloads.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct SubmissionFailureEvidenceEventDetails {
-    pub execution: String,
-    pub walk_index: u64,
-    pub vertex: RuntimeVertex,
-    pub failed_leader: String,
-    pub winning_leader: Option<String>,
-    pub reason: String,
-    pub err_eval_hash_hex: String,
 }
 
 /// Fired by the Nexus Workflow when a walk was aborted.

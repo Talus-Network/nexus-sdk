@@ -1288,10 +1288,6 @@ mod tests {
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let over_tool_id = sui::types::Address::generate(&mut rng);
-        let original_home = std::env::var_os("HOME");
-        let temp_home = tempfile::tempdir().expect("temp home directory");
-
-        std::env::set_var("HOME", temp_home.path());
 
         // Call save_tool_owner_caps.
         let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;
@@ -1307,10 +1303,5 @@ mod tests {
                 over_gas: None,
             })
         );
-
-        match original_home {
-            Some(value) => std::env::set_var("HOME", value),
-            None => std::env::remove_var("HOME"),
-        }
     }
 }
