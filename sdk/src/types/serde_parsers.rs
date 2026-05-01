@@ -272,6 +272,10 @@ pub fn serialize_encoded_bytes<S>(value: &[u8], serializer: S) -> Result<S::Ok, 
 where
     S: Serializer,
 {
+    if !serializer.is_human_readable() {
+        return value.serialize(serializer);
+    }
+
     let encoded = BASE64_STANDARD.encode(value);
 
     encoded.serialize(serializer)
@@ -304,6 +308,10 @@ pub fn serialize_encoded_bytes_vec<S>(value: &[Vec<u8>], serializer: S) -> Resul
 where
     S: Serializer,
 {
+    if !serializer.is_human_readable() {
+        return value.serialize(serializer);
+    }
+
     let encoded_vec: Vec<String> = value
         .iter()
         .map(|bytes| BASE64_STANDARD.encode(bytes))
@@ -546,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_sui_datetime_deser_ser() {
-        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(1_600_000_000, 0).unwrap();
         let input = r#"{"value":"1600000000000"}"#.to_string();
         let result: TestSuiDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dt);
@@ -621,8 +629,34 @@ mod tests {
     }
 
     #[test]
+    fn test_encoded_bytes_bcs_ser_deser() {
+        let value = TestEncodedBytesStruct {
+            value: b"test bytes".to_vec(),
+        };
+
+        let bytes = bcs::to_bytes(&value).unwrap();
+        assert_eq!(bytes, bcs::to_bytes(&value.value).unwrap());
+
+        let round_trip: TestEncodedBytesStruct = bcs::from_bytes(&bytes).unwrap();
+        assert_eq!(round_trip, value);
+    }
+
+    #[test]
+    fn test_encoded_bytes_vec_bcs_ser_deser() {
+        let value = TestEncodedBytesVecStruct {
+            value: vec![b"foo".to_vec(), b"bar".to_vec()],
+        };
+
+        let bytes = bcs::to_bytes(&value).unwrap();
+        assert_eq!(bytes, bcs::to_bytes(&value.value).unwrap());
+
+        let round_trip: TestEncodedBytesVecStruct = bcs::from_bytes(&bytes).unwrap();
+        assert_eq!(round_trip, value);
+    }
+
+    #[test]
     fn test_datetime_deser_ser() {
-        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_secs(1_600_000_000).unwrap();
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(1_600_000_000, 0).unwrap();
         let input = r#"{"value":1600000000000}"#.to_string();
         let result: TestDatetimeStruct = serde_json::from_str(&input).unwrap();
         assert_eq!(result.value, dt);

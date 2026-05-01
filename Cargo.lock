@@ -689,7 +689,7 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-tungstenite 0.28.0",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tower-layer",
  "tower-service",
 ]
@@ -1611,8 +1611,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 [[package]]
 name = "core2"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b49ba7ef1ad6107f8824dbe97de947cbaac53c44e7f9756a1fba0d37c1eec505"
+source = "git+https://github.com/bbqsrc/core2?rev=545e84bcb0f235b12e21351e0c69767958efe2a7#545e84bcb0f235b12e21351e0c69767958efe2a7"
 dependencies = [
  "memchr",
 ]
@@ -5370,7 +5369,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-health",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tower-http 0.5.2",
  "tracing",
 ]
@@ -7115,7 +7114,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-util",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tower-http 0.6.8",
  "tower-service",
  "url",
@@ -8469,7 +8468,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-util",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tracing",
 ]
 
@@ -8841,7 +8840,7 @@ dependencies = [
  "tonic-prost-build",
  "tonic-reflection",
  "tonic-web",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tracing",
  "url",
  "walkdir",
@@ -9626,7 +9625,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-stream",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -9741,9 +9740,9 @@ dependencies = [
 
 [[package]]
 name = "tower"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d039ad9159c98b70ecfd540b2573b97f7f52c3e8d9f8ad57a24b916a536975f9"
+checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -9803,7 +9802,7 @@ dependencies = [
  "http-body 1.0.1",
  "iri-string",
  "pin-project-lite",
- "tower 0.5.2",
+ "tower 0.5.3",
  "tower-layer",
  "tower-service",
 ]

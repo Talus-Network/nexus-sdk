@@ -239,6 +239,7 @@ pub fn buy_expiry_gas_ticket(
 }
 
 /// PTB template to finalize gas state settlement for a vertex.
+#[allow(clippy::too_many_arguments)]
 pub fn settle_gas_state_for_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -270,6 +271,7 @@ pub fn settle_gas_state_for_vertex(
 }
 
 /// PTB template to enable the limited invocations gas extension for a tool.
+#[allow(clippy::too_many_arguments)]
 pub fn enable_limited_invocations(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,

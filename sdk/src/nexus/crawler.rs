@@ -366,7 +366,7 @@ impl Crawler {
         Ok(names_and_ids
             .into_iter()
             .map(|(name, _, _)| name)
-            .zip(child_objects.into_iter())
+            .zip(child_objects)
             .collect())
     }
 
@@ -769,6 +769,12 @@ impl<T> Set<T>
 where
     T: Eq + Hash,
 {
+    pub fn new() -> Self {
+        Self {
+            contents: HashSet::new(),
+        }
+    }
+
     pub fn into_inner(self) -> HashSet<T> {
         self.contents
     }
@@ -779,6 +785,59 @@ where
 
     pub fn inner_mut(&mut self) -> &mut HashSet<T> {
         &mut self.contents
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.contents.is_empty()
+    }
+}
+
+impl<T> Default for Set<T>
+where
+    T: Eq + Hash,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> From<HashSet<T>> for Set<T>
+where
+    T: Eq + Hash,
+{
+    fn from(contents: HashSet<T>) -> Self {
+        Self { contents }
+    }
+}
+
+impl<T> FromIterator<T> for Set<T>
+where
+    T: Eq + Hash,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            contents: HashSet::from_iter(iter),
+        }
+    }
+}
+
+impl<T> Serialize for Set<T>
+where
+    T: Eq + Hash + Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct Wrapper<'a, T> {
+            contents: Vec<&'a T>,
+        }
+
+        Wrapper {
+            contents: self.contents.iter().collect(),
+        }
+        .serialize(serializer)
     }
 }
 

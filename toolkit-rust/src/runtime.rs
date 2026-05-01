@@ -688,6 +688,7 @@ mod tests {
         assert_eq!(verified.claims.status, resp.status().as_u16());
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn signed_error_responses_are_signed_and_cached() {
         let _guard = TEST_LOCK.lock().unwrap();
@@ -750,6 +751,7 @@ mod tests {
         let _ = fs::remove_file(&path);
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn conflicting_replay_is_signed_and_does_not_overwrite_cache() {
         let _guard = TEST_LOCK.lock().unwrap();

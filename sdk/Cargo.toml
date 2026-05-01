@@ -21,7 +21,7 @@ tool_fqn = ["regex", "lazy-regex"]
 
 # Signed HTTP feature enables application-layer Ed25519 signatures for HTTP
 # requests/responses (headers + signed claims).
-signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand"]
+signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand", "bcs"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [

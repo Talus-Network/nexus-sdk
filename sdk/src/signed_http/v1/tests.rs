@@ -1,6 +1,6 @@
 use {
     super::{engine::*, error::*, wire::*},
-    ed25519_dalek::SigningKey,
+    ed25519_dalek::{Signer as _, SigningKey},
     std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -92,7 +92,7 @@ fn sign_and_verify_request_roundtrip() {
 }
 
 #[test]
-fn verify_fails_on_body_hash_mismatch() {
+fn verify_request_rejects_replayed_signature_with_different_body() {
     let leader_sk = sk_from_byte(7);
     let leader_pk = leader_sk.verifying_key().to_bytes();
 
@@ -109,6 +109,7 @@ fn verify_fails_on_body_hash_mismatch() {
     .unwrap();
 
     let body = br#"{"hello":"world"}"#;
+    let tampered_body = br#"{"hello":"attacker"}"#;
     let claims = InvokeRequestClaimsV1 {
         leader_id: "0x1111".to_string(),
         leader_kid: 0,
@@ -119,7 +120,7 @@ fn verify_fails_on_body_hash_mismatch() {
         method: "POST".to_string(),
         path: "/invoke".to_string(),
         query: "".to_string(),
-        body_sha256: sha256_hex(br#"{"different":"body"}"#),
+        body_sha256: sha256_hex(body),
     };
 
     let (sig_input, sig) = sign_invoke_request_v1(&claims, &leader_sk).unwrap();
@@ -141,7 +142,7 @@ fn verify_fails_on_body_hash_mismatch() {
             path: "/invoke",
             query: "",
         },
-        body,
+        tampered_body,
         "demo::tool::1.0.0",
         &allowed,
         &opts,
@@ -244,6 +245,317 @@ fn engine_end_to_end_roundtrip_happy_path() {
     assert_eq!(verified.responder_kid, 0);
     assert_eq!(verified.nonce, "abc");
     assert_eq!(verified.status, 200);
+}
+
+#[test]
+fn engine_verify_response_with_transcript_returns_signed_exchange_material() {
+    let leader_id = "0x1111";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_sk = sk_from_byte(7);
+    let leader_pk = leader_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![AllowedLeaderFileV1 {
+            leader_id: leader_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: 0,
+                public_key: hex::encode(leader_pk),
+            }],
+        }],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker = engine.invoker(leader_id.to_string(), 0, leader_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"hello":"world"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound = invoker
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+
+    let inbound = match responder
+        .authenticate_invoke(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound.request_headers()),
+        )
+        .unwrap()
+    {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+
+    let signed = inbound.finish(200, br#"{"ok":true}"#.to_vec()).unwrap();
+    let transcript = outbound
+        .verify_response_with_transcript(
+            signed.status,
+            headers_ref_for_encoded(&signed.headers),
+            &signed.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(transcript.leader_id, leader_id);
+    assert_eq!(transcript.request_method, "POST");
+    assert_eq!(transcript.request_path, "/invoke");
+    assert_eq!(
+        transcript.request_sig_input_sha256,
+        outbound.request_sig_input_sha256()
+    );
+    assert_eq!(
+        transcript.response_req_sig_input_sha256,
+        outbound.request_sig_input_sha256()
+    );
+    assert_eq!(transcript.response_status, 200);
+    assert_eq!(transcript.response_tool_kid, 0);
+    assert_eq!(transcript.resolved_tool_kid, 0);
+}
+
+#[test]
+fn engine_end_to_end_roundtrip_err_eval_uses_canonical_output_hash() {
+    let leader_id = "0x1111";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_sk = sk_from_byte(7);
+    let leader_pk = leader_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![AllowedLeaderFileV1 {
+            leader_id: leader_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: 0,
+                public_key: hex::encode(leader_pk),
+            }],
+        }],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker = engine.invoker(leader_id.to_string(), 0, leader_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"hello":"world"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound = invoker
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+
+    let decision = responder
+        .authenticate_invoke(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound.request_headers()),
+        )
+        .unwrap();
+
+    let inbound = match decision {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+
+    let resp_body = br#"{"_err_eval":{"reason":"Tool rejected"}}"#.to_vec();
+    let signed = inbound.finish(503, resp_body.clone()).unwrap();
+
+    let verified = outbound
+        .verify_response(
+            signed.status,
+            headers_ref_for_encoded(&signed.headers),
+            &signed.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(verified.status, 503);
+}
+
+#[test]
+fn engine_end_to_end_roundtrip_err_eval_with_http_200_uses_err_eval_outcome() {
+    let leader_id = "0x1111";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_sk = sk_from_byte(7);
+    let leader_pk = leader_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![AllowedLeaderFileV1 {
+            leader_id: leader_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: 0,
+                public_key: hex::encode(leader_pk),
+            }],
+        }],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker = engine.invoker(leader_id.to_string(), 0, leader_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"hello":"world"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound = invoker
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &req_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+
+    let decision = responder
+        .authenticate_invoke(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound.request_headers()),
+        )
+        .unwrap();
+
+    let inbound = match decision {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+
+    let resp_body = br#"{"_err_eval":{"reason":"Tool rejected"}}"#.to_vec();
+    assert_eq!(response_outcome_from_status_and_body_v1(200, &resp_body), 1);
+
+    let signed = inbound.finish(200, resp_body.clone()).unwrap();
+
+    let verified = outbound
+        .verify_response(
+            signed.status,
+            headers_ref_for_encoded(&signed.headers),
+            &signed.body,
+            &StaticResponderKeyV1 {
+                responder_id: tool_id.to_string(),
+                responder_kid: 0,
+                public_key: tool_pk,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(verified.status, 200);
+}
+
+#[test]
+fn sign_response_with_body_verifies_http_200_err_eval_body() {
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+    let req_sig_input_sha256 = [3u8; 32];
+    let body = br#"{"_err_eval":{"reason":"Tool rejected"}}"#;
+
+    let claims = InvokeResponseClaimsV1 {
+        tool_id: "demo::tool::1.0.0".to_string(),
+        tool_kid: 0,
+        owner_leader_id: "0x1111".to_string(),
+        iat_ms: 1000,
+        exp_ms: 2000,
+        nonce: "abc".to_string(),
+        req_sig_input_sha256: hex::encode(req_sig_input_sha256),
+        status: 200,
+        body_sha256: hex::encode(response_body_sha256_for_claim(body)),
+    };
+
+    let (sig_input, sig) = sign_invoke_response_with_body_v1(&claims, body, &tool_sk).unwrap();
+    verify_invoke_response_v1(
+        DecodedSignatureV1 {
+            sig_input,
+            signature: sig,
+        },
+        body,
+        "demo::tool::1.0.0",
+        req_sig_input_sha256,
+        tool_pk,
+        &VerifyOptions {
+            now_ms: 1500,
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn multi_variant_output_body_falls_back_to_raw_body_hash() {
+    let body = br#"{"ok":{"message":"success"},"extra":{"ignored":false}}"#;
+
+    assert!(canonical_output_body_sha256_from_json_bytes(body).is_err());
+    assert_eq!(response_body_sha256_for_claim(body), sha256(body));
 }
 
 #[test]

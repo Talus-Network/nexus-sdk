@@ -19,7 +19,9 @@ pub struct NexusObjects {
     pub primitives_pkg_id: sui::types::Address,
     pub interface_pkg_id: sui::types::Address,
     pub network_id: sui::types::Address,
+    pub registry_pkg_id: sui::types::Address,
     pub tool_registry: sui::types::ObjectReference,
+    pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub default_tap: sui::types::ObjectReference,
     pub gas_service: sui::types::ObjectReference,
@@ -34,9 +36,31 @@ pub struct NexusObjects {
     /// When `None`, falls back to `workflow_pkg_id` (no upgrade has occurred).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_original_pkg_id: Option<sui::types::Address>,
+    /// Original (defining) package address for the registry package.
+    ///
+    /// After a Sui Move package upgrade, on-chain registry types still
+    /// reference the original package address in their type tags.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_original_pkg_id: Option<sui::types::Address>,
 }
 
 impl NexusObjects {
+    /// Returns the registry package address, defaulting to the workflow
+    /// package for older deployments that predate the package split.
+    pub fn registry_pkg_id(&self) -> sui::types::Address {
+        self.registry_pkg_id
+    }
+
+    /// Returns the original (defining) registry package address.
+    ///
+    /// After a Sui package upgrade, on-chain registry types reference the
+    /// original package address. Falls back to `registry_pkg_id` when no
+    /// upgrade has occurred.
+    pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.registry_original_pkg_id
+            .unwrap_or(self.registry_pkg_id)
+    }
+
     /// Returns the original (defining) workflow package address.
     ///
     /// After a Sui package upgrade, on-chain types reference the original
@@ -111,6 +135,54 @@ impl NexusObjects {
 
         Ok(())
     }
+
+    /// Resolve the original registry package address from the on-chain
+    /// `type_origin_table` and set `registry_original_pkg_id`.
+    ///
+    /// If no upgrade has occurred, `registry_original_pkg_id` remains `None`.
+    pub async fn resolve_registry_original_pkg_id(
+        &mut self,
+        client: &Arc<Mutex<sui::grpc::Client>>,
+    ) -> anyhow::Result<()> {
+        use sui::traits::FieldMaskUtil;
+
+        let field_mask = sui::grpc::FieldMask::from_paths(["package"]);
+
+        let request = sui::grpc::GetObjectRequest::default()
+            .with_object_id(self.registry_pkg_id)
+            .with_read_mask(field_mask);
+
+        let response = client
+            .lock()
+            .await
+            .ledger_client()
+            .get_object(request)
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow::anyhow!("Failed to fetch registry package object: {e}"))?;
+
+        let object = response
+            .object
+            .ok_or_else(|| anyhow::anyhow!("Registry package object not found"))?;
+
+        let package = object
+            .package
+            .ok_or_else(|| anyhow::anyhow!("Object is not a package"))?;
+
+        let original = package.type_origins.iter().find_map(|origin| {
+            let pkg_id_str = origin.package_id.as_deref()?;
+            let addr = pkg_id_str.parse::<sui::types::Address>().ok()?;
+            if addr != self.registry_pkg_id {
+                Some(addr)
+            } else {
+                None
+            }
+        });
+
+        self.registry_original_pkg_id = original;
+
+        Ok(())
+    }
 }
 
 #[cfg(feature = "sui_idents")]
@@ -122,6 +194,10 @@ impl NexusObjects {
         };
 
         if self.is_workflow_package(*inner_tag.address()) {
+            return true;
+        }
+
+        if *inner_tag.address() == self.registry_pkg_id() {
             return true;
         }
 
@@ -192,7 +268,14 @@ mod tests {
             primitives_pkg_id: sui::types::Address::generate(&mut rng),
             interface_pkg_id: sui::types::Address::generate(&mut rng),
             network_id: sui::types::Address::generate(&mut rng),
+            registry_pkg_id: sui::types::Address::generate(&mut rng),
+            registry_original_pkg_id: None,
             tool_registry: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            verifier_registry: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
                 sui::types::Digest::generate(&mut rng),
@@ -288,6 +371,26 @@ mod tests {
     }
 
     #[test]
+    fn matches_registry_events() {
+        let mut objects = sample_objects();
+        let mut rng = rand::thread_rng();
+        let registry_pkg_id = sui::types::Address::generate(&mut rng);
+        objects.registry_pkg_id = registry_pkg_id;
+
+        let registry_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                registry_pkg_id,
+                sui::types::Identifier::from_static("tool_registry"),
+                sui::types::Identifier::from_static("ToolRegisteredEvent"),
+                vec![],
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&registry_event));
+    }
+
+    #[test]
     fn generator_helpers_match_symbols() {
         let objects = sample_objects();
 
@@ -304,6 +407,13 @@ mod tests {
         let mut objects = sample_objects();
         let mut rng = rand::thread_rng();
         objects.workflow_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects
+    }
+
+    fn sample_objects_with_registry_upgrade() -> NexusObjects {
+        let mut objects = sample_objects();
+        let mut rng = rand::thread_rng();
+        objects.registry_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
         objects
     }
 
@@ -326,6 +436,28 @@ mod tests {
         assert_ne!(
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id
+        );
+    }
+
+    #[test]
+    fn registry_type_origin_pkg_id_without_upgrade() {
+        let objects = sample_objects();
+        assert_eq!(
+            objects.registry_type_origin_pkg_id(),
+            objects.registry_pkg_id
+        );
+    }
+
+    #[test]
+    fn registry_type_origin_pkg_id_with_upgrade() {
+        let objects = sample_objects_with_registry_upgrade();
+        assert_eq!(
+            objects.registry_type_origin_pkg_id(),
+            objects.registry_original_pkg_id.unwrap()
+        );
+        assert_ne!(
+            objects.registry_type_origin_pkg_id(),
+            objects.registry_pkg_id
         );
     }
 
