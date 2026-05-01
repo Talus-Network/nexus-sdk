@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### `nexus-cli`
+
+#### Added
+
+- Terminal error evaluation event handling in DAG execution inspection with detailed error context and duplicate detection
+
+#### Changed
+
+- Enhanced DAG execution inspection to display terminal error evaluation records with failure classification and post-failure action details
+
+### `nexus-sdk`
+
+#### Added
+
+- `TerminalErrEvalRecordedEvent` structure for tracking terminal error evaluation records
+- `SubmissionFailureEvidenceRecordedEvent` structure for tracking submission failure evidence
+- Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
+- Full test coverage for event parsing and BCS serialization/deserialization
+
+#### Changed
+
+- Optimized nested event value parsing with improved performance and reduced redundant checks
+- Made `parse_nested_event_value` public for use in nested event parsing
+- Fixed `FailureEvidenceKind` enum serialization with explicit serde rename attributes and backward compatibility aliases
+
 ## [`1.0.0`] - 2026-04-23
 
 ### `nexus-cli`
