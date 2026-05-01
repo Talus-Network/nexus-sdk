@@ -17,17 +17,25 @@ pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
 /// Struct representing the Nexus DAG JSON file.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Dag {
+    /// List of all vertices (tools) in the DAG.
     pub vertices: Vec<Vertex>,
+    /// List of edges defining data flow between vertices.
     pub edges: Vec<Edge>,
+    /// Optional static input values for vertices.
     pub default_values: Option<Vec<DefaultValue>>,
+    /// Default post-failure action for the entire DAG. Can be overridden per vertex.
+    /// Determines whether the DAG continues execution or terminates when a vertex fails.
     pub post_failure_action: Option<PostFailureAction>,
+    /// Configuration for verifying leader requests. Can be overridden per vertex.
     pub leader_verifier: Option<VerifierConfig>,
+    /// Configuration for verifying tool responses. Can be overridden per vertex.
     pub tool_verifier: Option<VerifierConfig>,
+    /// Named entry groups defining different starting configurations for the DAG.
     /// If there are no entry groups specified, all specified input ports are
     /// considered to be part of the [`DEFAULT_ENTRY_GROUP`].
     pub entry_groups: Option<Vec<EntryGroup>>,
-    /// Which output variants & ports of which vertices should be the output of
-    /// the DAG.
+    /// Which output variants & ports of which vertices should be the output of the DAG.
+    /// Only ports specified here will be included in the EndStateReachedEvent.
     pub outputs: Option<Vec<FromPort>>,
 }
 
@@ -45,42 +53,56 @@ pub struct EntryPort {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Vertex {
+    /// The type and FQN of the tool used by this vertex.
     pub kind: VertexKind,
+    /// Unique name for this vertex within the DAG.
     pub name: String,
+    /// Entry ports for this vertex that require input data from the user.
     pub entry_ports: Option<Vec<EntryPort>>,
+    /// Override the DAG-level post-failure action for this specific vertex.
     pub post_failure_action: Option<PostFailureAction>,
+    /// Override the DAG-level leader verifier for this specific vertex.
     pub leader_verifier: Option<VerifierConfig>,
+    /// Override the DAG-level tool verifier for this specific vertex.
     pub tool_verifier: Option<VerifierConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct EntryGroup {
+    /// Name of this entry group for reference during DAG execution.
     pub name: String,
-    /// List of vertex names that are part of this entry group. All entry ports
-    /// of these vertices need to be provided data for when executing the DAG.
+    /// List of vertex names that are entry points for this group.
+    /// All entry ports of these vertices need to be provided data when executing with this group.
     pub vertices: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DefaultValue {
+    /// Name of the vertex this default value applies to.
     pub vertex: String,
+    /// Name of the input port on the vertex.
     pub input_port: String,
+    /// The static data value to provide.
     pub value: Data,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "storage", rename_all = "snake_case")]
 pub struct Data {
+    /// Storage location for the data (inline or remote).
     pub storage: StorageKind,
+    /// The actual JSON data value.
     pub data: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Edge {
+    /// Output port of the source vertex.
     pub from: FromPort,
+    /// Input port of the target vertex.
     pub to: ToPort,
-    /// The kind of the edge. This is used to determine how the edge is
-    /// processed in the workflow. Defaults to [`EdgeKind::Normal`].
+    /// The kind of the edge. This is used to determine how the edge is processed in the workflow.
+    /// Defaults to [`EdgeKind::Normal`].
     #[serde(default)]
     pub kind: EdgeKind,
 }
@@ -102,14 +124,19 @@ pub enum EdgeKind {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct FromPort {
+    /// Name of the source vertex.
     pub vertex: String,
+    /// Output variant of the source vertex (e.g., "ok", "err").
     pub output_variant: String,
+    /// Output port name of the source vertex.
     pub output_port: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct ToPort {
+    /// Name of the target vertex.
     pub vertex: String,
+    /// Input port name of the target vertex.
     pub input_port: String,
 }
 
