@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Changed
 
+- Optimized nested event value parsing with improved performance and reduced redundant checks
+- Made `parse_nested_event_value` public for use in nested event parsing
+- Fixed `FailureEvidenceKind` enum serialization with explicit serde rename attributes and backward compatibility aliases
+- Improved signed HTTP verification with proper body hash validation and detection of tampered requests
+- Enhanced canonical output body SHA256 calculation with validation for single-variant JSON structure
+- Fixed signature message generation to handle references correctly in signed HTTP operations
+- Removed unused sender parameters from `create_tool_binding_and_register_key` and `create_leader_binding_and_register_key` transaction functions
 - Event parsing now accepts terminal `_err_eval` and submission-failure records
   from BCS-wrapped events and common nested Move-JSON trace shapes.
 - Move-JSON deserialization is more tolerant of Sui wrapper shapes for fields,
@@ -63,6 +70,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `FailureEvidenceKind` serialization now uses explicit serde names and
   backward-compatible aliases.
+- `TerminalErrEvalRecordedEvent` structure for tracking terminal error evaluation records
+- `SubmissionFailureEvidenceRecordedEvent` structure for tracking submission failure evidence
+- Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
+- Full test coverage for event parsing and BCS serialization/deserialization
+- Additional signed HTTP tests for response signing verification and multi-variant output handling
+
+
+### `docs`
+
+#### Added
+
+- Comprehensive DAG construction guide sections for `post_failure_action`, `leader_verifier`, and `tool_verifier` configuration at both DAG and vertex levels
+- Updated basic DAG JSON structure documentation to include all optional configuration fields
+
+### Code
+
+#### Changed
+
+- Enhanced field documentation in `json_dag.rs` with detailed comments for all structs (`Dag`, `Vertex`, `Edge`, `FromPort`, `ToPort`, `EntryGroup`, `DefaultValue`, `Data`)
+
+#### Fixed
+
+- Uncommented and restored `test_fetch_devnet_objects` test with proper ignore and rstest attributes
 
 ## [`1.0.0`] - 2026-04-23
 
