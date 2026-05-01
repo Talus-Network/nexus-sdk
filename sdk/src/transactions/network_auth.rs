@@ -15,7 +15,6 @@ use crate::{
 pub fn create_tool_binding_and_register_key(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    _sender: sui::types::Address,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -215,7 +214,6 @@ pub fn register_tool_key_on_existing_binding(
 pub fn create_leader_binding_and_register_key(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    _sender: sui::types::Address,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
@@ -445,7 +443,6 @@ mod tests {
     fn test_create_tool_binding_and_register_key_builds_calls() {
         let objects = sui_mocks::mock_nexus_objects();
         let owner_cap = sui_mocks::mock_sui_object_ref();
-        let sender = sui_mocks::mock_sui_address();
         let tool = sui_mocks::mock_sui_object_ref();
         let public_key = [7u8; 32];
         let pop_signature = [9u8; 64];
@@ -455,7 +452,6 @@ mod tests {
         create_tool_binding_and_register_key(
             &mut tx,
             &objects,
-            sender,
             &tool,
             &owner_cap,
             public_key,
@@ -579,7 +575,6 @@ mod tests {
     fn test_create_leader_binding_and_register_key_builds_calls() {
         let objects = sui_mocks::mock_nexus_objects();
         let leader_cap = sui_mocks::mock_sui_object_ref();
-        let sender = sui_mocks::mock_sui_address();
         let public_key = [5u8; 32];
         let pop_signature = [6u8; 64];
         let description = Some(b"leader-key".to_vec());
@@ -588,7 +583,6 @@ mod tests {
         create_leader_binding_and_register_key(
             &mut tx,
             &objects,
-            sender,
             &leader_cap,
             public_key,
             pop_signature,

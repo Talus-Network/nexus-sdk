@@ -15,7 +15,7 @@ use {
     super::error::SignedHttpError,
     base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _},
     ed25519_dalek::{Signature, Signer as _, SigningKey, VerifyingKey},
-    serde::{Deserialize, Serialize},
+    serde::{de::Error as _, Deserialize, Serialize},
     sha2::{Digest as _, Sha256},
     std::{
         collections::BTreeMap,
@@ -277,9 +277,11 @@ pub fn verify_invoke_request_v1(
         });
     }
 
-    let _claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
+    let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
         .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-    let _ = body;
+    if claimed_body_sha256 != sha256(body) {
+        return Err(SignedHttpError::BodyHashMismatch);
+    }
 
     validate_time_window(claims.iat_ms, claims.exp_ms, opts)?;
 
@@ -298,7 +300,7 @@ pub fn verify_invoke_request_v1(
     })?;
 
     let sig_input_sha256 = sha256(&decoded.sig_input);
-    let msg = request_signature_message_v1(sig_input_sha256);
+    let msg = request_signature_message_v1(&sig_input_sha256);
     let sig = Signature::from_bytes(&decoded.signature);
     verifying_key
         .verify_strict(&msg, &sig)
@@ -402,7 +404,7 @@ pub fn sign_invoke_request_v1(
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
     let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
-    let msg = request_signature_message_v1(sha256(&sig_input));
+    let msg = request_signature_message_v1(&sha256(&sig_input));
     let sig: Signature = signing_key.sign(&msg);
     Ok((sig_input, sig.to_bytes()))
 }
@@ -469,10 +471,10 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-pub fn request_signature_message_v1(sig_input_sha256: [u8; 32]) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(DOMAIN_REQUEST_V1.len() + sig_input_sha256.len());
+pub fn request_signature_message_v1(sig_input: &[u8]) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(DOMAIN_REQUEST_V1.len() + sig_input.len());
     msg.extend_from_slice(DOMAIN_REQUEST_V1);
-    msg.extend_from_slice(&sig_input_sha256);
+    msg.extend_from_slice(sig_input);
     msg
 }
 
@@ -529,6 +531,12 @@ fn canonical_output_body_sha256_from_json_value(
     let Some(value_as_object) = value.as_object() else {
         return Ok(sha256(&[]));
     };
+
+    if value_as_object.len() > 1 {
+        return Err(serde_json::Error::custom(
+            "canonical output body must contain exactly one top-level variant",
+        ));
+    }
 
     let Some((variant, ports)) = value_as_object.iter().next() else {
         return Ok(sha256(&[]));

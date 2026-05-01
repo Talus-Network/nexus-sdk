@@ -302,121 +302,121 @@ pub(crate) async fn get_nexus_client(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, rstest::rstest};
 
-    // use mockito::Server, rstest::rstest;
-    // should redo after deployment
-    // #[rstest]
-    // #[tokio::test]
-    // async fn test_fetch_devnet_objects() {
-    //     let mut server = Server::new_async().await;
+    #[ignore]
+    #[rstest]
+    #[tokio::test]
+    async fn test_fetch_devnet_objects() {
+        use mockito::Server;
+        let mut server = Server::new_async().await;
 
-    //     let response_body = r#"
-    //             primitives_pkg_id = "0x1"
-    //             workflow_pkg_id = "0x2"
-    //             interface_pkg_id = "0x3"
-    //             network_id = "0x4"
+        let response_body = r#"
+                primitives_pkg_id = "0x1"
+                workflow_pkg_id = "0x2"
+                interface_pkg_id = "0x3"
+                network_id = "0x4"
 
-    //             [tool_registry]
-    //             object_id = "0x5"
-    //             version = 1
-    //             digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                [tool_registry]
+                object_id = "0x5"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-    //             [network_auth]
-    //             object_id = "0x6"
-    //             version = 1
-    //             digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                [network_auth]
+                object_id = "0x6"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-    //             [default_tap]
-    //             object_id = "0x7"
-    //             version = 1
-    //             digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                [default_tap]
+                object_id = "0x7"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-    //             [gas_service]
-    //             object_id = "0x8"
-    //             version = 1
-    //             digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                [gas_service]
+                object_id = "0x8"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-    //             [leader_registry]
-    //             object_id = "0x10"
-    //             version = 1
-    //             digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-    //         "#
-    //     .to_string();
+                [leader_registry]
+                object_id = "0x10"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+            "#
+        .to_string();
 
-    //     // Create a mock for the devnet objects endpoint.
-    //     let mock = server
-    //         .mock("GET", "/production-talus-sui-packages/objects.devnet.toml")
-    //         .with_status(200)
-    //         .with_body(&response_body)
-    //         .create_async()
-    //         .await;
+        // Create a mock for the devnet objects endpoint.
+        let mock = server
+            .mock("GET", "/production-talus-sui-packages/objects.devnet.toml")
+            .with_status(200)
+            .with_body(&response_body)
+            .create_async()
+            .await;
 
-    //     let res = fetch_objects_from_url(
-    //         format!(
-    //             "http://{}/production-talus-sui-packages/objects.devnet.toml",
-    //             server.host_with_port()
-    //         )
-    //         .as_str(),
-    //     )
-    //     .await;
+        let res = fetch_objects_from_url(
+            format!(
+                "http://{}/production-talus-sui-packages/objects.devnet.toml",
+                server.host_with_port()
+            )
+            .as_str(),
+        )
+        .await;
 
-    //     assert!(res.is_ok());
+        assert!(res.is_ok());
 
-    //     let objects = res.unwrap();
+        let objects = res.unwrap();
 
-    //     assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
-    //     assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
-    //     assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
-    //     assert_eq!(objects.network_id, "0x4".parse().unwrap());
-    //     assert_eq!(
-    //         *objects.tool_registry.object_id(),
-    //         sui::types::Address::from_static("0x5")
-    //     );
-    //     assert_eq!(objects.tool_registry.version(), 1);
-    //     assert_eq!(
-    //         *objects.tool_registry.digest(),
-    //         sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-    //     );
-    //     assert_eq!(
-    //         *objects.network_auth.object_id(),
-    //         sui::types::Address::from_static("0x6")
-    //     );
-    //     assert_eq!(objects.network_auth.version(), 1);
-    //     assert_eq!(
-    //         *objects.network_auth.digest(),
-    //         sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-    //     );
-    //     assert_eq!(
-    //         *objects.default_tap.object_id(),
-    //         sui::types::Address::from_static("0x7")
-    //     );
-    //     assert_eq!(objects.default_tap.version(), 1);
-    //     assert_eq!(
-    //         *objects.default_tap.digest(),
-    //         sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-    //     );
-    //     assert_eq!(
-    //         *objects.gas_service.object_id(),
-    //         sui::types::Address::from_static("0x8")
-    //     );
-    //     assert_eq!(objects.gas_service.version(), 1);
-    //     assert_eq!(
-    //         *objects.gas_service.digest(),
-    //         sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-    //     );
-    //     assert_eq!(
-    //         *objects.leader_registry.object_id(),
-    //         sui::types::Address::from_static("0x10")
-    //     );
-    //     assert_eq!(objects.leader_registry.version(), 1);
-    //     assert_eq!(
-    //         *objects.leader_registry.digest(),
-    //         sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-    //     );
+        assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
+        assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
+        assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
+        assert_eq!(objects.network_id, "0x4".parse().unwrap());
+        assert_eq!(
+            *objects.tool_registry.object_id(),
+            sui::types::Address::from_static("0x5")
+        );
+        assert_eq!(objects.tool_registry.version(), 1);
+        assert_eq!(
+            *objects.tool_registry.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.network_auth.object_id(),
+            sui::types::Address::from_static("0x6")
+        );
+        assert_eq!(objects.network_auth.version(), 1);
+        assert_eq!(
+            *objects.network_auth.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.default_tap.object_id(),
+            sui::types::Address::from_static("0x7")
+        );
+        assert_eq!(objects.default_tap.version(), 1);
+        assert_eq!(
+            *objects.default_tap.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.gas_service.object_id(),
+            sui::types::Address::from_static("0x8")
+        );
+        assert_eq!(objects.gas_service.version(), 1);
+        assert_eq!(
+            *objects.gas_service.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
+        assert_eq!(
+            *objects.leader_registry.object_id(),
+            sui::types::Address::from_static("0x10")
+        );
+        assert_eq!(objects.leader_registry.version(), 1);
+        assert_eq!(
+            *objects.leader_registry.digest(),
+            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
+        );
 
-    //     mock.assert_async().await;
-    // }
+        mock.assert_async().await;
+    }
 
     mod parse_ed25519_private_key_tests {
         use super::*;

@@ -1,6 +1,6 @@
 use {
     super::{engine::*, error::*, wire::*},
-    ed25519_dalek::SigningKey,
+    ed25519_dalek::{Signer as _, SigningKey},
     std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -92,7 +92,7 @@ fn sign_and_verify_request_roundtrip() {
 }
 
 #[test]
-fn verify_request_accepts_precomputed_body_hash_claim() {
+fn verify_request_rejects_replayed_signature_with_different_body() {
     let leader_sk = sk_from_byte(7);
     let leader_pk = leader_sk.verifying_key().to_bytes();
 
@@ -109,6 +109,7 @@ fn verify_request_accepts_precomputed_body_hash_claim() {
     .unwrap();
 
     let body = br#"{"hello":"world"}"#;
+    let tampered_body = br#"{"hello":"attacker"}"#;
     let claims = InvokeRequestClaimsV1 {
         leader_id: "0x1111".to_string(),
         leader_kid: 0,
@@ -119,7 +120,7 @@ fn verify_request_accepts_precomputed_body_hash_claim() {
         method: "POST".to_string(),
         path: "/invoke".to_string(),
         query: "".to_string(),
-        body_sha256: hex::encode([9u8; 32]),
+        body_sha256: sha256_hex(body),
     };
 
     let (sig_input, sig) = sign_invoke_request_v1(&claims, &leader_sk).unwrap();
@@ -134,21 +135,21 @@ fn verify_request_accepts_precomputed_body_hash_claim() {
         max_validity_ms: 10_000,
     };
 
-    let verified = verify_invoke_request_v1(
+    let err = verify_invoke_request_v1(
         decoded,
         HttpRequestMeta {
             method: "POST",
             path: "/invoke",
             query: "",
         },
-        body,
+        tampered_body,
         "demo::tool::1.0.0",
         &allowed,
         &opts,
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(verified.claims.body_sha256, hex::encode([9u8; 32]));
+    assert!(matches!(err, SignedHttpError::BodyHashMismatch));
 }
 
 #[test]
@@ -509,6 +510,52 @@ fn engine_end_to_end_roundtrip_err_eval_with_http_200_uses_err_eval_outcome() {
         .unwrap();
 
     assert_eq!(verified.status, 200);
+}
+
+#[test]
+fn sign_response_with_body_verifies_http_200_err_eval_body() {
+    let tool_sk = sk_from_byte(9);
+    let tool_pk = tool_sk.verifying_key().to_bytes();
+    let req_sig_input_sha256 = [3u8; 32];
+    let body = br#"{"_err_eval":{"reason":"Tool rejected"}}"#;
+
+    let claims = InvokeResponseClaimsV1 {
+        tool_id: "demo::tool::1.0.0".to_string(),
+        tool_kid: 0,
+        owner_leader_id: "0x1111".to_string(),
+        iat_ms: 1000,
+        exp_ms: 2000,
+        nonce: "abc".to_string(),
+        req_sig_input_sha256: hex::encode(req_sig_input_sha256),
+        status: 200,
+        body_sha256: hex::encode(response_body_sha256_for_claim(body)),
+    };
+
+    let (sig_input, sig) = sign_invoke_response_with_body_v1(&claims, body, &tool_sk).unwrap();
+    verify_invoke_response_v1(
+        DecodedSignatureV1 {
+            sig_input,
+            signature: sig,
+        },
+        body,
+        "demo::tool::1.0.0",
+        req_sig_input_sha256,
+        tool_pk,
+        &VerifyOptions {
+            now_ms: 1500,
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn multi_variant_output_body_falls_back_to_raw_body_hash() {
+    let body = br#"{"ok":{"message":"success"},"extra":{"ignored":false}}"#;
+
+    assert!(canonical_output_body_sha256_from_json_bytes(body).is_err());
+    assert_eq!(response_body_sha256_for_claim(body), sha256(body));
 }
 
 #[test]
