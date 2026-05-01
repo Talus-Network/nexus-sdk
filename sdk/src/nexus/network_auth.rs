@@ -180,7 +180,6 @@ impl NetworkAuthActions {
             None => transactions::network_auth::create_tool_binding_and_register_key(
                 &mut tx,
                 objects,
-                address,
                 &tool,
                 &owner_cap_ref,
                 public_key,

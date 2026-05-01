@@ -1208,7 +1208,7 @@ impl SignedHttpResponderV1 {
             }
         })?;
 
-        let msg = request_signature_message_v1(sha256(&decoded.sig_input));
+        let msg = request_signature_message_v1(&sha256(&decoded.sig_input));
         let sig = Signature::from_bytes(&decoded.signature);
         verifying_key
             .verify_strict(&msg, &sig)
