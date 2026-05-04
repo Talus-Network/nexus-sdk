@@ -114,3 +114,81 @@ Learn more about `just` in the [official manual][just-manual].
 [cargo-binstall]: https://github.com/cargo-bins/cargo-binstall
 [just-repo]: https://github.com/casey/just
 [just-manual]: https://just.systems/man/en/
+
+## FAQ
+
+### General
+
+**What is Nexus SDK?**
+Nexus SDK is a collection of tools for building with **Nexus**, the Agentic Workflow Engine. It provides packages for creating Talus agents and Talus tools, including `nexus-cli`, `nexus-sdk`, `nexus-toolkit-rust`, and Standard Nexus Tools.
+
+**How is Nexus different from other AI frameworks?**
+Nexus focuses on **agentic workflows** — persistent, fault-tolerant execution of AI agent tasks with built-in scheduling, gas management, and network coordination. Unlike simple chat frameworks, Nexus agents run continuously with audit trails and recovery.
+
+**What license does Nexus SDK use?**
+Apache License 2.0 — free for commercial and personal use.
+
+### Installation & Setup
+
+**Which installation method do you recommend?**
+- **Homebrew** (macOS/Linux): `brew install nexus-cli` — easiest for most users
+- **cargo-binstall**: Fastest binary installation
+- **Cargo**: For building from source with specific tags
+
+**Does Nexus work on Windows?**
+Currently, Nexus CLI is primarily designed for macOS and Linux. Windows support may be limited.
+
+**What are the system requirements?**
+- Rust toolchain (for building from source)
+- Modern Linux/macOS with standard development tools
+
+### Development
+
+**How do I create a Talus Agent?**
+Use the `nexus-sdk` package to define your agent's behavior, tools, and skills. Visit the [official Nexus SDK docs](https://docs.talus.network) for detailed guides.
+
+**How do I create a Talus Tool?**
+Use the `nexus-toolkit-rust` package to register custom tools that agents can invoke. Tools are the primary way to extend agent capabilities.
+
+**What is a Nexus DAG?**
+DAGs (Directed Acyclic Graphs) define workflow structures for agent execution. Use `nexus dag` commands to validate, publish, and execute workflows.
+
+**How do I run tests during development?**
+Use `just` (command runner) to run test suites:
+```bash
+just --list  # See available tasks
+just cli     # Test CLI
+just sdk     # Test SDK
+just toolkit-rust  # Test Rust toolkit
+```
+
+### Configuration
+
+**How do I configure LLM providers?**
+Use `nexus conf` to manage Nexus configuration, including LLM provider endpoints and API keys.
+
+**What is Gas management?**
+Nexus uses a gas system for resource budgeting. Use `nexus gas` commands to manage gas budgets and tickets for agent execution.
+
+**How do I manage networks?**
+Use `nexus network` commands to manage Nexus networks and leader caps for distributed agent coordination.
+
+### Scheduler
+
+**How does the scheduler work?**
+The scheduler (`nexus scheduler`) manages recurring tasks and occurrences for persistent agent execution. Configure time-based or event-triggered workflows.
+
+### Troubleshooting
+
+**Command not found after installation?**
+Ensure the installation path is in your `$PATH`. For Homebrew: `brew link nexus-cli`.
+
+**Build fails with Rust errors?**
+Ensure you have a recent Rust toolchain: `rustup update`. Nexus requires Rust 1.70+.
+
+**Where can I get help?**
+- [Official Documentation](https://docs.talus.network)
+- [GitHub Issues](https://github.com/Talus-Network/nexus-sdk/issues)
+- [Talus Agent Docs](https://docs.talus.network/talus-documentation/developer-docs/index/index)
+- [Talus Tools Docs](https://docs.talus.network/talus-documentation/developer-docs/index/tool)
+
