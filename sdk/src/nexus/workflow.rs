@@ -6,7 +6,14 @@
 
 use {
     crate::{
-        events::{EventPage, NexusEvent, NexusEventKind},
+        events::{
+            EndStateReachedEvent,
+            EventPage,
+            ExecutionFinishedEvent,
+            NexusEvent,
+            NexusEventKind,
+            TerminalErrEvalRecordedEvent,
+        },
         idents::workflow,
         nexus::{
             client::NexusClient,
@@ -18,6 +25,7 @@ use {
         types::{
             derive_execution_gas_id,
             Dag as JsonDag,
+            DataStorage,
             PortsData,
             StorageConf,
             DEFAULT_ENTRY_GROUP,
@@ -48,12 +56,115 @@ pub struct InspectExecutionResult {
     pub poller: JoinHandle<Result<(), NexusError>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkflowExecutionTerminalState {
+    Succeeded,
+    Failed,
+    Aborted,
+    NoWalkOutcome,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResolvedEndState {
+    pub event: EndStateReachedEvent,
+    pub resolved_ports_to_data: HashMap<String, DataStorage>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InspectExecutionCompletionResult {
+    pub terminal_state: WorkflowExecutionTerminalState,
+    pub execution_finished: ExecutionFinishedEvent,
+    pub end_states: Vec<ResolvedEndState>,
+    pub terminal_err_eval_recordings: Vec<TerminalErrEvalRecordedEvent>,
+    pub events: Vec<NexusEvent>,
+}
+
 pub struct ExecutionCostResult {
     pub leader_claims: HashMap<sui::types::Digest, ClaimedGas>,
 }
 
 pub struct WorkflowActions {
     pub(super) client: NexusClient,
+}
+
+fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
+    match event {
+        NexusEventKind::WalkAdvanced(e) => Some(e.execution),
+        NexusEventKind::WalkFailed(e) => Some(e.execution),
+        NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution),
+        NexusEventKind::WalkAborted(e) => Some(e.execution),
+        NexusEventKind::WalkCancelled(e) => Some(e.execution),
+        NexusEventKind::EndStateReached(e) => Some(e.execution),
+        NexusEventKind::ExecutionFinished(e) => Some(e.execution),
+        _ => None,
+    }
+}
+
+fn terminal_state_from_execution_finished(
+    execution_finished: &ExecutionFinishedEvent,
+) -> WorkflowExecutionTerminalState {
+    if execution_finished.was_aborted {
+        WorkflowExecutionTerminalState::Aborted
+    } else if execution_finished.has_any_walk_failed {
+        WorkflowExecutionTerminalState::Failed
+    } else if execution_finished.has_any_walk_succeeded {
+        WorkflowExecutionTerminalState::Succeeded
+    } else {
+        WorkflowExecutionTerminalState::NoWalkOutcome
+    }
+}
+
+async fn build_execution_completion_result(
+    events: Vec<NexusEvent>,
+    dag_execution_id: sui::types::Address,
+    storage_conf: &StorageConf,
+) -> Result<InspectExecutionCompletionResult, NexusError> {
+    let mut end_states = Vec::new();
+    let mut terminal_err_eval_recordings = Vec::new();
+    let mut execution_finished = None;
+
+    for event in &events {
+        match &event.data {
+            NexusEventKind::EndStateReached(end_state) => {
+                let resolved_ports_to_data = end_state
+                    .variant_ports_to_data
+                    .clone()
+                    .fetch_all(storage_conf)
+                    .await
+                    .map_err(|e| {
+                        NexusError::Storage(anyhow!(
+                            "Failed to fetch output data for execution '{dag_execution_id}': {e}"
+                        ))
+                    })?;
+
+                end_states.push(ResolvedEndState {
+                    event: end_state.clone(),
+                    resolved_ports_to_data,
+                });
+            }
+            NexusEventKind::TerminalErrEvalRecorded(recorded) => {
+                terminal_err_eval_recordings.push(recorded.clone());
+            }
+            NexusEventKind::ExecutionFinished(finished) => {
+                execution_finished = Some(finished.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let execution_finished = execution_finished.ok_or_else(|| {
+        NexusError::Channel(anyhow!(
+            "ExecutionFinished event not found while inspecting DAG execution '{dag_execution_id}'"
+        ))
+    })?;
+
+    Ok(InspectExecutionCompletionResult {
+        terminal_state: terminal_state_from_execution_finished(&execution_finished),
+        execution_finished,
+        end_states,
+        terminal_err_eval_recordings,
+        events,
+    })
 }
 
 impl WorkflowActions {
@@ -288,15 +399,11 @@ impl WorkflowActions {
                                 None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
                             };
 
+                            let mut execution_finished_seen = false;
+
                             for event in events {
-                                let execution_id = match &event.data {
-                                    NexusEventKind::WalkAdvanced(e) => e.execution,
-                                    NexusEventKind::WalkFailed(e) => e.execution,
-                                    NexusEventKind::WalkAborted(e) => e.execution,
-                                    NexusEventKind::WalkCancelled(e) => e.execution,
-                                    NexusEventKind::EndStateReached(e) => e.execution,
-                                    NexusEventKind::ExecutionFinished(e) => e.execution,
-                                    _ => continue,
+                                let Some(execution_id) = event_execution_id(&event.data) else {
+                                    continue;
                                 };
 
                                 // Only process events for the given execution ID.
@@ -306,11 +413,15 @@ impl WorkflowActions {
 
                                 if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
                                     tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-
-                                    return Ok(());
+                                    execution_finished_seen = true;
+                                    continue;
                                 }
 
                                 tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
+                            }
+
+                            if execution_finished_seen {
+                                return Ok(());
                             }
                         }
 
@@ -326,6 +437,35 @@ impl WorkflowActions {
             next_event: rx,
             poller,
         })
+    }
+
+    /// Inspect a DAG execution until completion and return a structured summary
+    /// with resolved end-state data.
+    pub async fn inspect_execution_until_completion(
+        &self,
+        dag_execution_id: sui::types::Address,
+        execution_checkpoint: u64,
+        timeout: Option<Duration>,
+        storage_conf: &StorageConf,
+    ) -> Result<InspectExecutionCompletionResult, NexusError> {
+        let mut inspection = self
+            .inspect_execution(dag_execution_id, execution_checkpoint, timeout)
+            .await?;
+
+        let mut events = Vec::new();
+
+        while let Some(event) = inspection.next_event.recv().await {
+            events.push(event);
+        }
+
+        let poller_result = inspection.poller.await.map_err(|e| {
+            NexusError::Channel(anyhow!(
+                "Execution inspection task failed for DAG execution '{dag_execution_id}': {e}"
+            ))
+        })?;
+        poller_result?;
+
+        build_execution_completion_result(events, dag_execution_id, storage_conf).await
     }
 
     /// Calculate the gas cost of a finished DAG execution based on the provided
@@ -372,6 +512,7 @@ mod tests {
                 EndStateReachedEvent,
                 ExecutionFinishedEvent,
                 NexusEventKind,
+                TerminalErrEvalRecordedEvent,
                 WalkAdvancedEvent,
             },
             fqn,
@@ -381,10 +522,98 @@ mod tests {
             },
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{NexusData, RuntimeVertex, TypeName},
+            types::{
+                NexusData,
+                PostFailureAction,
+                RuntimeVertex,
+                Storable,
+                TypeName,
+                WorkflowFailureClass,
+            },
         },
+        serde::Serialize,
         serde_json::json,
     };
+
+    fn mock_events_get_checkpoint_with_supported_events(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        objects: crate::types::NexusObjects,
+        nexus_events: Vec<NexusEventKind>,
+        cp: u64,
+    ) {
+        ledger_service
+            .expect_get_checkpoint()
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetCheckpointResponse::default();
+                let mut checkpoint = sui::grpc::Checkpoint::default();
+                let mut transactions = vec![];
+                for _ in 0..10 {
+                    let mut transaction = sui::grpc::ExecutedTransaction::default();
+                    transaction.set_digest(sui::types::Digest::ZERO);
+                    transactions.push(transaction);
+                }
+                checkpoint.set_transactions(transactions);
+                checkpoint.set_sequence_number(cp);
+                response.set_checkpoint(checkpoint);
+                Ok(tonic::Response::new(response))
+            });
+
+        ledger_service
+            .expect_batch_get_transactions()
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+                let mut result = sui::grpc::GetTransactionResult::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(sui::types::Digest::ZERO);
+                transaction.set_checkpoint(1);
+                let mut events = vec![];
+
+                #[derive(Serialize)]
+                struct Wrapper<T> {
+                    event: T,
+                }
+
+                for event in nexus_events.clone() {
+                    let t = format!(
+                        "{}::event::EventWrapper<{}::dag::{}>",
+                        objects.primitives_pkg_id,
+                        objects.workflow_pkg_id,
+                        event.name()
+                    );
+
+                    let mut grpc_event = sui::grpc::Event::default();
+                    grpc_event.set_package_id(objects.workflow_pkg_id);
+                    grpc_event.set_module("dag".to_string());
+                    grpc_event.set_sender(sui::types::Address::ZERO);
+                    grpc_event.set_event_type(t);
+                    grpc_event.set_contents(match event {
+                        NexusEventKind::WalkAdvanced(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::EndStateReached(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::ExecutionFinished(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::TerminalErrEvalRecorded(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        NexusEventKind::DAGCreated(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        _ => panic!("Unsupported event type for BCS serialization"),
+                    });
+                    events.push(grpc_event);
+                }
+                let mut tx_events = sui::grpc::TransactionEvents::default();
+                tx_events.set_events(events);
+                transaction.set_events(tx_events);
+                result.set_transaction(transaction);
+                response.set_transactions(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+    }
 
     #[tokio::test]
     async fn test_workflow_actions_publish() {
@@ -444,6 +673,7 @@ mod tests {
             vertices: vec![],
             edges: vec![],
             default_values: None,
+            post_failure_action: None,
             entry_groups: None,
             outputs: None,
         };
@@ -632,7 +862,6 @@ mod tests {
             variant: TypeName::new("ok"),
             variant_ports_to_data: PortsData::from_map(HashMap::new()),
         });
-
         let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
             dag: dag_object_id,
             execution: execution_object_id,
@@ -744,6 +973,285 @@ mod tests {
             result.poller.await.unwrap(),
             Err(NexusError::Timeout(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_actions_inspect_execution_until_completion() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_object_id = sui::types::Address::generate(&mut rng);
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+
+        let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+            dag: dag_object_id,
+            execution: execution_object_id,
+            walk_index: 0,
+            vertex: RuntimeVertex::plain("initial"),
+            variant: TypeName::new("ok"),
+            variant_ports_to_data: PortsData::from_map(HashMap::new()),
+        });
+        let terminal_err_eval_event =
+            NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
+                dag: dag_object_id,
+                execution: execution_object_id,
+                walk_index: 1,
+                vertex: RuntimeVertex::plain("failable"),
+                leader: sui::types::Address::THREE,
+                failure_class: WorkflowFailureClass::TerminalToolFailure,
+                outcome: PostFailureAction::Terminate,
+                reason: "tool failed".to_string(),
+                err_eval_hash: vec![9, 8, 7],
+                duplicate: false,
+            });
+        let end_state_reached_event = NexusEventKind::EndStateReached(EndStateReachedEvent {
+            dag: dag_object_id,
+            execution: execution_object_id,
+            walk_index: 0,
+            vertex: RuntimeVertex::plain("final"),
+            variant: TypeName::new("ok"),
+            variant_ports_to_data: PortsData::from_map(HashMap::from([(
+                "answer".to_string(),
+                NexusData::new_inline(json!(42)),
+            )])),
+        });
+        let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
+            dag: dag_object_id,
+            execution: execution_object_id,
+            has_any_walk_failed: true,
+            has_any_walk_succeeded: true,
+            was_aborted: false,
+        });
+
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+        mock_events_get_checkpoint_with_supported_events(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![
+                walk_advanced_event,
+                terminal_err_eval_event,
+                end_state_reached_event,
+                execution_finished_event,
+            ],
+            1,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .workflow()
+            .inspect_execution_until_completion(
+                execution_object_id,
+                1,
+                Some(std::time::Duration::from_secs(5)),
+                &StorageConf::default(),
+            )
+            .await
+            .expect("Failed to inspect execution until completion");
+
+        assert_eq!(
+            result.terminal_state,
+            WorkflowExecutionTerminalState::Failed
+        );
+        assert!(result.execution_finished.has_any_walk_failed);
+        assert!(result.execution_finished.has_any_walk_succeeded);
+        assert!(matches!(
+            result.events.last().map(|event| &event.data),
+            Some(NexusEventKind::ExecutionFinished(_))
+        ));
+        assert_eq!(result.terminal_err_eval_recordings.len(), 1);
+        assert_eq!(
+            result.terminal_err_eval_recordings[0].failure_class,
+            WorkflowFailureClass::TerminalToolFailure
+        );
+        assert!(result.events.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_actions_inspect_execution_until_completion_timeout() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rand::thread_rng());
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
+        sui_mocks::grpc::mock_events_get_checkpoint(
+            &mut ledger_service_mock,
+            nexus_objects.clone(),
+            vec![],
+            1,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .workflow()
+            .inspect_execution_until_completion(
+                execution_object_id,
+                1,
+                Some(std::time::Duration::from_secs(3)),
+                &StorageConf::default(),
+            )
+            .await;
+
+        assert!(matches!(result, Err(NexusError::Timeout(_))));
+    }
+
+    #[test]
+    fn test_event_execution_id_supports_terminal_err_eval_recorded() {
+        let execution = sui::types::Address::TWO;
+        let event = NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
+            dag: sui::types::Address::ZERO,
+            execution,
+            walk_index: 2,
+            vertex: RuntimeVertex::plain("failable"),
+            leader: sui::types::Address::THREE,
+            failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
+            outcome: PostFailureAction::Terminate,
+            reason: "timeout".to_string(),
+            err_eval_hash: vec![4, 5, 6],
+            duplicate: true,
+        });
+
+        assert_eq!(event_execution_id(&event), Some(execution));
+    }
+
+    #[test]
+    fn test_terminal_state_from_execution_finished() {
+        let success = ExecutionFinishedEvent {
+            dag: sui::types::Address::ZERO,
+            execution: sui::types::Address::TWO,
+            has_any_walk_failed: false,
+            has_any_walk_succeeded: true,
+            was_aborted: false,
+        };
+        let failed = ExecutionFinishedEvent {
+            has_any_walk_failed: true,
+            has_any_walk_succeeded: false,
+            ..success.clone()
+        };
+        let aborted = ExecutionFinishedEvent {
+            has_any_walk_failed: true,
+            has_any_walk_succeeded: true,
+            was_aborted: true,
+            ..success.clone()
+        };
+        let no_walk_outcome = ExecutionFinishedEvent {
+            has_any_walk_failed: false,
+            has_any_walk_succeeded: false,
+            was_aborted: false,
+            ..success
+        };
+
+        assert_eq!(
+            terminal_state_from_execution_finished(&success),
+            WorkflowExecutionTerminalState::Succeeded
+        );
+        assert_eq!(
+            terminal_state_from_execution_finished(&failed),
+            WorkflowExecutionTerminalState::Failed
+        );
+        assert_eq!(
+            terminal_state_from_execution_finished(&aborted),
+            WorkflowExecutionTerminalState::Aborted
+        );
+        assert_eq!(
+            terminal_state_from_execution_finished(&no_walk_outcome),
+            WorkflowExecutionTerminalState::NoWalkOutcome
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_execution_completion_result_resolves_end_states() {
+        let execution = sui::types::Address::TWO;
+        let events = vec![
+            NexusEvent {
+                id: (sui::types::Digest::ZERO, 0),
+                generics: vec![],
+                data: NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
+                    dag: sui::types::Address::ZERO,
+                    execution,
+                    walk_index: 1,
+                    vertex: RuntimeVertex::plain("failable"),
+                    leader: sui::types::Address::THREE,
+                    failure_class: WorkflowFailureClass::TerminalToolFailure,
+                    outcome: PostFailureAction::Terminate,
+                    reason: "tool failed".to_string(),
+                    err_eval_hash: vec![1, 2, 3],
+                    duplicate: false,
+                }),
+                distribution: None,
+            },
+            NexusEvent {
+                id: (sui::types::Digest::ZERO, 1),
+                generics: vec![],
+                data: NexusEventKind::EndStateReached(EndStateReachedEvent {
+                    dag: sui::types::Address::ZERO,
+                    execution,
+                    walk_index: 0,
+                    vertex: RuntimeVertex::plain("final"),
+                    variant: TypeName::new("ok"),
+                    variant_ports_to_data: PortsData::from_map(HashMap::from([(
+                        "answer".to_string(),
+                        NexusData::new_inline(json!(42)),
+                    )])),
+                }),
+                distribution: None,
+            },
+            NexusEvent {
+                id: (sui::types::Digest::ZERO, 2),
+                generics: vec![],
+                data: NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
+                    dag: sui::types::Address::ZERO,
+                    execution,
+                    has_any_walk_failed: true,
+                    has_any_walk_succeeded: true,
+                    was_aborted: false,
+                }),
+                distribution: None,
+            },
+        ];
+
+        let result = build_execution_completion_result(events, execution, &StorageConf::default())
+            .await
+            .expect("summary should build");
+
+        assert_eq!(
+            result.terminal_state,
+            WorkflowExecutionTerminalState::Failed
+        );
+        assert_eq!(result.terminal_err_eval_recordings.len(), 1);
+        assert_eq!(result.end_states.len(), 1);
+        assert_eq!(
+            result.end_states[0].event.vertex,
+            RuntimeVertex::plain("final")
+        );
+        assert_eq!(
+            result.end_states[0]
+                .resolved_ports_to_data
+                .get("answer")
+                .expect("answer port")
+                .as_json(),
+            &json!(42)
+        );
     }
 
     #[tokio::test]
