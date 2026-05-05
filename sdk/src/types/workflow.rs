@@ -2,7 +2,12 @@ use {
     super::nexus_data::NexusData,
     crate::{
         sui,
-        types::{parse_published_move_enum_value, parse_string_value, strip_fields_owned},
+        types::{
+            parse_published_move_enum_value,
+            parse_string_value,
+            strip_fields_owned,
+            SharedObjectRef,
+        },
     },
     serde::{Deserialize, Serialize},
 };
@@ -160,6 +165,15 @@ impl ExternalVerifierSubmitEvidenceV1 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalVerifierRuntimeCallV1 {
+    pub package_address: sui::types::Address,
+    pub module_name: String,
+    pub function_name: String,
+    pub witness: sui::types::ObjectReference,
+    pub shared_objects: Vec<(SharedObjectRef, sui::types::ObjectReference)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreparedToolOutputPortV1 {
     pub port: String,
     pub data: NexusData,
@@ -180,6 +194,17 @@ impl PreparedToolOutputV1 {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OffChainSubmissionProofV1 {
     None,
+    RegisteredKey {
+        verifier_credential: Vec<u8>,
+        communication_evidence: Vec<u8>,
+    },
+    ExternalVerifier {
+        evidence: ExternalVerifierSubmitEvidenceV1,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OffChainVerifierProofV1 {
     RegisteredKey {
         verifier_credential: Vec<u8>,
         communication_evidence: Vec<u8>,
@@ -577,23 +602,32 @@ mod tests {
     fn test_tool_result_auxiliary_v1_bcs_serializes() {
         let value = OffChainToolResultAuxiliaryV1 {
             reported_failure_evidence_kind: Some(FailureEvidenceKind::ToolEvidence),
-            proof: OffChainSubmissionProofV1::ExternalVerifier {
-                evidence: ExternalVerifierSubmitEvidenceV1 {
-                    result: VerifierContractResultV1 {
-                        method: "demo_verifier_v1".to_string(),
-                        decision: VerifierDecisionV1::Accept,
-                        submission_kind: VerificationSubmissionKind::Success,
-                        failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
-                        payload_or_reason_hash: vec![1, 2, 3],
-                        credential: vec![4, 5],
-                        detail: vec![6, 7],
-                    },
-                    communication_evidence: vec![8, 9, 10],
-                },
-            },
+            proof: OffChainSubmissionProofV1::None,
         };
 
         let bytes = value.to_bcs_bytes().unwrap();
         assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    fn test_off_chain_verifier_proof_v1_bcs_serializes() {
+        let value = OffChainVerifierProofV1::ExternalVerifier {
+            evidence: ExternalVerifierSubmitEvidenceV1 {
+                result: VerifierContractResultV1 {
+                    method: "demo_verifier_v1".to_string(),
+                    decision: VerifierDecisionV1::Accept,
+                    submission_kind: VerificationSubmissionKind::Success,
+                    failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
+                    payload_or_reason_hash: vec![1, 2, 3],
+                    credential: vec![4, 5],
+                    detail: vec![6, 7],
+                },
+                communication_evidence: vec![8, 9, 10],
+            },
+        };
+
+        let bytes = bcs::to_bytes(&value).unwrap();
+        let parsed: OffChainVerifierProofV1 = bcs::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed, value);
     }
 }

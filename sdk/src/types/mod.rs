@@ -44,10 +44,12 @@ pub use {
     type_name::TypeName,
     workflow::{
         ExecutionTerminalRecord,
+        ExternalVerifierRuntimeCallV1,
         ExternalVerifierSubmitEvidenceV1,
         FailureEvidenceKind,
         OffChainSubmissionProofV1,
         OffChainToolResultAuxiliaryV1,
+        OffChainVerifierProofV1,
         OffchainRequestEvidenceV1,
         OffchainResponseEvidenceV1,
         OffchainVerifierEvidenceV1,

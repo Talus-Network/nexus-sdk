@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
 - Full test coverage for event parsing and BCS serialization/deserialization
 - Additional signed HTTP tests for response signing verification and multi-variant output handling
+- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the workflow verifier-aware entrypoint
 
 #### Changed
 
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced canonical output body SHA256 calculation with validation for single-variant JSON structure
 - Fixed signature message generation to handle references correctly in signed HTTP operations
 - Removed unused sender parameters from `create_tool_binding_and_register_key` and `create_leader_binding_and_register_key` transaction functions
+- Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; proof-none submissions route through the no-verifier entrypoint.
 
 ### `docs`
 
