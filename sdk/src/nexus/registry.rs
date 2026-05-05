@@ -4,7 +4,13 @@ use {
     crate::{
         nexus::crawler::{prost_value_to_json_value, Crawler},
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
-        types::{MoveTable, SharedObjectRef, TypeName, VerifierConfig},
+        types::{
+            ExternalVerifierRuntimeCallV1,
+            MoveTable,
+            SharedObjectRef,
+            TypeName,
+            VerifierConfig,
+        },
     },
     anyhow::{anyhow, bail},
     serde::Deserialize,
@@ -81,6 +87,18 @@ pub struct ExternalVerifierRuntimeMetadata {
     pub witness: sui::types::ObjectReference,
     pub shared_objects: Vec<(SharedObjectRef, sui::types::ObjectReference)>,
     pub call_shape: VerifierCallShapeV1,
+}
+
+impl ExternalVerifierRuntimeMetadata {
+    pub fn runtime_call(&self) -> ExternalVerifierRuntimeCallV1 {
+        ExternalVerifierRuntimeCallV1 {
+            package_address: self.package_address,
+            module_name: self.call_shape.module_name.clone(),
+            function_name: self.call_shape.function_name.clone(),
+            witness: self.witness.clone(),
+            shared_objects: self.shared_objects.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

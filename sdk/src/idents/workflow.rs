@@ -486,7 +486,7 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_off_chain_tool_result_for_walk_v1"),
     };
-    /// Canonical proof-none off-chain tool-result submission entrypoint.
+    /// Canonical no-verifier off-chain tool-result submission entrypoint.
     ///
     /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_without_verifier_v1`
     pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1: ModuleAndNameIdent =
@@ -504,7 +504,8 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
     };
-    /// Submit an on-chain tool evaluation with an explicit failure-evidence kind.
+    /// Submit an on-chain tool evaluation with an explicit `_err_eval`
+    /// failure-evidence kind.
     ///
     /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk_with_failure_evidence`
     pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE: ModuleAndNameIdent =

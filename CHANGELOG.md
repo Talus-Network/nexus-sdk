@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Focused coverage for branch-specific SDK transaction builder behavior,
   including terminal `_err_eval` output shape, failure-evidence wiring, and
   explicit on-chain witness passthrough.
+- `TerminalErrEvalRecordedEvent` structure for tracking terminal error evaluation records
+- `SubmissionFailureEvidenceRecordedEvent` structure for tracking submission failure evidence
+- Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
+- Full test coverage for event parsing and BCS serialization/deserialization
+- Additional signed HTTP tests for response signing verification and multi-variant output handling
+- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the workflow verifier-aware entrypoint
 
 #### Changed
 
@@ -76,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full test coverage for event parsing and BCS serialization/deserialization
 - Additional signed HTTP tests for response signing verification and multi-variant output handling
 
+- Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
 
 ### `docs`
 
