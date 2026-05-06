@@ -316,6 +316,12 @@ impl WalrusClient {
                     source: e,
                 })?;
         }
+        file.flush()
+            .await
+            .map_err(|e| WalrusError::FileWriteError {
+                path: output.clone(),
+                source: e,
+            })?;
 
         Ok(())
     }
