@@ -66,6 +66,25 @@ impl Vector {
     };
 }
 
+// == `std::option` ==
+
+pub struct Option;
+
+const OPTION_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("option");
+
+impl Option {
+    /// `std::option::none`
+    pub const NONE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OPTION_MODULE,
+        name: sui::types::Identifier::from_static("none"),
+    };
+    /// `std::option::some`
+    pub const SOME: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: OPTION_MODULE,
+        name: sui::types::Identifier::from_static("some"),
+    };
+}
+
 // == `std::string` ==
 
 pub struct StdString;

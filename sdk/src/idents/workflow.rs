@@ -339,6 +339,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("entry_group_from_string"),
     };
+    /// The `FailureEvidenceKind` enum type.
+    ///
+    /// `nexus_workflow::dag::FailureEvidenceKind`
+    pub const FAILURE_EVIDENCE_KIND: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("FailureEvidenceKind"),
+    };
     /// Create a leader-evidence failure evidence kind.
     ///
     /// `nexus_workflow::dag::failure_evidence_kind_leader_evidence`
@@ -394,13 +401,6 @@ impl Dag {
     pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_dag_execution_config"),
-    };
-    /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
-    ///
-    /// `nexus_workflow::dag::on_chain_tool_result_submission_v1_bytes`
-    pub const ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("on_chain_tool_result_submission_v1_bytes"),
     };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///
@@ -494,25 +494,6 @@ impl Dag {
             module: DAG_MODULE,
             name: sui::types::Identifier::from_static(
                 "submit_off_chain_tool_result_for_walk_without_verifier_v1",
-            ),
-        };
-    /// One of the functions to call when an on-chain tool is evaluated to submit
-    /// its result to the workflow.
-    ///
-    /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk`
-    pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
-    };
-    /// Submit an on-chain tool evaluation with an explicit `_err_eval`
-    /// failure-evidence kind.
-    ///
-    /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk_with_failure_evidence`
-    pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "submit_on_chain_tool_eval_for_walk_with_failure_evidence",
             ),
         };
     /// Canonical on-chain tool-result submission entrypoint.

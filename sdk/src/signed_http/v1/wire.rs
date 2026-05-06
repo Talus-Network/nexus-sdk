@@ -411,11 +411,26 @@ pub fn sign_invoke_request_v1(
 
 /// Sign response claims as a v1 invocation response.
 ///
+/// Deprecated: use [`sign_invoke_response_with_body_v1`] so the signer and
+/// verifier derive the same outcome for 2xx responses that carry `_err_eval`
+/// bodies. This helper now rejects 2xx statuses because the body is required to
+/// classify their signed outcome.
+///
 /// Returns `(sig_input_bytes, signature_bytes)`.
+#[deprecated(
+    since = "1.0.0",
+    note = "use sign_invoke_response_with_body_v1 so response outcome is derived from status and body"
+)]
 pub fn sign_invoke_response_v1(
     claims: &InvokeResponseClaimsV1,
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
+    if (200..300).contains(&claims.status) {
+        return Err(SignedHttpError::ResponseBodyRequiredForStatusOnlySigning {
+            status: claims.status,
+        });
+    }
+
     let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
     let req_sig_input_sha256 = parse_hex_32(&claims.req_sig_input_sha256).map_err(|_| {
         SignedHttpError::InvalidReqSigInputSha256Hex(claims.req_sig_input_sha256.clone())

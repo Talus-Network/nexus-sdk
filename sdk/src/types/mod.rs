@@ -52,7 +52,6 @@ pub use {
         OffchainRequestEvidenceV1,
         OffchainResponseEvidenceV1,
         OffchainVerifierEvidenceV1,
-        OnChainToolResultSubmissionV1,
         PostFailureAction,
         PreparedToolOutputPortV1,
         PreparedToolOutputV1,

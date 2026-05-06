@@ -432,11 +432,9 @@ impl Config {
         let reload_path = path.clone();
         tokio::spawn(async move {
             let debounce_duration = Duration::from_millis(500);
-            let poll_interval = Duration::from_millis(200);
+            let poll_interval = Duration::from_secs(2);
             let mut poll_tick = tokio::time::interval(poll_interval);
-            let mut last_modified = fs::metadata(&reload_path)
-                .and_then(|meta| meta.modified())
-                .ok();
+            let mut last_modified = file_modified(reload_path.clone()).await;
 
             loop {
                 tokio::select! {
@@ -450,8 +448,7 @@ impl Config {
                         while rx.try_recv().is_ok() {}
                     }
                     _ = poll_tick.tick() => {
-                        let current_modified =
-                            fs::metadata(&reload_path).and_then(|meta| meta.modified()).ok();
+                        let current_modified = file_modified(reload_path.clone()).await;
 
                         if current_modified == last_modified {
                             continue;
@@ -459,12 +456,9 @@ impl Config {
                     }
                 }
 
-                match ToolkitRuntimeConfig::from_path(&reload_path) {
-                    Ok(new_config) => {
-                        last_modified = fs::metadata(&reload_path)
-                            .and_then(|meta| meta.modified())
-                            .ok();
-
+                match reload_config(reload_path.clone()).await {
+                    Ok((new_config, current_modified)) => {
+                        last_modified = current_modified;
                         let mut guard = config.write().unwrap();
                         *guard = Arc::new(new_config);
                         tracing::info!("Reloaded toolkit config from {}", reload_path.display());
@@ -482,6 +476,24 @@ impl Config {
 
         Ok(watcher)
     }
+}
+
+async fn file_modified(path: PathBuf) -> Option<std::time::SystemTime> {
+    tokio::task::spawn_blocking(move || fs::metadata(path).and_then(|meta| meta.modified()).ok())
+        .await
+        .unwrap_or(None)
+}
+
+async fn reload_config(
+    path: PathBuf,
+) -> anyhow::Result<(ToolkitRuntimeConfig, Option<std::time::SystemTime>)> {
+    tokio::task::spawn_blocking(move || {
+        let config = ToolkitRuntimeConfig::from_path(&path)?;
+        let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+        Ok((config, modified))
+    })
+    .await
+    .context("config reload task failed")?
 }
 
 #[cfg(test)]

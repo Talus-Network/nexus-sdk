@@ -246,49 +246,6 @@ impl OffChainToolResultAuxiliaryV1 {
     }
 }
 
-/// Structured on-chain submission envelope. Successful submissions carry no
-/// failure evidence kind and no submitted failure reason; `_err_eval`
-/// submissions carry both when failure metadata is semantically present.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OnChainToolResultSubmissionV1 {
-    pub observed_output: PreparedToolOutputV1,
-    pub raw_failure_evidence_kind: Option<FailureEvidenceKind>,
-    pub submitted_failure_reason: Option<Vec<u8>>,
-    pub tool_witness_id: sui::types::Address,
-}
-
-impl OnChainToolResultSubmissionV1 {
-    pub fn success(
-        observed_output: PreparedToolOutputV1,
-        tool_witness_id: sui::types::Address,
-    ) -> Self {
-        Self {
-            observed_output,
-            raw_failure_evidence_kind: None,
-            submitted_failure_reason: None,
-            tool_witness_id,
-        }
-    }
-
-    pub fn err_eval(
-        observed_output: PreparedToolOutputV1,
-        raw_failure_evidence_kind: FailureEvidenceKind,
-        submitted_failure_reason: Vec<u8>,
-        tool_witness_id: sui::types::Address,
-    ) -> Self {
-        Self {
-            observed_output,
-            raw_failure_evidence_kind: Some(raw_failure_evidence_kind),
-            submitted_failure_reason: Some(submitted_failure_reason),
-            tool_witness_id,
-        }
-    }
-
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
 impl<'de> Deserialize<'de> for VerifierConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -666,49 +623,6 @@ mod tests {
             parsed.reported_failure_evidence_kind,
             Some(FailureEvidenceKind::ToolEvidence)
         );
-    }
-
-    #[test]
-    fn test_on_chain_tool_result_submission_success_bcs_serializes() {
-        let value = OnChainToolResultSubmissionV1::success(
-            PreparedToolOutputV1 {
-                output_variant: "ok".to_string(),
-                output_ports_data: vec![PreparedToolOutputPortV1 {
-                    port: "result".to_string(),
-                    data: NexusData::new_inline(serde_json::json!({ "value": 7 })),
-                }],
-            },
-            sui::types::Address::ZERO,
-        );
-
-        let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: OnChainToolResultSubmissionV1 = bcs::from_bytes(&bytes).unwrap();
-        assert_eq!(parsed.raw_failure_evidence_kind, None);
-        assert_eq!(parsed.submitted_failure_reason, None);
-    }
-
-    #[test]
-    fn test_on_chain_tool_result_submission_err_eval_bcs_serializes() {
-        let value = OnChainToolResultSubmissionV1::err_eval(
-            PreparedToolOutputV1 {
-                output_variant: "_err_eval".to_string(),
-                output_ports_data: vec![PreparedToolOutputPortV1 {
-                    port: "reason".to_string(),
-                    data: NexusData::new_inline(serde_json::json!("failure")),
-                }],
-            },
-            FailureEvidenceKind::LeaderEvidence,
-            b"failure".to_vec(),
-            sui::types::Address::ZERO,
-        );
-
-        let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: OnChainToolResultSubmissionV1 = bcs::from_bytes(&bytes).unwrap();
-        assert_eq!(
-            parsed.raw_failure_evidence_kind,
-            Some(FailureEvidenceKind::LeaderEvidence)
-        );
-        assert_eq!(parsed.submitted_failure_reason, Some(b"failure".to_vec()));
     }
 
     #[test]

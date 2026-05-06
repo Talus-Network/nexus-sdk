@@ -35,24 +35,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow failure model types, including `FailureEvidenceKind`,
   `WorkflowFailureClass`, `PostFailureAction`, and
   `ExecutionTerminalRecord`.
-- DAG JSON `post_failure_action` support at both DAG and vertex scope.
+- DAG JSON `post_failure_action`, `leader_verifier`, and `tool_verifier`
+  support at both DAG and vertex scope.
 - Workflow Move identifiers and transaction helpers for post-failure actions,
-  failure-evidence kinds, terminal `_err_eval` submission, success-path tool
-  evaluation submission, failure-evidence submission, and expired execution
-  aborts.
+  verifier configs, failure-evidence kinds, terminal `_err_eval` submission,
+  success-path tool evaluation submission, failure-evidence submission, typed
+  on-chain tool result submission, off-chain verifier proof submission, and
+  expired execution aborts.
 - `settle_gas_state_for_vertex` gas transaction helper.
 - `WorkflowActions::inspect_execution_until_completion`, returning terminal
   state, terminal `_err_eval` records, end-state outputs, and the underlying
   execution event stream.
 - Focused coverage for branch-specific SDK transaction builder behavior,
-  including terminal `_err_eval` output shape, failure-evidence wiring, and
-  explicit on-chain witness passthrough.
-- `TerminalErrEvalRecordedEvent` structure for tracking terminal error evaluation records
-- `SubmissionFailureEvidenceRecordedEvent` structure for tracking submission failure evidence
-- Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
-- Full test coverage for event parsing and BCS serialization/deserialization
-- Additional signed HTTP tests for response signing verification and multi-variant output handling
-- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the workflow verifier-aware entrypoint
+  including terminal `_err_eval` output shape, verifier config wiring,
+  no-verifier auxiliary routing, verifier proof routing, and explicit
+  on-chain witness passthrough.
+- Typed external-verifier PTB helper that constructs
+  `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps
+  the returned `VerifierContractResultV1` as typed verifier proof, and submits
+  through the verifier-aware workflow entrypoint.
+- Additional signed HTTP tests for response signing verification and
+  multi-variant output handling.
 
 #### Changed
 
@@ -62,7 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved signed HTTP verification with proper body hash validation and detection of tampered requests
 - Enhanced canonical output body SHA256 calculation with validation for single-variant JSON structure
 - Fixed signature message generation to handle references correctly in signed HTTP operations
-- Removed unused sender parameters from `create_tool_binding_and_register_key` and `create_leader_binding_and_register_key` transaction functions
+- Removed unused sender parameters from `create_tool_binding_and_register_key`
+  and `create_leader_binding_and_register_key`; new binding objects are now
+  shared with `public_share_object` instead of transferred to a sender.
 - Event parsing now accepts terminal `_err_eval` and submission-failure records
   from BCS-wrapped events and common nested Move-JSON trace shapes.
 - Move-JSON deserialization is more tolerant of Sui wrapper shapes for fields,
@@ -71,18 +76,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NexusEventKind` execution matching and workflow inspection now account for
   terminal `_err_eval` events.
 - Walrus file downloads now flush the destination file before returning.
+- On-chain DAG transaction helpers now use the single typed
+  `submit_on_chain_tool_result_for_walk_v1` surface and no longer expose the
+  stale BCS-envelope or split success/failure helper API.
+- Signed HTTP response signing now steers low-level callers to
+  `sign_invoke_response_with_body_v1`; the deprecated status-only helper
+  rejects 2xx responses because `_err_eval` outcome derivation depends on the
+  response body.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Runtime config hot reload now moves filesystem metadata checks and config
+  parsing onto Tokio's blocking pool and reduces fallback polling frequency,
+  while keeping notify-driven reloads as the fast path.
 
 #### Fixed
 
-- `FailureEvidenceKind` serialization now uses explicit serde names and
-  backward-compatible aliases.
-- `TerminalErrEvalRecordedEvent` structure for tracking terminal error evaluation records
-- `SubmissionFailureEvidenceRecordedEvent` structure for tracking submission failure evidence
-- Comprehensive parsing functions for terminal error evaluation and submission failure evidence events from nested JSON payloads
-- Full test coverage for event parsing and BCS serialization/deserialization
-- Additional signed HTTP tests for response signing verification and multi-variant output handling
-
 - Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
+
+#### Removed
+
+- Stale `OnChainToolResultSubmissionV1` SDK type/export and obsolete onchain
+  BCS-envelope/split-submit Move identifiers.
 
 ### `docs`
 
