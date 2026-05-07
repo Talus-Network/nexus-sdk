@@ -1119,6 +1119,28 @@ mod tests {
             }
         }
 
+        fn move_call_indices_to(
+            &self,
+            package: sui::types::Address,
+            module: &sui::types::Identifier,
+            function: &sui::types::Identifier,
+        ) -> Vec<usize> {
+            self.commands()
+                .iter()
+                .enumerate()
+                .filter_map(|(index, command)| match command {
+                    sui::types::Command::MoveCall(call)
+                        if call.package == package
+                            && &call.module == module
+                            && &call.function == function =>
+                    {
+                        Some(index)
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
         fn input(&self, argument: &sui::types::Argument) -> &sui::types::Input {
             let sui::types::Argument::Input(index) = argument else {
                 panic!("expected argument input, got {argument:?}");
@@ -1138,6 +1160,27 @@ mod tests {
                 bcs::from_bytes(value).expect("address BCS should deserialize");
             assert_eq!(actual, expected);
         }
+
+        fn expect_string(&self, argument: &sui::types::Argument, expected: &str) {
+            let sui::types::Input::Pure { value } = self.input(argument) else {
+                panic!("expected pure input, got {:?}", self.input(argument));
+            };
+
+            let actual: String = bcs::from_bytes(value).expect("string BCS should deserialize");
+            assert_eq!(actual, expected);
+        }
+
+        fn expect_ascii_string_result(&self, argument: &sui::types::Argument, expected: &str) {
+            let sui::types::Argument::Result(index) = argument else {
+                panic!("expected result argument, got {argument:?}");
+            };
+            let call = self.move_call(*index as usize);
+
+            assert_eq!(call.package, crate::idents::move_std::PACKAGE_ID);
+            assert_eq!(call.module, crate::idents::move_std::Ascii::STRING.module);
+            assert_eq!(call.function, crate::idents::move_std::Ascii::STRING.name);
+            self.expect_string(&call.arguments[0], expected);
+        }
     }
 
     fn mock_runtime_vertex() -> RuntimeVertex {
@@ -1156,6 +1199,27 @@ mod tests {
                 .expect("inline data storage"),
             )]),
         }
+    }
+
+    #[test]
+    fn test_prepared_tool_output_terminal_err_eval_shape() {
+        let reason = DataStorage::try_from(serde_json::json!({
+            "kind": "inline",
+            "data": "tool failed"
+        }))
+        .expect("inline terminal reason");
+        let expected_reason = reason.as_json().clone();
+
+        let prepared = PreparedToolOutput::terminal_err_eval(reason);
+
+        assert_eq!(prepared.output_variant, "_err_eval");
+        assert_eq!(prepared.output_ports_data.len(), 1);
+        let reason = prepared
+            .output_ports_data
+            .get("reason")
+            .expect("terminal reason port should be present");
+        assert_eq!(reason.storage_kind(), StorageKind::Inline);
+        assert_eq!(reason.as_json(), &expected_reason);
     }
 
     #[test]
@@ -1454,7 +1518,7 @@ mod tests {
             9,
             &mock_runtime_vertex(),
             &mock_prepared_tool_output(),
-            &FailureEvidenceKind::LeaderEvidence,
+            &FailureEvidenceKind::ToolEvidence,
             sui::types::Argument::Result(6),
         )
         .unwrap();
@@ -1472,6 +1536,19 @@ mod tests {
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE.name
         );
         assert_eq!(call.arguments.len(), 12);
+
+        let sui::types::Argument::Result(evidence_index) = &call.arguments[10] else {
+            panic!("expected failure evidence kind result argument");
+        };
+        let evidence_call = inspector.move_call(*evidence_index as usize);
+        assert_eq!(
+            evidence_call.module,
+            workflow::Dag::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE.module
+        );
+        assert_eq!(
+            evidence_call.function,
+            workflow::Dag::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE.name
+        );
     }
 
     #[test]
@@ -1593,6 +1670,76 @@ mod tests {
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE.name
         );
         inspector.expect_address(&call.arguments[11], sui::types::Address::ZERO);
+    }
+
+    #[test]
+    fn test_submit_on_chain_terminal_err_eval_for_walk_builds_terminal_output_with_witness() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        submit_on_chain_terminal_err_eval_for_walk(
+            &mut tx,
+            &objects,
+            sui::types::Argument::Result(0),
+            sui::types::Argument::Result(1),
+            sui::types::Argument::Result(2),
+            sui::types::Argument::Result(3),
+            sui::types::Argument::Result(4),
+            sui::types::Argument::Result(5),
+            13,
+            &mock_runtime_vertex(),
+            DataStorage::try_from(serde_json::json!({
+                "kind": "inline",
+                "data": "tool failed"
+            }))
+            .expect("inline reason"),
+            &FailureEvidenceKind::LeaderEvidence,
+            Some(witness),
+            sui::types::Argument::Result(6),
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE.name
+        );
+        inspector.expect_address(&call.arguments[11], witness);
+
+        let sui::types::Argument::Result(output_variant_index) = &call.arguments[8] else {
+            panic!("expected output variant result argument");
+        };
+        let output_variant_call = inspector.move_call(*output_variant_index as usize);
+        assert_eq!(
+            output_variant_call.module,
+            workflow::Dag::OUTPUT_VARIANT_FROM_STRING.module
+        );
+        assert_eq!(
+            output_variant_call.function,
+            workflow::Dag::OUTPUT_VARIANT_FROM_STRING.name
+        );
+        inspector.expect_ascii_string_result(&output_variant_call.arguments[0], "_err_eval");
+
+        let output_port_indices = inspector.move_call_indices_to(
+            objects.workflow_pkg_id,
+            &workflow::Dag::OUTPUT_PORT_FROM_STRING.module,
+            &workflow::Dag::OUTPUT_PORT_FROM_STRING.name,
+        );
+        assert_eq!(
+            output_port_indices.len(),
+            1,
+            "terminal _err_eval should build one output port"
+        );
+        let output_port_call = inspector.move_call(output_port_indices[0]);
+        inspector.expect_ascii_string_result(&output_port_call.arguments[0], "reason");
     }
 
     #[test]
