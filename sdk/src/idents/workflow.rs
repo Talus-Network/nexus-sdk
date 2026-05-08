@@ -1,7 +1,7 @@
 use crate::{
     idents::{pure_arg, sui_framework::Address, ModuleAndNameIdent},
     sui,
-    types::{EdgeKind, RuntimeVertex},
+    types::{EdgeKind, FailureEvidenceKind, PostFailureAction, RuntimeVertex},
     ToolFqn,
 };
 
@@ -248,6 +248,13 @@ pub struct Dag;
 const DAG_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("dag");
 
 impl Dag {
+    /// Abort an expired DAG execution.
+    ///
+    /// `nexus_workflow::dag::abort_expired_execution`
+    pub const ABORT_EXPIRED_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("abort_expired_execution"),
+    };
     /// The DAG struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::DAG`
@@ -325,6 +332,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("entry_group_from_string"),
     };
+    /// Create a leader-evidence failure evidence kind.
+    ///
+    /// `nexus_workflow::dag::failure_evidence_kind_leader_evidence`
+    pub const FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("failure_evidence_kind_leader_evidence"),
+    };
+    /// Create a tool-evidence failure evidence kind.
+    ///
+    /// `nexus_workflow::dag::failure_evidence_kind_tool_evidence`
+    pub const FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("failure_evidence_kind_tool_evidence"),
+    };
     /// The InputPort struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::InputPort`
@@ -395,6 +416,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("output_variant_from_string"),
     };
+    /// Create a terminate post-failure action.
+    ///
+    /// `nexus_workflow::dag::post_failure_action_terminate`
+    pub const POST_FAILURE_ACTION_TERMINATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("post_failure_action_terminate"),
+    };
+    /// Create a transient-continue post-failure action.
+    ///
+    /// `nexus_workflow::dag::post_failure_action_transient_continue`
+    pub const POST_FAILURE_ACTION_TRANSIENT_CONTINUE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
+    };
     /// Stamp the worksheet with the execution ID before onchain tool execution.
     ///
     /// `nexus_workflow::dag::pre_stamp_execution`
@@ -438,6 +473,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_off_chain_tool_eval_for_walk"),
     };
+    /// Submit an off-chain tool evaluation with an explicit failure-evidence kind.
+    ///
+    /// `nexus_workflow::dag::submit_off_chain_tool_eval_for_walk_with_failure_evidence`
+    pub const SUBMIT_OFF_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "submit_off_chain_tool_eval_for_walk_with_failure_evidence",
+            ),
+        };
     /// One of the functions to call when an on-chain tool is evaluated to submit
     /// its result to the workflow.
     ///
@@ -446,6 +491,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_eval_for_walk"),
     };
+    /// Submit an on-chain tool evaluation with an explicit failure-evidence kind.
+    ///
+    /// `nexus_workflow::dag::submit_on_chain_tool_eval_for_walk_with_failure_evidence`
+    pub const SUBMIT_ON_CHAIN_TOOL_EVAL_FOR_WALK_WITH_FAILURE_EVIDENCE: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "submit_on_chain_tool_eval_for_walk_with_failure_evidence",
+            ),
+        };
     /// Convert TaggedOutput to DAG types.
     ///
     /// `nexus_workflow::dag::tagged_output_to_dag_types`
@@ -525,12 +580,26 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_output"),
     };
+    /// Configure a DAG-level default post-failure action.
+    ///
+    /// `nexus_workflow::dag::with_post_failure_action`
+    pub const WITH_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_post_failure_action"),
+    };
     /// Add a Vertex to a DAG.
     ///
     /// `nexus_workflow::dag::with_vertex`
     pub const WITH_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_vertex"),
+    };
+    /// Configure a vertex-level post-failure action override.
+    ///
+    /// `nexus_workflow::dag::with_vertex_post_failure_action`
+    pub const WITH_VERTEX_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("with_vertex_post_failure_action"),
     };
 
     /// Create an EntryGroup from a string.
@@ -678,6 +747,40 @@ impl Dag {
             EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
             EdgeKind::Break => Self::EDGE_KIND_BREAK,
             EdgeKind::Static => Self::EDGE_KIND_STATIC,
+        };
+
+        tx.move_call(
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            vec![],
+        )
+    }
+
+    /// Create a post-failure action from an enum variant.
+    pub fn post_failure_action_from_enum(
+        tx: &mut sui::tx::TransactionBuilder,
+        workflow_pkg_id: sui::types::Address,
+        action: &PostFailureAction,
+    ) -> sui::types::Argument {
+        let ident = match action {
+            PostFailureAction::Terminate => Self::POST_FAILURE_ACTION_TERMINATE,
+            PostFailureAction::TransientContinue => Self::POST_FAILURE_ACTION_TRANSIENT_CONTINUE,
+        };
+
+        tx.move_call(
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            vec![],
+        )
+    }
+
+    /// Create a failure evidence kind from an enum variant.
+    pub fn failure_evidence_kind_from_enum(
+        tx: &mut sui::tx::TransactionBuilder,
+        workflow_pkg_id: sui::types::Address,
+        evidence_kind: &FailureEvidenceKind,
+    ) -> sui::types::Argument {
+        let ident = match evidence_kind {
+            FailureEvidenceKind::ToolEvidence => Self::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE,
+            FailureEvidenceKind::LeaderEvidence => Self::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE,
         };
 
         tx.move_call(

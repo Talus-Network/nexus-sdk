@@ -238,6 +238,37 @@ pub fn buy_expiry_gas_ticket(
     ))
 }
 
+/// PTB template to finalize gas state settlement for a vertex.
+pub fn settle_gas_state_for_vertex(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution_gas: sui::types::Argument,
+    tool_gas: sui::types::Argument,
+    invoker_gas: sui::types::Argument,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    expected_vertex: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Gas::FINALIZE_GAS_STATE_FOR_VERTEX.module,
+            workflow::Gas::FINALIZE_GAS_STATE_FOR_VERTEX.name,
+            vec![],
+        ),
+        vec![
+            execution_gas,
+            tool_gas,
+            invoker_gas,
+            dag,
+            execution,
+            leader_cap,
+            expected_vertex,
+        ],
+    )
+}
+
 /// PTB template to enable the limited invocations gas extension for a tool.
 pub fn enable_limited_invocations(
     tx: &mut sui::tx::TransactionBuilder,
@@ -552,6 +583,46 @@ mod tests {
             call.function,
             workflow::GasExtension::BUY_EXPIRY_GAS_TICKET.name
         );
+    }
+
+    #[test]
+    fn test_settle_gas_state_for_vertex() {
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        settle_gas_state_for_vertex(
+            &mut tx,
+            &objects,
+            sui::types::Argument::Input(0),
+            sui::types::Argument::Input(1),
+            sui::types::Argument::Input(2),
+            sui::types::Argument::Input(3),
+            sui::types::Argument::Input(4),
+            sui::types::Argument::Input(5),
+            sui::types::Argument::Input(6),
+        );
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to settle gas state for a vertex");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Gas::FINALIZE_GAS_STATE_FOR_VERTEX.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::Gas::FINALIZE_GAS_STATE_FOR_VERTEX.name
+        );
+        assert_eq!(call.arguments.len(), 7);
     }
 
     #[test]

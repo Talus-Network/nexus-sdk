@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### `nexus-cli`
+
+#### Added
+
+- Terminal `_err_eval` event handling in DAG execution inspection, including
+  failure class, post-failure action, reason, duplicate-submission status, and
+  `_err_eval` hash output.
+
+#### Changed
+
+- DAG execution inspection now includes terminal `_err_eval` trace entries in
+  JSON output and highlights duplicate terminal submissions in human-readable
+  output.
+- On-chain tool registration config persistence is now covered by a serialized
+  test to avoid cross-test config interference.
+
+### `nexus-sdk`
+
+#### Added
+
+- `TerminalErrEvalRecordedEvent` and
+  `SubmissionFailureEvidenceRecordedEvent` SDK event types.
+- Nested Move-JSON parsers for terminal `_err_eval` records and submission
+  failure evidence, including wrapper, option, enum, address, runtime-vertex,
+  byte-vector, and normalized string forms.
+- Workflow failure model types, including `FailureEvidenceKind`,
+  `WorkflowFailureClass`, `PostFailureAction`, and
+  `ExecutionTerminalRecord`.
+- DAG JSON `post_failure_action` support at both DAG and vertex scope.
+- Workflow Move identifiers and transaction helpers for post-failure actions,
+  failure-evidence kinds, terminal `_err_eval` submission, success-path tool
+  evaluation submission, failure-evidence submission, and expired execution
+  aborts.
+- `settle_gas_state_for_vertex` gas transaction helper.
+- `WorkflowActions::inspect_execution_until_completion`, returning terminal
+  state, terminal `_err_eval` records, end-state outputs, and the underlying
+  execution event stream.
+- Focused coverage for branch-specific SDK transaction builder behavior,
+  including terminal `_err_eval` output shape, failure-evidence wiring, and
+  explicit on-chain witness passthrough.
+
+#### Changed
+
+- Event parsing now accepts terminal `_err_eval` and submission-failure records
+  from BCS-wrapped events and common nested Move-JSON trace shapes.
+- Move-JSON deserialization is more tolerant of Sui wrapper shapes for fields,
+  options, published Move enums, runtime vertices, execution terminal records,
+  strings, booleans, integers, byte vectors, and addresses.
+- `NexusEventKind` execution matching and workflow inspection now account for
+  terminal `_err_eval` events.
+- Walrus file downloads now flush the destination file before returning.
+
+#### Fixed
+
+- `FailureEvidenceKind` serialization now uses explicit serde names and
+  backward-compatible aliases.
+
 ## [`1.0.0`] - 2026-04-23
 
 ### `nexus-cli`
