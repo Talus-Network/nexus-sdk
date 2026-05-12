@@ -5,9 +5,51 @@ use {
         sui,
         test_utils::sui_mocks,
     },
-    std::{path::PathBuf, sync::Arc},
+    std::{
+        env,
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
+    tempfile::{Builder, TempDir},
     tokio::sync::Mutex,
 };
+
+fn test_artifact_temp_root() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("test-temp");
+    std::fs::create_dir_all(&root).expect("Failed to create SDK test temp root");
+    root
+}
+
+fn build_tempdir(prefix: &str) -> TempDir {
+    Builder::new()
+        .prefix(prefix)
+        .tempdir_in(test_artifact_temp_root())
+        .expect("Failed to create temporary directory in SDK test artifact root")
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) {
+    std::fs::create_dir_all(dest).expect("Failed to create destination directory");
+
+    for entry in std::fs::read_dir(src).expect("Failed to read source directory") {
+        let entry = entry.expect("Failed to read directory entry");
+        let file_type = entry.file_type().expect("Failed to read entry type");
+        let file_name = entry.file_name();
+
+        if file_type.is_dir() && file_name == "build" {
+            continue;
+        }
+
+        let dest_path = dest.join(&file_name);
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_path);
+        } else if file_type.is_file() {
+            std::fs::copy(entry.path(), &dest_path).expect("Failed to copy file");
+        }
+    }
+}
 
 /// Publishes a Move package to Sui with no package ID overrides.
 pub async fn publish_move_package(
@@ -30,7 +72,12 @@ pub async fn publish_move_package_with_overrides(
     gas_coin: sui::types::ObjectReference,
     overrides: &[(&str, sui::types::Address)],
 ) -> ExecutedTransaction {
-    let install_dir = PathBuf::from(path_str);
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source_install_dir = manifest_dir.join(path_str);
+    let temp_package_root = build_tempdir("nexus-sdk-move-package-");
+    let install_dir = temp_package_root.path().join(path_str);
+
+    copy_dir_recursive(&source_install_dir, &install_dir);
 
     let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
@@ -60,8 +107,8 @@ pub async fn publish_move_package_with_overrides(
     };
 
     // Remove any stale Move.lock and Published.toml files.
-    let _ = std::fs::remove_file(format!("{path_str}/Move.lock"));
-    let _ = std::fs::remove_file(format!("{path_str}/Published.toml"));
+    let _ = std::fs::remove_file(install_dir.join("Move.lock"));
+    let _ = std::fs::remove_file(install_dir.join("Published.toml"));
 
     // Compile the package.
     let mut build_config = sui_move_build::BuildConfig::new_for_testing_replace_addresses(
@@ -73,6 +120,7 @@ pub async fn publish_move_package_with_overrides(
 
     build_config.environment =
         sui::build::Environment::new("testnet".to_string(), chain_id.clone());
+
     let package = build_config
         .build(&install_dir)
         .expect("Failed to build package.");

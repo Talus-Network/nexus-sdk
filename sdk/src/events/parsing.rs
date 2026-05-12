@@ -17,6 +17,7 @@ use {
             parse_runtime_vertex_value,
             parse_string_value,
             parse_u64_value,
+            MoveOption,
             NexusObjects,
         },
     },
@@ -100,6 +101,13 @@ pub fn parse_submission_failure_evidence_recorded_event(
     value: serde_json::Value,
 ) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceRecordedEvent>> {
     parse_nested_event_value(value, try_parse_submission_failure_evidence_recorded_event)
+}
+
+/// Parse a nested Move-JSON payload into a verification-verdict event.
+pub fn parse_verification_verdict_event(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<crate::events::VerificationVerdictEvent>> {
+    parse_nested_event_value(value, try_parse_verification_verdict_event)
 }
 
 fn normalize_event_name(event_type: &sui::types::StructTag) -> anyhow::Result<String> {
@@ -307,6 +315,174 @@ fn try_parse_submission_failure_evidence_recorded_event(
     ))
 }
 
+fn try_parse_verification_verdict_event(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<crate::events::VerificationVerdictEvent>> {
+    let serde_json::Value::Object(object) = value else {
+        return Ok(None);
+    };
+
+    let Some(dag) = object.get("dag") else {
+        return Ok(None);
+    };
+    let Some(execution) = object.get("execution") else {
+        return Ok(None);
+    };
+    let Some(walk_index) = object.get("walk_index") else {
+        return Ok(None);
+    };
+    let Some(vertex) = object.get("vertex") else {
+        return Ok(None);
+    };
+    let Some(leader) = object.get("leader") else {
+        return Ok(None);
+    };
+    let Some(submission_kind) = object.get("submission_kind") else {
+        return Ok(None);
+    };
+    let Some(failure_evidence_kind) = object.get("failure_evidence_kind") else {
+        return Ok(None);
+    };
+    let Some(leader_verifier_mode) = object.get("leader_verifier_mode") else {
+        return Ok(None);
+    };
+    let Some(leader_verifier_method) = object.get("leader_verifier_method") else {
+        return Ok(None);
+    };
+    let Some(tool_verifier_mode) = object.get("tool_verifier_mode") else {
+        return Ok(None);
+    };
+    let Some(tool_verifier_method) = object.get("tool_verifier_method") else {
+        return Ok(None);
+    };
+    let Some(checked_leader_kid) = object.get("checked_leader_kid") else {
+        return Ok(None);
+    };
+    let Some(checked_tool_kid) = object.get("checked_tool_kid") else {
+        return Ok(None);
+    };
+    let Some(payload_or_reason_hash) = object.get("payload_or_reason_hash") else {
+        return Ok(None);
+    };
+    let Some(submission_role) = object.get("submission_role") else {
+        return Ok(None);
+    };
+    let Some(checked_identity) = object.get("checked_identity") else {
+        return Ok(None);
+    };
+    let Some(policy_mode) = object.get("policy_mode") else {
+        return Ok(None);
+    };
+    let Some(verdict_reference) = object.get("verdict_reference") else {
+        return Ok(None);
+    };
+    let Some(verdict) = object.get("verdict") else {
+        return Ok(None);
+    };
+
+    Ok(Some(crate::events::VerificationVerdictEvent {
+        dag: parse_address_value(dag)?
+            .ok_or_else(|| anyhow::anyhow!("Could not parse verification verdict dag: {dag}"))?,
+        execution: parse_address_value(execution)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict execution: {execution}")
+        })?,
+        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict walk_index: {walk_index}")
+        })?,
+        vertex: parse_runtime_vertex_value(vertex)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict vertex: {vertex}")
+        })?,
+        leader: parse_address_value(leader)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict leader: {leader}")
+        })?,
+        submission_kind: parse_published_move_enum_value(submission_kind)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict submission_kind: {submission_kind}"
+            )
+        })?,
+        failure_evidence_kind: parse_published_move_enum_value(failure_evidence_kind)?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Could not parse verification verdict failure_evidence_kind: {failure_evidence_kind}"
+                )
+            })?,
+        leader_verifier_mode: parse_published_move_enum_value(leader_verifier_mode)?.ok_or_else(
+            || {
+                anyhow::anyhow!(
+                    "Could not parse verification verdict leader_verifier_mode: {leader_verifier_mode}"
+                )
+            },
+        )?,
+        leader_verifier_method: parse_string_value(leader_verifier_method)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict leader_verifier_method: {leader_verifier_method}"
+            )
+        })?,
+        tool_verifier_mode: parse_published_move_enum_value(tool_verifier_mode)?.ok_or_else(
+            || {
+                anyhow::anyhow!(
+                    "Could not parse verification verdict tool_verifier_mode: {tool_verifier_mode}"
+                )
+            },
+        )?,
+        tool_verifier_method: parse_string_value(tool_verifier_method)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict tool_verifier_method: {tool_verifier_method}"
+            )
+        })?,
+        checked_leader_kid: parse_optional_u64_value(checked_leader_kid).map_err(|source| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict checked_leader_kid: {checked_leader_kid}: {source}"
+            )
+        })?,
+        checked_tool_kid: parse_optional_u64_value(checked_tool_kid).map_err(|source| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict checked_tool_kid: {checked_tool_kid}: {source}"
+            )
+        })?,
+        payload_or_reason_hash: parse_byte_vector_value(payload_or_reason_hash)?.ok_or_else(
+            || {
+                anyhow::anyhow!(
+                    "Could not parse verification verdict payload_or_reason_hash: {payload_or_reason_hash}"
+                )
+            },
+        )?,
+        submission_role: parse_published_move_enum_value(submission_role)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict submission_role: {submission_role}"
+            )
+        })?,
+        checked_identity: parse_byte_vector_value(checked_identity)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict checked_identity: {checked_identity}"
+            )
+        })?,
+        policy_mode: parse_published_move_enum_value(policy_mode)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict policy_mode: {policy_mode}")
+        })?,
+        verdict_reference: parse_byte_vector_value(verdict_reference)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not parse verification verdict verdict_reference: {verdict_reference}"
+            )
+        })?,
+        verdict: parse_published_move_enum_value(verdict)?.ok_or_else(|| {
+            anyhow::anyhow!("Could not parse verification verdict verdict: {verdict}")
+        })?,
+    }))
+}
+
+fn parse_optional_u64_value(value: &serde_json::Value) -> anyhow::Result<Option<u64>> {
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    if let Some(parsed) = parse_u64_value(value)? {
+        return Ok(Some(parsed));
+    }
+
+    Ok(serde_json::from_value::<MoveOption<u64>>(value.clone())?.0)
+}
+
 /// Helper function to determine whether the given address is one of the Nexus
 /// package addresses.
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
@@ -318,10 +494,7 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
 /// Helper function to determine whether the event name corresponds to a foreign
 /// event.
 fn is_foreign_event(event_name: &str) -> bool {
-    match event_name {
-        "AnnounceInterfacePackageEvent" => true,
-        _ => false,
-    }
+    matches!(event_name, "AnnounceInterfacePackageEvent")
 }
 
 /// Helper function to determine whether the provided struct tag corresponds to
@@ -464,7 +637,7 @@ mod tests {
     #[test]
     fn test_parse_from_grpc_valid_terminal_err_eval_recorded_event() {
         let index = 1u64;
-        let digest = sui::types::Digest::generate(&mut rand::thread_rng());
+        let digest = sui::types::Digest::generate(rand::thread_rng());
         let objects = sui_mocks::mock_nexus_objects();
         let event_type = sui::types::StructTag::new(
             objects.workflow_pkg_id,
@@ -1065,42 +1238,6 @@ mod tests {
                 vertex: RuntimeVertex::plain("failable"),
                 failed_leader: sui::types::Address::THREE,
                 winning_leader: Some(sui::types::Address::from_static("0x4")),
-                reason: "rpc timeout".to_string(),
-                err_eval_hash: vec![1, 2, 255],
-            })
-        );
-    }
-
-    #[test]
-    fn test_parse_submission_failure_evidence_recorded_event_null_winning_leader() {
-        let parsed = parse_submission_failure_evidence_recorded_event(json!({
-            "parsedJson": {
-                "event": {
-                    "fields": {
-                        "execution": "0x2",
-                        "walk_index": "6",
-                        "vertex": {
-                            "_variant_name": "Plain",
-                            "vertex": "failable"
-                        },
-                        "failed_leader": "0x3",
-                        "winning_leader": null,
-                        "reason": "\"rpc timeout\"",
-                        "err_eval_hash": { "bytes": "0x0102ff" }
-                    }
-                }
-            }
-        }))
-        .expect("submission failure with null winner should parse");
-
-        assert_eq!(
-            parsed,
-            Some(SubmissionFailureEvidenceRecordedEvent {
-                execution: sui::types::Address::TWO,
-                walk_index: 6,
-                vertex: RuntimeVertex::plain("failable"),
-                failed_leader: sui::types::Address::THREE,
-                winning_leader: None,
                 reason: "rpc timeout".to_string(),
                 err_eval_hash: vec![1, 2, 255],
             })

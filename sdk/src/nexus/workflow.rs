@@ -17,8 +17,9 @@ use {
         idents::workflow,
         nexus::{
             client::NexusClient,
+            crawler::{Crawler, Response},
             error::NexusError,
-            models::{ClaimedGas, Dag, ExecutionGas},
+            models::{ClaimedGas, Dag, DagVertexInfo, ExecutionGas},
         },
         sui,
         transactions::dag,
@@ -27,7 +28,11 @@ use {
             Dag as JsonDag,
             DataStorage,
             PortsData,
+            RuntimeVertex,
             StorageConf,
+            VerifierConfig,
+            VerifierMode,
+            WorkflowFailureClass,
             DEFAULT_ENTRY_GROUP,
         },
     },
@@ -165,6 +170,162 @@ async fn build_execution_completion_result(
         terminal_err_eval_recordings,
         events,
     })
+}
+
+pub fn verifier_mode_requires_proof(mode: VerifierMode) -> bool {
+    matches!(
+        mode,
+        VerifierMode::LeaderRegisteredKey
+            | VerifierMode::LeaderNautilusEnclave
+            | VerifierMode::ToolVerifierContract
+    )
+}
+
+pub fn effective_verifier_config(
+    dag_default: &VerifierConfig,
+    vertex_override: Option<&VerifierConfig>,
+) -> VerifierConfig {
+    vertex_override
+        .cloned()
+        .unwrap_or_else(|| dag_default.clone())
+}
+
+pub fn dag_vertex_requires_verifier_proof(dag: &Dag, vertex: &DagVertexInfo) -> bool {
+    verifier_mode_requires_proof(
+        effective_verifier_config(&dag.leader_verifier, vertex.leader_verifier.as_ref()).mode,
+    ) || verifier_mode_requires_proof(
+        effective_verifier_config(&dag.tool_verifier, vertex.tool_verifier.as_ref()).mode,
+    )
+}
+
+pub async fn offchain_success_requires_verifier_proof(
+    crawler: &Crawler,
+    dag_object_id: sui::types::Address,
+    next_vertex: &RuntimeVertex,
+) -> anyhow::Result<bool> {
+    let dag = crawler.get_object::<Dag>(dag_object_id).await?;
+    let mut vertices = crawler.get_dynamic_fields(&dag.data.vertices).await?;
+    let vertex_name = next_vertex.name();
+    let vertex = vertices
+        .remove(&vertex_name)
+        .ok_or_else(|| anyhow!("Vertex '{vertex_name}' not found in DAG verifier config"))?;
+
+    Ok(dag_vertex_requires_verifier_proof(&dag.data, &vertex))
+}
+
+pub async fn fetch_vertex_input_port_names(
+    crawler: &Crawler,
+    dag: &Dag,
+    vertex_name: &crate::types::TypeName,
+) -> anyhow::Result<Vec<String>> {
+    let mut vertices = crawler.get_dynamic_fields(&dag.vertices).await?;
+    let vertex = vertices.remove(vertex_name).ok_or_else(|| {
+        anyhow!("Vertex '{vertex_name}' not found in DAG vertices dynamic fields")
+    })?;
+
+    Ok(vertex.declared_input_port_names())
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+struct ExecutionErrEvalArbitrationState {
+    #[serde(default)]
+    terminal_records: serde_json::Value,
+}
+
+async fn fetch_execution_err_eval_state(
+    crawler: &Crawler,
+    object_id: sui::types::Address,
+) -> anyhow::Result<Response<ExecutionErrEvalArbitrationState>> {
+    crawler.get_object(object_id).await
+}
+
+pub fn execution_terminal_record_matches_retryable_vertex(
+    value: &serde_json::Value,
+    walk_index: u64,
+    next_vertex: &RuntimeVertex,
+) -> anyhow::Result<bool> {
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(record_value) = object.get(&walk_index.to_string()) {
+                if let Some(record) =
+                    crate::types::parse_execution_terminal_record_value(record_value)?
+                {
+                    return Ok(&record.vertex == next_vertex
+                        && record.failure_class == WorkflowFailureClass::Retryable);
+                }
+            }
+
+            if let (Some(key), Some(record_value)) = (object.get("key"), object.get("value")) {
+                if crate::types::parse_u64_value(key)? == Some(walk_index) {
+                    if let Some(record) =
+                        crate::types::parse_execution_terminal_record_value(record_value)?
+                    {
+                        return Ok(&record.vertex == next_vertex
+                            && record.failure_class == WorkflowFailureClass::Retryable);
+                    }
+                }
+            }
+
+            for nested_key in ["contents", "entries", "fields", "inner", "vec", "value"] {
+                if let Some(nested) = object.get(nested_key) {
+                    if execution_terminal_record_matches_retryable_vertex(
+                        nested,
+                        walk_index,
+                        next_vertex,
+                    )? {
+                        return Ok(true);
+                    }
+                }
+            }
+
+            for (name, nested) in object {
+                if matches!(
+                    name.as_str(),
+                    "contents" | "entries" | "fields" | "inner" | "vec" | "value"
+                ) {
+                    continue;
+                }
+
+                if execution_terminal_record_matches_retryable_vertex(
+                    nested,
+                    walk_index,
+                    next_vertex,
+                )? {
+                    return Ok(true);
+                }
+            }
+
+            Ok(false)
+        }
+        serde_json::Value::Array(values) => {
+            for nested in values {
+                if execution_terminal_record_matches_retryable_vertex(
+                    nested,
+                    walk_index,
+                    next_vertex,
+                )? {
+                    return Ok(true);
+                }
+            }
+
+            Ok(false)
+        }
+        _ => Ok(false),
+    }
+}
+
+pub async fn should_settle_tool_err_eval_gas(
+    crawler: &Crawler,
+    execution: sui::types::Address,
+    walk_index: u64,
+    next_vertex: &RuntimeVertex,
+) -> anyhow::Result<bool> {
+    let state = fetch_execution_err_eval_state(crawler, execution).await?;
+    execution_terminal_record_matches_retryable_vertex(
+        &state.data.terminal_records,
+        walk_index,
+        next_vertex,
+    )
 }
 
 impl WorkflowActions {
@@ -517,7 +678,7 @@ mod tests {
             },
             fqn,
             nexus::{
-                crawler::DynamicMap,
+                crawler::{DynamicMap, Set},
                 models::{Dag, DagVertexInfo, DagVertexKind},
             },
             sui::traits::*,
@@ -528,6 +689,8 @@ mod tests {
                 RuntimeVertex,
                 Storable,
                 TypeName,
+                VerifierConfig,
+                VerifierMode,
                 WorkflowFailureClass,
             },
         },
@@ -674,6 +837,8 @@ mod tests {
             edges: vec![],
             default_values: None,
             post_failure_action: None,
+            leader_verifier: None,
+            tool_verifier: None,
             entry_groups: None,
             outputs: None,
         };
@@ -732,6 +897,8 @@ mod tests {
             defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
             edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
             outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
         };
 
         sui_mocks::grpc::mock_get_object_json(
@@ -760,6 +927,9 @@ mod tests {
             kind: DagVertexKind::OffChain {
                 tool_fqn: fqn!("xyz.taluslabs.test@1"),
             },
+            leader_verifier: None,
+            tool_verifier: None,
+            input_ports: Set::default(),
         };
 
         sui_mocks::grpc::mock_get_objects_json(
@@ -1080,7 +1250,7 @@ mod tests {
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution_until_completion_timeout() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_object_id = sui::types::Address::generate(&mut rand::thread_rng());
+        let execution_object_id = sui::types::Address::generate(rand::thread_rng());
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -1260,8 +1430,8 @@ mod tests {
         let execution_gas_ref = sui_mocks::mock_sui_object_ref();
         let execution_gas_claims_id = sui_mocks::mock_sui_address();
         let leader_claim_object_ref = sui_mocks::mock_sui_object_ref();
-        let claim_digest = sui::types::Digest::generate(&mut rand::thread_rng());
-        let execution_id = sui::types::Address::generate(&mut rand::thread_rng());
+        let claim_digest = sui::types::Digest::generate(rand::thread_rng());
+        let execution_id = sui::types::Address::generate(rand::thread_rng());
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -1323,5 +1493,111 @@ mod tests {
         assert_eq!(funds.execution, 100_000);
         assert_eq!(funds.priority, 10_000);
         assert_eq!(digest, &claim_digest);
+    }
+
+    #[test]
+    fn dag_vertex_requires_verifier_proof_prefers_vertex_override() {
+        let dag = Dag {
+            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig {
+                mode: VerifierMode::LeaderRegisteredKey,
+                method: "signed_http_v1".to_string(),
+            },
+            tool_verifier: VerifierConfig::default(),
+        };
+        let vertex = DagVertexInfo {
+            kind: DagVertexKind::OffChain {
+                tool_fqn: fqn!("xyz.example.tool@1"),
+            },
+            leader_verifier: Some(VerifierConfig::default()),
+            tool_verifier: None,
+            input_ports: Set::default(),
+        };
+
+        assert!(!dag_vertex_requires_verifier_proof(&dag, &vertex));
+    }
+
+    #[test]
+    fn execution_terminal_record_matches_retryable_vertex_handles_wrapped_and_plain_json() {
+        let vertex = RuntimeVertex::with_iterator("v1", 2, 5);
+        let wrapped = json!({
+            "fields": {
+                "contents": [{
+                    "fields": {
+                        "key": "9",
+                        "value": {
+                            "fields": {
+                                "record": {
+                                    "fields": {
+                                        "vertex": {
+                                            "fields": {
+                                                "_variant_name": "WithIterator",
+                                                "vertex": { "name": "v1" },
+                                                "iteration": { "value": "2" },
+                                                "out_of": { "u64": 5 }
+                                            }
+                                        },
+                                        "failure_class": {
+                                            "fields": {
+                                                "@variant": "Retryable"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }]
+            }
+        });
+        let plain = json!({
+            "9": {
+                "vertex": {
+                    "Plain": {
+                        "vertex": {
+                            "name": "terminal_vertex"
+                        }
+                    }
+                },
+                "failure_class": "terminal_submission_failure"
+            }
+        });
+
+        assert!(execution_terminal_record_matches_retryable_vertex(&wrapped, 9, &vertex).unwrap());
+        assert!(!execution_terminal_record_matches_retryable_vertex(
+            &plain,
+            9,
+            &RuntimeVertex::plain("terminal_vertex"),
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn fetch_vertex_input_port_names_reads_declared_ports_from_typed_vertex() {
+        let vertex = DagVertexInfo {
+            kind: DagVertexKind::OffChain {
+                tool_fqn: fqn!("xyz.example.tool@1"),
+            },
+            leader_verifier: None,
+            tool_verifier: None,
+            input_ports: [
+                crate::nexus::models::DagInputPort {
+                    name: "z_port".to_string(),
+                },
+                crate::nexus::models::DagInputPort {
+                    name: "a_port".to_string(),
+                },
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        assert_eq!(
+            vertex.declared_input_port_names(),
+            vec!["a_port".to_string(), "z_port".to_string()]
+        );
     }
 }

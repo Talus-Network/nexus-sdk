@@ -14,10 +14,14 @@ A DAG JSON file consists of sections defining the graph's components:
 
 ```json
 {
-  "vertices": [ ... ],       // All vertices in the DAG
-  "edges": [ ... ],          // Connections defining data flow
-  "default_values": [ ... ], // Static inputs for vertices
-  "entry_groups": [ ... ]    // Named starting points (Optional)
+  "vertices": [ ... ],              // All vertices in the DAG
+  "edges": [ ... ],                 // Connections defining data flow
+  "default_values": [ ... ],        // Static inputs for vertices (Optional)
+  "entry_groups": [ ... ],          // Named starting points (Optional)
+  "post_failure_action": "...",     // Default failure behavior (Optional)
+  "leader_verifier": { ... },       // Leader request verification (Optional)
+  "tool_verifier": { ... },         // Tool response verification (Optional)
+  "outputs": [ ... ]                // DAG return values (Optional)
 }
 ```
 
@@ -137,7 +141,52 @@ Practically speaking, this means that you'll need to add all vertices to the ent
 - will immediately start execution
 - need to be provided client input for entry ports
 
-## 6. Outputs (Optional)
+## 6. Post-Failure Action (Optional)
+
+The `post_failure_action` field at the DAG level sets the default behavior when a vertex execution fails. This can be overridden on individual vertices:
+
+```json
+{
+  "post_failure_action": "continue" // or "terminate"
+}
+```
+
+- **`continue`** → Continue DAG execution despite the failure (TransientContinue)
+- **`terminate`** → Stop DAG execution immediately (Terminate)
+
+Vertex-level `post_failure_action` values override the DAG-level setting.
+
+## 7. Verifier Configuration (Optional)
+
+### Leader Verifier
+
+Configures how to verify requests from leaders:
+
+```json
+{
+  "leader_verifier": {
+    "mode": "leader_registered_key",  // Verification mode
+    "method": "signed_http_v1"        // Verification method
+  }
+}
+```
+
+### Tool Verifier
+
+Configures how to verify responses from tools:
+
+```json
+{
+  "tool_verifier": {
+    "mode": "tool_verifier_contract",  // Verification mode
+    "method": "demo_verifier_v1"       // Verification method
+  }
+}
+```
+
+Verifier configuration can also be specified at the vertex level to override DAG-level settings.
+
+## 8. Outputs (Optional)
 
 Outputs can be defined on vertices that have no outgoing edges. These can be thought of as the return values of a DAG execution. Only ports that are specified here will be part of the `EndStateReachedEvent` emitted by the DAG execution.
 
@@ -163,11 +212,11 @@ Outputs can be defined on vertices that have no outgoing edges. These can be tho
 - A default entry group can be named `_default_group`. This group is used when no `--entry-group` flag is provided during execution.
 - If no _entry group_ is specified, all vertices that have _entry ports_ are considered part of the `_default_group`.
 
-## 7. Validation Rules
+## 9. Validation Rules
 
 The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to enforce the critical rules defined in [workflow rules][nexus-next-workflow].
 
-## 8. Best Practices
+## 10. Best Practices
 
 1. **Naming Conventions**:
    - Use descriptive names for vertices.
@@ -186,7 +235,7 @@ The [Nexus CLI][nexus-cli] (`nexus dag validate`) performs static analysis to en
    - Document the purpose of each vertex.
    - Refer to the tool documentation for the expected input/output formats for each vertex.
 
-## 9. Example Workflow
+## 11. Example Workflow
 
 Here's a step-by-step process to create a DAG:
 
@@ -218,7 +267,7 @@ Here's a step-by-step process to create a DAG:
    - Verify all connections
    - Test with sample inputs
 
-## 10. Examples
+## 12. Examples
 
 For working examples, see the following files in the `cli/src/dag/_dags` directory:
 

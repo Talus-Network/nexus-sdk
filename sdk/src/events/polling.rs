@@ -290,7 +290,7 @@ impl EventPoller {
                     // First, start streaming checkpoints. This way we know how many
                     // checkpoints we need to fetch in the past.
                     let request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
-                        sui::grpc::FieldMask::from_paths(&[
+                        sui::grpc::FieldMask::from_paths([
                             "transactions.digest",
                             "sequence_number",
                         ]),
@@ -390,7 +390,7 @@ impl EventPoller {
                                     let mut c = client.lock().await;
                                     let req = sui::grpc::GetCheckpointRequest::default()
                                         .with_sequence_number(seq)
-                                        .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                                        .with_read_mask(sui::grpc::FieldMask::from_paths([
                                             "transactions.digest",
                                         ]));
                                     let resp = c
@@ -465,7 +465,7 @@ impl EventPoller {
                         // everything if the stream starts from CP 0.
                         let next_checkpoint = checkpoint.sequence_number() + 1;
 
-                        if from_checkpoint.map_or(true, |current| current < next_checkpoint) {
+                        if from_checkpoint.is_none_or(|current| current < next_checkpoint) {
                             from_checkpoint = Some(next_checkpoint);
                         }
 
@@ -628,7 +628,7 @@ impl EventPoller {
 
             let request = sui::grpc::BatchGetTransactionsRequest::default()
                 .with_digests(digests.clone())
-                .with_read_mask(sui::grpc::FieldMask::from_paths(&[
+                .with_read_mask(sui::grpc::FieldMask::from_paths([
                     "events.events",
                     "digest",
                     "checkpoint",

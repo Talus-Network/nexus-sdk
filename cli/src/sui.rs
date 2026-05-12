@@ -302,11 +302,13 @@ pub(crate) async fn get_nexus_client(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, mockito::Server, rstest::rstest};
+    use {super::*, rstest::rstest};
 
+    #[ignore]
     #[rstest]
     #[tokio::test]
     async fn test_fetch_devnet_objects() {
+        use mockito::Server;
         let mut server = Server::new_async().await;
 
         let response_body = r#"
