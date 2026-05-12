@@ -77,8 +77,8 @@ The `Signer` struct accepts a [`sui::crypto::Ed25519PrivateKey`] and is responsi
 
 Nexus gas budget is managed through the [`GasActions`] struct.
 
-Standard TAP agent-funded execution uses agent payment vaults in the TAP
-interface. Every TAP agent has a vault object, and SDK callers can fetch that
+Standard Talus agent-funded execution uses agent payment vaults in the TAP
+interface. Every Talus agent has a vault object, and SDK callers can fetch that
 object, deposit or withdraw funds through standard TAP builders, and create
 typed `AgentVault` payment sources for skill execution. Agent-scoped workflow
 gas budget helpers are also available when execution settlement should resolve

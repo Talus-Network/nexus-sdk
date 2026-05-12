@@ -656,7 +656,7 @@ pub fn add_occurrence_relative_for_task(
 // == Periodic scheduling ==
 
 /// PTB template to configure or update periodic scheduling.
-#[warn(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn new_or_modify_periodic_for_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,

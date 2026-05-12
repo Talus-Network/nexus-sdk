@@ -181,6 +181,7 @@ events! {
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
+    PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
     PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
     PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
     DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
@@ -239,13 +240,13 @@ pub struct RequestWalkExecutionEvent {
     /// Historical worksheet proof creator UID. This is not the active TAP
     /// lookup identity after the standard TAP cutover.
     pub worksheet_from_uid: sui::types::Address,
-    /// Standard TAP agent identity. Absent for legacy witness executions.
+    /// Standard Talus agent identity. Absent for legacy witness executions.
     #[serde(
         default,
         deserialize_with = "deserialize_move_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub tap_agent_id: Option<Agent>,
+    pub tap_agent_id: Option<AgentId>,
     /// Standard TAP skill identity. Absent for legacy witness executions.
     #[serde(
         default,
@@ -287,7 +288,7 @@ pub struct RequestWalkExecutionEvent {
         deserialize_with = "deserialize_move_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub tap_authorization_plan_hash: Option<Vec<u8>>,
+    pub tap_authorization_plan_commitment: Option<Vec<u8>>,
     /// Recoverable standard TAP per-vertex authorization grant mapping.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
@@ -309,13 +310,13 @@ pub struct RequestWalkExecutionEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestWalkStandardTapContext {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub endpoint_object_id: sui::types::Address,
     pub payment_id: sui::types::Address,
     pub selected_dag_id: sui::types::Address,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: TapVertexAuthorizationPlan,
     pub scheduled_task_id: Option<sui::types::Address>,
     pub scheduled_occurrence_index: Option<u64>,
@@ -329,7 +330,7 @@ impl RequestWalkExecutionEvent {
             && self.tap_endpoint_object_id.is_none()
             && self.tap_payment_id.is_none()
             && self.tap_selected_dag_id.is_none()
-            && self.tap_authorization_plan_hash.is_none()
+            && self.tap_authorization_plan_commitment.is_none()
             && self.tap_authorization_plan.is_empty()
             && self.tap_scheduled_task_id.is_none()
             && self.tap_scheduled_occurrence_index.is_none()
@@ -373,7 +374,7 @@ impl RequestWalkExecutionEvent {
             endpoint_object_id,
             payment_id,
             selected_dag_id,
-            authorization_plan_hash: self.tap_authorization_plan_hash.clone(),
+            authorization_plan_commitment: self.tap_authorization_plan_commitment.clone(),
             authorization_plan: TapVertexAuthorizationPlan(self.tap_authorization_plan.clone()),
             scheduled_task_id: self.tap_scheduled_task_id,
             scheduled_occurrence_index: self.tap_scheduled_occurrence_index,
@@ -381,7 +382,7 @@ impl RequestWalkExecutionEvent {
     }
 }
 
-/// Fired via the Nexus `interface` package when a new Agent is registered.
+/// Fired via the Nexus `interface` package when a new agent is registered.
 /// Provides the agent's interface so that we can invoke
 /// `confirm_tool_eval_for_walk` on it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -389,42 +390,39 @@ pub struct AnnounceInterfacePackageEvent {
     pub shared_objects: Vec<SharedObjectRef>,
 }
 
-/// Fired when a TAP agent is created and receives an on-chain identity handle.
+/// Fired when a Talus agent is created and receives an on-chain identity handle.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentCreatedEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub vault_id: sui::types::Address,
     pub owner: sui::types::Address,
     pub operator: sui::types::Address,
-    pub metadata_hash: Vec<u8>,
 }
 
 /// Fired when a published DAG/TAP package is registered as a skill.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SkillRegisteredEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub dag_binding: TapDagBinding,
     pub tap_package_id: sui::types::Address,
-    pub workflow_hash: Vec<u8>,
-    pub requirements_hash: Vec<u8>,
-    pub payment_policy_hash: Vec<u8>,
-    pub schedule_policy_hash: Vec<u8>,
-    pub capability_schema_hash: Vec<u8>,
+    pub workflow_commitment: Vec<u8>,
+    pub requirements_commitment: Vec<u8>,
+    pub capability_schema_commitment: Vec<u8>,
 }
 
 /// Fired when the network default standard TAP target changes.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DefaultExecutionTargetUpdatedEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
 }
 
 /// Fired when an endpoint revision is announced for a registered skill.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EndpointRevisionAnnouncedEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub package_id: sui::types::Address,
@@ -440,7 +438,7 @@ pub struct EndpointRevisionAnnouncedEvent {
 /// Fired when active revision state changes for a skill.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EndpointRevisionActivatedEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub active_for_new_executions: bool,
@@ -449,7 +447,7 @@ pub struct EndpointRevisionActivatedEvent {
 /// Fired when worksheet routing resolves a pinned endpoint.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WorksheetResolvedEvent {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub endpoint_object_id: sui::types::Address,
@@ -461,11 +459,11 @@ pub struct WorksheetResolvedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentSkillExecutionRequestedEvent {
     pub execution_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub payment_id: sui::types::Address,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
 }
 
 /// Fired when vertex authorization intent is created.
@@ -474,7 +472,7 @@ pub struct VertexAuthorizationCreatedEvent {
     pub grant_id: sui::types::Address,
     pub grantor: sui::types::Address,
     pub target_object_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub walk_execution_id: sui::types::Address,
     pub vertex_execution_id: sui::types::Address,
@@ -506,7 +504,7 @@ pub struct VertexAuthorizationVerifiedEvent {
     pub vertex_execution_id: sui::types::Address,
     pub leader_assignment_id: sui::types::Address,
     pub tool_package: sui::types::Address,
-    pub operation_hash: Vec<u8>,
+    pub operation_commitment: Vec<u8>,
     pub used: u64,
 }
 
@@ -526,7 +524,7 @@ pub struct VertexAuthorizationExpiredEvent {
 pub struct AgentSkillPaymentCreatedEvent {
     pub payment_id: sui::types::Address,
     pub execution_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub payer: sui::types::Address,
@@ -540,7 +538,7 @@ pub struct AgentSkillPaymentCreatedEvent {
 pub struct GasPaymentConsumedEvent {
     pub payment_id: sui::types::Address,
     pub execution_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub amount: u64,
@@ -551,17 +549,16 @@ pub struct GasPaymentConsumedEvent {
 pub struct ExecutionAccomplishedEvent {
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub result_summary_hash: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExecutionRefundedEvent {
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub refund_reason: Vec<u8>,
@@ -571,10 +568,10 @@ pub struct ExecutionRefundedEvent {
 pub struct ScheduledSkillExecutionCreatedEvent {
     pub scheduled_task_id: sui::types::Address,
     pub scheduler_task_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub long_term_gas_coin_id: sui::types::Address,
-    pub schedule_entries_hash: Vec<u8>,
+    pub schedule_entries_commitment: Vec<u8>,
     pub first_after_ms: u64,
     pub max_occurrences: u64,
     pub source_kind: TapPaymentSourceKind,
@@ -588,7 +585,7 @@ pub struct ScheduledSkillExecutionCreatedEvent {
 pub struct ScheduledSkillExecutionTriggeredEvent {
     pub scheduled_task_id: sui::types::Address,
     pub execution_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub occurrence_index: u64,
@@ -618,7 +615,7 @@ pub struct ScheduledOccurrencePaymentCreatedEvent {
     pub occurrence_index: u64,
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub endpoint_object_id: sui::types::Address,
@@ -917,6 +914,15 @@ pub struct PaymentLockUpdateEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PaymentInsufficientGasEvent {
+    pub execution: sui::types::Address,
+    pub vertex: RuntimeVertex,
+    pub tool_fqn: ToolFqn,
+    pub required_tool_fee: u64,
+    pub available_gas: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PaymentUnlockUpdateEvent {
     pub execution: sui::types::Address,
     pub vertex: RuntimeVertex,
@@ -1187,16 +1193,14 @@ mod tests {
     fn test_parse_bcs_standard_tap_events() {
         let skill_event = Wrapper {
             event: SkillRegisteredEvent {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xc"),
                 dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xc")),
                 tap_package_id: sui::types::Address::from_static("0xd"),
-                workflow_hash: vec![1],
-                requirements_hash: vec![2],
-                payment_policy_hash: vec![3],
-                schedule_policy_hash: vec![4],
-                capability_schema_hash: vec![5],
+                workflow_commitment: vec![1],
+                requirements_commitment: vec![2],
+                capability_schema_commitment: vec![5],
             },
         };
         let bytes = bcs::to_bytes(&skill_event).unwrap();
@@ -1217,7 +1221,7 @@ mod tests {
 
         let target_event = Wrapper {
             event: DefaultExecutionTargetUpdatedEvent {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             },
         };
@@ -1259,7 +1263,7 @@ mod tests {
 
         let event = Wrapper {
             event: EndpointRevisionAnnouncedEvent {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(3),
                 package_id: sui::types::Address::from_static("0xc"),
@@ -1268,7 +1272,6 @@ mod tests {
                 endpoint_object_digest: vec![4; 32],
                 shared_objects: vec![TapSharedObjectRef::mutable(
                     sui::types::Address::from_static("0xe"),
-                    9,
                 )],
                 requirements: TapSkillRequirements::default(),
                 config_digest: vec![1, 2, 3],
@@ -1286,7 +1289,6 @@ mod tests {
                 assert_eq!(parsed.agent_id, event.event.agent_id);
                 assert_eq!(parsed.skill_id, event.event.skill_id);
                 assert_eq!(parsed.interface_revision, InterfaceRevision(3));
-                assert_eq!(parsed.shared_objects[0].initial_shared_version, 9);
                 assert!(parsed.shared_objects[0].mutable);
                 assert!(parsed.active_for_new_executions);
             }

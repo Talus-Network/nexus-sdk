@@ -4,7 +4,7 @@ use {
         sui,
         transactions::tap,
         types::{
-            Agent,
+            AgentId,
             Dag,
             DataStorage,
             DefaultValue,
@@ -97,14 +97,14 @@ impl PreparedToolOutput {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardTapExecuteInput {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub payment_source: Vec<u8>,
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
     pub payment_refund_mode: u8,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
 }
 
@@ -155,8 +155,8 @@ fn standard_tap_authorization_grant_ref(
     let tool_package = tx.input(pure_arg(&entry.tool_package)?);
     let tool_module = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_module)?;
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
-    let operation_hash = tx.input(pure_arg(&entry.operation_hash)?);
-    let constraints_hash = tx.input(pure_arg(&entry.constraints_hash)?);
+    let operation_commitment = tx.input(pure_arg(&entry.operation_commitment)?);
+    let constraints_commitment = tx.input(pure_arg(&entry.constraints_commitment)?);
     let leader_assignment_id = prepare_option_address(tx, entry.leader_assignment_id)?;
     let endpoint_revision =
         prepare_option_interface_revision(tx, objects, entry.endpoint_revision)?;
@@ -175,8 +175,8 @@ fn standard_tap_authorization_grant_ref(
             tool_package,
             tool_module,
             tool_function,
-            operation_hash,
-            constraints_hash,
+            operation_commitment,
+            constraints_commitment,
             leader_assignment_id,
             endpoint_revision,
             payment_id,
@@ -1826,7 +1826,8 @@ pub fn prepare_standard_tap_execution(
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
     let standard_agent_id = tap::agent_id_from_address(tx, objects, standard.agent_id)?;
     let standard_skill_id = tap::skill_id_from_u64(tx, objects, standard.skill_id)?;
-    let authorization_plan_hash = tx.input(pure_arg(&standard.authorization_plan_hash)?);
+    let authorization_plan_commitment =
+        tx.input(pure_arg(&standard.authorization_plan_commitment)?);
     let authorization_plan =
         standard_tap_authorization_plan(tx, objects, &standard.authorization_plan)?;
 
@@ -1845,7 +1846,7 @@ pub fn prepare_standard_tap_execution(
             priority_fee_per_gas_unit,
             standard_agent_id,
             standard_skill_id,
-            authorization_plan_hash,
+            authorization_plan_commitment,
             authorization_plan,
         ],
     );
@@ -3352,14 +3353,14 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         let standard = StandardTapExecuteInput {
-            agent_id: Agent(sui_mocks::mock_sui_address()),
+            agent_id: sui_mocks::mock_sui_address(),
             skill_id: 11,
             payment_source: vec![1, 2],
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 55,
             payment_refund_mode: 7,
-            authorization_plan_hash: Some(vec![9, 8]),
+            authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
         };
 
@@ -3431,7 +3432,7 @@ mod tests {
             agent_id_call.function,
             crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.name
         );
-        inspector.expect_address(&agent_id_call.arguments[0], standard.agent_id.id());
+        inspector.expect_address(&agent_id_call.arguments[0], standard.agent_id);
 
         let sui::types::Argument::Result(skill_id_index) = config_call.arguments[6] else {
             panic!("expected skill ID to come from tap::skill_id_from_u64");
@@ -3510,14 +3511,14 @@ mod tests {
 
         let mut tx = sui::tx::TransactionBuilder::new();
         let standard = StandardTapExecuteInput {
-            agent_id: Agent(sui_mocks::mock_sui_address()),
+            agent_id: sui_mocks::mock_sui_address(),
             skill_id: 11,
             payment_source: vec![1],
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
             payment_refund_mode: 4,
-            authorization_plan_hash: None,
+            authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
         };
         execute_standard_tap(

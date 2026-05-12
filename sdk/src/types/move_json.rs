@@ -92,6 +92,17 @@ where
     match serde_json::from_value::<T>(value.clone()) {
         Ok(parsed) => Ok(parsed),
         Err(original) => {
+            if let serde_json::Value::Object(object) = &value {
+                for key in ["value", "inner"] {
+                    if let Some(inner) = object.get(key) {
+                        match deserialize_move_option_inner::<T, E>(inner.clone()) {
+                            Ok(parsed) => return Ok(parsed),
+                            Err(_) => continue,
+                        }
+                    }
+                }
+            }
+
             if let Some(bytes) = parse_byte_vector_value(&value).map_err(E::custom)? {
                 let bytes = bytes
                     .into_iter()

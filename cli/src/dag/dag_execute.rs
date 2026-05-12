@@ -86,7 +86,7 @@ pub(crate) async fn execute_dag(
         payment_coin_balance: Some(balance),
         payment_max_budget: budget,
         payment_refund_mode: 0,
-        authorization_plan_hash: None,
+        authorization_plan_commitment: None,
         authorization_plan: Vec::new(),
     };
 

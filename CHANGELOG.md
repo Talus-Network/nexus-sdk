@@ -71,9 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compatibility-focused parser fixtures for current standard TAP event BCS
   layouts, including Move `Option<T>` event fields used by request, payment,
   authorization, and scheduled-execution events.
-- Standard TAP agent payment vault models, fetch helper, deposit/withdraw PTB
-  builders, and typed payment source helpers for invoker-funded and
-  agent-vault-funded settlement.
+- Standard Talus agent payment vault models, fetch helper, deposit/withdraw PTB builders, and typed payment source helpers for invoker-funded and agent-vault-funded settlement.
 - Agent-scoped workflow gas helpers for standard TAP funding.
 - Durable scheduled TAP models, events, fetch helpers, and transaction builders
   for address-funded and agent-vault-funded scheduled prepayment, scheduled

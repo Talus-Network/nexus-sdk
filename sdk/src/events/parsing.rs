@@ -520,7 +520,7 @@ mod tests {
             idents::primitives,
             test_utils::sui_mocks,
             types::{
-                Agent,
+                AgentId,
                 InterfaceRevision,
                 PostFailureAction,
                 RuntimeVertex,
@@ -575,13 +575,13 @@ mod tests {
         evaluations: sui::types::Address,
         worksheet_from_type: TypeName,
         worksheet_from_uid: sui::types::Address,
-        tap_agent_id: MoveOptionBcs<Agent>,
+        tap_agent_id: MoveOptionBcs<AgentId>,
         tap_skill_id: MoveOptionBcs<SkillId>,
         tap_interface_revision: MoveOptionBcs<InterfaceRevision>,
         tap_endpoint_object_id: MoveOptionBcs<sui::types::Address>,
         tap_payment_id: MoveOptionBcs<sui::types::Address>,
         tap_selected_dag_id: MoveOptionBcs<sui::types::Address>,
-        tap_authorization_plan_hash: MoveOptionBcs<Vec<u8>>,
+        tap_authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
         tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
         tap_scheduled_task_id: MoveOptionBcs<sui::types::Address>,
         tap_scheduled_occurrence_index: MoveOptionBcs<u64>,
@@ -599,11 +599,11 @@ mod tests {
     #[derive(Clone, Debug, Serialize)]
     struct AgentSkillExecutionRequestedEventBcs {
         execution_id: sui::types::Address,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         interface_revision: InterfaceRevision,
         payment_id: sui::types::Address,
-        authorization_plan_hash: MoveOptionBcs<Vec<u8>>,
+        authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -821,6 +821,57 @@ mod tests {
                 assert!(parsed.was_locked);
             }
             _ => panic!("Expected PaymentLockUpdate event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_payment_insufficient_gas_event() {
+        let index = 3u64;
+        let digest = sui::types::Digest::generate(rand::thread_rng());
+        let objects = sui_mocks::mock_nexus_objects();
+        let execution = sui::types::Address::from_static("0xee");
+        let vertex = RuntimeVertex::plain("payable");
+        let tool_fqn = crate::fqn!("xyz.taluslabs.payable@1");
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("gas").unwrap(),
+            sui::types::Identifier::new("PaymentInsufficientGasEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let data = Wrapper {
+            event: PaymentInsufficientGasEvent {
+                execution,
+                vertex: vertex.clone(),
+                tool_fqn: tool_fqn.clone(),
+                required_tool_fee: 12,
+                available_gas: 10,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let nexus_event = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects).unwrap();
+        match nexus_event.data {
+            NexusEventKind::PaymentInsufficientGas(parsed) => {
+                assert_eq!(parsed.execution, execution);
+                assert_eq!(parsed.vertex, vertex);
+                assert_eq!(parsed.tool_fqn, tool_fqn);
+                assert_eq!(parsed.required_tool_fee, 12);
+                assert_eq!(parsed.available_gas, 10);
+            }
+            _ => panic!("Expected PaymentInsufficientGas event"),
         }
     }
 
@@ -1099,12 +1150,9 @@ mod tests {
                         .standard_tap_context()
                         .expect("standard TAP context should validate")
                         .expect("standard TAP context should be present");
-                    assert_eq!(
-                        context.agent_id,
-                        Agent(sui::types::Address::from_static("0x1"))
-                    );
+                    assert_eq!(context.agent_id, sui::types::Address::from_static("0x1"));
                     assert_eq!(context.interface_revision, InterfaceRevision(3));
-                    assert_eq!(context.authorization_plan_hash, Some(vec![1, 2, 3]));
+                    assert_eq!(context.authorization_plan_commitment, Some(vec![1, 2, 3]));
                 }
                 NexusEventKind::RequestScheduledWalk(event) => {
                     let context = event
@@ -1112,12 +1160,12 @@ mod tests {
                         .standard_tap_context()
                         .expect("scheduled standard TAP context should validate")
                         .expect("scheduled standard TAP context should be present");
-                    assert_eq!(
-                        context.agent_id,
-                        Agent(sui::types::Address::from_static("0xa"))
-                    );
+                    assert_eq!(context.agent_id, sui::types::Address::from_static("0xa"));
                     assert_eq!(context.interface_revision, InterfaceRevision(1));
-                    assert_eq!(context.authorization_plan_hash, Some(vec![1, 2, 3, 4]));
+                    assert_eq!(
+                        context.authorization_plan_commitment,
+                        Some(vec![1, 2, 3, 4])
+                    );
                     assert_eq!(
                         context.scheduled_task_id,
                         Some(sui::types::Address::from_static("0x12"))
@@ -1125,7 +1173,7 @@ mod tests {
                     assert_eq!(context.scheduled_occurrence_index, Some(7));
                 }
                 NexusEventKind::AgentSkillExecutionRequested(event) => {
-                    assert_eq!(event.authorization_plan_hash, Some(vec![9, 9]));
+                    assert_eq!(event.authorization_plan_commitment, Some(vec![9, 9]));
                 }
                 NexusEventKind::VertexAuthorizationBound(event) => {
                     assert_eq!(
@@ -1144,11 +1192,10 @@ mod tests {
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: AgentCreatedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         vault_id: sui::types::Address::from_static("0x1a"),
                         owner: sui::types::Address::from_static("0x18"),
                         operator: sui::types::Address::from_static("0x19"),
-                        metadata_hash: vec![1, 2, 3, 4],
                     },
                 })
                 .expect("AgentCreatedEvent sample serializes"),
@@ -1157,16 +1204,14 @@ mod tests {
                 "SkillRegisteredEvent",
                 bcs::to_bytes(&Wrapper {
                     event: SkillRegisteredEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         dag_id: sui::types::Address::from_static("0x1a"),
                         dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x1a")),
                         tap_package_id: sui::types::Address::from_static("0x1b"),
-                        workflow_hash: vec![1],
-                        requirements_hash: vec![2],
-                        payment_policy_hash: vec![3],
-                        schedule_policy_hash: vec![4],
-                        capability_schema_hash: vec![5],
+                        workflow_commitment: vec![1],
+                        requirements_commitment: vec![2],
+                        capability_schema_commitment: vec![5],
                     },
                 })
                 .expect("SkillRegisteredEvent sample serializes"),
@@ -1175,7 +1220,7 @@ mod tests {
                 "DefaultExecutionTargetUpdatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: DefaultExecutionTargetUpdatedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                     },
                 })
@@ -1185,7 +1230,7 @@ mod tests {
                 "EndpointRevisionAnnouncedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: EndpointRevisionAnnouncedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         package_id: sui::types::Address::from_static("0x1c"),
@@ -1194,7 +1239,6 @@ mod tests {
                         endpoint_object_digest: vec![7; 32],
                         shared_objects: vec![TapSharedObjectRef::mutable(
                             sui::types::Address::from_static("0x1e"),
-                            5,
                         )],
                         requirements: TapSkillRequirements::default(),
                         config_digest: vec![8, 8],
@@ -1207,7 +1251,7 @@ mod tests {
                 "EndpointRevisionActivatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: EndpointRevisionActivatedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         active_for_new_executions: true,
@@ -1219,7 +1263,7 @@ mod tests {
                 "WorksheetResolvedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: WorksheetResolvedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         endpoint_object_id: sui::types::Address::from_static("0x1f"),
@@ -1234,11 +1278,11 @@ mod tests {
                 bcs::to_bytes(&Wrapper {
                     event: AgentSkillExecutionRequestedEventBcs {
                         execution_id: sui::types::Address::from_static("0x22"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         payment_id: sui::types::Address::from_static("0x23"),
-                        authorization_plan_hash: Some(vec![9, 9]).into(),
+                        authorization_plan_commitment: Some(vec![9, 9]).into(),
                     },
                 })
                 .expect("AgentSkillExecutionRequestedEvent sample serializes"),
@@ -1250,7 +1294,7 @@ mod tests {
                         grant_id: sui::types::Address::from_static("0x24"),
                         grantor: sui::types::Address::from_static("0x25"),
                         target_object_id: sui::types::Address::from_static("0x26"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         walk_execution_id: sui::types::Address::from_static("0x27"),
                         vertex_execution_id: sui::types::Address::from_static("0x28"),
@@ -1294,7 +1338,7 @@ mod tests {
                         vertex_execution_id: sui::types::Address::from_static("0x30"),
                         leader_assignment_id: sui::types::Address::from_static("0x31"),
                         tool_package: sui::types::Address::from_static("0x32"),
-                        operation_hash: vec![1, 3, 5],
+                        operation_commitment: vec![1, 3, 5],
                         used: 1,
                     },
                 })
@@ -1326,7 +1370,7 @@ mod tests {
                     event: AgentSkillPaymentCreatedEvent {
                         payment_id: sui::types::Address::from_static("0x36"),
                         execution_id: sui::types::Address::from_static("0x37"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         payer: sui::types::Address::from_static("0x38"),
@@ -1344,7 +1388,7 @@ mod tests {
                     event: GasPaymentConsumedEvent {
                         payment_id: sui::types::Address::from_static("0x39"),
                         execution_id: sui::types::Address::from_static("0x3a"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         amount: 500,
@@ -1359,10 +1403,9 @@ mod tests {
                     event: ExecutionAccomplishedEvent {
                         execution_id: sui::types::Address::from_static("0x3b"),
                         payment_id: sui::types::Address::from_static("0x3c"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
-                        result_summary_hash: vec![3, 4, 5, 6],
                     },
                 })
                 .expect("ExecutionAccomplishedEvent sample serializes"),
@@ -1373,7 +1416,7 @@ mod tests {
                     event: ExecutionRefundedEvent {
                         execution_id: sui::types::Address::from_static("0x3d"),
                         payment_id: sui::types::Address::from_static("0x3e"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         refund_reason: vec![7, 8],
@@ -1387,10 +1430,10 @@ mod tests {
                     event: ScheduledSkillExecutionCreatedEvent {
                         scheduled_task_id: sui::types::Address::from_static("0x3f"),
                         scheduler_task_id: sui::types::Address::from_static("0x44"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         long_term_gas_coin_id: sui::types::Address::from_static("0x40"),
-                        schedule_entries_hash: vec![1, 4, 9],
+                        schedule_entries_commitment: vec![1, 4, 9],
                         first_after_ms: 1000,
                         max_occurrences: 5,
                         source_kind: TapPaymentSourceKind::Invoker,
@@ -1408,7 +1451,7 @@ mod tests {
                     event: ScheduledSkillExecutionTriggeredEvent {
                         scheduled_task_id: sui::types::Address::from_static("0x41"),
                         execution_id: sui::types::Address::from_static("0x42"),
-                        agent_id: Agent(sui::types::Address::from_static("0x1")),
+                        agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         occurrence_index: 2,
@@ -1442,13 +1485,13 @@ mod tests {
                             "d000000000000000000000000000000000000000000000000000000000000000::dag::LeaderRegistryWorkflowWitness",
                         ),
                         worksheet_from_uid: sui::types::Address::from_static("0xe"),
-                        tap_agent_id: Some(Agent(sui::types::Address::from_static("0x1"))).into(),
+                        tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
                         tap_skill_id: Some(2).into(),
                         tap_interface_revision: Some(InterfaceRevision(3)).into(),
                         tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
                         tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
                         tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
-                        tap_authorization_plan_hash: Some(vec![1, 2, 3]).into(),
+                        tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
                         tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
                         tap_scheduled_task_id: None.into(),
                         tap_scheduled_occurrence_index: None.into(),
@@ -1469,7 +1512,7 @@ mod tests {
                             evaluations: sui::types::Address::from_static("0x4"),
                             worksheet_from_type: TypeName::from("legacy::compat::Witness"),
                             worksheet_from_uid: sui::types::Address::from_static("0x5"),
-                            tap_agent_id: Some(Agent(sui::types::Address::from_static("0xa")))
+                            tap_agent_id: Some(sui::types::Address::from_static("0xa"))
                                 .into(),
                             tap_skill_id: Some(11)
                                 .into(),
@@ -1479,7 +1522,7 @@ mod tests {
                             tap_payment_id: Some(sui::types::Address::from_static("0xd")).into(),
                             tap_selected_dag_id: Some(sui::types::Address::from_static("0xe"))
                                 .into(),
-                            tap_authorization_plan_hash: Some(vec![1, 2, 3, 4]).into(),
+                            tap_authorization_plan_commitment: Some(vec![1, 2, 3, 4]).into(),
                             tap_authorization_plan: Vec::new(),
                             tap_scheduled_task_id: Some(sui::types::Address::from_static("0x12"))
                                 .into(),
@@ -1492,6 +1535,19 @@ mod tests {
                     },
                 })
                 .expect("RequestScheduledWalkEvent sample serializes"),
+            ),
+            (
+                "PaymentInsufficientGasEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: PaymentInsufficientGasEvent {
+                        execution: sui::types::Address::from_static("0x70"),
+                        vertex: RuntimeVertex::plain("payable"),
+                        tool_fqn: crate::fqn!("xyz.taluslabs.payable@1"),
+                        required_tool_fee: 12,
+                        available_gas: 10,
+                    },
+                })
+                .expect("PaymentInsufficientGasEvent sample serializes"),
             ),
         ]
     }

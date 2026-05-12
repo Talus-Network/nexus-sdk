@@ -83,10 +83,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("consume_gas_payment"),
     };
-    pub const CONSUME_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("consume_vertex_authorization"),
-    };
     pub const CREATE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("create_agent"),
@@ -233,10 +229,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("shared_object_ref"),
     };
-    pub const SHARE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("share_agent"),
-    };
     pub const SHARE_STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("share_standard_endpoint"),
@@ -298,6 +290,15 @@ pub fn scheduled_skill_task_type(package_id: sui::types::Address) -> sui::types:
         package_id,
         STANDARD_TAP_MODULE,
         sui::types::Identifier::from_static("ScheduledSkillTask"),
+        vec![],
+    )))
+}
+
+pub fn agent_type(package_id: sui::types::Address) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        package_id,
+        STANDARD_TAP_MODULE,
+        sui::types::Identifier::from_static("Agent"),
         vec![],
     )))
 }

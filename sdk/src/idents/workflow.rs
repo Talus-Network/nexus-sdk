@@ -1161,7 +1161,7 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("refund_payment_state_for_vertex"),
     };
-    /// Create an Agent scope.
+    /// Create an agent scope.
     ///
     /// `nexus_workflow::gas::scope_agent`
     pub const SCOPE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {

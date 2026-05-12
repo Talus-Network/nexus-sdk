@@ -161,31 +161,8 @@ where
         .ok_or_else(|| D::Error::custom("missing TAP byte-vector value"))
 }
 
-/// On-chain generated agent identity handle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
-#[serde(transparent)]
-pub struct Agent(pub sui::types::Address);
-
-impl Agent {
-    pub const fn id(self) -> sui::types::Address {
-        self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for Agent {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserialize_tap_address_value(deserializer).map(Self)
-    }
-}
-
-impl fmt::Display for Agent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+/// On-chain generated standard Talus agent ID.
+pub type AgentId = sui::types::Address;
 
 /// Agent-local standard TAP skill identity index.
 pub type SkillId = u64;
@@ -217,7 +194,7 @@ impl fmt::Display for InterfaceRevision {
 /// Key for an in-flight endpoint revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapEndpointKey {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
@@ -253,7 +230,7 @@ impl TapEndpointRevisionKey {
 /// Key for fresh worksheet and active-revision lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapWorksheetKey {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
@@ -268,25 +245,16 @@ impl fmt::Display for TapWorksheetKey {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapSharedObjectRef {
     pub id: sui::types::Address,
-    pub initial_shared_version: u64,
     pub mutable: bool,
 }
 
 impl TapSharedObjectRef {
-    pub fn immutable(id: sui::types::Address, initial_shared_version: u64) -> Self {
-        Self {
-            id,
-            initial_shared_version,
-            mutable: false,
-        }
+    pub fn immutable(id: sui::types::Address) -> Self {
+        Self { id, mutable: false }
     }
 
-    pub fn mutable(id: sui::types::Address, initial_shared_version: u64) -> Self {
-        Self {
-            id,
-            initial_shared_version,
-            mutable: true,
-        }
+    pub fn mutable(id: sui::types::Address) -> Self {
+        Self { id, mutable: true }
     }
 }
 
@@ -361,7 +329,7 @@ pub struct TapPaymentPolicy {
     pub mode: TapPaymentMode,
     pub max_budget: u64,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub token_type_hash: Vec<u8>,
+    pub token_type_commitment: Vec<u8>,
     pub refund_mode: u8,
 }
 
@@ -399,7 +367,7 @@ pub enum TapScheduledPaymentSource {
         refund_recipient: sui::types::Address,
     },
     AgentVault {
-        agent_id: Agent,
+        agent_id: AgentId,
     },
 }
 
@@ -415,7 +383,7 @@ impl<'de> Deserialize<'de> for TapScheduledPaymentSource {
                     refund_recipient: sui::types::Address,
                 },
                 AgentVault {
-                    agent_id: Agent,
+                    agent_id: AgentId,
                 },
             }
 
@@ -461,9 +429,7 @@ fn deserialize_tap_scheduled_payment_source_value(
         let agent_id = vault
             .get("agent_id")
             .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-        return Some(TapScheduledPaymentSource::AgentVault {
-            agent_id: Agent(agent_id),
-        });
+        return Some(TapScheduledPaymentSource::AgentVault { agent_id });
     }
 
     let variant = object
@@ -482,9 +448,7 @@ fn deserialize_tap_scheduled_payment_source_value(
             let agent_id = object
                 .get("agent_id")
                 .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-            Some(TapScheduledPaymentSource::AgentVault {
-                agent_id: Agent(agent_id),
-            })
+            Some(TapScheduledPaymentSource::AgentVault { agent_id })
         }
         _ => None,
     }
@@ -501,7 +465,7 @@ impl TapScheduledPaymentSource {
     pub fn source_identity(&self) -> sui::types::Address {
         match self {
             Self::Address { refund_recipient } => *refund_recipient,
-            Self::AgentVault { agent_id } => agent_id.id(),
+            Self::AgentVault { agent_id } => *agent_id,
         }
     }
 }
@@ -511,7 +475,7 @@ impl TapScheduledPaymentSource {
 pub struct TapScheduledTaskLink {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub scheduled_task_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
@@ -593,10 +557,10 @@ impl TapPaymentSource {
         }
     }
 
-    pub fn agent_vault(agent_id: Agent) -> Self {
+    pub fn agent_vault(agent_id: AgentId) -> Self {
         Self {
             kind: TapPaymentSourceKind::AgentVault,
-            identity: agent_id.id(),
+            identity: agent_id,
         }
     }
 
@@ -618,7 +582,7 @@ impl Default for TapPaymentPolicy {
         Self {
             mode: TapPaymentMode::UserFunded,
             max_budget: 0,
-            token_type_hash: Vec::new(),
+            token_type_commitment: Vec::new(),
             refund_mode: 0,
         }
     }
@@ -691,14 +655,14 @@ pub struct TapAuthorizedTool {
     )]
     pub function: String,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_hash: Vec<u8>,
+    pub operation_commitment: Vec<u8>,
 }
 
 /// Vertex authorization schema committed into endpoint config.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapVertexAuthorizationSchema {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub schema_hash: Vec<u8>,
+    pub schema_commitment: Vec<u8>,
     pub fixed_tools: Vec<TapAuthorizedTool>,
     pub requires_payment: bool,
 }
@@ -707,11 +671,11 @@ pub struct TapVertexAuthorizationSchema {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSkillRequirements {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub input_schema_hash: Vec<u8>,
+    pub input_schema_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub workflow_hash: Vec<u8>,
+    pub workflow_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub metadata_hash: Vec<u8>,
+    pub metadata_commitment: Vec<u8>,
     pub payment_policy: TapPaymentPolicy,
     pub schedule_policy: TapSchedulePolicy,
     pub vertex_authorization_schema: TapVertexAuthorizationSchema,
@@ -720,11 +684,9 @@ pub struct TapSkillRequirements {
 /// Stored `nexus_registry::tap::AgentRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapAgentRecord {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub owner: sui::types::Address,
     pub operator: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub metadata_hash: Vec<u8>,
     pub active: bool,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub next_skill_index: u64,
@@ -736,29 +698,29 @@ pub struct TapAgentRecord {
 /// Stored `nexus_interface::tap::SkillRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSkillRecord {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub dag_binding: TapDagBinding,
     pub tap_package_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub workflow_hash: Vec<u8>,
+    pub workflow_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub requirements_hash: Vec<u8>,
+    pub requirements_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub metadata_hash: Vec<u8>,
+    pub metadata_commitment: Vec<u8>,
     pub payment_policy: TapPaymentPolicy,
     pub schedule_policy: TapSchedulePolicy,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub capability_schema_hash: Vec<u8>,
+    pub capability_schema_commitment: Vec<u8>,
     pub active: bool,
 }
 
 /// Stored `nexus_interface::tap::EndpointRevision`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapEndpointRevision {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
@@ -816,7 +778,7 @@ impl TapEndpointRevision {
 /// Stored `nexus_interface::tap::EndpointActivation`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapEndpointActivation {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
@@ -825,7 +787,7 @@ pub struct TapEndpointActivation {
 /// Standard network default target for arbitrary-DAG execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapDefaultExecutionTarget {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
@@ -892,7 +854,7 @@ impl TapRegistry {
 
     pub fn active_endpoint_record(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
     ) -> anyhow::Result<TapEndpointRecord> {
         let activations = self
@@ -941,7 +903,7 @@ impl TapRegistry {
 
     fn is_active_endpoint(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         interface_revision: InterfaceRevision,
     ) -> bool {
@@ -989,7 +951,7 @@ impl TapEndpointRecord {
 /// should read `TapRegistry.active_endpoints` instead.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapActiveEndpoint {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub active_revision: InterfaceRevision,
@@ -1003,7 +965,7 @@ pub struct TapExecutionPayment {
     pub id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub execution_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
@@ -1063,7 +1025,7 @@ pub struct TapExecutionPaymentReceipt {
     pub execution_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub payment_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -1115,19 +1077,19 @@ pub struct TapExecutionPaymentVertexLock {
     pub tool_fqn: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub amount: u64,
-    pub settlement_kind: TapExecutionPaymentSettlementKind,
+    pub settlement_kind: TapVertexExecutionPaymentSettlementKind,
 }
 
 /// Tool-payment settlement class for an execution payment vertex lock.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapExecutionPaymentSettlementKind {
+pub enum TapVertexExecutionPaymentSettlementKind {
     Free,
     Ticket,
     Paid,
 }
 
-impl<'de> Deserialize<'de> for TapExecutionPaymentSettlementKind {
+impl<'de> Deserialize<'de> for TapVertexExecutionPaymentSettlementKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -1149,12 +1111,12 @@ impl<'de> Deserialize<'de> for TapExecutionPaymentSettlementKind {
 
 fn deserialize_tap_payment_settlement_kind_value(
     value: &serde_json::Value,
-) -> Option<TapExecutionPaymentSettlementKind> {
-    fn from_text(text: &str) -> Option<TapExecutionPaymentSettlementKind> {
+) -> Option<TapVertexExecutionPaymentSettlementKind> {
+    fn from_text(text: &str) -> Option<TapVertexExecutionPaymentSettlementKind> {
         match text {
-            "free" | "Free" => Some(TapExecutionPaymentSettlementKind::Free),
-            "ticket" | "Ticket" => Some(TapExecutionPaymentSettlementKind::Ticket),
-            "paid" | "Paid" => Some(TapExecutionPaymentSettlementKind::Paid),
+            "free" | "Free" => Some(TapVertexExecutionPaymentSettlementKind::Free),
+            "ticket" | "Ticket" => Some(TapVertexExecutionPaymentSettlementKind::Ticket),
+            "paid" | "Paid" => Some(TapVertexExecutionPaymentSettlementKind::Paid),
             _ => None,
         }
     }
@@ -1402,7 +1364,7 @@ fn deserialize_tap_execution_payment_final_state_value(
     }
 }
 
-/// Shared standard TAP agent payment vault object.
+/// Shared standard Talus agent payment vault object.
 ///
 /// Each agent created by the standard TAP interface has one vault. The vault's
 /// `available_balance` includes locked funds; `locked_amount` records the
@@ -1411,7 +1373,7 @@ fn deserialize_tap_execution_payment_final_state_value(
 pub struct TapAgentPaymentVault {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub available_balance: u64,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -1427,7 +1389,7 @@ pub struct TapVertexAuthorizationGrant {
     pub grantor: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub target_object_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -1450,7 +1412,7 @@ pub struct TapVertexAuthorizationGrant {
     #[serde(deserialize_with = "deserialize_tap_byte_string")]
     pub allowed_tool_function: String,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_hash: Vec<u8>,
+    pub constraints_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub expires_at_ms: u64,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -1460,7 +1422,7 @@ pub struct TapVertexAuthorizationGrant {
     pub revoked: bool,
     pub payment_required: bool,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_hash: Vec<u8>,
+    pub operation_commitment: Vec<u8>,
 }
 
 impl TapVertexAuthorizationGrant {
@@ -1482,7 +1444,7 @@ impl TapVertexAuthorizationGrant {
             package_id: self.allowed_tool_package,
             module: self.allowed_tool_module.clone(),
             function: self.allowed_tool_function.clone(),
-            operation_hash: self.operation_hash.clone(),
+            operation_commitment: self.operation_commitment.clone(),
         }
     }
 }
@@ -1517,9 +1479,9 @@ pub struct TapVertexAuthorizationPlanEntry {
     #[serde(deserialize_with = "deserialize_tap_byte_string")]
     pub tool_function: String,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_hash: Vec<u8>,
+    pub operation_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_hash: Vec<u8>,
+    pub constraints_commitment: Vec<u8>,
     #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
     pub leader_assignment_id: Option<sui::types::Address>,
     #[serde(
@@ -1537,7 +1499,7 @@ impl TapVertexAuthorizationPlanEntry {
             package_id: self.tool_package,
             module: self.tool_module.clone(),
             function: self.tool_function.clone(),
-            operation_hash: self.operation_hash.clone(),
+            operation_commitment: self.operation_commitment.clone(),
         }
     }
 
@@ -1546,8 +1508,8 @@ impl TapVertexAuthorizationPlanEntry {
             && grant.allowed_tool_package == self.tool_package
             && grant.allowed_tool_module == self.tool_module
             && grant.allowed_tool_function == self.tool_function
-            && grant.operation_hash == self.operation_hash
-            && grant.constraints_hash == self.constraints_hash
+            && grant.operation_commitment == self.operation_commitment
+            && grant.constraints_commitment == self.constraints_commitment
             && self
                 .leader_assignment_id
                 .is_none_or(|leader_assignment_id| {
@@ -1598,7 +1560,7 @@ pub struct TapScheduledSkillTask {
         deserialize_with = "deserialize_tap_address_value_or_default"
     )]
     pub scheduler_task_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     #[serde(
@@ -1614,7 +1576,7 @@ pub struct TapScheduledSkillTask {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub long_term_gas_coin_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub refill_policy_hash: Vec<u8>,
+    pub refill_policy_commitment: Vec<u8>,
     pub payment_source: TapScheduledPaymentSource,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub payment_source_bytes: Vec<u8>,
@@ -1626,10 +1588,10 @@ pub struct TapScheduledSkillTask {
     pub remaining_funds: u64,
     pub refund_mode: u8,
     #[serde(default, deserialize_with = "deserialize_move_option_bytes")]
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub schedule_policy: TapSchedulePolicy,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub schedule_entries_hash: Vec<u8>,
+    pub schedule_entries_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub next_after_ms: u64,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -1911,13 +1873,13 @@ pub enum TapValidationError {
     MissingTapPackageName,
     MissingDagPath,
     MissingTapPackagePath,
-    MissingWorkflowHash,
-    MissingRequirementsHash,
+    MissingWorkflowCommitment,
+    MissingRequirementsCommitment,
     MissingConfigDigest,
     EmptyAuthorizedToolModule,
     EmptyAuthorizedToolFunction,
     DuplicateAuthorizationPlanVertex,
-    AuthorizationPlanHashMismatch,
+    AuthorizationPlanCommitmentMismatch,
     AuthorizationPlanGrantMismatch,
     AuthorizationPlanToolNotAuthorized,
     AuthorizationPlanEndpointMismatch,
@@ -1932,8 +1894,8 @@ impl fmt::Display for TapValidationError {
             TapValidationError::MissingTapPackageName => write!(f, "TAP package name is required"),
             TapValidationError::MissingDagPath => write!(f, "DAG path is required"),
             TapValidationError::MissingTapPackagePath => write!(f, "TAP package path is required"),
-            TapValidationError::MissingWorkflowHash => write!(f, "workflow hash is required"),
-            TapValidationError::MissingRequirementsHash => {
+            TapValidationError::MissingWorkflowCommitment => write!(f, "workflow hash is required"),
+            TapValidationError::MissingRequirementsCommitment => {
                 write!(f, "requirements hash is required")
             }
             TapValidationError::MissingConfigDigest => {
@@ -1951,7 +1913,7 @@ impl fmt::Display for TapValidationError {
                     "authorization plan contains duplicate runtime-vertex entries"
                 )
             }
-            TapValidationError::AuthorizationPlanHashMismatch => {
+            TapValidationError::AuthorizationPlanCommitmentMismatch => {
                 write!(f, "authorization plan hash does not match plan entries")
             }
             TapValidationError::AuthorizationPlanGrantMismatch => {
@@ -1987,11 +1949,11 @@ impl std::error::Error for TapValidationError {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TapEndpointResolutionError {
     MissingActiveRevision {
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
     },
     DuplicateActiveRevision {
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         count: usize,
     },
@@ -2024,11 +1986,11 @@ impl std::error::Error for TapEndpointResolutionError {}
 pub fn validate_requirements(
     requirements: &TapSkillRequirements,
 ) -> Result<(), TapValidationError> {
-    if requirements.workflow_hash.is_empty() {
-        return Err(TapValidationError::MissingWorkflowHash);
+    if requirements.workflow_commitment.is_empty() {
+        return Err(TapValidationError::MissingWorkflowCommitment);
     }
-    if requirements.input_schema_hash.is_empty() {
-        return Err(TapValidationError::MissingRequirementsHash);
+    if requirements.input_schema_commitment.is_empty() {
+        return Err(TapValidationError::MissingRequirementsCommitment);
     }
     for tool in &requirements.vertex_authorization_schema.fixed_tools {
         if tool.module.trim().is_empty() {
@@ -2072,9 +2034,9 @@ pub fn validate_authorization_plan(
     if let Some(expected_hash) = expected_hash {
         let actual = plan
             .hash()
-            .map_err(|_| TapValidationError::AuthorizationPlanHashMismatch)?;
+            .map_err(|_| TapValidationError::AuthorizationPlanCommitmentMismatch)?;
         if actual.as_slice() != expected_hash {
-            return Err(TapValidationError::AuthorizationPlanHashMismatch);
+            return Err(TapValidationError::AuthorizationPlanCommitmentMismatch);
         }
     }
 
@@ -2082,7 +2044,7 @@ pub fn validate_authorization_plan(
 }
 
 pub fn validate_standard_tap_payment_options(
-    agent_id: Agent,
+    agent_id: AgentId,
     policy: &TapPaymentPolicy,
     payment_source: &[u8],
     payment_max_budget: u64,
@@ -2115,11 +2077,11 @@ pub fn validate_standard_tap_payment_options(
             }
         }
         TapPaymentMode::AgentFunded => {
-            let expected = bcs::to_bytes(&agent_id.id())?;
+            let expected = bcs::to_bytes(&agent_id)?;
             let source_is_valid = payment_source == expected.as_slice();
             if !source_is_valid {
                 anyhow::bail!(
-                    "standard TAP agent-funded payment source must be agent_id address BCS"
+                    "standard Talus agent-funded payment source must be agent_id address BCS"
                 );
             }
         }
@@ -2136,14 +2098,14 @@ pub fn tap_payment_source_for_invoker(address: sui::types::Address) -> anyhow::R
     TapPaymentSource::invoker(address).to_bcs_bytes()
 }
 
-pub fn tap_payment_source_for_agent_vault(agent_id: Agent) -> anyhow::Result<Vec<u8>> {
+pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<Vec<u8>> {
     TapPaymentSource::agent_vault(agent_id).to_bcs_bytes()
 }
 
 /// Resolve exactly one active endpoint for fresh execution.
 pub fn resolve_active_tap_endpoint(
     records: &[TapEndpointRecord],
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> Result<&TapEndpointRecord, TapEndpointResolutionError> {
     let active = records
@@ -2174,7 +2136,7 @@ pub fn resolve_active_tap_endpoint(
 /// Resolve the unique active skill and endpoint for fresh standard execution.
 pub fn resolve_active_tap_skill_execution_target(
     registry: &TapRegistry,
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<TapActiveSkillExecutionTarget> {
     let skill_matches = registry
@@ -2235,9 +2197,9 @@ mod tests {
 
     fn requirements() -> TapSkillRequirements {
         TapSkillRequirements {
-            input_schema_hash: vec![1],
-            workflow_hash: vec![2],
-            metadata_hash: vec![3],
+            input_schema_commitment: vec![1],
+            workflow_commitment: vec![2],
+            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy {
                 max_budget: 100,
                 ..TapPaymentPolicy::default()
@@ -2252,13 +2214,13 @@ mod tests {
             sui::types::ObjectReference::new(addr("0x123"), 7, sui::types::Digest::from([1; 32]));
         TapEndpointRecord {
             key: TapEndpointKey {
-                agent_id: Agent(addr("0xa")),
+                agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
             },
             package_id: addr("0xc"),
             endpoint_object: object_ref,
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"), 9)],
+            shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
             config_digest: vec![9],
             requirements: requirements(),
             active_for_new_executions: active,
@@ -2267,20 +2229,20 @@ mod tests {
 
     fn skill(active: bool) -> TapSkillRecord {
         TapSkillRecord {
-            agent_id: Agent(addr("0xa")),
+            agent_id: addr("0xa"),
             skill_id: 11,
             dag_id: addr("0x44"),
             dag_binding: TapDagBinding::pinned(addr("0x44")),
             tap_package_id: addr("0xc"),
-            workflow_hash: vec![2],
-            requirements_hash: vec![1],
-            metadata_hash: vec![3],
+            workflow_commitment: vec![2],
+            requirements_commitment: vec![1],
+            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy {
                 max_budget: 100,
                 ..TapPaymentPolicy::default()
             },
             schedule_policy: TapSchedulePolicy::default(),
-            capability_schema_hash: vec![7],
+            capability_schema_commitment: vec![7],
             active,
         }
     }
@@ -2291,20 +2253,20 @@ mod tests {
             agents: Vec::new(),
             skills: vec![skill(true)],
             endpoints: vec![TapEndpointRevision {
-                agent_id: Agent(addr("0xa")),
+                agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(2),
                 package_id: addr("0xc"),
                 endpoint_object_id: addr("0x123"),
                 endpoint_object_version: 7,
                 endpoint_object_digest: vec![1; 32],
-                shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"), 9)],
+                shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
                 requirements: requirements(),
                 config_digest: vec![9],
                 active_for_new_executions: true,
             }],
             active_endpoints: vec![TapEndpointActivation {
-                agent_id: Agent(addr("0xa")),
+                agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(2),
             }],
@@ -2318,7 +2280,7 @@ mod tests {
             package_id: addr("0x1"),
             endpoint_object_id: Some(addr("0x2")),
             interface_revision: InterfaceRevision(3),
-            shared_objects: vec![TapSharedObjectRef::mutable(addr("0x4"), 5)],
+            shared_objects: vec![TapSharedObjectRef::mutable(addr("0x4"))],
             requirements: requirements(),
         };
 
@@ -2327,13 +2289,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_missing_requirements_hash() {
+    fn validate_rejects_missing_requirements_commitment() {
         let mut requirements = requirements();
-        requirements.input_schema_hash.clear();
+        requirements.input_schema_commitment.clear();
 
         assert_eq!(
             validate_requirements(&requirements),
-            Err(TapValidationError::MissingRequirementsHash)
+            Err(TapValidationError::MissingRequirementsCommitment)
         );
     }
 
@@ -2351,7 +2313,7 @@ mod tests {
 
         let duplicate = vec![endpoint(1, true), endpoint(2, true)];
         assert!(matches!(
-            resolve_active_tap_endpoint(&duplicate, Agent(addr("0xa")), 11),
+            resolve_active_tap_endpoint(&duplicate, addr("0xa"), 11),
             Err(TapEndpointResolutionError::DuplicateActiveRevision { count: 2, .. })
         ));
     }
@@ -2367,7 +2329,7 @@ mod tests {
         }
 
         let target = TapDefaultExecutionTarget {
-            agent_id: Agent(addr("0xa")),
+            agent_id: addr("0xa"),
             skill_id: 11,
         };
 
@@ -2393,7 +2355,7 @@ mod tests {
             dag_path: PathBuf::from("skill.dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"), 1)],
+            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
             active_for_new_executions: true,
         };
@@ -2414,7 +2376,7 @@ mod tests {
             dag_path: PathBuf::from("skill.dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"), 1)],
+            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
             active_for_new_executions: true,
         };
@@ -2447,7 +2409,7 @@ mod tests {
             dag_path: PathBuf::from("skill.dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"), 1)],
+            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
             active_for_new_executions: true,
         };
@@ -2517,7 +2479,7 @@ mod tests {
 
     #[test]
     fn validate_standard_tap_payment_options_enforces_user_funded_policy() {
-        let agent_id = Agent(addr("0xa"));
+        let agent = addr("0xa");
         let payer = addr("0x1");
         let explicit_source = tap_payment_source_for_address(payer).expect("payer source");
         let typed_source = tap_payment_source_for_invoker(payer).expect("typed payer source");
@@ -2527,17 +2489,17 @@ mod tests {
             ..TapPaymentPolicy::default()
         };
 
-        validate_standard_tap_payment_options(agent_id, &policy, &[], 100, 0, payer)
+        validate_standard_tap_payment_options(agent, &policy, &[], 100, 0, payer)
             .expect("implicit payer source");
-        validate_standard_tap_payment_options(agent_id, &policy, &explicit_source, 100, 0, payer)
+        validate_standard_tap_payment_options(agent, &policy, &explicit_source, 100, 0, payer)
             .expect("explicit payer source");
         assert!(
-            validate_standard_tap_payment_options(agent_id, &policy, &typed_source, 100, 0, payer,)
+            validate_standard_tap_payment_options(agent, &policy, &typed_source, 100, 0, payer,)
                 .is_err(),
             "typed invoker sources are not accepted by Move direct user-funded policy"
         );
         assert!(validate_standard_tap_payment_options(
-            agent_id,
+            agent,
             &policy,
             &other_source,
             100,
@@ -2545,22 +2507,16 @@ mod tests {
             payer,
         )
         .is_err());
-        assert!(
-            validate_standard_tap_payment_options(agent_id, &policy, &[], 101, 0, payer).is_err()
-        );
-        assert!(
-            validate_standard_tap_payment_options(agent_id, &policy, &[], 100, 9, payer).is_err()
-        );
+        assert!(validate_standard_tap_payment_options(agent, &policy, &[], 101, 0, payer).is_err());
+        assert!(validate_standard_tap_payment_options(agent, &policy, &[], 100, 9, payer).is_err());
     }
 
     #[test]
     fn validate_standard_tap_payment_options_enforces_source_modes() {
-        let agent_id = Agent(addr("0xa"));
+        let agent = addr("0xa");
         let payer = addr("0x1");
-        let legacy_agent_source =
-            tap_payment_source_for_address(agent_id.id()).expect("agent source");
-        let agent_source =
-            tap_payment_source_for_agent_vault(agent_id).expect("agent vault source");
+        let legacy_agent_source = tap_payment_source_for_address(agent).expect("agent source");
+        let agent_source = tap_payment_source_for_agent_vault(agent).expect("agent vault source");
 
         let agent_funded = TapPaymentPolicy {
             mode: TapPaymentMode::AgentFunded,
@@ -2568,7 +2524,7 @@ mod tests {
         };
         assert!(
             validate_standard_tap_payment_options(
-                agent_id,
+                agent,
                 &agent_funded,
                 &agent_source,
                 0,
@@ -2579,7 +2535,7 @@ mod tests {
             "typed agent-vault sources are not accepted by Move direct agent-funded policy"
         );
         validate_standard_tap_payment_options(
-            agent_id,
+            agent,
             &agent_funded,
             &legacy_agent_source,
             0,
@@ -2588,11 +2544,10 @@ mod tests {
         )
         .expect("legacy agent-funded source");
         assert!(
-            validate_standard_tap_payment_options(agent_id, &agent_funded, &[], 0, 0, payer,)
-                .is_err()
+            validate_standard_tap_payment_options(agent, &agent_funded, &[], 0, 0, payer,).is_err()
         );
         assert!(validate_standard_tap_payment_options(
-            agent_id,
+            agent,
             &agent_funded,
             &agent_source,
             0,
@@ -2641,25 +2596,25 @@ mod tests {
         assert!(serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!(7)).is_err());
 
         assert_eq!(
-            serde_json::from_value::<TapExecutionPaymentSettlementKind>(serde_json::json!({
+            serde_json::from_value::<TapVertexExecutionPaymentSettlementKind>(serde_json::json!({
                 "Paid": {}
             }))
             .expect("keyed settlement kind"),
-            TapExecutionPaymentSettlementKind::Paid
+            TapVertexExecutionPaymentSettlementKind::Paid
         );
         assert_eq!(
-            serde_json::from_value::<TapExecutionPaymentSettlementKind>(serde_json::json!({
+            serde_json::from_value::<TapVertexExecutionPaymentSettlementKind>(serde_json::json!({
                 "fields": { "type": "Ticket" }
             }))
             .expect("nested settlement kind"),
-            TapExecutionPaymentSettlementKind::Ticket
+            TapVertexExecutionPaymentSettlementKind::Ticket
         );
         assert_eq!(
-            bcs::from_bytes::<TapExecutionPaymentSettlementKind>(
+            bcs::from_bytes::<TapVertexExecutionPaymentSettlementKind>(
                 &bcs::to_bytes(&9_u8).expect("raw settlement kind")
             )
             .expect("unknown raw settlement kind falls back"),
-            TapExecutionPaymentSettlementKind::Paid
+            TapVertexExecutionPaymentSettlementKind::Paid
         );
 
         assert_eq!(
@@ -2729,8 +2684,8 @@ mod tests {
             "allowed_tool_package": "0x14",
             "allowed_tool_module": "0x746f6f6c",
             "allowed_tool_function": "0x72756e",
-            "operation_hash": [1, 2],
-            "constraints_hash": [3, 4],
+            "operation_commitment": [1, 2],
+            "constraints_commitment": [3, 4],
             "expires_at_ms": "10",
             "max_uses": "2",
             "used": "1",
@@ -2753,8 +2708,8 @@ mod tests {
             "allowed_tool_package": "0x14",
             "allowed_tool_module": "0xnothex",
             "allowed_tool_function": "run",
-            "operation_hash": [1, 2],
-            "constraints_hash": [3, 4],
+            "operation_commitment": [1, 2],
+            "constraints_commitment": [3, 4],
             "expires_at_ms": "10",
             "max_uses": "2",
             "used": "1",
@@ -2818,11 +2773,11 @@ mod tests {
         assert_eq!(payment.outstanding_locks(), 2);
         assert_eq!(
             payment.locked_vertices[0].settlement_kind,
-            TapExecutionPaymentSettlementKind::Paid
+            TapVertexExecutionPaymentSettlementKind::Paid
         );
         assert_eq!(
             payment.locked_vertices[1].settlement_kind,
-            TapExecutionPaymentSettlementKind::Ticket
+            TapVertexExecutionPaymentSettlementKind::Ticket
         );
     }
 
@@ -2859,13 +2814,13 @@ mod tests {
         assert_eq!(typed.kind, TapPaymentSourceKind::Invoker);
         assert_eq!(typed.identity, invoker);
 
-        let agent = Agent(addr("0x22"));
+        let agent = addr("0x22");
         let typed = TapPaymentSource::from_bcs_bytes(
             &tap_payment_source_for_agent_vault(agent).expect("typed vault source"),
         )
         .expect("typed vault source decodes");
         assert_eq!(typed.kind, TapPaymentSourceKind::AgentVault);
-        assert_eq!(typed.identity, agent.id());
+        assert_eq!(typed.identity, agent);
 
         let invalid = bcs::to_bytes(&(9_u8, invoker)).expect("invalid source kind bytes");
         assert!(TapPaymentSource::from_bcs_bytes(&invalid).is_err());
@@ -2878,8 +2833,8 @@ mod tests {
             tool_package: addr("0x40"),
             tool_module: "tool".to_string(),
             tool_function: "run".to_string(),
-            operation_hash: vec![7],
-            constraints_hash: vec![8],
+            operation_commitment: vec![7],
+            constraints_commitment: vec![8],
             leader_assignment_id: Some(addr("0x50")),
             endpoint_revision: Some(InterfaceRevision(2)),
             payment_id: Some(addr("0x60")),
@@ -2887,7 +2842,7 @@ mod tests {
     }
 
     #[test]
-    fn authorization_plan_hash_and_lookup_are_stable() {
+    fn authorization_plan_commitment_and_lookup_are_stable() {
         let vertex = RuntimeVertex::plain("entry");
         let entry = authorization_plan_entry(vertex.clone());
         let plan = TapVertexAuthorizationPlan(vec![entry.clone()]);
@@ -2912,7 +2867,7 @@ mod tests {
         validate_authorization_plan(&requirements, &plan, Some(&hash)).expect("valid plan");
         assert_eq!(
             validate_authorization_plan(&requirements, &plan, Some(&[0])).unwrap_err(),
-            TapValidationError::AuthorizationPlanHashMismatch
+            TapValidationError::AuthorizationPlanCommitmentMismatch
         );
         validate_authorization_plan(
             &requirements,
@@ -2940,7 +2895,7 @@ mod tests {
     #[test]
     fn active_skill_execution_target_requires_one_active_skill_and_endpoint() {
         let registry = registry_with_active_skill();
-        let resolved = resolve_active_tap_skill_execution_target(&registry, Agent(addr("0xa")), 11)
+        let resolved = resolve_active_tap_skill_execution_target(&registry, addr("0xa"), 11)
             .expect("active skill target");
 
         assert_eq!(resolved.skill.dag_id, addr("0x44"));
@@ -2958,7 +2913,7 @@ mod tests {
     fn default_execution_target_requires_runtime_selected_skill() {
         let mut registry = registry_with_active_skill();
         registry.default_target = Some(TapDefaultExecutionTarget {
-            agent_id: Agent(addr("0xa")),
+            agent_id: addr("0xa"),
             skill_id: 11,
         });
 
@@ -2973,7 +2928,7 @@ mod tests {
         assert_eq!(
             target.target,
             TapDefaultExecutionTarget {
-                agent_id: Agent(addr("0xa")),
+                agent_id: addr("0xa"),
                 skill_id: 11,
             }
         );
@@ -2985,9 +2940,7 @@ mod tests {
         let mut registry = registry_with_active_skill();
         registry.skills.clear();
 
-        assert!(
-            resolve_active_tap_skill_execution_target(&registry, Agent(addr("0xa")), 11).is_err()
-        );
+        assert!(resolve_active_tap_skill_execution_target(&registry, addr("0xa"), 11).is_err());
     }
 
     #[test]
@@ -3006,8 +2959,8 @@ mod tests {
             "allowed_tool_package": "0x14",
             "allowed_tool_module": [116, 111, 111, 108],
             "allowed_tool_function": [114, 117, 110],
-            "operation_hash": [1, 2],
-            "constraints_hash": [3, 4],
+            "operation_commitment": [1, 2],
+            "constraints_commitment": [3, 4],
             "expires_at_ms": "10",
             "max_uses": "2",
             "used": "1",
@@ -3017,7 +2970,7 @@ mod tests {
         .expect("grant should deserialize");
 
         assert_eq!(grant.grant_id(), addr("0xaa"));
-        assert_eq!(grant.agent_id, Agent(addr("0xdd")));
+        assert_eq!(grant.agent_id, addr("0xdd"));
         assert_eq!(grant.skill_id, 238);
         assert_eq!(grant.leader_assignment_id, Some(addr("0x12")));
         assert_eq!(
@@ -3043,21 +2996,21 @@ mod tests {
             "pinned_revision": { "fields": { "vec": [{ "fields": { "value": "9" } }] } },
             "input_commitment": [1, 2],
             "long_term_gas_coin_id": "0xee",
-            "refill_policy_hash": [3, 4],
+            "refill_policy_commitment": [3, 4],
             "payment_source": { "Address": { "refund_recipient": "0xee" } },
             "payment_source_bytes": bcs::to_bytes(&addr("0xee")).unwrap(),
             "payment_source_hash": source_hash,
             "occurrence_budget": "25",
             "remaining_funds": { "value": "50" },
             "refund_mode": 0,
-            "authorization_plan_hash": { "vec": [[5, 6]] },
+            "authorization_plan_commitment": { "vec": [[5, 6]] },
             "schedule_policy": {
                 "recurrence_kind": "once",
                 "min_interval_ms": "0",
                 "max_occurrences": "3",
                 "allow_recursive": false
             },
-            "schedule_entries_hash": [7, 8],
+            "schedule_entries_commitment": [7, 8],
             "next_after_ms": "11",
             "occurrences_spawned": "2",
             "occurrences_finalized": "1",
@@ -3077,7 +3030,7 @@ mod tests {
 
         assert_eq!(task.scheduled_task_id(), addr("0xaa"));
         assert_eq!(task.scheduler_task_id, addr("0xab"));
-        assert_eq!(task.agent_id, Agent(addr("0xbb")));
+        assert_eq!(task.agent_id, addr("0xbb"));
         assert_eq!(task.skill_id, 204);
         assert_eq!(task.pinned_revision, Some(InterfaceRevision(9)));
         assert_eq!(task.source_kind(), TapPaymentSourceKind::Invoker);
@@ -3091,7 +3044,7 @@ mod tests {
             TapScheduledOccurrenceFinalState::Refunded
         );
         assert!(task.can_spawn_occurrence());
-        assert_eq!(task.authorization_plan_hash, Some(vec![5, 6]));
+        assert_eq!(task.authorization_plan_commitment, Some(vec![5, 6]));
         assert_eq!(task.next_after_ms, 11);
         assert_eq!(task.occurrences_spawned, 2);
         assert!(task.active);
@@ -3105,7 +3058,7 @@ mod tests {
             "skill_id": "204",
             "input_commitment": [1, 2],
             "long_term_gas_coin_id": "0xee",
-            "refill_policy_hash": [3, 4],
+            "refill_policy_commitment": [3, 4],
             "payment_source": { "agent_vault": { "agent_id": "0xbb" } },
             "payment_source_bytes": [9],
             "payment_source_hash": [8],
@@ -3117,7 +3070,7 @@ mod tests {
                 "max_occurrences": "3",
                 "allow_recursive": false
             },
-            "schedule_entries_hash": [7, 8],
+            "schedule_entries_commitment": [7, 8],
             "next_after_ms": "11",
             "occurrences_spawned": "2",
             "state": { "Completed": {} },

@@ -13,5 +13,5 @@ pub mod scheduler;
 /// Transactions concerning network authentication (identity key bindings).
 pub mod network_auth;
 
-/// Transactions concerning the standard TAP agent/skill interface.
+/// Transactions concerning the standard Talus agent/skill interface.
 pub mod tap;

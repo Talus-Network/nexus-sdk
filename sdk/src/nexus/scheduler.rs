@@ -1732,7 +1732,7 @@ mod tests {
         let mut rng = thread_rng();
         let link = TapScheduledTaskLink {
             scheduled_task_id: sui::types::Address::generate(&mut rng),
-            agent_id: crate::types::Agent(sui::types::Address::generate(&mut rng)),
+            agent_id: sui::types::Address::generate(&mut rng),
             skill_id: 7,
             input_commitment: vec![1, 2, 3],
             source_kind: crate::types::TapPaymentSourceKind::Invoker,
@@ -1743,7 +1743,7 @@ mod tests {
                 Some("0x2::bag::Bag".to_string()),
                 TapScheduledTaskLink {
                     scheduled_task_id: sui::types::Address::ZERO,
-                    agent_id: crate::types::Agent(sui::types::Address::ZERO),
+                    agent_id: sui::types::Address::ZERO,
                     skill_id: 0,
                     input_commitment: vec![],
                     source_kind: crate::types::TapPaymentSourceKind::AgentVault,

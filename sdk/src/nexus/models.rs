@@ -8,7 +8,7 @@ use {
         types::{
             parse_string_value,
             strip_fields_owned,
-            Agent,
+            AgentId,
             InterfaceRevision,
             MoveOption,
             NexusData,
@@ -50,7 +50,7 @@ pub struct DagExecution {
     /// execution.
     pub invoker: sui::types::Address,
     #[serde(default = "empty_move_option")]
-    pub tap_agent_id: MoveOption<Agent>,
+    pub tap_agent_id: MoveOption<AgentId>,
     #[serde(default = "empty_move_option")]
     #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
     pub tap_skill_id: MoveOption<SkillId>,
@@ -63,7 +63,7 @@ pub struct DagExecution {
     #[serde(default = "empty_move_option")]
     pub tap_selected_dag_id: MoveOption<sui::types::Address>,
     #[serde(default = "empty_move_option")]
-    pub tap_authorization_plan_hash: MoveOption<Vec<u8>>,
+    pub tap_authorization_plan_commitment: MoveOption<Vec<u8>>,
     #[serde(default)]
     pub tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
     #[serde(default = "empty_move_option")]
@@ -81,7 +81,7 @@ impl DagExecution {
             && self.tap_endpoint_object_id.0.is_none()
             && self.tap_payment_id.0.is_none()
             && self.tap_selected_dag_id.0.is_none()
-            && self.tap_authorization_plan_hash.0.is_none()
+            && self.tap_authorization_plan_commitment.0.is_none()
             && self.tap_authorization_plan.is_empty()
             && self.tap_scheduled_task_id.0.is_none()
             && self.tap_scheduled_occurrence_index.0.is_none()
@@ -115,7 +115,7 @@ impl DagExecution {
             endpoint_object_id,
             payment_id,
             selected_dag_id,
-            authorization_plan_hash: self.tap_authorization_plan_hash.0.clone(),
+            authorization_plan_commitment: self.tap_authorization_plan_commitment.0.clone(),
             authorization_plan: TapVertexAuthorizationPlan(self.tap_authorization_plan.clone()),
             scheduled_task_id: self.tap_scheduled_task_id.0,
             scheduled_occurrence_index: self.tap_scheduled_occurrence_index.0,
@@ -511,13 +511,13 @@ mod tests {
     fn dag_execution_standard_tap_context_requires_complete_fields() {
         let execution = DagExecution {
             invoker: sui::types::Address::from_static("0x1"),
-            tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+            tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
             tap_skill_id: MoveOption(Some(11)),
             tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
             tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static("0xc"))),
             tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
             tap_selected_dag_id: MoveOption(Some(sui::types::Address::from_static("0xe"))),
-            tap_authorization_plan_hash: MoveOption(Some(vec![1, 2, 3])),
+            tap_authorization_plan_commitment: MoveOption(Some(vec![1, 2, 3])),
             tap_authorization_plan: Vec::new(),
             tap_scheduled_task_id: MoveOption(Some(sui::types::Address::from_static("0xf"))),
             tap_scheduled_occurrence_index: MoveOption(Some(2)),
@@ -531,13 +531,13 @@ mod tests {
         assert_eq!(
             context,
             RequestWalkStandardTapContext {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(7),
                 endpoint_object_id: sui::types::Address::from_static("0xc"),
                 payment_id: sui::types::Address::from_static("0xd"),
                 selected_dag_id: sui::types::Address::from_static("0xe"),
-                authorization_plan_hash: Some(vec![1, 2, 3]),
+                authorization_plan_commitment: Some(vec![1, 2, 3]),
                 authorization_plan: TapVertexAuthorizationPlan::default(),
                 scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
                 scheduled_occurrence_index: Some(2),
@@ -589,13 +589,13 @@ mod tests {
     fn dag_execution_standard_tap_context_rejects_partial_fields() {
         let execution = DagExecution {
             invoker: sui::types::Address::from_static("0x1"),
-            tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+            tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
             tap_skill_id: MoveOption(None),
             tap_interface_revision: MoveOption(None),
             tap_endpoint_object_id: MoveOption(None),
             tap_payment_id: MoveOption(None),
             tap_selected_dag_id: MoveOption(None),
-            tap_authorization_plan_hash: MoveOption(None),
+            tap_authorization_plan_commitment: MoveOption(None),
             tap_authorization_plan: Vec::new(),
             tap_scheduled_task_id: MoveOption(None),
             tap_scheduled_occurrence_index: MoveOption(None),
@@ -610,13 +610,13 @@ mod tests {
             (
                 DagExecution {
                     invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(None),
                     tap_endpoint_object_id: MoveOption(None),
                     tap_payment_id: MoveOption(None),
                     tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan_commitment: MoveOption(None),
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
@@ -626,13 +626,13 @@ mod tests {
             (
                 DagExecution {
                     invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
                     tap_endpoint_object_id: MoveOption(None),
                     tap_payment_id: MoveOption(None),
                     tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan_commitment: MoveOption(None),
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
@@ -642,7 +642,7 @@ mod tests {
             (
                 DagExecution {
                     invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
                     tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
@@ -650,7 +650,7 @@ mod tests {
                     ))),
                     tap_payment_id: MoveOption(None),
                     tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan_commitment: MoveOption(None),
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
@@ -660,7 +660,7 @@ mod tests {
             (
                 DagExecution {
                     invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
                     tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
@@ -668,7 +668,7 @@ mod tests {
                     ))),
                     tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
                     tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan_commitment: MoveOption(None),
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(execution.tap_endpoint_object_id.0, None);
         assert_eq!(execution.tap_payment_id.0, None);
         assert_eq!(execution.tap_selected_dag_id.0, None);
-        assert_eq!(execution.tap_authorization_plan_hash.0, None);
+        assert_eq!(execution.tap_authorization_plan_commitment.0, None);
         assert!(execution.tap_authorization_plan.is_empty());
         assert_eq!(execution.tap_scheduled_task_id.0, None);
         assert_eq!(execution.tap_scheduled_occurrence_index.0, None);

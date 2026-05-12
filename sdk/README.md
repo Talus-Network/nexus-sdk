@@ -37,7 +37,7 @@ See the end-to-end guide:
 ## Standard TAP Payments
 
 The SDK models the current standard TAP payment interface, including the
-mandatory agent payment vault created for every TAP agent.
+mandatory agent payment vault created for every Talus agent.
 
 Relevant helpers include:
 
@@ -49,7 +49,7 @@ Relevant helpers include:
 - `TapAgentPaymentVault` plus `fetch_tap_agent_payment_vault(...)`.
 - `tap::deposit_agent_payment_vault(...)` and
   `tap::withdraw_agent_payment_vault(...)` PTB builders.
-- `gas::add_agent_budget(...)` for standard TAP agent-scoped gas funding.
+- `gas::add_agent_budget(...)` for standard Talus agent-scoped gas funding.
 
 Direct standard TAP payment creation currently follows the Move policy exactly:
 user-funded sources are empty or payer-address BCS, and agent-funded direct

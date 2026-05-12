@@ -30,7 +30,7 @@ use {
             tap_payment_source_for_address,
             validate_authorization_plan,
             validate_standard_tap_payment_options,
-            Agent,
+            AgentId,
             Dag as JsonDag,
             DataStorage,
             PortsData,
@@ -75,14 +75,14 @@ pub struct ExecuteResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardTapSubmitMetadata {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub endpoint_key: TapEndpointKey,
     pub endpoint_object: sui::types::ObjectReference,
     pub payment_max_budget: u64,
     pub payment_refund_mode: u8,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: TapVertexAuthorizationPlan,
 }
 
@@ -93,7 +93,7 @@ pub struct StandardTapExecuteOptions {
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
     pub payment_refund_mode: u8,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
 }
 
@@ -509,7 +509,7 @@ impl WorkflowActions {
                 payment_coin_balance: None,
                 payment_max_budget: self.client.gas.get_budget(),
                 payment_refund_mode: 0,
-                authorization_plan_hash: None,
+                authorization_plan_commitment: None,
                 authorization_plan: Vec::new(),
             },
         )
@@ -561,7 +561,7 @@ impl WorkflowActions {
         let agent = self
             .client
             .crawler()
-            .get_object_metadata(default_target.target.agent_id.id())
+            .get_object_metadata(default_target.target.agent_id)
             .await
             .map_err(NexusError::Rpc)?;
 
@@ -584,16 +584,16 @@ impl WorkflowActions {
             }
         }
         let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
-        if !authorization_plan.is_empty() || options.authorization_plan_hash.is_some() {
+        if !authorization_plan.is_empty() || options.authorization_plan_commitment.is_some() {
             validate_authorization_plan(
                 &default_target.endpoint.requirements,
                 &authorization_plan,
-                options.authorization_plan_hash.as_deref(),
+                options.authorization_plan_commitment.as_deref(),
             )
             .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
         }
-        let authorization_plan_hash = if authorization_plan.is_empty() {
-            options.authorization_plan_hash.clone()
+        let authorization_plan_commitment = if authorization_plan.is_empty() {
+            options.authorization_plan_commitment.clone()
         } else {
             Some(
                 authorization_plan
@@ -609,7 +609,7 @@ impl WorkflowActions {
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
             payment_refund_mode: options.payment_refund_mode,
-            authorization_plan_hash: authorization_plan_hash.clone(),
+            authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
         };
 
@@ -708,7 +708,7 @@ impl WorkflowActions {
                 endpoint_object: default_target.endpoint.endpoint_object,
                 payment_max_budget: options.payment_max_budget,
                 payment_refund_mode: options.payment_refund_mode,
-                authorization_plan_hash,
+                authorization_plan_commitment,
                 authorization_plan,
             }),
         })
@@ -721,7 +721,7 @@ impl WorkflowActions {
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_standard_tap(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         entry_data: HashMap<String, PortsData>,
         priority_fee_per_gas_unit: u64,
@@ -771,7 +771,7 @@ impl WorkflowActions {
         let agent_object = self
             .client
             .crawler()
-            .get_object_metadata(agent_id.id())
+            .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
 
@@ -780,11 +780,11 @@ impl WorkflowActions {
         validate_authorization_plan(
             &target.endpoint.requirements,
             &authorization_plan,
-            options.authorization_plan_hash.as_deref(),
+            options.authorization_plan_commitment.as_deref(),
         )
         .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
-        let authorization_plan_hash = if authorization_plan.is_empty() {
-            options.authorization_plan_hash.clone()
+        let authorization_plan_commitment = if authorization_plan.is_empty() {
+            options.authorization_plan_commitment.clone()
         } else {
             Some(
                 authorization_plan
@@ -817,7 +817,7 @@ impl WorkflowActions {
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
             payment_refund_mode: options.payment_refund_mode,
-            authorization_plan_hash: authorization_plan_hash.clone(),
+            authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
         };
 
@@ -914,7 +914,7 @@ impl WorkflowActions {
                 endpoint_object: target.endpoint.endpoint_object,
                 payment_max_budget: options.payment_max_budget,
                 payment_refund_mode: options.payment_refund_mode,
-                authorization_plan_hash,
+                authorization_plan_commitment,
                 authorization_plan,
             }),
         })
@@ -1091,7 +1091,6 @@ mod tests {
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
             types::{
-                Agent,
                 InterfaceRevision,
                 MoveTable,
                 NexusData,
@@ -1195,7 +1194,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id.id(),
+                mock.agent_record.agent_id,
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1204,7 +1203,7 @@ mod tests {
             vec![(
                 mock.agent_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id.id(),
+                mock.agent_record.agent_id,
                 mock.agent_record,
             )],
         );
@@ -1413,22 +1412,22 @@ mod tests {
         let execution_object_id = sui::types::Address::generate(&mut rng);
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let tool_gas_ref = sui_mocks::mock_sui_object_ref();
-        let default_agent_id = Agent(sui::types::Address::generate(&mut rng));
+        let default_agent = sui::types::Address::generate(&mut rng);
         let default_skill_id = 11;
         let default_agent_ref = sui::types::ObjectReference::new(
-            default_agent_id.id(),
+            default_agent,
             1,
             sui::types::Digest::generate(&mut rng),
         );
         nexus_objects.default_tap_target = Some(TapDefaultExecutionTarget {
-            agent_id: default_agent_id,
+            agent_id: default_agent,
             skill_id: default_skill_id,
         });
 
         let requirements = TapSkillRequirements {
-            input_schema_hash: vec![1],
-            workflow_hash: vec![2],
-            metadata_hash: vec![3],
+            input_schema_commitment: vec![1],
+            workflow_commitment: vec![2],
+            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
@@ -1439,36 +1438,35 @@ mod tests {
                 .expect("tap registry ref")
                 .object_id(),
             agents: vec![TapAgentRecord {
-                agent_id: default_agent_id,
+                agent_id: default_agent,
                 owner: sui::types::Address::generate(&mut rng),
                 operator: sui::types::Address::generate(&mut rng),
-                metadata_hash: vec![],
                 active: true,
                 next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
                 endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
                 active_endpoints: vec![TapEndpointActivation {
-                    agent_id: default_agent_id,
+                    agent_id: default_agent,
                     skill_id: default_skill_id,
                     interface_revision: InterfaceRevision(1),
                 }],
             }],
             skills: vec![TapSkillRecord {
-                agent_id: default_agent_id,
+                agent_id: default_agent,
                 skill_id: default_skill_id,
                 dag_id: *dag_ref.object_id(),
                 dag_binding: TapDagBinding::runtime_selected(),
                 tap_package_id: sui::types::Address::generate(&mut rng),
-                workflow_hash: requirements.workflow_hash.clone(),
-                requirements_hash: requirements.input_schema_hash.clone(),
-                metadata_hash: requirements.metadata_hash.clone(),
+                workflow_commitment: requirements.workflow_commitment.clone(),
+                requirements_commitment: requirements.input_schema_commitment.clone(),
+                metadata_commitment: requirements.metadata_commitment.clone(),
                 payment_policy: requirements.payment_policy.clone(),
                 schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_hash: vec![],
+                capability_schema_commitment: vec![],
                 active: true,
             }],
             endpoints: vec![TapEndpointRevision {
-                agent_id: default_agent_id,
+                agent_id: default_agent,
                 skill_id: default_skill_id,
                 interface_revision: InterfaceRevision(1),
                 package_id: sui::types::Address::generate(&mut rng),
@@ -1477,19 +1475,18 @@ mod tests {
                 endpoint_object_digest: sui::types::Digest::generate(&mut rng).inner().to_vec(),
                 shared_objects: vec![TapSharedObjectRef::immutable(
                     sui::types::Address::generate(&mut rng),
-                    1,
                 )],
                 requirements: requirements.clone(),
                 config_digest: vec![9],
                 active_for_new_executions: true,
             }],
             active_endpoints: vec![TapEndpointActivation {
-                agent_id: default_agent_id,
+                agent_id: default_agent,
                 skill_id: default_skill_id,
                 interface_revision: InterfaceRevision(1),
             }],
             default_target: Some(TapDefaultExecutionTarget {
-                agent_id: default_agent_id,
+                agent_id: default_agent,
                 skill_id: default_skill_id,
             }),
         };
@@ -2089,7 +2086,7 @@ mod tests {
                 "tap_endpoint_object_id": { "vec": ["0xc"] },
                 "tap_payment_id": { "vec": [payment_id.to_string()] },
                 "tap_selected_dag_id": { "vec": ["0xe"] },
-                "tap_authorization_plan_hash": { "vec": [] },
+                "tap_authorization_plan_commitment": { "vec": [] },
                 "tap_authorization_plan": [],
                 "tap_scheduled_task_id": { "vec": [] },
                 "tap_scheduled_occurrence_index": { "vec": [] }

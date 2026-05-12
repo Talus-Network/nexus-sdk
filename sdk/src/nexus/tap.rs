@@ -16,7 +16,7 @@ use {
             resolve_active_tap_endpoint,
             resolve_active_tap_skill_execution_target,
             resolve_default_tap_execution_target,
-            Agent,
+            AgentId,
             InterfaceRevision,
             NexusObjects,
             SkillId,
@@ -58,12 +58,12 @@ pub struct TapActions {
     pub(super) client: NexusClient,
 }
 
-/// Result returned after creating a standard TAP agent.
+/// Result returned after creating a standard Talus agent.
 #[derive(Clone, Debug)]
 pub struct CreateAgentResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub agent_object: sui::types::ObjectReference,
 }
 
@@ -72,7 +72,7 @@ pub struct CreateAgentResult {
 pub struct RegisterSkillResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
 }
 
@@ -90,7 +90,7 @@ pub struct AnnounceEndpointRevisionResult {
 /// Result returned after resolving live skill requirements.
 #[derive(Clone, Debug)]
 pub struct GetSkillRequirementsResult {
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub active_endpoint_key: TapEndpointKey,
     pub requirements: TapSkillRequirements,
@@ -102,7 +102,7 @@ pub struct ScheduleSkillExecutionResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
     pub scheduled_task_id: sui::types::Address,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
 }
 
@@ -119,7 +119,7 @@ pub struct TapPaymentHistory {
 #[derive(Clone, Debug)]
 pub struct ScheduleSkillExecutionAddressFundedParams {
     pub scheduler_task: sui::types::ObjectReference,
-    pub agent_id: Agent,
+    pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub input_commitment: Vec<u8>,
     pub prepay_amount: u64,
@@ -127,10 +127,10 @@ pub struct ScheduleSkillExecutionAddressFundedParams {
     pub payment_source: Vec<u8>,
     pub occurrence_budget: u64,
     pub refund_mode: u8,
-    pub authorization_plan_hash: Option<Vec<u8>>,
+    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub schedule_policy: TapSchedulePolicy,
-    pub refill_policy_hash: Vec<u8>,
-    pub schedule_entries_hash: Vec<u8>,
+    pub refill_policy_commitment: Vec<u8>,
+    pub schedule_entries_commitment: Vec<u8>,
     pub first_after_ms: u64,
 }
 
@@ -229,7 +229,7 @@ impl TapActions {
             .iter()
             .find_map(|object| match object.object_type() {
                 sui::types::ObjectType::Struct(tag)
-                    if *tag.address() == nexus_objects.interface_pkg_id
+                    if *tag.address() == nexus_objects.registry_pkg_id()
                         && *tag.module() == TapStandard::CREATE_STANDARD_ENDPOINT.module
                         && *tag.name()
                             == sui::types::Identifier::from_static("StandardEndpoint") =>
@@ -284,11 +284,10 @@ impl TapActions {
         })
     }
 
-    /// Create a standard TAP agent through the configured TAP registry.
+    /// Create a standard Talus agent through the configured TAP registry.
     pub async fn create_agent(
         &self,
         operator: sui::types::Address,
-        metadata_hash: Vec<u8>,
     ) -> Result<CreateAgentResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
@@ -296,9 +295,19 @@ impl TapActions {
         let registry = tap_tx::tap_registry_arg(&mut tx, nexus_objects)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator, metadata_hash)
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
             .map_err(NexusError::TransactionBuilding)?;
-        tap_tx::share_agent(&mut tx, nexus_objects, agent);
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+                vec![crate::idents::tap::agent_type(
+                    nexus_objects.interface_pkg_id,
+                )],
+            ),
+            vec![agent],
+        );
 
         let response = self.submit_tap_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
@@ -321,7 +330,7 @@ impl TapActions {
                 .find_map(|object| match object.object_type() {
                     sui::types::ObjectType::Struct(tag)
                         if *tag.address() == nexus_objects.interface_pkg_id
-                            && *tag.module() == TapStandard::SHARE_AGENT.module
+                            && *tag.module() == crate::idents::tap::STANDARD_TAP_MODULE
                             && *tag.name() == sui::types::Identifier::from_static("Agent") =>
                     {
                         Some(sui::types::ObjectReference::new(
@@ -334,7 +343,7 @@ impl TapActions {
                 })
                 .ok_or_else(|| {
                     NexusError::Parsing(anyhow::anyhow!(
-                        "Created standard TAP Agent object not found in response"
+                        "Created standard Talus Agent object not found in response"
                     ))
                 })?,
         })
@@ -343,7 +352,7 @@ impl TapActions {
     /// Register a skill from a publish artifact.
     pub async fn register_skill(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         artifact: &TapPublishArtifact,
         endpoint_object_id: Option<sui::types::Address>,
     ) -> Result<RegisterSkillResult, NexusError> {
@@ -363,7 +372,7 @@ impl TapActions {
         let agent_object = self
             .client
             .crawler()
-            .get_object_metadata(agent_id.id())
+            .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -386,15 +395,15 @@ impl TapActions {
             agent,
             artifact.dag_id,
             artifact.tap_package_id,
-            artifact.requirements.workflow_hash.clone(),
-            artifact.requirements.input_schema_hash.clone(),
-            artifact.requirements.metadata_hash.clone(),
+            artifact.requirements.workflow_commitment.clone(),
+            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.metadata_commitment.clone(),
             artifact.requirements.payment_policy.clone(),
             artifact.requirements.schedule_policy.clone(),
             artifact
                 .requirements
                 .vertex_authorization_schema
-                .schema_hash
+                .schema_commitment
                 .clone(),
             *endpoint_object.object_id(),
             endpoint_object.version(),
@@ -427,7 +436,7 @@ impl TapActions {
     /// Fetch live skill requirements from the configured TAP registry.
     pub async fn get_skill_requirements(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
     ) -> Result<GetSkillRequirementsResult, NexusError> {
         let target = fetch_configured_active_tap_skill_execution_target(
@@ -451,7 +460,7 @@ impl TapActions {
     /// Announce a new endpoint revision for a registered TAP skill.
     pub async fn announce_endpoint_revision(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         artifact: &TapPublishArtifact,
         endpoint_object_id: Option<sui::types::Address>,
@@ -477,7 +486,7 @@ impl TapActions {
         let agent_object = self
             .client
             .crawler()
-            .get_object_metadata(agent_id.id())
+            .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -506,7 +515,7 @@ impl TapActions {
             artifact
                 .requirements
                 .vertex_authorization_schema
-                .schema_hash
+                .schema_commitment
                 .clone(),
             config_digest.clone(),
             active_for_new_executions,
@@ -542,14 +551,14 @@ impl TapActions {
     #[allow(clippy::too_many_arguments)]
     pub async fn schedule_skill_execution(
         &self,
-        agent_id: Agent,
+        agent_id: AgentId,
         skill_id: SkillId,
         long_term_gas_coin_id: sui::types::Address,
         input_commitment: Vec<u8>,
-        refill_policy_hash: Vec<u8>,
-        authorization_plan_hash: Option<Vec<u8>>,
+        refill_policy_commitment: Vec<u8>,
+        authorization_plan_commitment: Option<Vec<u8>>,
         schedule_policy: TapSchedulePolicy,
-        schedule_entries_hash: Vec<u8>,
+        schedule_entries_commitment: Vec<u8>,
         first_after_ms: u64,
     ) -> Result<ScheduleSkillExecutionResult, NexusError> {
         let address = self.client.signer.get_active_address();
@@ -557,7 +566,7 @@ impl TapActions {
         let agent_object = self
             .client
             .crawler()
-            .get_object_metadata(agent_id.id())
+            .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -578,10 +587,10 @@ impl TapActions {
             skill_id,
             input_commitment,
             long_term_gas_coin_id,
-            refill_policy_hash,
-            authorization_plan_hash,
+            refill_policy_commitment,
+            authorization_plan_commitment,
             schedule_policy,
-            schedule_entries_hash,
+            schedule_entries_commitment,
             first_after_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -629,7 +638,7 @@ impl TapActions {
         let agent_object = self
             .client
             .crawler()
-            .get_object_metadata(params.agent_id.id())
+            .get_object_metadata(params.agent_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -672,10 +681,10 @@ impl TapActions {
             params.payment_source,
             params.occurrence_budget,
             params.refund_mode,
-            params.authorization_plan_hash,
+            params.authorization_plan_commitment,
             params.schedule_policy,
-            params.refill_policy_hash,
-            params.schedule_entries_hash,
+            params.refill_policy_commitment,
+            params.schedule_entries_commitment,
             params.first_after_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -796,7 +805,7 @@ pub async fn fetch_tap_registry(
     let mut endpoints = Vec::new();
     let mut active_endpoints = Vec::new();
 
-    for (_agent_key, agent) in agent_records {
+    for (_, agent) in agent_records {
         let skill_records = crawler
             .get_dynamic_fields_bcs::<SkillId, TapSkillRecord>(agent.skills.id, agent.skills.size())
             .await?;
@@ -834,7 +843,7 @@ pub async fn fetch_tap_registry(
 pub async fn fetch_tap_endpoint(
     crawler: &Crawler,
     registry_id: sui::types::Address,
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
     interface_revision: InterfaceRevision,
 ) -> anyhow::Result<Response<TapEndpointRecord>> {
@@ -852,7 +861,7 @@ pub async fn fetch_tap_endpoint(
 pub async fn fetch_active_tap_endpoint(
     crawler: &Crawler,
     registry_id: sui::types::Address,
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<Response<TapEndpointRecord>> {
     let registry = fetch_tap_registry(crawler, registry_id).await?;
@@ -891,7 +900,7 @@ pub async fn fetch_configured_tap_registry(
 pub async fn fetch_configured_active_tap_endpoint(
     crawler: &Crawler,
     objects: &NexusObjects,
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<Response<TapEndpointRecord>> {
     fetch_active_tap_endpoint(
@@ -907,7 +916,7 @@ pub async fn fetch_configured_active_tap_endpoint(
 pub async fn fetch_configured_active_tap_skill_execution_target(
     crawler: &Crawler,
     objects: &NexusObjects,
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<Response<TapActiveSkillExecutionTarget>> {
     let registry = fetch_configured_tap_registry(crawler, objects).await?;
@@ -954,15 +963,15 @@ pub async fn fetch_wallet_execution_payment_receipts(
         .await
 }
 
-/// Fetch one vault-owned payment receipt stored under an `Agent`.
+/// Fetch one vault-owned payment receipt stored under a Talus agent.
 pub async fn fetch_agent_vault_execution_payment_receipt(
     crawler: &Crawler,
-    agent_id: Agent,
+    agent_id: AgentId,
     execution_id: sui::types::Address,
 ) -> anyhow::Result<Response<TapExecutionPaymentReceipt>> {
     crawler
         .get_dynamic_object_field::<TapExecutionPaymentReceiptFieldKey, TapExecutionPaymentReceipt>(
-            agent_id.id(),
+            agent_id,
             TapExecutionPaymentReceiptFieldKey { execution_id },
         )
         .await
@@ -976,13 +985,13 @@ pub async fn fetch_agent_vault_execution_payment_receipt(
 /// Fetch vault-owned execution IDs from an agent's unresolved/resolved history lists.
 pub async fn fetch_agent_execution_payment_history_ids(
     crawler: &Crawler,
-    agent_id: Agent,
+    agent_id: AgentId,
 ) -> anyhow::Result<(Vec<sui::types::Address>, Vec<sui::types::Address>)> {
     let mut fields = crawler
         .get_dynamic_object_fields::<
             TapExecutionPaymentHistoryFieldKey,
             TapExecutionPaymentHistoryList,
-        >(agent_id.id())
+        >(agent_id)
         .await?;
     let mut unresolved = Vec::new();
     let mut resolved = Vec::new();
@@ -1002,7 +1011,7 @@ pub async fn fetch_execution_payment_history(
     crawler: &Crawler,
     objects: &NexusObjects,
     owner: sui::types::Address,
-    agent_id: Option<Agent>,
+    agent_id: Option<AgentId>,
 ) -> anyhow::Result<TapPaymentHistory> {
     let wallet_receipts = fetch_wallet_execution_payment_receipts(crawler, objects, owner)
         .await?
@@ -1039,7 +1048,7 @@ pub async fn fetch_execution_payment_history(
     Ok(history)
 }
 
-/// Fetch a standard TAP agent payment vault object by object ID.
+/// Fetch a standard Talus agent payment vault object by object ID.
 pub async fn fetch_tap_agent_payment_vault(
     crawler: &Crawler,
     vault_id: sui::types::Address,
@@ -1047,14 +1056,14 @@ pub async fn fetch_tap_agent_payment_vault(
     crawler.get_object::<TapAgentPaymentVault>(vault_id).await
 }
 
-/// Fetch the standard TAP agent payment vault stored as a child of `Agent`.
+/// Fetch the standard Talus agent payment vault stored as a child of the agent object.
 pub async fn fetch_tap_agent_payment_vault_for_agent(
     crawler: &Crawler,
-    agent_id: Agent,
+    agent_id: AgentId,
 ) -> anyhow::Result<Response<TapAgentPaymentVault>> {
     crawler
         .get_dynamic_object_field::<TapAgentVaultFieldKey, TapAgentPaymentVault>(
-            agent_id.id(),
+            agent_id,
             TapAgentVaultFieldKey {},
         )
         .await
@@ -1133,7 +1142,7 @@ pub async fn resolve_current_tap_authorization_grant(
     crate::types::validate_authorization_plan(
         &endpoint.requirements,
         &context.authorization_plan,
-        context.authorization_plan_hash.as_deref(),
+        context.authorization_plan_commitment.as_deref(),
     )?;
     let Some(entry) = context.authorization_plan.find_for_vertex(vertex)? else {
         return Ok(None);
@@ -1156,7 +1165,7 @@ pub async fn fetch_tap_scheduled_skill_task(
 /// Resolve a fresh execution endpoint from already fetched records.
 pub fn resolve_active_endpoint_record(
     records: &[TapEndpointRecord],
-    agent_id: Agent,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> Result<&TapEndpointRecord, TapEndpointResolutionError> {
     resolve_active_tap_endpoint(records, agent_id, skill_id)
@@ -1215,7 +1224,7 @@ mod tests {
     fn endpoint(active: bool) -> TapEndpointRecord {
         TapEndpointRecord {
             key: TapEndpointKey {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(1),
             },
@@ -1227,13 +1236,12 @@ mod tests {
             ),
             shared_objects: vec![TapSharedObjectRef::immutable(
                 sui::types::Address::from_static("0xe"),
-                2,
             )],
             config_digest: vec![1],
             requirements: TapSkillRequirements {
-                input_schema_hash: vec![2],
-                workflow_hash: vec![3],
-                metadata_hash: vec![4],
+                input_schema_commitment: vec![2],
+                workflow_commitment: vec![3],
+                metadata_commitment: vec![4],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
                 vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
@@ -1260,12 +1268,12 @@ mod tests {
     }
 
     fn registry() -> TapRegistry {
-        let agent_id = Agent(sui::types::Address::from_static("0xa"));
+        let agent = sui::types::Address::from_static("0xa");
         let skill_id = 11;
         let requirements = TapSkillRequirements {
-            input_schema_hash: vec![2],
-            workflow_hash: vec![3],
-            metadata_hash: vec![4],
+            input_schema_commitment: vec![2],
+            workflow_commitment: vec![3],
+            metadata_commitment: vec![4],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
@@ -1274,32 +1282,31 @@ mod tests {
         TapRegistry {
             id: sui::types::Address::from_static("0xf"),
             agents: vec![TapAgentRecord {
-                agent_id,
+                agent_id: agent,
                 owner: sui::types::Address::from_static("0x1"),
                 operator: sui::types::Address::from_static("0x2"),
-                metadata_hash: vec![1],
                 active: true,
                 next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::from_static("0x90"), 1),
                 endpoints: MoveTable::new(sui::types::Address::from_static("0x91"), 1),
                 active_endpoints: vec![TapEndpointActivation {
-                    agent_id,
+                    agent_id: agent,
                     skill_id,
                     interface_revision: InterfaceRevision(2),
                 }],
             }],
             skills: vec![TapSkillRecord {
-                agent_id,
+                agent_id: agent,
                 skill_id,
                 dag_id: sui::types::Address::from_static("0x3"),
                 dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x3")),
                 tap_package_id: sui::types::Address::from_static("0xc"),
-                workflow_hash: requirements.workflow_hash.clone(),
-                requirements_hash: requirements.input_schema_hash.clone(),
-                metadata_hash: requirements.metadata_hash.clone(),
+                workflow_commitment: requirements.workflow_commitment.clone(),
+                requirements_commitment: requirements.input_schema_commitment.clone(),
+                metadata_commitment: requirements.metadata_commitment.clone(),
                 payment_policy: requirements.payment_policy.clone(),
                 schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_hash: vec![5],
+                capability_schema_commitment: vec![5],
                 active: true,
             }],
             endpoints: vec![
@@ -1310,11 +1317,14 @@ mod tests {
                 },
             ],
             active_endpoints: vec![TapEndpointActivation {
-                agent_id,
+                agent_id: agent,
                 skill_id,
                 interface_revision: InterfaceRevision(2),
             }],
-            default_target: Some(TapDefaultExecutionTarget { agent_id, skill_id }),
+            default_target: Some(TapDefaultExecutionTarget {
+                agent_id: agent,
+                skill_id,
+            }),
         }
     }
 
@@ -1394,7 +1404,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id.id(),
+                mock.agent_record.agent_id,
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1403,7 +1413,7 @@ mod tests {
             vec![(
                 mock.agent_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id.id(),
+                mock.agent_record.agent_id,
                 mock.agent_record,
             )],
         );
@@ -1454,8 +1464,8 @@ mod tests {
             tool_package: sui::types::Address::from_static("0xc"),
             tool_module: "tool".to_string(),
             tool_function: "run".to_string(),
-            operation_hash: vec![7],
-            constraints_hash: vec![8],
+            operation_commitment: vec![7],
+            constraints_commitment: vec![8],
             leader_assignment_id: Some(sui::types::Address::from_static("0x40")),
             endpoint_revision: Some(InterfaceRevision(1)),
             payment_id: Some(sui::types::Address::from_static("0x50")),
@@ -1467,7 +1477,7 @@ mod tests {
             id: entry.grant_id,
             grantor: sui::types::Address::from_static("0x1"),
             target_object_id: sui::types::Address::from_static("0x2"),
-            agent_id: Agent(sui::types::Address::from_static("0xa")),
+            agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
             walk_execution_id: sui::types::Address::from_static("0x60"),
             vertex_execution_id: sui::types::Address::from_static("0x70"),
@@ -1477,13 +1487,13 @@ mod tests {
             allowed_tool_package: entry.tool_package,
             allowed_tool_module: entry.tool_module.clone(),
             allowed_tool_function: entry.tool_function.clone(),
-            constraints_hash: entry.constraints_hash.clone(),
+            constraints_commitment: entry.constraints_commitment.clone(),
             expires_at_ms: 100,
             max_uses: 1,
             used: 0,
             revoked: false,
             payment_required: true,
-            operation_hash: entry.operation_hash.clone(),
+            operation_commitment: entry.operation_commitment.clone(),
         }
     }
 
@@ -1498,7 +1508,7 @@ mod tests {
             package_id: entry.tool_package,
             module: entry.tool_module.clone(),
             function: entry.tool_function.clone(),
-            operation_hash: entry.operation_hash.clone(),
+            operation_commitment: entry.operation_commitment.clone(),
         }];
         let context = events::RequestWalkStandardTapContext {
             agent_id: endpoint.key.agent_id,
@@ -1507,7 +1517,7 @@ mod tests {
             endpoint_object_id: *endpoint.endpoint_object.object_id(),
             payment_id: entry.payment_id.unwrap(),
             selected_dag_id: sui::types::Address::from_static("0x80"),
-            authorization_plan_hash: None,
+            authorization_plan_commitment: None,
             authorization_plan: Default::default(),
             scheduled_task_id: None,
             scheduled_occurrence_index: None,
@@ -1585,7 +1595,7 @@ mod tests {
             endpoint_object_id: *endpoint.endpoint_object.object_id(),
             payment_id: entry.payment_id.unwrap(),
             selected_dag_id: sui::types::Address::from_static("0x80"),
-            authorization_plan_hash: None,
+            authorization_plan_commitment: None,
             authorization_plan: crate::types::TapVertexAuthorizationPlan(vec![entry.clone()]),
             scheduled_task_id: None,
             scheduled_occurrence_index: None,
@@ -1601,7 +1611,7 @@ mod tests {
                 "id": entry.grant_id.to_string(),
                 "grantor": grant.grantor.to_string(),
                 "target_object_id": grant.target_object_id.to_string(),
-                "agent_id": grant.agent_id.id().to_string(),
+                "agent_id": grant.agent_id.to_string(),
                 "skill_id": grant.skill_id.to_string(),
                 "walk_execution_id": grant.walk_execution_id.to_string(),
                 "vertex_execution_id": grant.vertex_execution_id.to_string(),
@@ -1611,8 +1621,8 @@ mod tests {
                 "allowed_tool_package": entry.tool_package.to_string(),
                 "allowed_tool_module": [116, 111, 111, 108],
                 "allowed_tool_function": [114, 117, 110],
-                "operation_hash": entry.operation_hash,
-                "constraints_hash": entry.constraints_hash,
+                "operation_commitment": entry.operation_commitment,
+                "constraints_commitment": entry.constraints_commitment,
                 "expires_at_ms": grant.expires_at_ms.to_string(),
                 "max_uses": grant.max_uses.to_string(),
                 "used": grant.used.to_string(),
@@ -1645,12 +1655,9 @@ mod tests {
     #[test]
     fn resolve_active_endpoint_record_reuses_sdk_fail_closed_rule() {
         let records = vec![endpoint(false), endpoint(true)];
-        let resolved = resolve_active_endpoint_record(
-            &records,
-            Agent(sui::types::Address::from_static("0xa")),
-            11,
-        )
-        .expect("one active endpoint");
+        let resolved =
+            resolve_active_endpoint_record(&records, sui::types::Address::from_static("0xa"), 11)
+                .expect("one active endpoint");
 
         assert!(resolved.active_for_new_executions);
     }
@@ -1665,7 +1672,7 @@ mod tests {
         assert!(records[1].active_for_new_executions);
 
         let resolved = registry
-            .active_endpoint_record(Agent(sui::types::Address::from_static("0xa")), 11)
+            .active_endpoint_record(sui::types::Address::from_static("0xa"), 11)
             .expect("active endpoint");
 
         assert_eq!(resolved.key.interface_revision, InterfaceRevision(2));
@@ -1676,7 +1683,7 @@ mod tests {
         let registry = registry();
         let target = resolve_active_tap_skill_execution_target(
             &registry,
-            Agent(sui::types::Address::from_static("0xa")),
+            sui::types::Address::from_static("0xa"),
             11,
         )
         .expect("active skill target");
@@ -1693,7 +1700,7 @@ mod tests {
     fn configured_default_target_reads_nexus_objects_metadata() {
         let objects = NexusObjects {
             default_tap_target: Some(TapDefaultExecutionTarget {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             }),
             ..crate::test_utils::sui_mocks::mock_nexus_objects()
@@ -1702,7 +1709,7 @@ mod tests {
         assert_eq!(
             configured_default_tap_target(&objects).expect("configured default target"),
             TapDefaultExecutionTarget {
-                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             }
         );
@@ -1750,7 +1757,7 @@ mod tests {
                 sui::types::MoveStruct::new(
                     sui::types::StructTag::new(
                         nexus_objects.interface_pkg_id,
-                        TapStandard::SHARE_AGENT.module,
+                        crate::idents::tap::STANDARD_TAP_MODULE,
                         sui::types::Identifier::from_static("Agent"),
                         vec![],
                     ),
@@ -1784,11 +1791,10 @@ mod tests {
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: events::AgentCreatedEvent {
-                        agent_id: Agent(sui::types::Address::from_static("0xa")),
+                        agent_id: sui::types::Address::from_static("0xa"),
                         vault_id: sui::types::Address::from_static("0xb"),
                         owner: sui::types::Address::from_static("0x1"),
                         operator: sui::types::Address::from_static("0x2"),
-                        metadata_hash: vec![1, 2, 3],
                     },
                 })
                 .unwrap(),
@@ -1805,14 +1811,11 @@ mod tests {
 
         let result = client
             .tap()
-            .create_agent(sui::types::Address::from_static("0x2"), vec![1, 2, 3])
+            .create_agent(sui::types::Address::from_static("0x2"))
             .await
             .expect("create agent succeeds");
 
-        assert_eq!(
-            result.agent_id,
-            Agent(sui::types::Address::from_static("0xa"))
-        );
+        assert_eq!(result.agent_id, sui::types::Address::from_static("0xa"));
         assert_eq!(
             result.agent_object.object_id(),
             &sui::types::Address::from_static("0xa")
@@ -1850,7 +1853,7 @@ mod tests {
 
         let result = client
             .tap()
-            .get_skill_requirements(Agent(sui::types::Address::from_static("0xa")), 11)
+            .get_skill_requirements(sui::types::Address::from_static("0xa"), 11)
             .await
             .expect("requirements fetch succeeds");
 
@@ -1858,6 +1861,6 @@ mod tests {
             result.active_endpoint_key.interface_revision,
             InterfaceRevision(2)
         );
-        assert_eq!(result.requirements.workflow_hash, vec![3]);
+        assert_eq!(result.requirements.workflow_commitment, vec![3]);
     }
 }

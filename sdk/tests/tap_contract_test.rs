@@ -13,7 +13,6 @@ use {
         transactions::tap as tap_tx,
         types::{
             resolve_active_tap_endpoint,
-            Agent,
             InterfaceRevision,
             MoveTable,
             NexusObjects,
@@ -69,7 +68,7 @@ fn nexus_objects() -> NexusObjects {
         network_auth: object_ref("0x8", 1, 8),
         tap_registry: Some(object_ref("0xc", 1, 12)),
         default_tap_target: Some(TapDefaultExecutionTarget {
-            agent_id: Agent(addr("0xa1")),
+            agent_id: addr("0xa1"),
             skill_id: 177,
         }),
         gas_service: object_ref("0xd", 1, 13),
@@ -81,13 +80,13 @@ fn nexus_objects() -> NexusObjects {
 
 fn requirements() -> TapSkillRequirements {
     TapSkillRequirements {
-        input_schema_hash: vec![1],
-        workflow_hash: vec![2],
-        metadata_hash: vec![3],
+        input_schema_commitment: vec![1],
+        workflow_commitment: vec![2],
+        metadata_commitment: vec![3],
         payment_policy: TapPaymentPolicy {
             mode: TapPaymentMode::UserFunded,
             max_budget: 100,
-            token_type_hash: Vec::new(),
+            token_type_commitment: Vec::new(),
             refund_mode: 0,
         },
         schedule_policy: TapSchedulePolicy::default(),
@@ -102,13 +101,13 @@ fn demo_tap_package_path() -> PathBuf {
 fn endpoint(revision: u64, active: bool) -> TapEndpointRecord {
     TapEndpointRecord {
         key: TapEndpointKey {
-            agent_id: Agent(addr("0xa1")),
+            agent_id: addr("0xa1"),
             skill_id: 177,
             interface_revision: InterfaceRevision(revision),
         },
         package_id: addr("0xc1"),
         endpoint_object: object_ref("0xd1", revision, revision as u8),
-        shared_objects: vec![TapSharedObjectRef::immutable(addr("0xe1"), 9)],
+        shared_objects: vec![TapSharedObjectRef::immutable(addr("0xe1"))],
         config_digest: vec![8],
         requirements: requirements(),
         active_for_new_executions: active,
@@ -134,7 +133,7 @@ fn endpoint_revision(revision: u64, active: bool) -> TapEndpointRevision {
 }
 
 fn registry_with_active_revision(active_revision: u64) -> TapRegistry {
-    let agent_id = Agent(addr("0xa1"));
+    let agent_id = addr("0xa1");
     let skill_id = 177;
     let requirements = requirements();
 
@@ -144,7 +143,6 @@ fn registry_with_active_revision(active_revision: u64) -> TapRegistry {
             agent_id,
             owner: addr("0x92"),
             operator: addr("0x93"),
-            metadata_hash: vec![1],
             active: true,
             next_skill_index: 1,
             skills: MoveTable::new(addr("0x95"), 1),
@@ -161,12 +159,12 @@ fn registry_with_active_revision(active_revision: u64) -> TapRegistry {
             dag_id: addr("0x94"),
             dag_binding: TapDagBinding::pinned(addr("0x94")),
             tap_package_id: addr("0xc1"),
-            workflow_hash: requirements.workflow_hash.clone(),
-            requirements_hash: requirements.input_schema_hash.clone(),
-            metadata_hash: requirements.metadata_hash.clone(),
+            workflow_commitment: requirements.workflow_commitment.clone(),
+            requirements_commitment: requirements.input_schema_commitment.clone(),
+            metadata_commitment: requirements.metadata_commitment.clone(),
             payment_policy: requirements.payment_policy.clone(),
             schedule_policy: requirements.schedule_policy.clone(),
-            capability_schema_hash: vec![5],
+            capability_schema_commitment: vec![5],
             active: true,
         }],
         endpoints: vec![endpoint_revision(1, true), endpoint_revision(2, false)],
@@ -245,14 +243,14 @@ fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::type
 #[test]
 fn active_endpoint_resolution_requires_exactly_one_active_revision() {
     let records = vec![endpoint(0, false), endpoint(1, true)];
-    let resolved = resolve_active_tap_endpoint(&records, Agent(addr("0xa1")), 177)
-        .expect("one active endpoint");
+    let resolved =
+        resolve_active_tap_endpoint(&records, addr("0xa1"), 177).expect("one active endpoint");
 
     assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
 
     let duplicate = vec![endpoint(1, true), endpoint(2, true)];
     assert!(matches!(
-        resolve_active_tap_endpoint(&duplicate, Agent(addr("0xa1")), 177),
+        resolve_active_tap_endpoint(&duplicate, addr("0xa1"), 177),
         Err(TapEndpointResolutionError::DuplicateActiveRevision { count: 2, .. })
     ));
 }
@@ -263,7 +261,7 @@ fn registry_recovery_uses_tap_registry_activation_layout() {
     let bytes = bcs::to_bytes(&registry).expect("registry BCS");
     let registry: TapRegistry = bcs::from_bytes(&bytes).expect("registry layout decodes");
     let active = registry
-        .active_endpoint_record(Agent(addr("0xa1")), 177)
+        .active_endpoint_record(addr("0xa1"), 177)
         .expect("active registry endpoint");
 
     assert_eq!(active.key.interface_revision, InterfaceRevision(2));
@@ -278,7 +276,7 @@ fn registry_recovery_uses_tap_registry_activation_layout() {
 
     let pinned = registry
         .endpoint_record(TapEndpointKey {
-            agent_id: Agent(addr("0xa1")),
+            agent_id: addr("0xa1"),
             skill_id: 177,
             interface_revision: InterfaceRevision(1),
         })
@@ -296,7 +294,7 @@ fn nexus_objects_carries_tap_registry_metadata() {
     assert_eq!(
         objects.default_tap_target(),
         Some(TapDefaultExecutionTarget {
-            agent_id: Agent(addr("0xa1")),
+            agent_id: addr("0xa1"),
             skill_id: 177,
         })
     );
@@ -344,7 +342,7 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
         tap_endpoint_object_id: None,
         tap_payment_id: None,
         tap_selected_dag_id: None,
-        tap_authorization_plan_hash: None,
+        tap_authorization_plan_commitment: None,
         tap_authorization_plan: Vec::new(),
         tap_scheduled_task_id: None,
         tap_scheduled_occurrence_index: None,
@@ -357,13 +355,13 @@ fn request_walk_standard_tap_context_is_all_or_none() {
     assert!(legacy.standard_tap_context().unwrap().is_none());
 
     let complete = RequestWalkExecutionEvent {
-        tap_agent_id: Some(Agent(addr("0xa1"))),
+        tap_agent_id: Some(addr("0xa1")),
         tap_skill_id: Some(177),
         tap_interface_revision: Some(InterfaceRevision(7)),
         tap_endpoint_object_id: Some(addr("0xc1")),
         tap_payment_id: Some(addr("0xd1")),
         tap_selected_dag_id: Some(addr("0x51")),
-        tap_authorization_plan_hash: Some(vec![1, 2, 3]),
+        tap_authorization_plan_commitment: Some(vec![1, 2, 3]),
         ..legacy.clone()
     };
     let context = complete
@@ -371,17 +369,17 @@ fn request_walk_standard_tap_context_is_all_or_none() {
         .expect("complete context should parse")
         .expect("standard context should be present");
 
-    assert_eq!(context.agent_id, Agent(addr("0xa1")));
+    assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
     assert_eq!(context.interface_revision, InterfaceRevision(7));
     assert_eq!(context.endpoint_object_id, addr("0xc1"));
     assert_eq!(context.payment_id, addr("0xd1"));
     assert_eq!(context.selected_dag_id, addr("0x51"));
-    assert_eq!(context.authorization_plan_hash, Some(vec![1, 2, 3]));
+    assert_eq!(context.authorization_plan_commitment, Some(vec![1, 2, 3]));
     assert!(context.authorization_plan.is_empty());
 
     let partial = RequestWalkExecutionEvent {
-        tap_agent_id: Some(Agent(addr("0xa1"))),
+        tap_agent_id: Some(addr("0xa1")),
         ..legacy
     };
     let error = partial
@@ -407,7 +405,7 @@ fn request_walk_standard_tap_context_deserializes_move_option_fields() {
         "tap_endpoint_object_id": { "vec": ["0xc1"] },
         "tap_payment_id": { "vec": ["0xd1"] },
         "tap_selected_dag_id": { "vec": ["0x51"] },
-        "tap_authorization_plan_hash": { "vec": [[1, 2, 3]] },
+        "tap_authorization_plan_commitment": { "vec": [[1, 2, 3]] },
     }))
     .expect("event should deserialize");
 
@@ -416,13 +414,13 @@ fn request_walk_standard_tap_context_deserializes_move_option_fields() {
         .expect("complete context should parse")
         .expect("standard context should be present");
 
-    assert_eq!(context.agent_id, Agent(addr("0xa1")));
+    assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
     assert_eq!(context.interface_revision, InterfaceRevision(7));
     assert_eq!(context.endpoint_object_id, addr("0xc1"));
     assert_eq!(context.payment_id, addr("0xd1"));
     assert_eq!(context.selected_dag_id, addr("0x51"));
-    assert_eq!(context.authorization_plan_hash, Some(vec![1, 2, 3]));
+    assert_eq!(context.authorization_plan_commitment, Some(vec![1, 2, 3]));
     assert!(context.authorization_plan.is_empty());
 }
 
@@ -449,8 +447,8 @@ fn request_walk_standard_tap_context_deserializes_authorization_plan() {
             "tool_package": "0xf1",
             "tool_module": [116, 111, 111, 108],
             "tool_function": [114, 117, 110],
-            "operation_hash": [1],
-            "constraints_hash": [2],
+            "operation_commitment": [1],
+            "constraints_commitment": [2],
             "leader_assignment_id": { "vec": ["0x61"] },
             "endpoint_revision": { "vec": [{ "value": "7" }] },
             "payment_id": { "vec": ["0xd1"] }
@@ -476,7 +474,7 @@ fn config_digest_and_publish_artifact_are_deterministic() {
         dag_path: PathBuf::from("dag.json"),
         tap_package_path: PathBuf::from("tap"),
         requirements: requirements(),
-        shared_objects: vec![TapSharedObjectRef::mutable(addr("0x21"), 5)],
+        shared_objects: vec![TapSharedObjectRef::mutable(addr("0x21"))],
         interface_revision: InterfaceRevision(3),
         active_for_new_executions: true,
     };
@@ -522,7 +520,7 @@ fn registry_default_target_requires_runtime_selected_binding() {
     let resolved = nexus_sdk::types::resolve_default_tap_execution_target(&registry)
         .expect("runtime-selected binding resolves default target");
 
-    assert_eq!(resolved.target.agent_id, Agent(addr("0xa1")));
+    assert_eq!(resolved.target.agent_id, addr("0xa1"));
     assert_eq!(resolved.target.skill_id, 177);
     assert_eq!(resolved.skill.dag_binding, TapDagBinding::RuntimeSelected);
 }
@@ -552,7 +550,7 @@ fn tap_execution_payment_model_matches_live_object_shape() {
 
     assert_eq!(payment.payment_id(), addr("0xaa"));
     assert_eq!(payment.execution_id, addr("0xbb"));
-    assert_eq!(payment.endpoint_key().agent_id, Agent(addr("0xcc")));
+    assert_eq!(payment.endpoint_key().agent_id, addr("0xcc"));
     assert_eq!(payment.endpoint_key().skill_id, 221);
     assert_eq!(
         payment.endpoint_key().interface_revision,
@@ -572,7 +570,7 @@ fn tap_execution_payment_model_matches_live_object_shape() {
 
 #[test]
 fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
-    let agent_id = Agent(addr("0xa"));
+    let agent_id = addr("0xa");
     let payer = addr("0x1");
     let invoker_source =
         nexus_sdk::types::tap_payment_source_for_invoker(payer).expect("invoker source");
@@ -586,7 +584,7 @@ fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
     assert_eq!(decoded_invoker.kind, TapPaymentSourceKind::Invoker);
     assert_eq!(decoded_invoker.identity, payer);
     assert_eq!(decoded_vault.kind, TapPaymentSourceKind::AgentVault);
-    assert_eq!(decoded_vault.identity, agent_id.id());
+    assert_eq!(decoded_vault.identity, agent_id);
 
     assert!(
         nexus_sdk::types::validate_standard_tap_payment_options(
@@ -630,8 +628,8 @@ fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
         "typed agent-vault sources are not accepted by the direct Move agent-funded policy"
     );
 
-    let agent_address_source = nexus_sdk::types::tap_payment_source_for_address(agent_id.id())
-        .expect("agent address source");
+    let agent_address_source =
+        nexus_sdk::types::tap_payment_source_for_address(agent_id).expect("agent address source");
     nexus_sdk::types::validate_standard_tap_payment_options(
         agent_id,
         &agent_funded,
@@ -691,17 +689,16 @@ fn transaction_builders_select_standard_tap_functions() {
         &objects,
         registry,
         addr("0xa2"),
-        vec![9],
         addr("0xe2"),
+        vec![9],
         vec![8],
-        vec![7],
         requirements().payment_policy.clone(),
         requirements().schedule_policy.clone(),
         vec![6],
         addr("0xf2"),
         1,
         vec![5],
-        vec![TapSharedObjectRef::immutable(addr("0x32"), 10)],
+        vec![TapSharedObjectRef::immutable(addr("0x32"))],
         vec![4],
         true,
     )
@@ -742,7 +739,7 @@ fn transaction_builders_select_standard_tap_functions() {
         addr("0xf1"),
         1,
         vec![5],
-        vec![TapSharedObjectRef::immutable(addr("0x31"), 9)],
+        vec![TapSharedObjectRef::immutable(addr("0x31"))],
         vec![6],
         true,
     )
@@ -799,7 +796,7 @@ fn transaction_builders_select_standard_tap_functions() {
 #[test]
 fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
     let objects = nexus_objects();
-    let agent_id = Agent(addr("0xa5"));
+    let agent_id = addr("0xa5");
     let skill_id = 181;
     let dag_id = addr("0xd5");
     let tap_package_id = addr("0xe5");
@@ -811,7 +808,7 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
         dag_path: PathBuf::from("demo-dag.json"),
         tap_package_path: demo_tap_package_path(),
         requirements: requirements(),
-        shared_objects: vec![TapSharedObjectRef::immutable(addr("0x31"), 9)],
+        shared_objects: vec![TapSharedObjectRef::immutable(addr("0x31"))],
         interface_revision: InterfaceRevision(1),
         active_for_new_executions: true,
     };
@@ -832,27 +829,26 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
     tap_tx::share_standard_endpoint(&mut tx, &objects, endpoint);
 
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
-    tap_tx::create_agent(&mut tx, &objects, registry, addr("0x91"), vec![1, 2, 3])
-        .expect("create agent");
+    tap_tx::create_agent(&mut tx, &objects, registry, addr("0x91")).expect("create agent");
 
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
-    let agent = tx.input(sui::tx::Input::shared(agent_id.id(), 1, true));
+    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, true));
     tap_tx::register_skill(
         &mut tx,
         &objects,
         registry,
-        agent,
+        agent_object,
         artifact.dag_id,
         artifact.tap_package_id,
-        artifact.requirements.workflow_hash.clone(),
-        artifact.requirements.input_schema_hash.clone(),
-        artifact.requirements.metadata_hash.clone(),
+        artifact.requirements.workflow_commitment.clone(),
+        artifact.requirements.input_schema_commitment.clone(),
+        artifact.requirements.metadata_commitment.clone(),
         artifact.requirements.payment_policy.clone(),
         artifact.requirements.schedule_policy.clone(),
         artifact
             .requirements
             .vertex_authorization_schema
-            .schema_hash
+            .schema_commitment
             .clone(),
         endpoint_object_id,
         artifact.endpoint_object_version.expect("endpoint version"),
@@ -866,15 +862,14 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
     )
     .expect("register skill");
 
-    let agent = tx.input(sui::tx::Input::shared(agent_id.id(), 1, true));
+    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, true));
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
     let payment_input =
         tap_tx::AgentSkillPaymentInput::agent_vault_source(agent_id, skill_id, 50, 0)
             .expect("agent-funded direct payment source");
     assert_eq!(
         payment_input.source,
-        nexus_sdk::types::tap_payment_source_for_address(agent_id.id())
-            .expect("agent address source")
+        nexus_sdk::types::tap_payment_source_for_address(agent_id).expect("agent address source")
     );
 
     let payment_amount = tx.input(pure_arg(&50_u64).unwrap());
@@ -886,7 +881,7 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
         &mut tx,
         &objects,
         registry,
-        agent,
+        agent_object,
         payment_coin,
         addr("0x99"),
         payment_input,
@@ -898,7 +893,7 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
         &mut tx,
         &objects,
         registry,
-        agent,
+        agent_object,
         skill_id,
         b"demo-input-commitment".to_vec(),
         payment_id,
@@ -964,7 +959,7 @@ fn agent_payment_vault_builders_target_standard_tap_functions() {
 
 #[test]
 fn demo_tap_publish_artifact_resolves_registered_execution_target() {
-    let agent_id = Agent(addr("0xa5"));
+    let agent_id = addr("0xa5");
     let skill_id = 181;
     let dag_id = addr("0xd5");
     let tap_package_id = addr("0xe5");
@@ -975,7 +970,7 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
         dag_path: PathBuf::from("demo-dag.json"),
         tap_package_path: demo_tap_package_path(),
         requirements: requirements(),
-        shared_objects: vec![TapSharedObjectRef::immutable(addr("0x31"), 9)],
+        shared_objects: vec![TapSharedObjectRef::immutable(addr("0x31"))],
         interface_revision: InterfaceRevision(1),
         active_for_new_executions: true,
     };
@@ -995,7 +990,6 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
             agent_id,
             owner: addr("0x92"),
             operator: addr("0x93"),
-            metadata_hash: vec![1],
             active: true,
             next_skill_index: 1,
             skills: MoveTable::new(addr("0x95"), 1),
@@ -1012,15 +1006,15 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
             dag_id,
             dag_binding: TapDagBinding::pinned(dag_id),
             tap_package_id,
-            workflow_hash: artifact.requirements.workflow_hash.clone(),
-            requirements_hash: artifact.requirements.input_schema_hash.clone(),
-            metadata_hash: artifact.requirements.metadata_hash.clone(),
+            workflow_commitment: artifact.requirements.workflow_commitment.clone(),
+            requirements_commitment: artifact.requirements.input_schema_commitment.clone(),
+            metadata_commitment: artifact.requirements.metadata_commitment.clone(),
             payment_policy: artifact.requirements.payment_policy.clone(),
             schedule_policy: artifact.requirements.schedule_policy.clone(),
-            capability_schema_hash: artifact
+            capability_schema_commitment: artifact
                 .requirements
                 .vertex_authorization_schema
-                .schema_hash
+                .schema_commitment
                 .clone(),
             active: true,
         }],
@@ -1055,8 +1049,8 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
     assert_eq!(target.endpoint.endpoint_object, endpoint_object);
     assert_eq!(target.endpoint.config_digest, endpoint_config_digest);
     assert_eq!(
-        target.endpoint.requirements.workflow_hash,
-        artifact.requirements.workflow_hash
+        target.endpoint.requirements.workflow_commitment,
+        artifact.requirements.workflow_commitment
     );
 }
 
@@ -1076,7 +1070,7 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name
+        TapStandard::WORKFLOW_WORKSHEET.name
     );
     assert_eq!(
         move_call(&tx, 1).function,

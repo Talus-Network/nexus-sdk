@@ -430,9 +430,7 @@ mod tests {
         );
         assert_eq!(
             objects.default_tap_target().map(|target| target.agent_id),
-            Some(nexus_sdk::types::Agent(sui::types::Address::from_static(
-                "0xa1"
-            )))
+            Some(sui::types::Address::from_static("0xa1"))
         );
         assert_eq!(
             objects.default_tap_target().map(|target| target.skill_id),

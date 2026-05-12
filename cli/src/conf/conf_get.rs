@@ -45,7 +45,7 @@ mod tests {
             sui: sui_conf.clone(),
             nexus: Some(nexus_objects.clone()),
             tools: tools.clone(),
-            tap_agents: HashMap::new(),
+            agents: HashMap::new(),
             secrets: SecretsConf::default(),
             data_storage: data_storage_conf.clone(),
         };
