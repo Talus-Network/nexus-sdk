@@ -1808,6 +1808,190 @@ public struct WeatherSkill has drop {}
     }
 
     #[test]
+    fn resolve_relative_returns_absolute_paths_unchanged() {
+        let absolute = std::env::current_dir().unwrap().join("tap");
+        let resolved = resolve_relative(&PathBuf::from("/tmp/skill.tap.json"), absolute.clone());
+
+        assert_eq!(resolved, absolute);
+    }
+
+    #[test]
+    fn validate_tap_package_manifest_rejects_unreadable_and_invalid_inputs() {
+        let tempdir = tempfile::tempdir().unwrap().keep();
+        let config = TapSkillConfig {
+            name: "weather skill".to_string(),
+            tap_package_name: "weather_skill".to_string(),
+            dag_path: PathBuf::from("dag.json"),
+            tap_package_path: PathBuf::from("tap"),
+            requirements: TapSkillRequirements::default(),
+            shared_objects: Vec::new(),
+            interface_revision: InterfaceRevision(1),
+            active_for_new_executions: true,
+        };
+
+        let missing = tempdir.join("missing/Move.toml");
+        let error = validate_tap_package_manifest(&missing, &config).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to read TAP package manifest"),
+            "unexpected error: {error}"
+        );
+
+        let invalid = tempdir.join("invalid.toml");
+        std::fs::write(&invalid, "[package\n").unwrap();
+        let error = validate_tap_package_manifest(&invalid, &config).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse TAP package manifest"),
+            "unexpected error: {error}"
+        );
+
+        let no_package_name = tempdir.join("no-name.toml");
+        std::fs::write(&no_package_name, "[package]\n[addresses]\nweather_skill = \"0x0\"\n")
+            .unwrap();
+        let error = validate_tap_package_manifest(&no_package_name, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("missing [package].name"),
+            "unexpected error: {error}"
+        );
+
+        let no_addresses = tempdir.join("no-addresses.toml");
+        std::fs::write(&no_addresses, "[package]\nname = \"weather_skill\"\n").unwrap();
+        let error = validate_tap_package_manifest(&no_addresses, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("missing [addresses]"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn collect_and_validate_tap_package_sources_cover_directory_edges() {
+        let tempdir = tempfile::tempdir().unwrap().keep();
+        let config = TapSkillConfig {
+            name: "weather skill".to_string(),
+            tap_package_name: "weather_skill".to_string(),
+            dag_path: PathBuf::from("dag.json"),
+            tap_package_path: PathBuf::from("tap"),
+            requirements: TapSkillRequirements::default(),
+            shared_objects: Vec::new(),
+            interface_revision: InterfaceRevision(1),
+            active_for_new_executions: true,
+        };
+
+        let missing_root = tempdir.join("missing");
+        let error = collect_move_source_files(&missing_root).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to read source directory"),
+            "unexpected error: {error}"
+        );
+
+        let tap_package = tempdir.join("tap");
+        let error = validate_tap_package_sources(&tap_package, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("does not exist"),
+            "unexpected error: {error}"
+        );
+
+        let sources = tap_package.join("sources");
+        std::fs::create_dir_all(sources.join("nested")).unwrap();
+        std::fs::write(sources.join("README.md"), "not move").unwrap();
+        let error = validate_tap_package_sources(&tap_package, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("has no Move source files"),
+            "unexpected error: {error}"
+        );
+
+        std::fs::write(
+            sources.join("nested").join("weather.move"),
+            "module weather_skill::weather;\n",
+        )
+        .unwrap();
+        let files = collect_move_source_files(&sources).unwrap();
+        assert!(files
+            .iter()
+            .any(|path| path.ends_with("nested/weather.move")));
+        validate_tap_package_sources(&tap_package, &config).unwrap();
+    }
+
+    #[tokio::test]
+    async fn read_artifact_and_agent_alias_helpers_cover_success_and_errors() {
+        let tempdir = tempfile::tempdir().unwrap().keep();
+        let artifact_path = tempdir.join("artifact.json");
+        let config = TapSkillConfig {
+            name: "weather skill".to_string(),
+            tap_package_name: "weather_skill".to_string(),
+            dag_path: PathBuf::from("dag.json"),
+            tap_package_path: PathBuf::from("tap"),
+            requirements: TapSkillRequirements {
+                input_schema_hash: vec![1],
+                workflow_hash: vec![2],
+                metadata_hash: vec![3],
+                payment_policy: TapPaymentPolicy::default(),
+                schedule_policy: TapSchedulePolicy::default(),
+                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            },
+            shared_objects: Vec::new(),
+            interface_revision: InterfaceRevision(1),
+            active_for_new_executions: true,
+        };
+        let artifact = TapPublishArtifact::from_config(
+            &config,
+            sui::types::Address::from_static("0xd"),
+            sui::types::Address::from_static("0xe"),
+        )
+        .unwrap();
+        tokio::fs::write(&artifact_path, serde_json::to_string(&artifact).unwrap())
+            .await
+            .unwrap();
+
+        let parsed = read_artifact(artifact_path.clone()).await.unwrap();
+        assert_eq!(parsed.skill_name, "weather skill");
+
+        tokio::fs::write(&artifact_path, "{").await.unwrap();
+        let error = read_artifact(artifact_path).await.unwrap_err();
+        assert!(
+            error.to_string().contains("EOF while parsing"),
+            "unexpected error: {error}"
+        );
+
+        let missing = read_artifact(tempdir.join("missing.json"))
+            .await
+            .unwrap_err();
+        assert!(
+            missing.to_string().contains("No such file")
+                || missing.to_string().contains("not found"),
+            "unexpected error: {missing}"
+        );
+
+        let mut conf = CliConf::default();
+        conf.tap_agents.insert(
+            "primary".to_string(),
+            sui::types::Address::from_static("0xa"),
+        );
+        assert_eq!(
+            agent_id_from_alias_or_arg(&conf, None, Some(sui::types::Address::from_static("0xb")))
+                .unwrap(),
+            Agent(sui::types::Address::from_static("0xb"))
+        );
+        assert_eq!(
+            agent_id_from_alias_or_arg(&conf, Some("primary".to_string()), None).unwrap(),
+            Agent(sui::types::Address::from_static("0xa"))
+        );
+        assert!(agent_id_from_alias_or_arg(&conf, Some("missing".to_string()), None)
+            .unwrap_err()
+            .to_string()
+            .contains("No TAP agent alias"));
+        assert!(agent_id_from_alias_or_arg(&conf, None, None)
+            .unwrap_err()
+            .to_string()
+            .contains("provide either"));
+    }
+
+    #[test]
     fn standard_execute_options_decode_payment_and_authorization_args() {
         let options = standard_execute_options_from_cli(
             "0x0102".to_string(),

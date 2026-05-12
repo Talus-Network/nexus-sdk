@@ -1908,4 +1908,350 @@ mod tests {
         assert_eq!(call.function, TapStandard::REGISTER_SKILL.name);
         assert_eq!(call.arguments.len(), 16);
     }
+
+    #[test]
+    fn payment_and_vault_builders_target_standard_tap_functions() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tap_registry_arg(&mut tx, &objects).expect("registry");
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            true,
+        ));
+        let payment_coin = tx.input(pure_arg(&9_u64).unwrap());
+        let vault_coin = tx.input(pure_arg(&10_u64).unwrap());
+
+        let invoker_input = AgentSkillPaymentInput::invoker_source(
+            Agent(sui::types::Address::from_static("0xa")),
+            11,
+            sui::types::Address::from_static("0x1"),
+            100,
+            0,
+        )
+        .expect("invoker source");
+        assert_eq!(invoker_input.skill_id, 11);
+        let vault_input = AgentSkillPaymentInput::agent_vault_source(
+            Agent(sui::types::Address::from_static("0xa")),
+            12,
+            101,
+            1,
+        )
+        .expect("agent vault source");
+        assert_eq!(vault_input.max_budget, 101);
+
+        create_agent_skill_payment(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            payment_coin,
+            sui::types::Address::from_static("0xe"),
+            invoker_input,
+        )
+        .expect("create payment");
+        deposit_agent_payment_vault(&mut tx, &objects, agent, vault_coin);
+        withdraw_agent_payment_vault(&mut tx, &objects, registry, agent, 33).expect("withdraw");
+        create_agent_skill_payment_from_vault(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            vault_input.skill_id,
+            sui::types::Address::from_static("0xf"),
+            vault_input.max_budget,
+            vault_input.refund_mode,
+        )
+        .expect("create payment from vault");
+        consume_gas_payment(
+            &mut tx,
+            &objects,
+            agent,
+            sui::types::Address::from_static("0xe"),
+            sui::types::Address::from_static("0x30"),
+            sui::types::Address::from_static("0x31"),
+            44,
+        )
+        .expect("consume gas");
+        accomplish_execution(
+            &mut tx,
+            &objects,
+            agent,
+            sui::types::Address::from_static("0xe"),
+            sui::types::Address::from_static("0x30"),
+            vec![1, 2],
+        )
+        .expect("accomplish");
+        refund_execution(
+            &mut tx,
+            &objects,
+            agent,
+            sui::types::Address::from_static("0xe"),
+            sui::types::Address::from_static("0x30"),
+            vec![3, 4],
+        )
+        .expect("refund");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let function_names = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) if call.package == objects.interface_pkg_id => {
+                    Some(call.function.clone())
+                }
+                sui::types::Command::MoveCall(call) if call.package == objects.registry_pkg_id() => {
+                    Some(call.function.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for expected in [
+            TapStandard::CREATE_AGENT_SKILL_PAYMENT.name,
+            TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,
+            TapStandard::WITHDRAW_AGENT_PAYMENT_VAULT.name,
+            TapStandard::CREATE_AGENT_SKILL_PAYMENT_FROM_VAULT.name,
+            TapStandard::CONSUME_GAS_PAYMENT.name,
+            TapStandard::ACCOMPLISH_EXECUTION.name,
+            TapStandard::REFUND_EXECUTION.name,
+        ] {
+            assert!(
+                function_names.contains(&expected),
+                "missing TAP call {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn endpoint_authorization_and_schedule_builders_cover_variants() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tap_registry_arg(&mut tx, &objects).expect("registry");
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            true,
+        ));
+        let grant = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0x40"),
+            2,
+            true,
+        ));
+        let scheduled_task = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0x50"),
+            3,
+            true,
+        ));
+        let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
+
+        agent_id_from_address(&mut tx, &objects, Agent(sui::types::Address::from_static("0xa")))
+            .expect("agent id");
+        interface_revision(&mut tx, &objects, InterfaceRevision(3))
+            .expect("interface revision");
+        get_skill_requirements(&mut tx, &objects, registry, agent, 11)
+            .expect("requirements");
+        announce_endpoint_revision(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            11,
+            InterfaceRevision(3),
+            sui::types::Address::from_static("0x60"),
+            4,
+            vec![1; 32],
+            vec![TapSharedObjectRef::mutable(
+                sui::types::Address::from_static("0x61"),
+                5,
+            )],
+            TapPaymentPolicy::default(),
+            TapSchedulePolicy::default(),
+            vec![8],
+            vec![9],
+            true,
+        )
+        .expect("announce");
+        set_active_endpoint_revision(&mut tx, &objects, registry, agent, 11, InterfaceRevision(3), true)
+            .expect("set active");
+        create_vertex_authorization(
+            &mut tx,
+            &objects,
+            VertexAuthorizationInput {
+                agent_id: Agent(sui::types::Address::from_static("0xa")),
+                skill_id: 11,
+                walk_execution_id: sui::types::Address::from_static("0x70"),
+                vertex_execution_id: sui::types::Address::from_static("0x71"),
+                target_object_id: sui::types::Address::from_static("0x72"),
+                allowed_tool_package: sui::types::Address::from_static("0x73"),
+                allowed_tool_module: b"tool".to_vec(),
+                allowed_tool_function: b"run".to_vec(),
+                operation_hash: vec![1],
+                constraints_hash: vec![2],
+                expires_at_ms: 100,
+                max_uses: 2,
+                payment_required: true,
+            },
+        )
+        .expect("create authorization");
+        bind_authorization_to_leader_assignment(
+            &mut tx,
+            &objects,
+            grant,
+            sui::types::Address::from_static("0x70"),
+            sui::types::Address::from_static("0x71"),
+            sui::types::Address::from_static("0x74"),
+            InterfaceRevision(3),
+            None,
+        )
+        .expect("bind authorization");
+        revoke_vertex_authorization(&mut tx, &objects, grant);
+        let clock = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0x6"),
+            1,
+            false,
+        ));
+        expire_vertex_authorization(&mut tx, &objects, grant, clock);
+        schedule_skill_execution_address_funded(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0x80"),
+            11,
+            vec![1],
+            prepayment_coin,
+            sui::types::Address::from_static("0x81"),
+            vec![2],
+            100,
+            0,
+            Some(vec![3]),
+            TapSchedulePolicy::default(),
+            vec![4],
+            vec![5],
+            200,
+        )
+        .expect("address funded schedule");
+        schedule_skill_execution_from_agent_vault(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0x80"),
+            11,
+            vec![1],
+            300,
+            100,
+            0,
+            None,
+            TapSchedulePolicy::default(),
+            vec![4],
+            vec![5],
+            200,
+        )
+        .expect("vault schedule");
+        trigger_scheduled_skill_execution(
+            &mut tx,
+            &objects,
+            registry,
+            scheduled_task,
+            sui::types::Address::from_static("0x90"),
+        )
+        .expect("trigger schedule");
+        for state in [
+            TapScheduledOccurrenceFinalState::InFlight,
+            TapScheduledOccurrenceFinalState::Accomplished,
+            TapScheduledOccurrenceFinalState::Refunded,
+        ] {
+            complete_scheduled_skill_occurrence(
+                &mut tx,
+                &objects,
+                scheduled_task,
+                sui::types::Address::from_static("0x90"),
+                sui::types::Address::from_static("0x91"),
+                state,
+                true,
+                500,
+            )
+            .expect("complete occurrence");
+        }
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let function_names = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call.function.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for expected in [
+            TapStandard::AGENT_ID_FROM_ADDRESS.name,
+            TapStandard::INTERFACE_REVISION.name,
+            TapStandard::GET_SKILL_REQUIREMENTS.name,
+            TapStandard::ANNOUNCE_ENDPOINT_REVISION.name,
+            TapStandard::SET_ACTIVE_ENDPOINT_REVISION.name,
+            TapStandard::CREATE_VERTEX_AUTHORIZATION.name,
+            TapStandard::BIND_AUTHORIZATION_TO_LEADER_ASSIGNMENT.name,
+            TapStandard::REVOKE_VERTEX_AUTHORIZATION.name,
+            TapStandard::EXPIRE_VERTEX_AUTHORIZATION.name,
+            TapStandard::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
+            TapStandard::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
+            TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
+            TapStandard::COMPLETE_SCHEDULED_SKILL_OCCURRENCE.name,
+            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT.name,
+            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED.name,
+            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_REFUNDED.name,
+        ] {
+            assert!(
+                function_names.contains(&expected),
+                "missing TAP call {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_payment_mode_is_rejected_before_register_call() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tx.input(pure_arg(&1_u64).unwrap());
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            true,
+        ));
+
+        let error = register_skill(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0xd"),
+            sui::types::Address::from_static("0xe"),
+            vec![1],
+            vec![2],
+            vec![3],
+            TapPaymentPolicy {
+                mode: TapPaymentMode::AgentFunded,
+                max_budget: 100,
+                token_type_hash: Vec::new(),
+                refund_mode: 0,
+            },
+            TapSchedulePolicy::default(),
+            vec![4],
+            sui::types::Address::from_static("0xf"),
+            1,
+            vec![5],
+            vec![],
+            vec![6],
+            true,
+        )
+        .expect_err("unsupported payment mode");
+
+        assert!(
+            error
+                .to_string()
+                .contains("not yet supported by PTB builder")
+        );
+    }
 }

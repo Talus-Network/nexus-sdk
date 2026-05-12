@@ -2611,6 +2611,162 @@ mod tests {
     }
 
     #[test]
+    fn tap_enum_deserializers_accept_move_json_forms() {
+        assert_eq!(
+            serde_json::from_value::<TapPaymentMode>(serde_json::json!({
+                "fields": { "variant": "agentFunded" }
+            }))
+            .expect("nested payment mode"),
+            TapPaymentMode::AgentFunded
+        );
+        assert_eq!(
+            serde_json::from_value::<TapPaymentMode>(serde_json::json!({
+                "UserFunded": {}
+            }))
+            .expect("keyed payment mode"),
+            TapPaymentMode::UserFunded
+        );
+        assert_eq!(
+            serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!(1))
+                .expect("numeric payment source kind"),
+            TapPaymentSourceKind::AgentVault
+        );
+        assert_eq!(
+            serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!({
+                "fields": { "@variant": "invoker" }
+            }))
+            .expect("nested payment source kind"),
+            TapPaymentSourceKind::Invoker
+        );
+        assert!(serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!(7)).is_err());
+
+        assert_eq!(
+            serde_json::from_value::<TapExecutionPaymentSettlementKind>(serde_json::json!({
+                "Paid": {}
+            }))
+            .expect("keyed settlement kind"),
+            TapExecutionPaymentSettlementKind::Paid
+        );
+        assert_eq!(
+            serde_json::from_value::<TapExecutionPaymentSettlementKind>(serde_json::json!({
+                "fields": { "type": "Ticket" }
+            }))
+            .expect("nested settlement kind"),
+            TapExecutionPaymentSettlementKind::Ticket
+        );
+        assert_eq!(
+            bcs::from_bytes::<TapExecutionPaymentSettlementKind>(
+                &bcs::to_bytes(&9_u8).expect("raw settlement kind")
+            )
+            .expect("unknown raw settlement kind falls back"),
+            TapExecutionPaymentSettlementKind::Paid
+        );
+
+        assert_eq!(
+            serde_json::from_value::<TapExecutionPaymentFinalState>(serde_json::json!({
+                "fields": { "variant": "Accomplished" }
+            }))
+            .expect("nested payment final state"),
+            TapExecutionPaymentFinalState::Accomplished
+        );
+        assert_eq!(
+            serde_json::from_value::<TapScheduledTaskState>(serde_json::json!({
+                "Exhausted": {}
+            }))
+            .expect("keyed scheduled task state"),
+            TapScheduledTaskState::Exhausted
+        );
+        assert_eq!(
+            serde_json::from_value::<TapScheduledOccurrenceFinalState>(serde_json::json!({
+                "fields": { "@variant": "inFlight" }
+            }))
+            .expect("nested scheduled occurrence state"),
+            TapScheduledOccurrenceFinalState::InFlight
+        );
+    }
+
+    #[test]
+    fn scheduled_payment_source_deserializes_supported_shapes() {
+        let address_source: TapScheduledPaymentSource =
+            serde_json::from_value(serde_json::json!({
+                "fields": {
+                    "@variant": "address",
+                    "refund_recipient": "0xee"
+                }
+            }))
+            .expect("variant address source");
+        assert_eq!(address_source.source_kind(), TapPaymentSourceKind::Invoker);
+        assert_eq!(address_source.source_identity(), addr("0xee"));
+
+        let vault_source: TapScheduledPaymentSource =
+            serde_json::from_value(serde_json::json!({
+                "agentVault": {
+                    "fields": {
+                        "agent_id": "0xaa"
+                    }
+                }
+            }))
+            .expect("nested vault source");
+        assert_eq!(vault_source.source_kind(), TapPaymentSourceKind::AgentVault);
+        assert_eq!(vault_source.source_identity(), addr("0xaa"));
+
+        assert!(serde_json::from_value::<TapScheduledPaymentSource>(serde_json::json!({
+            "fields": { "@variant": "agentVault" }
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
+        let grant: TapVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
+            "id": "0xaa",
+            "grantor": "0xbb",
+            "target_object_id": "0xcc",
+            "agent_id": "0xdd",
+            "skill_id": "238",
+            "walk_execution_id": "0xff",
+            "vertex_execution_id": "0x11",
+            "allowed_tool_package": "0x14",
+            "allowed_tool_module": "0x746f6f6c",
+            "allowed_tool_function": "0x72756e",
+            "operation_hash": [1, 2],
+            "constraints_hash": [3, 4],
+            "expires_at_ms": "10",
+            "max_uses": "2",
+            "used": "1",
+            "revoked": false,
+            "payment_required": true
+        }))
+        .expect("hex byte strings decode as UTF-8");
+
+        assert_eq!(grant.allowed_tool_module, "tool");
+        assert_eq!(grant.allowed_tool_function, "run");
+
+        let grant: TapVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
+            "id": "0xaa",
+            "grantor": "0xbb",
+            "target_object_id": "0xcc",
+            "agent_id": "0xdd",
+            "skill_id": "238",
+            "walk_execution_id": "0xff",
+            "vertex_execution_id": "0x11",
+            "allowed_tool_package": "0x14",
+            "allowed_tool_module": "0xnothex",
+            "allowed_tool_function": "run",
+            "operation_hash": [1, 2],
+            "constraints_hash": [3, 4],
+            "expires_at_ms": "10",
+            "max_uses": "2",
+            "used": "1",
+            "revoked": false,
+            "payment_required": true
+        }))
+        .expect("plain byte string remains text");
+
+        assert_eq!(grant.allowed_tool_module, "0xnothex");
+    }
+
+    #[test]
     fn tap_execution_payment_deserializes_move_json_byte_vectors() {
         use base64::Engine as _;
 
@@ -2691,6 +2847,28 @@ mod tests {
         .expect("payment parses Move enum JSON form");
 
         assert_eq!(payment.payment_mode, TapPaymentMode::UserFunded);
+    }
+
+    #[test]
+    fn tap_payment_source_bcs_roundtrips_and_rejects_unknown_kind() {
+        let invoker = addr("0x21");
+        let typed = TapPaymentSource::from_bcs_bytes(
+            &tap_payment_source_for_invoker(invoker).expect("typed invoker source"),
+        )
+        .expect("typed invoker source decodes");
+        assert_eq!(typed.kind, TapPaymentSourceKind::Invoker);
+        assert_eq!(typed.identity, invoker);
+
+        let agent = Agent(addr("0x22"));
+        let typed = TapPaymentSource::from_bcs_bytes(
+            &tap_payment_source_for_agent_vault(agent).expect("typed vault source"),
+        )
+        .expect("typed vault source decodes");
+        assert_eq!(typed.kind, TapPaymentSourceKind::AgentVault);
+        assert_eq!(typed.identity, agent.id());
+
+        let invalid = bcs::to_bytes(&(9_u8, invoker)).expect("invalid source kind bytes");
+        assert!(TapPaymentSource::from_bcs_bytes(&invalid).is_err());
     }
 
     fn authorization_plan_entry(vertex: RuntimeVertex) -> TapVertexAuthorizationPlanEntry {
@@ -2917,5 +3095,41 @@ mod tests {
         assert_eq!(task.next_after_ms, 11);
         assert_eq!(task.occurrences_spawned, 2);
         assert!(task.active);
+    }
+
+    #[test]
+    fn scheduled_skill_task_defaults_and_spawn_checks_are_conservative() {
+        let task: TapScheduledSkillTask = serde_json::from_value(serde_json::json!({
+            "id": "0xaa",
+            "agent_id": "0xbb",
+            "skill_id": "204",
+            "input_commitment": [1, 2],
+            "long_term_gas_coin_id": "0xee",
+            "refill_policy_hash": [3, 4],
+            "payment_source": { "agent_vault": { "agent_id": "0xbb" } },
+            "payment_source_bytes": [9],
+            "payment_source_hash": [8],
+            "occurrence_budget": "25",
+            "refund_mode": 0,
+            "schedule_policy": {
+                "recurrence_kind": "once",
+                "min_interval_ms": "0",
+                "max_occurrences": "3",
+                "allow_recursive": false
+            },
+            "schedule_entries_hash": [7, 8],
+            "next_after_ms": "11",
+            "occurrences_spawned": "2",
+            "state": { "Completed": {} },
+            "active": true
+        }))
+        .expect("scheduled task with defaults should deserialize");
+
+        assert_eq!(task.scheduler_task_id, sui::types::Address::ZERO);
+        assert_eq!(task.remaining_funds, 0);
+        assert_eq!(task.occurrences_finalized, 0);
+        assert_eq!(task.source_kind(), TapPaymentSourceKind::AgentVault);
+        assert_eq!(task.source_identity(), addr("0xbb"));
+        assert!(!task.can_spawn_occurrence());
     }
 }

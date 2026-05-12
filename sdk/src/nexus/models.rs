@@ -559,6 +559,35 @@ mod tests {
     }
 
     #[test]
+    fn dag_execution_option_u64_accepts_move_json_shapes_and_rejects_invalid_values() {
+        for (value, expected) in [
+            (json!(null), None),
+            (json!(7), Some(7)),
+            (json!({ "some": 8 }), Some(8)),
+            (json!({ "Some": "9" }), Some(9)),
+            (json!({ "none": {} }), None),
+            (json!({ "Vec": [] }), None),
+        ] {
+            let execution: DagExecution = serde_json::from_value(json!({
+                "invoker": "0x1",
+                "tap_skill_id": value,
+            }))
+            .expect("option u64 shape should parse");
+            assert_eq!(execution.tap_skill_id.0, expected);
+        }
+
+        for value in [json!(-1), json!({ "bad": 1 }), json!(true)] {
+            assert!(
+                serde_json::from_value::<DagExecution>(json!({
+                    "invoker": "0x1",
+                    "tap_skill_id": value,
+                }))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn dag_execution_standard_tap_context_rejects_partial_fields() {
         let execution = DagExecution {
             invoker: sui::types::Address::from_static("0x1"),
@@ -578,6 +607,83 @@ mod tests {
             .standard_tap_context()
             .expect_err("partial standard context should error");
         assert!(error.to_string().contains("missing tap_skill_id"));
+
+        for (execution, expected) in [
+            (
+                DagExecution {
+                    invoker: sui::types::Address::from_static("0x1"),
+                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_skill_id: MoveOption(Some(11)),
+                    tap_interface_revision: MoveOption(None),
+                    tap_endpoint_object_id: MoveOption(None),
+                    tap_payment_id: MoveOption(None),
+                    tap_selected_dag_id: MoveOption(None),
+                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan: Vec::new(),
+                    tap_scheduled_task_id: MoveOption(None),
+                    tap_scheduled_occurrence_index: MoveOption(None),
+                },
+                "missing tap_interface_revision",
+            ),
+            (
+                DagExecution {
+                    invoker: sui::types::Address::from_static("0x1"),
+                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_skill_id: MoveOption(Some(11)),
+                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
+                    tap_endpoint_object_id: MoveOption(None),
+                    tap_payment_id: MoveOption(None),
+                    tap_selected_dag_id: MoveOption(None),
+                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan: Vec::new(),
+                    tap_scheduled_task_id: MoveOption(None),
+                    tap_scheduled_occurrence_index: MoveOption(None),
+                },
+                "missing tap_endpoint_object_id",
+            ),
+            (
+                DagExecution {
+                    invoker: sui::types::Address::from_static("0x1"),
+                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_skill_id: MoveOption(Some(11)),
+                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
+                    tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
+                        "0xc",
+                    ))),
+                    tap_payment_id: MoveOption(None),
+                    tap_selected_dag_id: MoveOption(None),
+                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan: Vec::new(),
+                    tap_scheduled_task_id: MoveOption(None),
+                    tap_scheduled_occurrence_index: MoveOption(None),
+                },
+                "missing tap_payment_id",
+            ),
+            (
+                DagExecution {
+                    invoker: sui::types::Address::from_static("0x1"),
+                    tap_agent_id: MoveOption(Some(Agent(sui::types::Address::from_static("0xa")))),
+                    tap_skill_id: MoveOption(Some(11)),
+                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
+                    tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
+                        "0xc",
+                    ))),
+                    tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
+                    tap_selected_dag_id: MoveOption(None),
+                    tap_authorization_plan_hash: MoveOption(None),
+                    tap_authorization_plan: Vec::new(),
+                    tap_scheduled_task_id: MoveOption(None),
+                    tap_scheduled_occurrence_index: MoveOption(None),
+                },
+                "missing tap_selected_dag_id",
+            ),
+        ] {
+            let error = execution.standard_tap_context().unwrap_err();
+            assert!(
+                error.to_string().contains(expected),
+                "expected {expected:?}, got {error}"
+            );
+        }
     }
 
     #[test]

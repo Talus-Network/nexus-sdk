@@ -164,3 +164,49 @@ pub fn into_type_tag(ident: ModuleAndNameIdent) -> sui::types::TypeTag {
         vec![],
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn move_call(tx: sui::types::Transaction, index: usize) -> sui::types::MoveCall {
+        let sui::types::TransactionKind::ProgrammableTransaction(programmable) = tx.kind else {
+            panic!("expected programmable transaction");
+        };
+        match programmable.commands.get(index) {
+            Some(sui::types::Command::MoveCall(call)) => call.clone(),
+            other => panic!("expected move call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn option_type_tag_wraps_element_type() {
+        let element = StdString::type_tag();
+        let tag = Option::type_tag(element.clone());
+
+        let sui::types::TypeTag::Struct(tag) = tag else {
+            panic!("expected struct type tag");
+        };
+        assert_eq!(*tag.address(), PACKAGE_ID);
+        assert_eq!(*tag.module(), Option::OPTION.module);
+        assert_eq!(*tag.name(), Option::OPTION.name);
+        assert_eq!(tag.type_params(), &[element]);
+    }
+
+    #[test]
+    fn option_some_builds_std_option_call() {
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let value = tx.input(pure_arg(&7_u64).expect("pure arg"));
+        let element = sui::types::TypeTag::U64;
+        let result = Option::some(&mut tx, element.clone(), value);
+
+        let tx = crate::test_utils::sui_mocks::mock_finish_transaction(tx);
+        let call = move_call(tx, 0);
+        assert_eq!(result, sui::types::Argument::Result(0));
+        assert_eq!(call.package, PACKAGE_ID);
+        assert_eq!(call.module, Option::SOME.module);
+        assert_eq!(call.function, Option::SOME.name);
+        assert_eq!(call.type_arguments, vec![element]);
+        assert_eq!(call.arguments, vec![value]);
+    }
+}

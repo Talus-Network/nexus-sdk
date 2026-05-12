@@ -358,4 +358,36 @@ mod tests {
             )))
         );
     }
+
+    #[test]
+    fn standard_tap_type_tags_use_supplied_package() {
+        let package = sui::types::Address::from_static("0x42");
+
+        for (tag, expected_name) in [
+            (
+                interface_revision_type(package),
+                sui::types::Identifier::from_static("InterfaceRevision"),
+            ),
+            (
+                scheduled_skill_task_type(package),
+                sui::types::Identifier::from_static("ScheduledSkillTask"),
+            ),
+            (
+                standard_endpoint_type(package),
+                sui::types::Identifier::from_static("StandardEndpoint"),
+            ),
+            (
+                execution_payment_receipt_type(package),
+                sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
+            ),
+        ] {
+            let sui::types::TypeTag::Struct(tag) = tag else {
+                panic!("expected struct type tag");
+            };
+            assert_eq!(*tag.address(), package);
+            assert_eq!(*tag.module(), STANDARD_TAP_MODULE);
+            assert_eq!(*tag.name(), expected_name);
+            assert!(tag.type_params().is_empty());
+        }
+    }
 }
