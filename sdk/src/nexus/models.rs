@@ -577,13 +577,11 @@ mod tests {
         }
 
         for value in [json!(-1), json!({ "bad": 1 }), json!(true)] {
-            assert!(
-                serde_json::from_value::<DagExecution>(json!({
-                    "invoker": "0x1",
-                    "tap_skill_id": value,
-                }))
-                .is_err()
-            );
+            assert!(serde_json::from_value::<DagExecution>(json!({
+                "invoker": "0x1",
+                "tap_skill_id": value,
+            }))
+            .is_err());
         }
     }
 

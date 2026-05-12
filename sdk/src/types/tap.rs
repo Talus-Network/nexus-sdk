@@ -2687,33 +2687,33 @@ mod tests {
 
     #[test]
     fn scheduled_payment_source_deserializes_supported_shapes() {
-        let address_source: TapScheduledPaymentSource =
-            serde_json::from_value(serde_json::json!({
-                "fields": {
-                    "@variant": "address",
-                    "refund_recipient": "0xee"
-                }
-            }))
-            .expect("variant address source");
+        let address_source: TapScheduledPaymentSource = serde_json::from_value(serde_json::json!({
+            "fields": {
+                "@variant": "address",
+                "refund_recipient": "0xee"
+            }
+        }))
+        .expect("variant address source");
         assert_eq!(address_source.source_kind(), TapPaymentSourceKind::Invoker);
         assert_eq!(address_source.source_identity(), addr("0xee"));
 
-        let vault_source: TapScheduledPaymentSource =
-            serde_json::from_value(serde_json::json!({
-                "agentVault": {
-                    "fields": {
-                        "agent_id": "0xaa"
-                    }
+        let vault_source: TapScheduledPaymentSource = serde_json::from_value(serde_json::json!({
+            "agentVault": {
+                "fields": {
+                    "agent_id": "0xaa"
                 }
-            }))
-            .expect("nested vault source");
+            }
+        }))
+        .expect("nested vault source");
         assert_eq!(vault_source.source_kind(), TapPaymentSourceKind::AgentVault);
         assert_eq!(vault_source.source_identity(), addr("0xaa"));
 
-        assert!(serde_json::from_value::<TapScheduledPaymentSource>(serde_json::json!({
-            "fields": { "@variant": "agentVault" }
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<TapScheduledPaymentSource>(serde_json::json!({
+                "fields": { "@variant": "agentVault" }
+            }))
+            .is_err()
+        );
     }
 
     #[test]

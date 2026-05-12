@@ -1849,8 +1849,11 @@ public struct WeatherSkill has drop {}
         );
 
         let no_package_name = tempdir.join("no-name.toml");
-        std::fs::write(&no_package_name, "[package]\n[addresses]\nweather_skill = \"0x0\"\n")
-            .unwrap();
+        std::fs::write(
+            &no_package_name,
+            "[package]\n[addresses]\nweather_skill = \"0x0\"\n",
+        )
+        .unwrap();
         let error = validate_tap_package_manifest(&no_package_name, &config).unwrap_err();
         assert!(
             error.to_string().contains("missing [package].name"),
@@ -1981,10 +1984,12 @@ public struct WeatherSkill has drop {}
             agent_id_from_alias_or_arg(&conf, Some("primary".to_string()), None).unwrap(),
             Agent(sui::types::Address::from_static("0xa"))
         );
-        assert!(agent_id_from_alias_or_arg(&conf, Some("missing".to_string()), None)
-            .unwrap_err()
-            .to_string()
-            .contains("No TAP agent alias"));
+        assert!(
+            agent_id_from_alias_or_arg(&conf, Some("missing".to_string()), None)
+                .unwrap_err()
+                .to_string()
+                .contains("No TAP agent alias")
+        );
         assert!(agent_id_from_alias_or_arg(&conf, None, None)
             .unwrap_err()
             .to_string()

@@ -2000,7 +2000,9 @@ mod tests {
                 sui::types::Command::MoveCall(call) if call.package == objects.interface_pkg_id => {
                     Some(call.function.clone())
                 }
-                sui::types::Command::MoveCall(call) if call.package == objects.registry_pkg_id() => {
+                sui::types::Command::MoveCall(call)
+                    if call.package == objects.registry_pkg_id() =>
+                {
                     Some(call.function.clone())
                 }
                 _ => None,
@@ -2045,12 +2047,14 @@ mod tests {
         ));
         let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
 
-        agent_id_from_address(&mut tx, &objects, Agent(sui::types::Address::from_static("0xa")))
-            .expect("agent id");
-        interface_revision(&mut tx, &objects, InterfaceRevision(3))
-            .expect("interface revision");
-        get_skill_requirements(&mut tx, &objects, registry, agent, 11)
-            .expect("requirements");
+        agent_id_from_address(
+            &mut tx,
+            &objects,
+            Agent(sui::types::Address::from_static("0xa")),
+        )
+        .expect("agent id");
+        interface_revision(&mut tx, &objects, InterfaceRevision(3)).expect("interface revision");
+        get_skill_requirements(&mut tx, &objects, registry, agent, 11).expect("requirements");
         announce_endpoint_revision(
             &mut tx,
             &objects,
@@ -2072,8 +2076,16 @@ mod tests {
             true,
         )
         .expect("announce");
-        set_active_endpoint_revision(&mut tx, &objects, registry, agent, 11, InterfaceRevision(3), true)
-            .expect("set active");
+        set_active_endpoint_revision(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            11,
+            InterfaceRevision(3),
+            true,
+        )
+        .expect("set active");
         create_vertex_authorization(
             &mut tx,
             &objects,
@@ -2248,10 +2260,8 @@ mod tests {
         )
         .expect_err("unsupported payment mode");
 
-        assert!(
-            error
-                .to_string()
-                .contains("not yet supported by PTB builder")
-        );
+        assert!(error
+            .to_string()
+            .contains("not yet supported by PTB builder"));
     }
 }
