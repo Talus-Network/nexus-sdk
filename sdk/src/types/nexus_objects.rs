@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_workflow_and_interface_events() {
+    fn matches_workflow_interface_and_tap_registry_events() {
         let objects = sample_objects();
         let rng = &mut rand::thread_rng();
 
@@ -346,17 +346,29 @@ mod tests {
 
         assert!(objects.is_event_from_nexus(&workflow_event));
 
-        let standard_tap_event = wrap_event(
+        let interface_tap_event = wrap_event(
             &objects,
             sui::types::StructTag::new(
                 objects.interface_pkg_id,
+                tap::STANDARD_TAP_MODULE,
+                tap::TapStandard::AGENT_CREATED_EVENT.name,
+                vec![],
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&interface_tap_event));
+
+        let registry_tap_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.registry_pkg_id(),
                 tap::STANDARD_TAP_MODULE,
                 tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
                 vec![],
             ),
         );
 
-        assert!(objects.is_event_from_nexus(&standard_tap_event));
+        assert!(objects.is_event_from_nexus(&registry_tap_event));
 
         let unrelated_interface_event = wrap_event(
             &objects,

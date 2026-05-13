@@ -1155,6 +1155,7 @@ mod tests {
                 TapRegistryObject,
                 TapSchedulePolicy,
                 TapSharedObjectRef,
+                TapSkillConfig,
                 TapSkillRecord,
                 TapSkillRequirements,
                 TapVertexAuthorizationSchema,
@@ -1819,7 +1820,7 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.interface_pkg_id,
+                nexus_objects.registry_pkg_id(),
                 "tap",
                 "EndpointRevisionAnnouncedEvent",
                 bcs::to_bytes(&Wrapper {
