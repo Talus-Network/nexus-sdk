@@ -31,6 +31,9 @@ sui_types = [
     "sui-transaction-builder",
 ]
 
+# Move package publishing support for deployment tooling. Runtime/full users
+# should enable this explicitly only when they need to build and publish Move
+# packages.
 move_publish = [
     "sui_types",
     "sui_move_build",
@@ -73,7 +76,8 @@ dag = ["petgraph"]
 # Used for onchain tool registration.
 schema_gen = ["sui_types", "serde_json"]
 
-# Provides various Nexus utilities like deployment and execution of workflows.
+# Provides various Nexus runtime utilities like execution of workflows. Move
+# package publishing helpers require the explicit `move_publish` feature.
 nexus = [
     "transactions",
     "events",
@@ -81,7 +85,6 @@ nexus = [
     "bcs",
     "prost-types",
     "signed_http",
-    "move_publish",
 ]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
@@ -103,12 +106,12 @@ test_utils = [
     "tonic",
 ]
 
-# Enable all features apart from `test_utils`.
+# Enable runtime SDK features apart from deployment-only `move_publish` and
+# test-only `test_utils`.
 full = [
     "tool_fqn",
     "signed_http",
     "sui_types",
-    "move_publish",
     "sui_idents",
     "types",
     "events",

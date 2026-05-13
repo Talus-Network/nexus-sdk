@@ -1,56 +1,55 @@
 //! Read-only helpers and high-level actions for standard TAP.
 
-use {
-    crate::{
-        events::NexusEventKind,
-        idents::{sui_framework, tap::TapStandard},
-        nexus::{
-            client::NexusClient,
-            crawler::{Crawler, Response},
-            error::NexusError,
-            signer::ExecutedTransaction,
-        },
-        sui,
-        transactions::{scheduler as scheduler_tx, tap as tap_tx},
-        types::{
-            resolve_active_tap_endpoint,
-            resolve_active_tap_skill_execution_target,
-            resolve_default_tap_execution_target,
-            AgentId,
-            InterfaceRevision,
-            NexusObjects,
-            RuntimeVertex,
-            SkillId,
-            TapActiveSkillExecutionTarget,
-            TapAgentPaymentVault,
-            TapAgentVaultFieldKey,
-            TapConfigDigestInput,
-            TapDefaultExecutionTarget,
-            TapDefaultExecutionTargetRecord,
-            TapEndpointKey,
-            TapEndpointRecord,
-            TapEndpointResolutionError,
-            TapExecutionPayment,
-            TapExecutionPaymentHistoryFieldKey,
-            TapExecutionPaymentHistoryList,
-            TapExecutionPaymentReceipt,
-            TapExecutionPaymentReceiptFieldKey,
-            TapPublishArtifact,
-            TapRegistry,
-            TapRegistryObject,
-            TapSchedulePolicy,
-            TapScheduledSkillTask,
-            TapSkillConfig,
-            TapSkillRecord,
-            TapSkillRequirements,
-            WorkflowVertexAuthorizationGrant,
-            WorkflowVertexAuthorizationGrantAccess,
-            WorkflowVertexAuthorizationGrantFieldKey,
-        },
+#[cfg(feature = "move_publish")]
+use crate::types::TapSkillConfig;
+use crate::{
+    events::NexusEventKind,
+    idents::{sui_framework, tap::TapStandard},
+    nexus::{
+        client::NexusClient,
+        crawler::{Crawler, Response},
+        error::NexusError,
+        signer::ExecutedTransaction,
     },
-    std::path::PathBuf,
-    sui_move_build::CompiledPackage,
+    sui,
+    transactions::{scheduler as scheduler_tx, tap as tap_tx},
+    types::{
+        resolve_active_tap_endpoint,
+        resolve_active_tap_skill_execution_target,
+        resolve_default_tap_execution_target,
+        AgentId,
+        InterfaceRevision,
+        NexusObjects,
+        RuntimeVertex,
+        SkillId,
+        TapActiveSkillExecutionTarget,
+        TapAgentPaymentVault,
+        TapAgentVaultFieldKey,
+        TapConfigDigestInput,
+        TapDefaultExecutionTarget,
+        TapDefaultExecutionTargetRecord,
+        TapEndpointKey,
+        TapEndpointRecord,
+        TapEndpointResolutionError,
+        TapExecutionPayment,
+        TapExecutionPaymentHistoryFieldKey,
+        TapExecutionPaymentHistoryList,
+        TapExecutionPaymentReceipt,
+        TapExecutionPaymentReceiptFieldKey,
+        TapPublishArtifact,
+        TapRegistry,
+        TapRegistryObject,
+        TapSchedulePolicy,
+        TapScheduledSkillTask,
+        TapSkillRecord,
+        TapSkillRequirements,
+        WorkflowVertexAuthorizationGrant,
+        WorkflowVertexAuthorizationGrantAccess,
+        WorkflowVertexAuthorizationGrantFieldKey,
+    },
 };
+#[cfg(feature = "move_publish")]
+use {std::path::PathBuf, sui_move_build::CompiledPackage};
 
 /// High-level standard TAP actions exposed through [`NexusClient`].
 #[derive(Clone)]
@@ -135,6 +134,7 @@ pub struct ScheduleSkillExecutionAddressFundedParams {
 }
 
 /// Options for publishing a TAP Move package through [`TapActions`].
+#[cfg(feature = "move_publish")]
 #[derive(Clone, Debug, Default)]
 pub struct TapPackagePublishOptions {
     pub package_path: PathBuf,
@@ -142,6 +142,7 @@ pub struct TapPackagePublishOptions {
 }
 
 /// Result returned after publishing a TAP Move package.
+#[cfg(feature = "move_publish")]
 #[derive(Clone, Debug)]
 pub struct TapPackagePublishResult {
     pub tx_digest: sui::types::Digest,
@@ -158,6 +159,7 @@ pub struct CreateStandardEndpointResult {
 }
 
 /// Result returned by the composed TAP skill publishing workflow.
+#[cfg(feature = "move_publish")]
 #[derive(Clone, Debug)]
 pub struct PublishSkillResult {
     pub tap_package: TapPackagePublishResult,
@@ -167,6 +169,7 @@ pub struct PublishSkillResult {
 }
 
 impl TapActions {
+    #[cfg(feature = "move_publish")]
     pub async fn publish_tap_package(
         &self,
         options: TapPackagePublishOptions,
@@ -255,6 +258,7 @@ impl TapActions {
         })
     }
 
+    #[cfg(feature = "move_publish")]
     pub async fn publish_skill(
         &self,
         config: &TapSkillConfig,
@@ -771,6 +775,7 @@ where
         .find_map(|event| matcher(&event.data).cloned())
 }
 
+#[cfg(feature = "move_publish")]
 fn build_move_package(
     package_path: &std::path::Path,
     named_address_overrides: &[(String, sui::types::Address)],
