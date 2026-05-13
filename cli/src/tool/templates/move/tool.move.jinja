@@ -3,7 +3,7 @@ module {{ name_snake_case }}::{{ name_snake_case }};
 use nexus_primitives::data;
 use nexus_primitives::proof_of_uid::ProofOfUID;
 use nexus_primitives::tagged_output::{Self, TaggedOutput};
-use nexus_interface::tap::VertexAuthorizationCheckCap;
+use nexus_workflow::dag::VertexAuthorizationCheckCap;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;

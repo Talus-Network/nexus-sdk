@@ -157,7 +157,6 @@ fn standard_tap_authorization_grant_ref(
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
     let operation_commitment = tx.input(pure_arg(&entry.operation_commitment)?);
     let constraints_commitment = tx.input(pure_arg(&entry.constraints_commitment)?);
-    let leader_assignment_id = prepare_option_address(tx, entry.leader_assignment_id)?;
     let endpoint_revision =
         prepare_option_interface_revision(tx, objects, entry.endpoint_revision)?;
     let payment_id = prepare_option_address(tx, entry.payment_id)?;
@@ -177,7 +176,6 @@ fn standard_tap_authorization_grant_ref(
             tool_function,
             operation_commitment,
             constraints_commitment,
-            leader_assignment_id,
             endpoint_revision,
             payment_id,
         ],
@@ -1379,16 +1377,92 @@ pub fn pre_stamp_standard_tap_execution(
     execution: sui::types::Argument,
     worksheet: sui::types::Argument,
     leader_cap: sui::types::Argument,
-) -> sui::types::Argument {
-    tx.move_call(
+    vertex: &RuntimeVertex,
+) -> anyhow::Result<sui::types::Argument> {
+    let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
+    Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.module,
             workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.name,
             vec![],
         ),
-        vec![execution, worksheet, leader_cap],
-    )
+        vec![execution, worksheet, leader_cap, vertex],
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_vertex_authorization_grant(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    skill_id: SkillId,
+    vertex: &RuntimeVertex,
+) -> anyhow::Result<sui::types::Argument> {
+    let skill_id = tx.input(pure_arg(&skill_id)?);
+    let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.module,
+            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.name,
+            vec![],
+        ),
+        vec![dag, execution, tool_registry, agent, skill_id, vertex],
+    ))
+}
+
+pub fn request_walk_execution_for_walk(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution: sui::types::Argument,
+    walk_index: u64,
+) -> anyhow::Result<sui::types::Argument> {
+    let walk_index = tx.input(pure_arg(&walk_index)?);
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.module,
+            workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.name,
+            vec![],
+        ),
+        vec![execution, walk_index],
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn mint_vertex_authorization_check_cap_for_onchain_walk(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    request_walk_execution: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+) -> anyhow::Result<sui::types::Argument> {
+    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let expected_vertex =
+        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.module,
+            workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            execution,
+            request_walk_execution,
+            leader_cap,
+            walk_index,
+            expected_vertex,
+        ],
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3508,7 +3582,6 @@ mod tests {
             tool_function: "run".to_string(),
             operation_commitment: vec![7],
             constraints_commitment: vec![8],
-            leader_assignment_id: Some(sui::types::Address::from_static("0x50")),
             endpoint_revision: Some(InterfaceRevision(2)),
             payment_id: Some(sui::types::Address::from_static("0x60")),
         };
@@ -3557,17 +3630,13 @@ mod tests {
             .next()
             .expect("authorization grant ref constructor call");
         let grant_ref_call = inspector.move_call(grant_ref_index);
-        assert_eq!(grant_ref_call.arguments.len(), 10);
+        assert_eq!(grant_ref_call.arguments.len(), 9);
         assert!(matches!(
             grant_ref_call.arguments[7],
             sui::types::Argument::Result(_)
         ));
         assert!(matches!(
             grant_ref_call.arguments[8],
-            sui::types::Argument::Result(_)
-        ));
-        assert!(matches!(
-            grant_ref_call.arguments[9],
             sui::types::Argument::Result(_)
         ));
 

@@ -31,10 +31,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("announce_endpoint_revision"),
     };
-    pub const BIND_AUTHORIZATION_TO_LEADER_ASSIGNMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("bind_authorization_to_leader_assignment"),
-    };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("bootstrap_default_runtime_dag_skill"),
@@ -103,10 +99,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("create_standard_endpoint"),
     };
-    pub const CREATE_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("create_vertex_authorization"),
-    };
     pub const DEFAULT_EXECUTION_TARGET_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultExecutionTargetUpdatedEvent"),
@@ -131,10 +123,6 @@ impl TapStandard {
     pub const EXECUTION_PAYMENT_RECEIPT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
-    };
-    pub const EXPIRE_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("expire_vertex_authorization"),
     };
     pub const GET_SKILL_REQUIREMENTS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -181,10 +169,6 @@ impl TapStandard {
     pub const REGISTER_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
-    };
-    pub const REVOKE_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("revoke_vertex_authorization"),
     };
     pub const SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED: ModuleAndNameIdent =
         ModuleAndNameIdent {
@@ -233,10 +217,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("share_standard_endpoint"),
     };
-    pub const SHARE_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("share_vertex_authorization"),
-    };
     pub const SKILL_ID_FROM_U64: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("skill_id_from_u64"),
@@ -252,10 +232,6 @@ impl TapStandard {
     pub const TRIGGER_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("trigger_scheduled_skill_execution"),
-    };
-    pub const VERIFY_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("verify_vertex_authorization"),
     };
     /// Withdraw unlocked SUI from a standard TAP `AgentPaymentVault`.
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {

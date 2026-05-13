@@ -238,6 +238,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("begin_standard_tap_execution_with_config"),
     };
+    /// Create a workflow-owned vertex authorization grant under a DAGExecution.
+    ///
+    /// `nexus_workflow::dag::create_vertex_authorization_grant`
+    pub const CREATE_VERTEX_AUTHORIZATION_GRANT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("create_vertex_authorization_grant"),
+    };
     /// The DAG struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::DAG`
@@ -371,6 +378,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("leader_stamp_worksheet_for_dry_run"),
     };
+    /// Mint a workflow vertex authorization check cap for the current on-chain walk.
+    ///
+    /// `nexus_workflow::dag::mint_vertex_authorization_check_cap_for_onchain_walk`
+    pub const MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "mint_vertex_authorization_check_cap_for_onchain_walk",
+            ),
+        };
     /// Create a new DAG object.
     ///
     /// `nexus_workflow::dag::new`
@@ -499,6 +516,13 @@ impl Dag {
     pub const REQUEST_WALK_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("request_walk_execution"),
+    };
+    /// Returns a new hot potato object RequestWalkExecution for one active walk.
+    ///
+    /// `nexus_workflow::dag::request_walk_execution_for_walk`
+    pub const REQUEST_WALK_EXECUTION_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("request_walk_execution_for_walk"),
     };
     /// Create a `RuntimeVertex::Plain` from a string.
     ///
@@ -1044,6 +1068,16 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_on_chain_tool"),
     };
+    /// Register a cap-gated on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool_with_workflow_authorization_cap`
+    pub const REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: TOOL_REGISTRY_MODULE,
+            name: sui::types::Identifier::from_static(
+                "register_on_chain_tool_with_workflow_authorization_cap",
+            ),
+        };
     /// Tool struct type. Used for fetching tool info.
     ///
     /// `nexus_workflow::tool_registry::Tool`

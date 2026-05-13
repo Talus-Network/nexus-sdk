@@ -145,12 +145,8 @@ events! {
     EndpointRevisionActivatedEvent => EndpointRevisionActivated, "EndpointRevisionActivatedEvent",
     WorksheetResolvedEvent => WorksheetResolved, "WorksheetResolvedEvent",
     AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
-    VertexAuthorizationCreatedEvent => VertexAuthorizationCreated, "VertexAuthorizationCreatedEvent",
-    VertexAuthorizationSharedEvent => VertexAuthorizationShared, "VertexAuthorizationSharedEvent",
-    VertexAuthorizationBoundEvent => VertexAuthorizationBound, "VertexAuthorizationBoundEvent",
-    VertexAuthorizationVerifiedEvent => VertexAuthorizationVerified, "VertexAuthorizationVerifiedEvent",
-    VertexAuthorizationRevokedEvent => VertexAuthorizationRevoked, "VertexAuthorizationRevokedEvent",
-    VertexAuthorizationExpiredEvent => VertexAuthorizationExpired, "VertexAuthorizationExpiredEvent",
+    VertexAuthorizationGrantCreatedEvent => VertexAuthorizationGrantCreated, "VertexAuthorizationGrantCreatedEvent",
+    VertexAuthorizationGrantRequiredEvent => VertexAuthorizationGrantRequired, "VertexAuthorizationGrantRequiredEvent",
     AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
     GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
     ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
@@ -466,58 +462,33 @@ pub struct AgentSkillExecutionRequestedEvent {
     pub authorization_plan_commitment: Option<Vec<u8>>,
 }
 
-/// Fired when vertex authorization intent is created.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationCreatedEvent {
-    pub grant_id: sui::types::Address,
-    pub grantor: sui::types::Address,
-    pub target_object_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub walk_execution_id: sui::types::Address,
-    pub vertex_execution_id: sui::types::Address,
-    pub expires_at_ms: u64,
-    pub max_uses: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationSharedEvent {
+pub struct VertexAuthorizationGrantCreatedEvent {
     pub grant_id: sui::types::Address,
     pub walk_execution_id: sui::types::Address,
-    pub vertex_execution_id: sui::types::Address,
+    pub vertex: RuntimeVertex,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationBoundEvent {
-    pub grant_id: sui::types::Address,
-    pub walk_execution_id: sui::types::Address,
-    pub vertex_execution_id: sui::types::Address,
-    pub leader_assignment_id: sui::types::Address,
-    pub interface_revision: InterfaceRevision,
-    pub payment_id: Option<sui::types::Address>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationVerifiedEvent {
-    pub grant_id: sui::types::Address,
-    pub walk_execution_id: sui::types::Address,
-    pub vertex_execution_id: sui::types::Address,
-    pub leader_assignment_id: sui::types::Address,
-    pub tool_package: sui::types::Address,
-    pub operation_commitment: Vec<u8>,
-    pub used: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationRevokedEvent {
-    pub grant_id: sui::types::Address,
-    pub grantor: sui::types::Address,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationExpiredEvent {
-    pub grant_id: sui::types::Address,
-    pub expires_at_ms: u64,
+pub struct VertexAuthorizationGrantRequiredEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    pub tool_fqn: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_move_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub agent_id: Option<AgentId>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_move_option_skill_id",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub skill_id: Option<SkillId>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1236,29 +1207,6 @@ mod tests {
                 assert_eq!(parsed.skill_id, target_event.event.skill_id);
             }
             _ => panic!("Expected DefaultExecutionTargetUpdated variant"),
-        }
-
-        let shared_event = Wrapper {
-            event: VertexAuthorizationSharedEvent {
-                grant_id: sui::types::Address::from_static("0xaa"),
-                walk_execution_id: sui::types::Address::from_static("0xbb"),
-                vertex_execution_id: sui::types::Address::from_static("0xcc"),
-            },
-        };
-        let bytes = bcs::to_bytes(&shared_event).unwrap();
-        let (parsed, distribution) =
-            super::parse_bcs("VertexAuthorizationSharedEvent", &bytes).unwrap();
-
-        assert!(distribution.is_none());
-        match parsed {
-            crate::events::NexusEventKind::VertexAuthorizationShared(parsed) => {
-                assert_eq!(parsed.grant_id, shared_event.event.grant_id);
-                assert_eq!(
-                    parsed.vertex_execution_id,
-                    shared_event.event.vertex_execution_id
-                );
-            }
-            _ => panic!("Expected VertexAuthorizationShared variant"),
         }
 
         let event = Wrapper {

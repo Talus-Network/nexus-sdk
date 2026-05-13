@@ -449,7 +449,6 @@ fn request_walk_standard_tap_context_deserializes_authorization_plan() {
             "tool_function": [114, 117, 110],
             "operation_commitment": [1],
             "constraints_commitment": [2],
-            "leader_assignment_id": { "vec": ["0x61"] },
             "endpoint_revision": { "vec": [{ "value": "7" }] },
             "payment_id": { "vec": ["0xd1"] }
         }]
@@ -1100,8 +1099,14 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     let worksheet = tx.input(pure_arg(&6_u64).unwrap());
     let leader_cap = tx.input(pure_arg(&7_u64).unwrap());
     nexus_sdk::transactions::dag::pre_stamp_standard_tap_execution(
-        &mut tx, &objects, execution, worksheet, leader_cap,
-    );
+        &mut tx,
+        &objects,
+        execution,
+        worksheet,
+        leader_cap,
+        &RuntimeVertex::plain("entry"),
+    )
+    .expect("pre-stamp standard tap execution");
 
     let tx = finish_transaction(tx);
     assert_eq!(
@@ -1110,6 +1115,14 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     );
     assert_eq!(
         move_call(&tx, 1).function,
+        nexus_sdk::idents::move_std::Ascii::STRING.name
+    );
+    assert_eq!(
+        move_call(&tx, 2).function,
+        nexus_sdk::idents::workflow::Dag::RUNTIME_VERTEX_PLAIN_FROM_STRING.name
+    );
+    assert_eq!(
+        move_call(&tx, 3).function,
         nexus_sdk::idents::workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.name
     );
 }

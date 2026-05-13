@@ -19,6 +19,7 @@ use {
             AgentId,
             InterfaceRevision,
             NexusObjects,
+            RuntimeVertex,
             SkillId,
             TapActiveSkillExecutionTarget,
             TapAgentPaymentVault,
@@ -42,10 +43,9 @@ use {
             TapSkillConfig,
             TapSkillRecord,
             TapSkillRequirements,
-            TapValidationError,
-            TapVertexAuthorizationGrant,
-            TapVertexAuthorizationGrantAccess,
-            TapVertexAuthorizationPlanEntry,
+            WorkflowVertexAuthorizationGrant,
+            WorkflowVertexAuthorizationGrantAccess,
+            WorkflowVertexAuthorizationGrantFieldKey,
         },
     },
     std::path::PathBuf,
@@ -1069,87 +1069,32 @@ pub async fn fetch_tap_agent_payment_vault_for_agent(
         .await
 }
 
-/// Fetch a standard TAP vertex authorization grant object by object ID.
-pub async fn fetch_tap_vertex_authorization_grant(
+pub async fn fetch_workflow_vertex_authorization_grant(
     crawler: &Crawler,
-    grant_id: sui::types::Address,
-) -> anyhow::Result<Response<TapVertexAuthorizationGrant>> {
+    execution_id: sui::types::Address,
+    vertex: RuntimeVertex,
+) -> anyhow::Result<Response<WorkflowVertexAuthorizationGrant>> {
     crawler
-        .get_object::<TapVertexAuthorizationGrant>(grant_id)
+        .get_dynamic_object_field::<
+            WorkflowVertexAuthorizationGrantFieldKey,
+            WorkflowVertexAuthorizationGrant,
+        >(execution_id, WorkflowVertexAuthorizationGrantFieldKey { vertex })
         .await
 }
 
-pub fn validate_tap_authorization_plan_entry(
-    context: &crate::events::RequestWalkStandardTapContext,
-    endpoint: &TapEndpointRecord,
-    entry: &TapVertexAuthorizationPlanEntry,
-    grant: &TapVertexAuthorizationGrant,
-) -> Result<(), TapValidationError> {
-    if entry
-        .endpoint_revision
-        .is_some_and(|revision| revision != context.interface_revision)
-        || grant.endpoint_revision != Some(context.interface_revision)
-    {
-        return Err(TapValidationError::AuthorizationPlanEndpointMismatch);
-    }
-    if entry
-        .payment_id
-        .is_some_and(|payment_id| payment_id != context.payment_id)
-        || grant
-            .payment_id
-            .is_some_and(|payment_id| payment_id != context.payment_id)
-    {
-        return Err(TapValidationError::AuthorizationPlanPaymentMismatch);
-    }
-    if !entry.matches_grant(grant)
-        || grant.agent_id != context.agent_id
-        || grant.skill_id != context.skill_id
-    {
-        return Err(TapValidationError::AuthorizationPlanGrantMismatch);
-    }
-    if !endpoint
-        .requirements
-        .vertex_authorization_schema
-        .fixed_tools
-        .iter()
-        .any(|tool| tool == &entry.allowed_tool())
-    {
-        return Err(TapValidationError::AuthorizationPlanToolNotAuthorized);
-    }
-
-    Ok(())
-}
-
-pub fn validate_tap_authorization_grant_access(
-    grant: Response<TapVertexAuthorizationGrant>,
-) -> Result<TapVertexAuthorizationGrantAccess, TapValidationError> {
-    if !grant.is_shared() {
-        return Err(TapValidationError::AuthorizationGrantNotShared);
-    }
-
-    Ok(TapVertexAuthorizationGrantAccess {
-        object_ref: grant.object_ref(),
-        grant: grant.data,
-    })
-}
-
-pub async fn resolve_current_tap_authorization_grant(
+pub async fn resolve_current_workflow_vertex_authorization_grant(
     crawler: &Crawler,
-    context: &crate::events::RequestWalkStandardTapContext,
-    endpoint: &TapEndpointRecord,
-    vertex: &crate::types::RuntimeVertex,
-) -> anyhow::Result<Option<TapVertexAuthorizationGrantAccess>> {
-    crate::types::validate_authorization_plan(
-        &endpoint.requirements,
-        &context.authorization_plan,
-        context.authorization_plan_commitment.as_deref(),
-    )?;
-    let Some(entry) = context.authorization_plan.find_for_vertex(vertex)? else {
-        return Ok(None);
-    };
-    let grant = fetch_tap_vertex_authorization_grant(crawler, entry.grant_id).await?;
-    validate_tap_authorization_plan_entry(context, endpoint, entry, &grant.data)?;
-    Ok(Some(validate_tap_authorization_grant_access(grant)?))
+    execution_id: sui::types::Address,
+    vertex: &RuntimeVertex,
+) -> anyhow::Result<Option<WorkflowVertexAuthorizationGrantAccess>> {
+    match fetch_workflow_vertex_authorization_grant(crawler, execution_id, vertex.clone()).await {
+        Ok(response) => Ok(Some(WorkflowVertexAuthorizationGrantAccess {
+            object_ref: response.object_ref(),
+            grant: response.data,
+        })),
+        Err(error) if error.to_string().contains("not found") => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// Fetch a standard TAP scheduled skill task object by object ID.
@@ -1194,9 +1139,7 @@ mod tests {
                 InterfaceRevision,
                 MoveTable,
                 NexusObjects,
-                RuntimeVertex,
                 TapAgentRecord,
-                TapAuthorizedTool,
                 TapDagBinding,
                 TapDefaultExecutionTarget,
                 TapEndpointActivation,
@@ -1209,8 +1152,6 @@ mod tests {
                 TapSharedObjectRef,
                 TapSkillRecord,
                 TapSkillRequirements,
-                TapVertexAuthorizationGrant,
-                TapVertexAuthorizationPlanEntry,
                 TapVertexAuthorizationSchema,
             },
         },
@@ -1455,201 +1396,6 @@ mod tests {
                 mock.endpoint_record,
             )],
         );
-    }
-
-    fn auth_plan_entry() -> TapVertexAuthorizationPlanEntry {
-        TapVertexAuthorizationPlanEntry {
-            vertex: RuntimeVertex::plain("entry"),
-            grant_id: sui::types::Address::from_static("0x30"),
-            tool_package: sui::types::Address::from_static("0xc"),
-            tool_module: "tool".to_string(),
-            tool_function: "run".to_string(),
-            operation_commitment: vec![7],
-            constraints_commitment: vec![8],
-            leader_assignment_id: Some(sui::types::Address::from_static("0x40")),
-            endpoint_revision: Some(InterfaceRevision(1)),
-            payment_id: Some(sui::types::Address::from_static("0x50")),
-        }
-    }
-
-    fn auth_grant(entry: &TapVertexAuthorizationPlanEntry) -> TapVertexAuthorizationGrant {
-        TapVertexAuthorizationGrant {
-            id: entry.grant_id,
-            grantor: sui::types::Address::from_static("0x1"),
-            target_object_id: sui::types::Address::from_static("0x2"),
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            walk_execution_id: sui::types::Address::from_static("0x60"),
-            vertex_execution_id: sui::types::Address::from_static("0x70"),
-            leader_assignment_id: entry.leader_assignment_id,
-            endpoint_revision: entry.endpoint_revision,
-            payment_id: entry.payment_id,
-            allowed_tool_package: entry.tool_package,
-            allowed_tool_module: entry.tool_module.clone(),
-            allowed_tool_function: entry.tool_function.clone(),
-            constraints_commitment: entry.constraints_commitment.clone(),
-            expires_at_ms: 100,
-            max_uses: 1,
-            used: 0,
-            revoked: false,
-            payment_required: true,
-            operation_commitment: entry.operation_commitment.clone(),
-        }
-    }
-
-    #[test]
-    fn validate_authorization_plan_entry_checks_context_endpoint_and_grant() {
-        let entry = auth_plan_entry();
-        let mut endpoint = endpoint(true);
-        endpoint
-            .requirements
-            .vertex_authorization_schema
-            .fixed_tools = vec![TapAuthorizedTool {
-            package_id: entry.tool_package,
-            module: entry.tool_module.clone(),
-            function: entry.tool_function.clone(),
-            operation_commitment: entry.operation_commitment.clone(),
-        }];
-        let context = events::RequestWalkStandardTapContext {
-            agent_id: endpoint.key.agent_id,
-            skill_id: endpoint.key.skill_id,
-            interface_revision: endpoint.key.interface_revision,
-            endpoint_object_id: *endpoint.endpoint_object.object_id(),
-            payment_id: entry.payment_id.unwrap(),
-            selected_dag_id: sui::types::Address::from_static("0x80"),
-            authorization_plan_commitment: None,
-            authorization_plan: Default::default(),
-            scheduled_task_id: None,
-            scheduled_occurrence_index: None,
-        };
-        let grant = auth_grant(&entry);
-
-        validate_tap_authorization_plan_entry(&context, &endpoint, &entry, &grant)
-            .expect("entry matches context and grant");
-
-        let mut wrong_grant = grant.clone();
-        wrong_grant.payment_id = Some(sui::types::Address::from_static("0x51"));
-        assert_eq!(
-            validate_tap_authorization_plan_entry(&context, &endpoint, &entry, &wrong_grant)
-                .unwrap_err(),
-            TapValidationError::AuthorizationPlanPaymentMismatch
-        );
-
-        let mut unbound_entry = entry.clone();
-        unbound_entry.payment_id = None;
-        let mut unbound_grant = grant.clone();
-        unbound_grant.payment_id = None;
-        validate_tap_authorization_plan_entry(&context, &endpoint, &unbound_entry, &unbound_grant)
-            .expect("unbound payment plan entries remain recoverable before binding");
-    }
-
-    #[test]
-    fn validate_authorization_grant_access_requires_shared_owner() {
-        let entry = auth_plan_entry();
-        let grant = auth_grant(&entry);
-        let object_ref =
-            sui::types::ObjectReference::new(entry.grant_id, 9, sui::types::Digest::from([3; 32]));
-        let response = Response {
-            object_id: entry.grant_id,
-            owner: sui::types::Owner::Shared(3),
-            version: 9,
-            data: grant.clone(),
-            digest: *object_ref.digest(),
-            balance: None,
-        };
-
-        let access =
-            validate_tap_authorization_grant_access(response).expect("shared grant is usable");
-        assert_eq!(access.grant, grant);
-        assert_eq!(access.grant_id(), entry.grant_id);
-        assert_eq!(*access.object_ref.object_id(), entry.grant_id);
-        assert_eq!(access.object_ref.version(), 3);
-
-        let response = Response {
-            object_id: entry.grant_id,
-            owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
-            version: 9,
-            data: auth_grant(&entry),
-            digest: *object_ref.digest(),
-            balance: None,
-        };
-        assert_eq!(
-            validate_tap_authorization_grant_access(response).unwrap_err(),
-            TapValidationError::AuthorizationGrantNotShared
-        );
-    }
-
-    #[tokio::test]
-    async fn resolve_current_authorization_grant_returns_shared_access_handle() {
-        let entry = auth_plan_entry();
-        let grant = auth_grant(&entry);
-        let mut endpoint = endpoint(true);
-        endpoint
-            .requirements
-            .vertex_authorization_schema
-            .fixed_tools = vec![entry.allowed_tool()];
-        let context = events::RequestWalkStandardTapContext {
-            agent_id: endpoint.key.agent_id,
-            skill_id: endpoint.key.skill_id,
-            interface_revision: endpoint.key.interface_revision,
-            endpoint_object_id: *endpoint.endpoint_object.object_id(),
-            payment_id: entry.payment_id.unwrap(),
-            selected_dag_id: sui::types::Address::from_static("0x80"),
-            authorization_plan_commitment: None,
-            authorization_plan: crate::types::TapVertexAuthorizationPlan(vec![entry.clone()]),
-            scheduled_task_id: None,
-            scheduled_occurrence_index: None,
-        };
-        let grant_ref =
-            sui::types::ObjectReference::new(entry.grant_id, 11, sui::types::Digest::from([9; 32]));
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            grant_ref,
-            sui::types::Owner::Shared(4),
-            serde_json::json!({
-                "id": entry.grant_id.to_string(),
-                "grantor": grant.grantor.to_string(),
-                "target_object_id": grant.target_object_id.to_string(),
-                "agent_id": grant.agent_id.to_string(),
-                "skill_id": grant.skill_id.to_string(),
-                "walk_execution_id": grant.walk_execution_id.to_string(),
-                "vertex_execution_id": grant.vertex_execution_id.to_string(),
-                "leader_assignment_id": { "vec": [entry.leader_assignment_id.unwrap().to_string()] },
-                "endpoint_revision": { "vec": [{ "value": entry.endpoint_revision.unwrap().0.to_string() }] },
-                "payment_id": { "vec": [entry.payment_id.unwrap().to_string()] },
-                "allowed_tool_package": entry.tool_package.to_string(),
-                "allowed_tool_module": [116, 111, 111, 108],
-                "allowed_tool_function": [114, 117, 110],
-                "operation_commitment": entry.operation_commitment,
-                "constraints_commitment": entry.constraints_commitment,
-                "expires_at_ms": grant.expires_at_ms.to_string(),
-                "max_uses": grant.max_uses.to_string(),
-                "used": grant.used.to_string(),
-                "revoked": false,
-                "payment_required": true
-            }),
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
-
-        let access = resolve_current_tap_authorization_grant(
-            &crawler,
-            &context,
-            &endpoint,
-            &RuntimeVertex::plain("entry"),
-        )
-        .await
-        .expect("grant should resolve")
-        .expect("current vertex has grant");
-
-        assert_eq!(access.grant_id(), entry.grant_id);
-        assert_eq!(access.object_ref.version(), 4);
     }
 
     #[test]

@@ -161,6 +161,26 @@ where
         .ok_or_else(|| D::Error::custom("missing TAP byte-vector value"))
 }
 
+fn deserialize_tap_runtime_vertex<'de, D>(deserializer: D) -> Result<RuntimeVertex, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return RuntimeVertex::deserialize(deserializer);
+    }
+
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if let Some(vertex) = super::parse_runtime_vertex_value(&value).map_err(D::Error::custom)? {
+        return Ok(vertex);
+    }
+
+    if let Some(name) = super::parse_string_value(&value).map_err(D::Error::custom)? {
+        return Ok(RuntimeVertex::plain(&name));
+    }
+
+    Err(D::Error::custom("missing TAP runtime vertex value"))
+}
+
 /// On-chain generated standard Talus agent ID.
 pub type AgentId = sui::types::Address;
 
@@ -1380,85 +1400,31 @@ pub struct TapAgentPaymentVault {
     pub locked_amount: u64,
 }
 
-/// Execution-bound authorization grant model used by fetch/event surfaces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapVertexAuthorizationGrant {
+pub struct WorkflowVertexAuthorizationGrant {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub grantor: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub target_object_id: sui::types::Address,
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub walk_execution_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub vertex_execution_id: sui::types::Address,
-    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
-    pub leader_assignment_id: Option<sui::types::Address>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_interface_revision"
-    )]
-    pub endpoint_revision: Option<InterfaceRevision>,
-    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
-    pub payment_id: Option<sui::types::Address>,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub allowed_tool_package: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub allowed_tool_module: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub allowed_tool_function: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub expires_at_ms: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub max_uses: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub used: u64,
-    pub revoked: bool,
-    pub payment_required: bool,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_commitment: Vec<u8>,
+    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
+    pub vertex: RuntimeVertex,
 }
 
-impl TapVertexAuthorizationGrant {
-    pub fn grant_id(&self) -> sui::types::Address {
-        self.id
-    }
-
-    pub fn endpoint_key(&self) -> Option<TapEndpointKey> {
-        self.endpoint_revision
-            .map(|interface_revision| TapEndpointKey {
-                agent_id: self.agent_id,
-                skill_id: self.skill_id,
-                interface_revision,
-            })
-    }
-
-    pub fn allowed_tool(&self) -> TapAuthorizedTool {
-        TapAuthorizedTool {
-            package_id: self.allowed_tool_package,
-            module: self.allowed_tool_module.clone(),
-            function: self.allowed_tool_function.clone(),
-            operation_commitment: self.operation_commitment.clone(),
-        }
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkflowVertexAuthorizationGrantFieldKey {
+    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
+    pub vertex: RuntimeVertex,
 }
 
-/// Validated mutable-access contract for a shared TAP authorization grant.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapVertexAuthorizationGrantAccess {
-    pub grant: TapVertexAuthorizationGrant,
+pub struct WorkflowVertexAuthorizationGrantAccess {
+    pub grant: WorkflowVertexAuthorizationGrant,
     pub object_ref: sui::types::ObjectReference,
 }
 
-impl TapVertexAuthorizationGrantAccess {
+impl WorkflowVertexAuthorizationGrantAccess {
     pub fn grant_id(&self) -> sui::types::Address {
-        self.grant.grant_id()
+        self.grant.id
     }
 
     pub fn object_id(&self) -> sui::types::Address {
@@ -1469,6 +1435,7 @@ impl TapVertexAuthorizationGrantAccess {
 /// Execution-scoped authorization-plan entry that maps one runtime vertex to a concrete grant.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapVertexAuthorizationPlanEntry {
+    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
     pub vertex: RuntimeVertex,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub grant_id: sui::types::Address,
@@ -1482,8 +1449,6 @@ pub struct TapVertexAuthorizationPlanEntry {
     pub operation_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub constraints_commitment: Vec<u8>,
-    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
-    pub leader_assignment_id: Option<sui::types::Address>,
     #[serde(
         default,
         deserialize_with = "deserialize_move_option_interface_revision"
@@ -1501,26 +1466,6 @@ impl TapVertexAuthorizationPlanEntry {
             function: self.tool_function.clone(),
             operation_commitment: self.operation_commitment.clone(),
         }
-    }
-
-    pub fn matches_grant(&self, grant: &TapVertexAuthorizationGrant) -> bool {
-        grant.grant_id() == self.grant_id
-            && grant.allowed_tool_package == self.tool_package
-            && grant.allowed_tool_module == self.tool_module
-            && grant.allowed_tool_function == self.tool_function
-            && grant.operation_commitment == self.operation_commitment
-            && grant.constraints_commitment == self.constraints_commitment
-            && self
-                .leader_assignment_id
-                .is_none_or(|leader_assignment_id| {
-                    grant.leader_assignment_id == Some(leader_assignment_id)
-                })
-            && self
-                .endpoint_revision
-                .is_none_or(|endpoint_revision| grant.endpoint_revision == Some(endpoint_revision))
-            && self
-                .payment_id
-                .is_none_or(|payment_id| grant.payment_id == Some(payment_id))
     }
 }
 
@@ -2673,52 +2618,32 @@ mod tests {
 
     #[test]
     fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
-        let grant: TapVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
-            "id": "0xaa",
-            "grantor": "0xbb",
-            "target_object_id": "0xcc",
-            "agent_id": "0xdd",
-            "skill_id": "238",
-            "walk_execution_id": "0xff",
-            "vertex_execution_id": "0x11",
-            "allowed_tool_package": "0x14",
-            "allowed_tool_module": "0x746f6f6c",
-            "allowed_tool_function": "0x72756e",
+        let entry: TapVertexAuthorizationPlanEntry = serde_json::from_value(serde_json::json!({
+            "vertex": [101, 110, 116, 114, 121],
+            "grant_id": "0xaa",
+            "tool_package": "0x14",
+            "tool_module": "0x746f6f6c",
+            "tool_function": "0x72756e",
             "operation_commitment": [1, 2],
-            "constraints_commitment": [3, 4],
-            "expires_at_ms": "10",
-            "max_uses": "2",
-            "used": "1",
-            "revoked": false,
-            "payment_required": true
+            "constraints_commitment": [3, 4]
         }))
         .expect("hex byte strings decode as UTF-8");
 
-        assert_eq!(grant.allowed_tool_module, "tool");
-        assert_eq!(grant.allowed_tool_function, "run");
+        assert_eq!(entry.tool_module, "tool");
+        assert_eq!(entry.tool_function, "run");
 
-        let grant: TapVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
-            "id": "0xaa",
-            "grantor": "0xbb",
-            "target_object_id": "0xcc",
-            "agent_id": "0xdd",
-            "skill_id": "238",
-            "walk_execution_id": "0xff",
-            "vertex_execution_id": "0x11",
-            "allowed_tool_package": "0x14",
-            "allowed_tool_module": "0xnothex",
-            "allowed_tool_function": "run",
+        let entry: TapVertexAuthorizationPlanEntry = serde_json::from_value(serde_json::json!({
+            "vertex": [101, 110, 116, 114, 121],
+            "grant_id": "0xaa",
+            "tool_package": "0x14",
+            "tool_module": "0xnothex",
+            "tool_function": "run",
             "operation_commitment": [1, 2],
-            "constraints_commitment": [3, 4],
-            "expires_at_ms": "10",
-            "max_uses": "2",
-            "used": "1",
-            "revoked": false,
-            "payment_required": true
+            "constraints_commitment": [3, 4]
         }))
         .expect("plain byte string remains text");
 
-        assert_eq!(grant.allowed_tool_module, "0xnothex");
+        assert_eq!(entry.tool_module, "0xnothex");
     }
 
     #[test]
@@ -2835,7 +2760,6 @@ mod tests {
             tool_function: "run".to_string(),
             operation_commitment: vec![7],
             constraints_commitment: vec![8],
-            leader_assignment_id: Some(addr("0x50")),
             endpoint_revision: Some(InterfaceRevision(2)),
             payment_id: Some(addr("0x60")),
         }
@@ -2944,45 +2868,17 @@ mod tests {
     }
 
     #[test]
-    fn vertex_authorization_grant_model_matches_live_object_shape() {
-        let grant: TapVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
+    fn workflow_vertex_authorization_grant_model_matches_live_object_shape() {
+        let grant: WorkflowVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
             "id": "0xaa",
-            "grantor": "0xbb",
-            "target_object_id": "0xcc",
-            "agent_id": "0xdd",
-            "skill_id": "238",
             "walk_execution_id": "0xff",
-            "vertex_execution_id": "0x11",
-            "leader_assignment_id": { "vec": ["0x12"] },
-            "endpoint_revision": { "fields": { "vec": [{ "fields": { "value": "7" } }] } },
-            "payment_id": { "vec": ["0x13"] },
-            "allowed_tool_package": "0x14",
-            "allowed_tool_module": [116, 111, 111, 108],
-            "allowed_tool_function": [114, 117, 110],
-            "operation_commitment": [1, 2],
-            "constraints_commitment": [3, 4],
-            "expires_at_ms": "10",
-            "max_uses": "2",
-            "used": "1",
-            "revoked": false,
-            "payment_required": true
+            "vertex": [101, 110, 116, 114, 121]
         }))
         .expect("grant should deserialize");
 
-        assert_eq!(grant.grant_id(), addr("0xaa"));
-        assert_eq!(grant.agent_id, addr("0xdd"));
-        assert_eq!(grant.skill_id, 238);
-        assert_eq!(grant.leader_assignment_id, Some(addr("0x12")));
-        assert_eq!(
-            grant.endpoint_key().unwrap().interface_revision,
-            InterfaceRevision(7)
-        );
-        assert_eq!(grant.payment_id, Some(addr("0x13")));
-        assert_eq!(grant.allowed_tool().module, "tool");
-        assert_eq!(grant.allowed_tool().function, "run");
-        assert_eq!(grant.max_uses, 2);
-        assert_eq!(grant.used, 1);
-        assert!(grant.payment_required);
+        assert_eq!(grant.id, addr("0xaa"));
+        assert_eq!(grant.walk_execution_id, addr("0xff"));
+        assert_eq!(grant.vertex, RuntimeVertex::plain("entry"));
     }
 
     #[test]

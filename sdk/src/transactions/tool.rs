@@ -168,6 +168,41 @@ pub fn register_on_chain_for_self(
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
 ) -> anyhow::Result<()> {
+    register_on_chain_for_self_with_workflow_authorization_cap(
+        tx,
+        objects,
+        package_address,
+        module_name,
+        fqn,
+        description,
+        input_schema,
+        output_schema,
+        timeout,
+        witness_id,
+        collateral_coin,
+        address,
+        false,
+    )
+}
+
+/// PTB template for registering a new onchain Nexus Tool with optional
+/// workflow vertex authorization cap-first metadata.
+#[allow(clippy::too_many_arguments)]
+pub fn register_on_chain_for_self_with_workflow_authorization_cap(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    package_address: sui::types::Address,
+    module_name: &str,
+    fqn: &ToolFqn,
+    description: &str,
+    input_schema: &str,
+    output_schema: &str,
+    timeout: Duration,
+    witness_id: sui::types::Address,
+    collateral_coin: &sui::types::ObjectReference,
+    address: sui::types::Address,
+    workflow_authorization_cap_first: bool,
+) -> anyhow::Result<()> {
     // `self: &mut ToolRegistry`
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
@@ -213,12 +248,17 @@ pub fn register_on_chain_for_self(
         false,
     ));
 
-    // `nexus_workflow::tool_registry::register_on_chain_tool()`
+    // `nexus_workflow::tool_registry::register_on_chain_tool*()`
+    let register_ident = if workflow_authorization_cap_first {
+        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP
+    } else {
+        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+    };
     let result = tx.move_call(
         sui::tx::Function::new(
             objects.registry_pkg_id(),
-            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module,
-            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name,
+            register_ident.module,
+            register_ident.name,
             vec![],
         ),
         vec![

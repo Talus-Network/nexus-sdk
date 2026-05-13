@@ -606,16 +606,6 @@ mod tests {
         authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
     }
 
-    #[derive(Clone, Debug, Serialize)]
-    struct VertexAuthorizationBoundEventBcs {
-        grant_id: sui::types::Address,
-        walk_execution_id: sui::types::Address,
-        vertex_execution_id: sui::types::Address,
-        leader_assignment_id: sui::types::Address,
-        interface_revision: InterfaceRevision,
-        payment_id: MoveOptionBcs<sui::types::Address>,
-    }
-
     #[test]
     fn test_parse_from_grpc_valid_nexus_event() {
         let mut rng = rand::thread_rng();
@@ -1134,7 +1124,6 @@ mod tests {
         assert!(names.contains(&"RequestWalkExecutionEvent"));
         assert!(names.contains(&"RequestScheduledWalkEvent"));
         assert!(names.contains(&"AgentSkillExecutionRequestedEvent"));
-        assert!(names.contains(&"VertexAuthorizationBoundEvent"));
 
         for (name, bytes) in samples {
             let (event, distribution) =
@@ -1174,12 +1163,6 @@ mod tests {
                 }
                 NexusEventKind::AgentSkillExecutionRequested(event) => {
                     assert_eq!(event.authorization_plan_commitment, Some(vec![9, 9]));
-                }
-                NexusEventKind::VertexAuthorizationBound(event) => {
-                    assert_eq!(
-                        event.payment_id,
-                        Some(sui::types::Address::from_static("0x2d"))
-                    );
                 }
                 _ => {}
             }
@@ -1286,83 +1269,6 @@ mod tests {
                     },
                 })
                 .expect("AgentSkillExecutionRequestedEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationCreatedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationCreatedEvent {
-                        grant_id: sui::types::Address::from_static("0x24"),
-                        grantor: sui::types::Address::from_static("0x25"),
-                        target_object_id: sui::types::Address::from_static("0x26"),
-                        agent_id: sui::types::Address::from_static("0x1"),
-                        skill_id: 2,
-                        walk_execution_id: sui::types::Address::from_static("0x27"),
-                        vertex_execution_id: sui::types::Address::from_static("0x28"),
-                        expires_at_ms: 999,
-                        max_uses: 2,
-                    },
-                })
-                .expect("VertexAuthorizationCreatedEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationSharedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationSharedEvent {
-                        grant_id: sui::types::Address::from_static("0x29"),
-                        walk_execution_id: sui::types::Address::from_static("0x2a"),
-                        vertex_execution_id: sui::types::Address::from_static("0x2b"),
-                    },
-                })
-                .expect("VertexAuthorizationSharedEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationBoundEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationBoundEventBcs {
-                        grant_id: sui::types::Address::from_static("0x29"),
-                        walk_execution_id: sui::types::Address::from_static("0x2a"),
-                        vertex_execution_id: sui::types::Address::from_static("0x2b"),
-                        leader_assignment_id: sui::types::Address::from_static("0x2c"),
-                        interface_revision: InterfaceRevision(9),
-                        payment_id: Some(sui::types::Address::from_static("0x2d")).into(),
-                    },
-                })
-                .expect("VertexAuthorizationBoundEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationVerifiedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationVerifiedEvent {
-                        grant_id: sui::types::Address::from_static("0x2e"),
-                        walk_execution_id: sui::types::Address::from_static("0x2f"),
-                        vertex_execution_id: sui::types::Address::from_static("0x30"),
-                        leader_assignment_id: sui::types::Address::from_static("0x31"),
-                        tool_package: sui::types::Address::from_static("0x32"),
-                        operation_commitment: vec![1, 3, 5],
-                        used: 1,
-                    },
-                })
-                .expect("VertexAuthorizationVerifiedEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationRevokedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationRevokedEvent {
-                        grant_id: sui::types::Address::from_static("0x33"),
-                        grantor: sui::types::Address::from_static("0x34"),
-                    },
-                })
-                .expect("VertexAuthorizationRevokedEvent sample serializes"),
-            ),
-            (
-                "VertexAuthorizationExpiredEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: VertexAuthorizationExpiredEvent {
-                        grant_id: sui::types::Address::from_static("0x35"),
-                        expires_at_ms: 1234,
-                    },
-                })
-                .expect("VertexAuthorizationExpiredEvent sample serializes"),
             ),
             (
                 "AgentSkillPaymentCreatedEvent",
@@ -1761,60 +1667,6 @@ mod tests {
                 ],
             ),
             (
-                "VertexAuthorizationCreatedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 38, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 39, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 231, 3, 0, 0, 0, 0, 0, 0, 2,
-                    0, 0, 0, 0, 0, 0, 0,
-                ],
-            ),
-            (
-                "VertexAuthorizationBoundEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 43, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 9, 0,
-                    0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 45,
-                ],
-            ),
-            (
-                "VertexAuthorizationVerifiedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 46, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 50, 3, 1, 3, 5, 1, 0, 0, 0, 0, 0, 0, 0,
-                ],
-            ),
-            (
-                "VertexAuthorizationRevokedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52,
-                ],
-            ),
-            (
-                "VertexAuthorizationExpiredEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 53, 210, 4, 0, 0, 0, 0, 0, 0,
-                ],
-            ),
-            (
                 "AgentSkillPaymentCreatedEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2053,12 +1905,6 @@ mod tests {
                     | "EndpointRevisionActivatedEvent"
                     | "WorksheetResolvedEvent"
                     | "AgentSkillExecutionRequestedEvent"
-                    | "VertexAuthorizationCreatedEvent"
-                    | "VertexAuthorizationSharedEvent"
-                    | "VertexAuthorizationBoundEvent"
-                    | "VertexAuthorizationVerifiedEvent"
-                    | "VertexAuthorizationRevokedEvent"
-                    | "VertexAuthorizationExpiredEvent"
                     | "AgentSkillPaymentCreatedEvent"
                     | "GasPaymentConsumedEvent"
                     | "ExecutionAccomplishedEvent"

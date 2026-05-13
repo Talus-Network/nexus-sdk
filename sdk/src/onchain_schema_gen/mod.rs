@@ -15,5 +15,6 @@ pub use {
         convert_move_type_to_schema,
         is_hidden_internal_tool_param,
         is_tx_context_param,
+        is_workflow_vertex_authorization_cap_param,
     },
 };
