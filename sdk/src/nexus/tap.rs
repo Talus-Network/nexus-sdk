@@ -1741,6 +1741,62 @@ mod tests {
         )
     }
 
+    fn standard_endpoint_object(
+        objects: &NexusObjects,
+        endpoint_ref: &sui::types::ObjectReference,
+    ) -> sui::types::Object {
+        sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(
+                    sui::types::StructTag::new(
+                        objects.registry_pkg_id(),
+                        TapStandard::CREATE_STANDARD_ENDPOINT.module,
+                        sui::types::Identifier::from_static("StandardEndpoint"),
+                        vec![],
+                    ),
+                    true,
+                    endpoint_ref.version(),
+                    endpoint_ref.object_id().as_bytes().to_vec(),
+                )
+                .expect("endpoint object contents include id"),
+            ),
+            sui::types::Owner::Shared(endpoint_ref.version()),
+            *endpoint_ref.digest(),
+            0,
+        )
+    }
+
+    fn artifact_with_endpoint(endpoint_ref: &sui::types::ObjectReference) -> TapPublishArtifact {
+        let config = TapSkillConfig {
+            name: "weather skill".to_string(),
+            tap_package_name: "weather_tap".to_string(),
+            dag_path: std::path::PathBuf::from("dag.json"),
+            tap_package_path: std::path::PathBuf::from("tap"),
+            requirements: TapSkillRequirements {
+                input_schema_commitment: vec![1],
+                workflow_commitment: vec![2],
+                metadata_commitment: vec![3],
+                payment_policy: TapPaymentPolicy::default(),
+                schedule_policy: TapSchedulePolicy::default(),
+                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            },
+            shared_objects: vec![TapSharedObjectRef::immutable(
+                sui::types::Address::from_static("0xe"),
+            )],
+            interface_revision: InterfaceRevision(1),
+            active_for_new_executions: true,
+        };
+
+        TapPublishArtifact::from_config(
+            &config,
+            sui::types::Address::from_static("0xd"),
+            sui::types::Address::from_static("0xc"),
+        )
+        .expect("artifact")
+        .with_endpoint_object(endpoint_ref.clone())
+        .expect("endpoint artifact")
+    }
+
     #[tokio::test]
     async fn tap_actions_create_agent_extracts_agent_created_event() {
         let mut rng = rand::thread_rng();
@@ -1822,6 +1878,419 @@ mod tests {
         );
         assert_eq!(result.tx_digest, digest);
         assert_eq!(result.tx_checkpoint, 1);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_create_standard_endpoint_extracts_shared_endpoint_object() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let endpoint_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xf"),
+            7,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let endpoint_object = standard_endpoint_object(&nexus_objects, &endpoint_ref);
+        let expected_endpoint_ref = sui::types::ObjectReference::new(
+            endpoint_object.object_id(),
+            endpoint_object.version(),
+            endpoint_object.digest(),
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![endpoint_object],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .create_standard_endpoint(sui::types::Address::from_static("0xc"))
+            .await
+            .expect("endpoint created");
+
+        assert_eq!(result.endpoint_object, expected_endpoint_ref);
+        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_checkpoint, 1);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_register_skill_reads_metadata_and_extracts_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            3,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let endpoint_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xf"),
+            7,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let artifact = artifact_with_endpoint(&endpoint_ref);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            endpoint_ref.clone(),
+            sui::types::Owner::Shared(endpoint_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "SkillRegisteredEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::SkillRegisteredEvent {
+                        agent_id: *agent_ref.object_id(),
+                        skill_id: 11,
+                        dag_id: artifact.dag_id,
+                        dag_binding: TapDagBinding::pinned(artifact.dag_id),
+                        tap_package_id: artifact.tap_package_id,
+                        workflow_commitment: artifact.requirements.workflow_commitment.clone(),
+                        requirements_commitment: artifact
+                            .requirements
+                            .input_schema_commitment
+                            .clone(),
+                        capability_schema_commitment: artifact
+                            .requirements
+                            .vertex_authorization_schema
+                            .schema_commitment
+                            .clone(),
+                    },
+                })
+                .unwrap(),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .register_skill(*agent_ref.object_id(), &artifact, None)
+            .await
+            .expect("register skill succeeds");
+
+        assert_eq!(result.agent_id, *agent_ref.object_id());
+        assert_eq!(result.skill_id, 11);
+        assert_eq!(result.tx_digest, digest);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_announce_endpoint_revision_reads_metadata_and_extracts_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            3,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let endpoint_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xf"),
+            7,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let artifact = artifact_with_endpoint(&endpoint_ref);
+        let config_digest = artifact
+            .endpoint_config_digest(*endpoint_ref.object_id())
+            .expect("endpoint digest");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            endpoint_ref.clone(),
+            sui::types::Owner::Shared(endpoint_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "EndpointRevisionAnnouncedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::EndpointRevisionAnnouncedEvent {
+                        agent_id: *agent_ref.object_id(),
+                        skill_id: 11,
+                        interface_revision: artifact.interface_revision,
+                        package_id: artifact.tap_package_id,
+                        endpoint_object_id: *endpoint_ref.object_id(),
+                        endpoint_object_version: endpoint_ref.version(),
+                        endpoint_object_digest: endpoint_ref.digest().inner().to_vec(),
+                        shared_objects: artifact.shared_objects.clone(),
+                        requirements: artifact.requirements.clone(),
+                        config_digest: config_digest.clone(),
+                        active_for_new_executions: true,
+                    },
+                })
+                .unwrap(),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .announce_endpoint_revision(*agent_ref.object_id(), 11, &artifact, None, true)
+            .await
+            .expect("announce succeeds");
+
+        assert_eq!(result.endpoint_key.agent_id, *agent_ref.object_id());
+        assert_eq!(result.endpoint_key.skill_id, 11);
+        assert_eq!(result.endpoint_object, endpoint_ref);
+        assert_eq!(result.config_digest, config_digest);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_schedule_skill_execution_extracts_created_task_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            3,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let scheduled_task_id = sui::types::Address::from_static("0x77");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "ScheduledSkillExecutionCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::ScheduledSkillExecutionCreatedEvent {
+                        scheduled_task_id,
+                        scheduler_task_id: sui::types::Address::ZERO,
+                        agent_id: *agent_ref.object_id(),
+                        skill_id: 11,
+                        long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
+                        schedule_entries_commitment: vec![4],
+                        first_after_ms: 10,
+                        max_occurrences: 1,
+                        source_kind: crate::types::TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0xc"),
+                        prepaid_amount: 0,
+                        occurrence_budget: 0,
+                        refund_mode: 0,
+                    },
+                })
+                .unwrap(),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .schedule_skill_execution(
+                *agent_ref.object_id(),
+                11,
+                sui::types::Address::from_static("0xc"),
+                vec![1],
+                vec![2],
+                Some(vec![3]),
+                TapSchedulePolicy::default(),
+                vec![4],
+                10,
+            )
+            .await
+            .expect("schedule succeeds");
+
+        assert_eq!(result.scheduled_task_id, scheduled_task_id);
+        assert_eq!(result.agent_id, *agent_ref.object_id());
+        assert_eq!(result.skill_id, 11);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_schedule_skill_execution_address_funded_extracts_created_task_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            3,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let scheduler_task_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0x66"),
+            5,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let scheduled_task_id = sui::types::Address::from_static("0x77");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "ScheduledSkillExecutionCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::ScheduledSkillExecutionCreatedEvent {
+                        scheduled_task_id,
+                        scheduler_task_id: *scheduler_task_ref.object_id(),
+                        agent_id: *agent_ref.object_id(),
+                        skill_id: 11,
+                        long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
+                        schedule_entries_commitment: vec![4],
+                        first_after_ms: 10,
+                        max_occurrences: 1,
+                        source_kind: crate::types::TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0xc"),
+                        prepaid_amount: 25,
+                        occurrence_budget: 5,
+                        refund_mode: 0,
+                    },
+                })
+                .unwrap(),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .schedule_skill_execution_address_funded(ScheduleSkillExecutionAddressFundedParams {
+                scheduler_task: scheduler_task_ref,
+                agent_id: *agent_ref.object_id(),
+                skill_id: 11,
+                input_commitment: vec![1],
+                prepay_amount: 25,
+                refund_recipient: None,
+                payment_source: vec![2],
+                occurrence_budget: 5,
+                refund_mode: 0,
+                authorization_plan_commitment: Some(vec![3]),
+                schedule_policy: TapSchedulePolicy::default(),
+                refill_policy_commitment: vec![4],
+                schedule_entries_commitment: vec![5],
+                first_after_ms: 10,
+            })
+            .await
+            .expect("durable schedule succeeds");
+
+        assert_eq!(result.scheduled_task_id, scheduled_task_id);
+        assert_eq!(result.agent_id, *agent_ref.object_id());
+        assert_eq!(result.skill_id, 11);
+        assert_eq!(result.tx_digest, digest);
     }
 
     #[tokio::test]

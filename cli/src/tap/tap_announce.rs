@@ -27,3 +27,29 @@ pub(crate) async fn announce_endpoint_revision(
 
     json_output(&announce_result_json(&artifact, &result).map_err(NexusCliError::Any)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn announce_missing_artifact_fails_before_rpc_client() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let error = announce_endpoint_revision(
+            tempdir.path().join("missing-artifact.json"),
+            sui::types::Address::from_static("0xa"),
+            11,
+            None,
+            true,
+            None,
+            DEFAULT_GAS_BUDGET,
+        )
+        .await
+        .expect_err("missing artifact should fail");
+
+        assert!(
+            error.to_string().contains("No such file") || error.to_string().contains("not found"),
+            "unexpected error: {error}"
+        );
+    }
+}

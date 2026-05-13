@@ -62,3 +62,26 @@ pub(crate) fn agent_id_from_alias_or_arg(
         "provide either --agent-id or --alias"
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_hex_helpers_report_named_argument_errors() {
+        let error = decode_hex_arg("0xnot-hex", "payment-source").expect_err("invalid hex");
+        assert!(
+            error.to_string().contains("invalid payment-source hex"),
+            "unexpected error: {error}"
+        );
+
+        assert_eq!(
+            decode_optional_hex_arg(Some(String::new()), "authorization-plan").unwrap(),
+            None
+        );
+        assert_eq!(
+            decode_optional_hex_arg(Some("0x0102".to_string()), "authorization-plan").unwrap(),
+            Some(vec![1, 2])
+        );
+    }
+}

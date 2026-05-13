@@ -1091,6 +1091,7 @@ mod tests {
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
             types::{
+                derive_tool_gas_id,
                 InterfaceRevision,
                 MoveTable,
                 NexusData,
@@ -1634,6 +1635,223 @@ mod tests {
         assert_eq!(result.tx_digest, tx_digest);
         let standard_tap = result.standard_tap.expect("standard TAP metadata");
         assert_eq!(standard_tap.payment_max_budget, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_actions_execute_standard_tap_pinned_skill() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let tool_fqn = fqn!("xyz.taluslabs.standard_tap@1");
+        let tool_gas_id = derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &tool_fqn)
+            .expect("derive tool gas id");
+        let tool_gas_ref = sui::types::ObjectReference::new(
+            tool_gas_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let agent_id = sui::types::Address::generate(&mut rng);
+        let skill_id = 22;
+        let agent_ref =
+            sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
+        let endpoint_digest = sui::types::Digest::generate(&mut rng);
+        let requirements = TapSkillRequirements {
+            input_schema_commitment: vec![1],
+            workflow_commitment: vec![2],
+            metadata_commitment: vec![3],
+            payment_policy: TapPaymentPolicy::default(),
+            schedule_policy: TapSchedulePolicy::default(),
+            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+        };
+        let tap_registry = TapRegistry {
+            id: *nexus_objects
+                .tap_registry()
+                .expect("tap registry ref")
+                .object_id(),
+            agents: vec![TapAgentRecord {
+                agent_id,
+                owner: sui::types::Address::generate(&mut rng),
+                operator: sui::types::Address::generate(&mut rng),
+                active: true,
+                next_skill_index: 1,
+                skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
+                endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
+                active_endpoints: vec![TapEndpointActivation {
+                    agent_id,
+                    skill_id,
+                    interface_revision: InterfaceRevision(1),
+                }],
+            }],
+            skills: vec![TapSkillRecord {
+                agent_id,
+                skill_id,
+                dag_id: *dag_ref.object_id(),
+                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
+                tap_package_id: sui::types::Address::generate(&mut rng),
+                workflow_commitment: requirements.workflow_commitment.clone(),
+                requirements_commitment: requirements.input_schema_commitment.clone(),
+                metadata_commitment: requirements.metadata_commitment.clone(),
+                payment_policy: requirements.payment_policy.clone(),
+                schedule_policy: requirements.schedule_policy.clone(),
+                capability_schema_commitment: vec![],
+                active: true,
+            }],
+            endpoints: vec![TapEndpointRevision {
+                agent_id,
+                skill_id,
+                interface_revision: InterfaceRevision(1),
+                package_id: sui::types::Address::generate(&mut rng),
+                endpoint_object_id: sui::types::Address::generate(&mut rng),
+                endpoint_object_version: 7,
+                endpoint_object_digest: endpoint_digest.inner().to_vec(),
+                shared_objects: vec![TapSharedObjectRef::immutable(
+                    sui::types::Address::generate(&mut rng),
+                )],
+                requirements: requirements.clone(),
+                config_digest: vec![9],
+                active_for_new_executions: true,
+            }],
+            active_endpoints: vec![TapEndpointActivation {
+                agent_id,
+                skill_id,
+                interface_revision: InterfaceRevision(1),
+            }],
+            default_target: None,
+        };
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let execution_created = sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(
+                    sui::types::StructTag::new(
+                        nexus_objects.workflow_pkg_id,
+                        sui::types::Identifier::from_static("dag"),
+                        sui::types::Identifier::from_static("DAGExecution"),
+                        vec![],
+                    ),
+                    true,
+                    0,
+                    execution_object_id.to_bcs().unwrap(),
+                )
+                .unwrap(),
+            ),
+            sui::types::Owner::Shared(0),
+            tx_digest,
+            1000,
+        );
+        let dag = Dag {
+            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        };
+        mock_fetch_registry_from_tables(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            nexus_objects
+                .tap_registry()
+                .expect("tap registry ref")
+                .clone(),
+            &tap_registry,
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!(dag),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("ToolVertex"), *tool_gas_ref.object_id())],
+        );
+        let vertex_info = DagVertexInfo {
+            kind: DagVertexKind::OffChain {
+                tool_fqn: tool_fqn.clone(),
+            },
+            leader_verifier: None,
+            tool_verifier: None,
+            input_ports: Set::default(),
+        };
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                tool_gas_ref.clone(),
+                sui::types::Owner::Shared(0),
+                json!({ "value": vertex_info }),
+            )],
+        );
+        sui_mocks::grpc::mock_get_objects_metadata(
+            &mut ledger_service_mock,
+            vec![(tool_gas_ref, sui::types::Owner::Shared(0), None)],
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref,
+            sui::types::Owner::Shared(2),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref,
+            vec![execution_created],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            state_service_mock: Some(state_service_mock),
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let entry_data = HashMap::from([(
+            "entry_vertex".to_string(),
+            PortsData::from_map(HashMap::from([(
+                "entry_port".to_string(),
+                NexusData::new_inline(json!("data")),
+            )])),
+        )]);
+
+        let result = client
+            .workflow()
+            .execute_standard_tap(
+                agent_id,
+                skill_id,
+                entry_data,
+                0,
+                Some("custom"),
+                &StorageConf::default(),
+                StandardTapExecuteOptions {
+                    payment_max_budget: 100,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("standard TAP execution succeeds");
+
+        assert_eq!(result.execution_object_id, execution_object_id);
+        assert_eq!(result.tx_digest, tx_digest);
+        let metadata = result.standard_tap.expect("standard TAP metadata");
+        assert_eq!(metadata.agent_id, agent_id);
+        assert_eq!(metadata.skill_id, skill_id);
+        assert_eq!(metadata.dag_id, *dag_ref.object_id());
+        assert_eq!(metadata.payment_max_budget, 100);
+        assert!(metadata.authorization_plan.is_empty());
     }
 
     #[tokio::test]

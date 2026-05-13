@@ -1305,3 +1305,226 @@ pub fn prost_value_to_json_value(value: &prost_types::Value) -> anyhow::Result<s
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_utils::sui_mocks,
+        mockall::predicate::always,
+        serde::{Deserialize, Serialize},
+        serde_json::json,
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestValue {
+        value: u64,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    struct TestKey {
+        name: String,
+    }
+
+    fn object_with_json(
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        json_value: serde_json::Value,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(object_ref.object_id().to_string());
+        object.set_owner(sui::grpc::Owner::from(owner));
+        object.set_digest(*object_ref.digest());
+        object.set_version(object_ref.version());
+        object.json = Some(Box::new(json_value_to_prost_value(&json_value)));
+        object
+    }
+
+    fn json_value_to_prost_value(value: &serde_json::Value) -> prost_types::Value {
+        use prost_types::value::Kind;
+
+        let kind = match value {
+            serde_json::Value::Null => Kind::NullValue(0),
+            serde_json::Value::Bool(value) => Kind::BoolValue(*value),
+            serde_json::Value::Number(value) => {
+                Kind::NumberValue(value.as_f64().unwrap_or_default())
+            }
+            serde_json::Value::String(value) => Kind::StringValue(value.clone()),
+            serde_json::Value::Array(values) => Kind::ListValue(prost_types::ListValue {
+                values: values.iter().map(json_value_to_prost_value).collect(),
+            }),
+            serde_json::Value::Object(values) => Kind::StructValue(prost_types::Struct {
+                fields: values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), json_value_to_prost_value(value)))
+                    .collect(),
+            }),
+        };
+
+        prost_types::Value { kind: Some(kind) }
+    }
+
+    #[tokio::test]
+    async fn get_owned_objects_pages_and_deserializes_json() {
+        let owner = sui::types::Address::from_static("0xa");
+        let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let first_object = object_with_json(
+            first_ref.clone(),
+            sui::types::Owner::Address(owner),
+            json!({
+                "value": 7,
+                "label": "first",
+                "enabled": true,
+                "tags": ["a", "b"],
+                "optional": null
+            }),
+        );
+        let second_object = object_with_json(
+            second_ref.clone(),
+            sui::types::Owner::Address(owner),
+            json!({"value": 9}),
+        );
+        let responses: Vec<(Vec<sui::grpc::Object>, Option<Vec<u8>>)> = vec![
+            (vec![first_object], Some(Vec::from(&b"page-2"[..]))),
+            (vec![second_object], None),
+        ];
+        let mut responses = responses.into_iter();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(2)
+            .with(always())
+            .returning(move |_request| {
+                let (objects, next_page_token) = responses.next().expect("owned object page");
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(objects);
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let objects = crawler
+            .get_owned_objects::<TestValue>(
+                owner,
+                sui::types::StructTag::new(
+                    sui::types::Address::from_static("0x1"),
+                    sui::types::Identifier::from_static("test"),
+                    sui::types::Identifier::from_static("TestValue"),
+                    vec![],
+                ),
+            )
+            .await
+            .expect("owned objects load");
+
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].object_id, *first_ref.object_id());
+        assert_eq!(objects[0].data, TestValue { value: 7 });
+        assert_eq!(objects[1].object_id, *second_ref.object_id());
+        assert_eq!(objects[1].data, TestValue { value: 9 });
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_object_field_fetches_child_object_by_key() {
+        let parent_id = sui::types::Address::from_static("0x40");
+        let field_id = sui::types::Address::from_static("0x41");
+        let child_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x42"));
+        let key = TestKey {
+            name: "primary".to_string(),
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), field_id, *child_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                child_ref.clone(),
+                sui::types::Owner::Shared(child_ref.version()),
+                json!({"value": 11}),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let object = crawler
+            .get_dynamic_object_field::<TestKey, TestValue>(parent_id, key)
+            .await
+            .expect("dynamic object field loads");
+
+        assert_eq!(object.object_id, *child_ref.object_id());
+        assert_eq!(object.data, TestValue { value: 11 });
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_field_values_bcs_pages_and_decodes_values() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let responses: Vec<(Vec<(&'static str, TestValue)>, Option<Vec<u8>>)> = vec![
+            (
+                vec![("test::First", TestValue { value: 3 })],
+                Some(Vec::from(&b"page-2"[..])),
+            ),
+            (vec![("test::Second", TestValue { value: 5 })], None),
+        ];
+        let mut responses = responses.into_iter();
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(2)
+            .with(always())
+            .returning(move |_request| {
+                let (fields, next_page_token) = responses.next().expect("dynamic field page");
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                response.set_dynamic_fields(
+                    fields
+                        .into_iter()
+                        .map(|(value_type, value)| {
+                            let mut field = sui::grpc::DynamicField::default();
+                            let mut bcs_value = sui::grpc::Bcs::default();
+                            bcs_value.set_value(bcs::to_bytes(&value).expect("value bcs"));
+                            field.set_value(bcs_value);
+                            field.set_value_type(value_type);
+                            field
+                        })
+                        .collect(),
+                );
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let values = crawler
+            .get_dynamic_field_values_bcs::<TestValue>(parent_id)
+            .await
+            .expect("dynamic field values load");
+
+        assert_eq!(
+            values,
+            vec![
+                (Some("test::First".to_string()), TestValue { value: 3 }),
+                (Some("test::Second".to_string()), TestValue { value: 5 }),
+            ]
+        );
+    }
+}

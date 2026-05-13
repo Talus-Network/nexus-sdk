@@ -227,3 +227,34 @@ pub(crate) async fn validate_skill(
 
     Ok(config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn read_skill_config_reports_json_parse_errors() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let path = tempdir.path().join("skill.tap.json");
+        tokio::fs::write(&path, "{")
+            .await
+            .expect("write invalid JSON");
+
+        let error = read_skill_config(&path)
+            .await
+            .expect_err("invalid config JSON should fail");
+
+        assert!(
+            error.to_string().contains("EOF while parsing"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_relative_without_parent_uses_input_path() {
+        assert_eq!(
+            resolve_relative(std::path::Path::new("skill.tap.json"), PathBuf::from("tap")),
+            PathBuf::from("tap")
+        );
+    }
+}

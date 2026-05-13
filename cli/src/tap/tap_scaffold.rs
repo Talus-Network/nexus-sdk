@@ -137,3 +137,22 @@ public fun init_for_test(): {witness} {{
         ),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scaffold_files_use_kebab_snake_and_expected_package_layout() {
+        let files = scaffold_files("Weather Skill", "weather_skill", "weather_skill");
+        let paths = files.iter().map(|(path, _)| path).collect::<Vec<_>>();
+
+        assert!(paths.contains(&&PathBuf::from("tap/Move.toml")));
+        assert!(paths.contains(&&PathBuf::from("tap/sources/weather_skill.move")));
+        assert!(paths.contains(&&PathBuf::from("dag.json")));
+        assert!(paths.contains(&&PathBuf::from("skill.tap.json")));
+        assert!(files
+            .iter()
+            .any(|(_, contents)| contents.contains("module weather_skill::weather_skill;")));
+    }
+}

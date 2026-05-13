@@ -2061,6 +2061,7 @@ mod tests {
                 Data,
                 EdgeKind,
                 FromPort,
+                InterfaceRevision,
                 PostFailureAction,
                 ToPort,
                 VerifierConfig,
@@ -3488,6 +3489,102 @@ mod tests {
                             )))
             )
         }));
+    }
+
+    #[test]
+    fn execute_standard_tap_with_owned_payment_coin_and_authorization_plan_builds_move_values() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let payment_coin = sui_mocks::mock_sui_object_ref();
+        let entry_group = "group1";
+        let input_data = HashMap::new();
+        let tools_gas = HashSet::new();
+        let entry = TapVertexAuthorizationPlanEntry {
+            vertex: RuntimeVertex::plain("entry"),
+            grant_id: sui::types::Address::from_static("0x30"),
+            tool_package: sui::types::Address::from_static("0x40"),
+            tool_module: "tool".to_string(),
+            tool_function: "run".to_string(),
+            operation_commitment: vec![7],
+            constraints_commitment: vec![8],
+            leader_assignment_id: Some(sui::types::Address::from_static("0x50")),
+            endpoint_revision: Some(InterfaceRevision(2)),
+            payment_id: Some(sui::types::Address::from_static("0x60")),
+        };
+        let standard = StandardTapExecuteInput {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            payment_source: vec![1, 2],
+            payment_coin: Some(payment_coin.clone()),
+            payment_coin_balance: Some(1_000),
+            payment_max_budget: 55,
+            payment_refund_mode: 7,
+            authorization_plan_commitment: Some(vec![9, 8]),
+            authorization_plan: vec![entry.clone()],
+        };
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        execute_standard_tap(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            &agent,
+            0,
+            entry_group,
+            &input_data,
+            &standard,
+            &tools_gas,
+        )
+        .expect("standard TAP builder succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        assert!(
+            inspector
+                .commands()
+                .iter()
+                .any(|command| matches!(command, sui::types::Command::SplitCoins(_))),
+            "owned payment coin with excess balance should be split"
+        );
+
+        let grant_ref_index = inspector
+            .move_call_indices_to(
+                nexus_objects.workflow_pkg_id,
+                &workflow::Dag::STANDARD_TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.module,
+                &workflow::Dag::STANDARD_TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.name,
+            )
+            .into_iter()
+            .next()
+            .expect("authorization grant ref constructor call");
+        let grant_ref_call = inspector.move_call(grant_ref_index);
+        assert_eq!(grant_ref_call.arguments.len(), 10);
+        assert!(matches!(
+            grant_ref_call.arguments[7],
+            sui::types::Argument::Result(_)
+        ));
+        assert!(matches!(
+            grant_ref_call.arguments[8],
+            sui::types::Argument::Result(_)
+        ));
+        assert!(matches!(
+            grant_ref_call.arguments[9],
+            sui::types::Argument::Result(_)
+        ));
+
+        let begin_index = inspector
+            .move_call_indices_to(
+                nexus_objects.workflow_pkg_id,
+                &workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.module,
+                &workflow::Dag::BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG.name,
+            )
+            .into_iter()
+            .next()
+            .expect("standard begin call");
+        let begin_call = inspector.move_call(begin_index);
+        assert_matches!(
+            begin_call.arguments[5],
+            sui::types::Argument::NestedResult(_, 0)
+        );
     }
 
     #[test]

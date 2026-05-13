@@ -95,3 +95,33 @@ pub(crate) fn standard_execute_result_json(
         }))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn execute_rejects_invalid_payment_source_before_rpc_client() {
+        let error = execute_standard_tap_skill(
+            sui::types::Address::from_static("0xa"),
+            11,
+            DEFAULT_ENTRY_GROUP.to_string(),
+            serde_json::json!({}),
+            Vec::new(),
+            0,
+            "0xinvalid".to_string(),
+            0,
+            0,
+            None,
+            None,
+            DEFAULT_GAS_BUDGET,
+        )
+        .await
+        .expect_err("invalid payment source hex");
+
+        assert!(
+            error.to_string().contains("invalid payment-source hex"),
+            "unexpected error: {error}"
+        );
+    }
+}

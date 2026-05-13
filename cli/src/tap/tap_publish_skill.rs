@@ -48,3 +48,71 @@ pub(crate) async fn publish_skill(
 
     json_output(&publish_skill_result_json(&publish))
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, std::ffi::OsString};
+
+    struct EnvGuard {
+        home: Option<OsString>,
+        rpc: Option<OsString>,
+        pk: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn without_sui_credentials(path: &std::path::Path) -> Self {
+            let guard = Self {
+                home: std::env::var_os("HOME"),
+                rpc: std::env::var_os("SUI_RPC_URL"),
+                pk: std::env::var_os("SUI_PK"),
+            };
+            std::env::set_var("HOME", path);
+            std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_PK");
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.home.take() {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            match self.rpc.take() {
+                Some(value) => std::env::set_var("SUI_RPC_URL", value),
+                None => std::env::remove_var("SUI_RPC_URL"),
+            }
+            match self.pk.take() {
+                Some(value) => std::env::set_var("SUI_PK", value),
+                None => std::env::remove_var("SUI_PK"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn publish_skill_validates_local_inputs_before_rpc_client() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::without_sui_credentials(temp_home.path());
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        scaffold_tap_skill("weather skill".to_string(), tempdir.path().to_path_buf())
+            .await
+            .expect("scaffold succeeds");
+
+        let error = publish_skill(
+            tempdir.path().join("weather-skill/skill.tap.json"),
+            None,
+            None,
+            None,
+            DEFAULT_GAS_BUDGET,
+        )
+        .await
+        .expect_err("missing RPC should fail after local validation");
+
+        assert!(
+            error.to_string().contains("Sui RPC URL is not configured"),
+            "unexpected error: {error}"
+        );
+    }
+}

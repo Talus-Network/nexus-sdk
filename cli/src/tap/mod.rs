@@ -557,7 +557,79 @@ mod tests {
                 TapVertexAuthorizationSchema,
             },
         },
+        std::ffi::OsString,
     };
+
+    struct EnvGuard {
+        home: Option<OsString>,
+        rpc: Option<OsString>,
+        pk: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn without_sui_credentials(path: &std::path::Path) -> Self {
+            let guard = Self {
+                home: std::env::var_os("HOME"),
+                rpc: std::env::var_os("SUI_RPC_URL"),
+                pk: std::env::var_os("SUI_PK"),
+            };
+            std::env::set_var("HOME", path);
+            std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_PK");
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.home.take() {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            match self.rpc.take() {
+                Some(value) => std::env::set_var("SUI_RPC_URL", value),
+                None => std::env::remove_var("SUI_RPC_URL"),
+            }
+            match self.pk.take() {
+                Some(value) => std::env::set_var("SUI_PK", value),
+                None => std::env::remove_var("SUI_PK"),
+            }
+        }
+    }
+
+    fn gas_args() -> GasArgs {
+        GasArgs {
+            sui_gas_coin: None,
+            sui_gas_budget: DEFAULT_GAS_BUDGET,
+        }
+    }
+
+    fn test_artifact() -> TapPublishArtifact {
+        let config = TapSkillConfig {
+            name: "weather skill".to_string(),
+            tap_package_name: "weather_tap".to_string(),
+            dag_path: PathBuf::from("dag.json"),
+            tap_package_path: PathBuf::from("tap"),
+            requirements: TapSkillRequirements {
+                input_schema_commitment: vec![1],
+                workflow_commitment: vec![2],
+                metadata_commitment: vec![3],
+                payment_policy: TapPaymentPolicy::default(),
+                schedule_policy: TapSchedulePolicy::default(),
+                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            },
+            shared_objects: Vec::new(),
+            interface_revision: InterfaceRevision(1),
+            active_for_new_executions: true,
+        };
+
+        TapPublishArtifact::from_config(
+            &config,
+            sui::types::Address::from_static("0xd"),
+            sui::types::Address::from_static("0xe"),
+        )
+        .expect("valid artifact")
+    }
 
     async fn publish_skill_artifact(
         config_path: PathBuf,
@@ -608,6 +680,171 @@ mod tests {
 
         json_output(&artifact)?;
         Ok(())
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn handle_dispatches_all_tap_command_variants_to_local_boundaries() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::without_sui_credentials(temp_home.path());
+        let tempdir = tempfile::tempdir().expect("tempdir");
+
+        handle(TapCommand::Scaffold {
+            name: "weather skill".to_string(),
+            target: tempdir.path().to_path_buf(),
+        })
+        .await
+        .expect("scaffold dispatch succeeds");
+        let root = tempdir.path().join("weather-skill");
+        let config = root.join("skill.tap.json");
+
+        handle(TapCommand::ValidateSkill {
+            config: config.clone(),
+            tap_package: None,
+        })
+        .await
+        .expect("validate dispatch succeeds");
+
+        let publish_error = handle(TapCommand::PublishSkill {
+            config: config.clone(),
+            tap_package: None,
+            out: None,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("publish dispatch reaches missing RPC");
+        assert!(publish_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let missing_rpc = handle(TapCommand::CreateAgent {
+            operator: sui::types::Address::from_static("0x2"),
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("create-agent dispatch reaches missing RPC");
+        assert!(missing_rpc
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let artifact_path = root.join("artifact.json");
+        tokio::fs::write(
+            &artifact_path,
+            serde_json::to_string(&test_artifact()).expect("serialize artifact"),
+        )
+        .await
+        .expect("write artifact");
+        let register_error = handle(TapCommand::RegisterSkill {
+            artifact: artifact_path.clone(),
+            agent_id: sui::types::Address::from_static("0xa"),
+            endpoint_object_id: None,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("register dispatch requires endpoint metadata");
+        assert!(register_error
+            .to_string()
+            .contains("TAP endpoint object ID is required"));
+
+        let announce_error = handle(TapCommand::Announce {
+            artifact: root.join("missing-artifact.json"),
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            endpoint_object_id: None,
+            active_for_new_executions: true,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("announce dispatch reads artifact first");
+        assert!(
+            announce_error.to_string().contains("No such file")
+                || announce_error.to_string().contains("not found")
+        );
+
+        handle(TapCommand::Agent(AgentCommand::Save {
+            name: "primary".to_string(),
+            agent_id: sui::types::Address::from_static("0xa"),
+        }))
+        .await
+        .expect("agent save dispatch succeeds");
+        handle(TapCommand::Agent(AgentCommand::List))
+            .await
+            .expect("agent list dispatch succeeds");
+
+        let vault_error = handle(TapCommand::Vault(VaultCommand::Balance {
+            alias: Some("missing".to_string()),
+            agent_id: None,
+        }))
+        .await
+        .expect_err("vault dispatch resolves alias before RPC");
+        assert!(vault_error.to_string().contains("No Talus agent alias"));
+
+        let payments_error = handle(TapCommand::Payments(PaymentsCommand::List {
+            alias: Some("missing".to_string()),
+            agent_id: None,
+            completed: false,
+            pending: true,
+            all: false,
+        }))
+        .await
+        .expect_err("payments dispatch resolves alias before RPC");
+        assert!(payments_error.to_string().contains("No Talus agent alias"));
+
+        let requirements_error = handle(TapCommand::Requirements {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+        })
+        .await
+        .expect_err("requirements dispatch reaches missing RPC");
+        assert!(requirements_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        handle(TapCommand::DryRun {
+            config: config.clone(),
+        })
+        .await
+        .expect("dry-run dispatch succeeds");
+
+        let execute_error = handle(TapCommand::Execute {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            entry_group: DEFAULT_ENTRY_GROUP.to_string(),
+            input_json: serde_json::json!({}),
+            remote: Vec::new(),
+            priority_fee_per_gas_unit: 0,
+            payment_source_hex: "0xinvalid".to_string(),
+            payment_max_budget: 0,
+            payment_refund_mode: 0,
+            authorization_plan_commitment_hex: None,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("execute dispatch decodes payment source first");
+        assert!(execute_error
+            .to_string()
+            .contains("invalid payment-source hex"));
+
+        let schedule_error = handle(TapCommand::Schedule {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
+            input_commitment_hex: "0xinvalid".to_string(),
+            refill_policy_hex: String::new(),
+            authorization_plan_commitment_hex: None,
+            schedule_entries_commitment_hex: String::new(),
+            recurrence_kind: "once".to_string(),
+            min_interval_ms: 0,
+            max_occurrences: 1,
+            allow_recursive: false,
+            first_after_ms: 0,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("schedule dispatch decodes commitments first");
+        assert!(schedule_error
+            .to_string()
+            .contains("invalid input-commitment hex"));
     }
 
     #[tokio::test]

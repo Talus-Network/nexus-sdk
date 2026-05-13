@@ -19,3 +19,50 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, std::ffi::OsString};
+
+    struct EnvGuard {
+        home: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn with_home(path: &std::path::Path) -> Self {
+            let guard = Self {
+                home: std::env::var_os("HOME"),
+            };
+            std::env::set_var("HOME", path);
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.home.take() {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn vault_alias_lookup_errors_before_rpc_client() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::with_home(temp_home.path());
+
+        let error = handle_vault_command(VaultCommand::Balance {
+            alias: Some("missing".to_string()),
+            agent_id: None,
+        })
+        .await
+        .expect_err("missing alias should fail");
+
+        assert!(
+            error.to_string().contains("No Talus agent alias"),
+            "unexpected error: {error}"
+        );
+    }
+}

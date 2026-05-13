@@ -51,3 +51,35 @@ pub(crate) async fn schedule_skill_execution(
 
     json_output(&schedule_result_json(long_term_gas_coin_id, &result))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn schedule_rejects_invalid_commitment_hex_before_rpc_client() {
+        let error = schedule_skill_execution(
+            sui::types::Address::from_static("0xa"),
+            11,
+            sui::types::Address::from_static("0xc"),
+            "0xinvalid".to_string(),
+            String::new(),
+            None,
+            String::new(),
+            "once".to_string(),
+            0,
+            1,
+            false,
+            0,
+            None,
+            DEFAULT_GAS_BUDGET,
+        )
+        .await
+        .expect_err("invalid input commitment");
+
+        assert!(
+            error.to_string().contains("invalid input-commitment hex"),
+            "unexpected error: {error}"
+        );
+    }
+}
