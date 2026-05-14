@@ -1,9 +1,9 @@
 //! [`NexusObjects`] struct is holding the Nexus object IDs and refs that are
 //! generated during Nexus package deployment.
 #[cfg(not(feature = "sui_idents"))]
-use super::TapDefaultExecutionTarget;
+use super::DefaultDagExecutor;
 #[cfg(feature = "sui_idents")]
-use super::{scheduler::PolicySymbol, TapDefaultExecutionTarget, TypeName};
+use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(feature = "sui_idents")]
@@ -28,7 +28,7 @@ pub struct NexusObjects {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_registry: Option<sui::types::ObjectReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_tap_target: Option<TapDefaultExecutionTarget>,
+    pub default_tap_target: Option<DefaultDagExecutor>,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -83,8 +83,8 @@ impl NexusObjects {
         self.tap_registry.as_ref()
     }
 
-    /// Returns the configured standard default TAP execution target when present.
-    pub fn default_tap_target(&self) -> Option<TapDefaultExecutionTarget> {
+    /// Returns the configured standard default TAP DAG executor when present.
+    pub fn default_tap_target(&self) -> Option<DefaultDagExecutor> {
         self.default_tap_target
     }
 

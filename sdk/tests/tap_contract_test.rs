@@ -13,6 +13,7 @@ use {
         transactions::tap as tap_tx,
         types::{
             resolve_active_tap_endpoint,
+            DefaultDagExecutor,
             InterfaceRevision,
             MoveTable,
             NexusObjects,
@@ -20,7 +21,6 @@ use {
             TapAgentRecord,
             TapConfigDigestInput,
             TapDagBinding,
-            TapDefaultExecutionTarget,
             TapEndpointActivation,
             TapEndpointKey,
             TapEndpointRecord,
@@ -67,7 +67,7 @@ fn nexus_objects() -> NexusObjects {
         verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
         tap_registry: Some(object_ref("0xc", 1, 12)),
-        default_tap_target: Some(TapDefaultExecutionTarget {
+        default_tap_target: Some(DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,
         }),
@@ -173,7 +173,7 @@ fn registry_with_active_revision(active_revision: u64) -> TapRegistry {
             skill_id,
             interface_revision: InterfaceRevision(active_revision),
         }],
-        default_target: Some(TapDefaultExecutionTarget { agent_id, skill_id }),
+        default_executor: Some(DefaultDagExecutor { agent_id, skill_id }),
     }
 }
 
@@ -293,7 +293,7 @@ fn nexus_objects_carries_tap_registry_metadata() {
     );
     assert_eq!(
         objects.default_tap_target(),
-        Some(TapDefaultExecutionTarget {
+        Some(DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,
         })
@@ -314,12 +314,12 @@ fn configured_registry_recovery_requires_tap_registry_metadata() {
 }
 
 #[test]
-fn configured_default_target_requires_metadata() {
+fn configured_default_executor_requires_metadata() {
     let mut objects = nexus_objects();
     objects.default_tap_target = None;
 
-    let error = nexus_tap::configured_default_tap_target(&objects)
-        .expect_err("configured default target should require metadata");
+    let error = nexus_tap::configured_default_tap_dag_executor(&objects)
+        .expect_err("configured default DAG executor should require metadata");
 
     assert!(error
         .to_string()
@@ -508,16 +508,16 @@ fn config_digest_and_publish_artifact_are_deterministic() {
 }
 
 #[test]
-fn registry_default_target_requires_runtime_selected_binding() {
+fn registry_default_executor_requires_runtime_selected_binding() {
     let mut registry = registry_with_active_revision(1);
 
-    let error = nexus_sdk::types::resolve_default_tap_execution_target(&registry)
-        .expect_err("pinned dag binding should not resolve as default target");
+    let error = nexus_sdk::types::resolve_default_tap_dag_executor(&registry)
+        .expect_err("pinned dag binding should not resolve as default DAG executor");
     assert!(error.to_string().contains("is not runtime-DAG selected"));
 
     registry.skills[0].dag_binding = TapDagBinding::RuntimeSelected;
-    let resolved = nexus_sdk::types::resolve_default_tap_execution_target(&registry)
-        .expect("runtime-selected binding resolves default target");
+    let resolved = nexus_sdk::types::resolve_default_tap_dag_executor(&registry)
+        .expect("runtime-selected binding resolves default DAG executor");
 
     assert_eq!(resolved.target.agent_id, addr("0xa1"));
     assert_eq!(resolved.target.skill_id, 177);
@@ -683,27 +683,6 @@ fn transaction_builders_select_standard_tap_functions() {
     let mut tx = sui::tx::TransactionBuilder::new();
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
 
-    tap_tx::bootstrap_default_runtime_dag_skill(
-        &mut tx,
-        &objects,
-        registry,
-        addr("0xa2"),
-        addr("0xe2"),
-        vec![9],
-        vec![8],
-        requirements().payment_policy.clone(),
-        requirements().schedule_policy.clone(),
-        vec![6],
-        addr("0xf2"),
-        1,
-        vec![5],
-        vec![TapSharedObjectRef::immutable(addr("0x32"))],
-        vec![4],
-        true,
-    )
-    .expect("bootstrap default builder");
-
-    let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
     let endpoint = tap_tx::create_standard_endpoint(&mut tx, &objects, objects.interface_pkg_id)
         .expect("standard endpoint builder");
     tap_tx::share_standard_endpoint(&mut tx, &objects, endpoint);
@@ -770,16 +749,12 @@ fn transaction_builders_select_standard_tap_functions() {
 
     assert!(calls
         .iter()
-        .any(|call| call.function == TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL.name));
-    assert!(calls
-        .iter()
         .any(|call| call.function == TapStandard::CREATE_STANDARD_ENDPOINT.name));
     assert!(calls
         .iter()
         .any(|call| call.function == TapStandard::SHARE_STANDARD_ENDPOINT.name));
     assert!(calls.iter().any(|call| {
-        call.function
-            == TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT_WITH_PACKAGE.name
+        call.function == TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT.name
     }));
     assert!(calls
         .iter()
@@ -1035,7 +1010,7 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
             skill_id,
             interface_revision: artifact.interface_revision,
         }],
-        default_target: None,
+        default_executor: None,
     };
 
     let target =

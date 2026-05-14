@@ -73,13 +73,13 @@ fn default_tap_address() -> sui::types::Address {
     sui::types::Address::ZERO
 }
 
-fn deserialize_move_option_tap_default_target<'de, D>(
+fn deserialize_move_option_tap_default_executor<'de, D>(
     deserializer: D,
-) -> Result<Option<TapDefaultExecutionTarget>, D::Error>
+) -> Result<Option<DefaultDagExecutor>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    MoveOption::<TapDefaultExecutionTarget>::deserialize(deserializer).map(|value| value.0)
+    MoveOption::<DefaultDagExecutor>::deserialize(deserializer).map(|value| value.0)
 }
 
 fn deserialize_move_option_tap_address<'de, D>(
@@ -804,9 +804,9 @@ pub struct TapEndpointActivation {
     pub interface_revision: InterfaceRevision,
 }
 
-/// Standard network default target for arbitrary-DAG execution.
+/// Standard network default DAG executor for arbitrary-DAG execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapDefaultExecutionTarget {
+pub struct DefaultDagExecutor {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
@@ -817,7 +817,7 @@ pub struct TapDefaultExecutionTarget {
 pub struct TapRegistryObject {
     pub id: sui::types::Address,
     pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
-    pub default_target: MoveOption<TapDefaultExecutionTarget>,
+    pub default_executor: MoveOption<DefaultDagExecutor>,
 }
 
 /// Expanded `nexus_registry::tap::TapRegistry` contents with table entries fetched.
@@ -830,9 +830,9 @@ pub struct TapRegistry {
     pub active_endpoints: Vec<TapEndpointActivation>,
     #[serde(
         default,
-        deserialize_with = "deserialize_move_option_tap_default_target"
+        deserialize_with = "deserialize_move_option_tap_default_executor"
     )]
-    pub default_target: Option<TapDefaultExecutionTarget>,
+    pub default_executor: Option<DefaultDagExecutor>,
 }
 
 impl TapRegistry {
@@ -916,9 +916,9 @@ impl TapRegistry {
         Ok(record)
     }
 
-    pub fn default_tap_target(&self) -> anyhow::Result<TapDefaultExecutionTarget> {
-        self.default_target
-            .ok_or_else(|| anyhow::anyhow!("TapRegistry missing default TAP execution target"))
+    pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
+        self.default_executor
+            .ok_or_else(|| anyhow::anyhow!("TapRegistry missing default TAP DAG executor"))
     }
 
     fn is_active_endpoint(
@@ -1595,8 +1595,8 @@ pub struct TapActiveSkillExecutionTarget {
 
 /// Default execution target plus active endpoint recovered for fresh default DAG execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapDefaultExecutionTargetRecord {
-    pub target: TapDefaultExecutionTarget,
+pub struct DefaultDagExecutorRecord {
+    pub target: DefaultDagExecutor,
     pub skill: TapSkillRecord,
     pub endpoint: TapEndpointRecord,
 }
@@ -2109,11 +2109,11 @@ pub fn resolve_active_tap_skill_execution_target(
     Ok(TapActiveSkillExecutionTarget { skill, endpoint })
 }
 
-/// Resolve the configured default TAP target from registry state.
-pub fn resolve_default_tap_execution_target(
+/// Resolve the configured default TAP DAG executor from registry state.
+pub fn resolve_default_tap_dag_executor(
     registry: &TapRegistry,
-) -> anyhow::Result<TapDefaultExecutionTargetRecord> {
-    let target = registry.default_tap_target()?;
+) -> anyhow::Result<DefaultDagExecutorRecord> {
+    let target = registry.default_dag_executor()?;
     let execution_target =
         resolve_active_tap_skill_execution_target(registry, target.agent_id, target.skill_id)?;
 
@@ -2125,7 +2125,7 @@ pub fn resolve_default_tap_execution_target(
         );
     }
 
-    Ok(TapDefaultExecutionTargetRecord {
+    Ok(DefaultDagExecutorRecord {
         target,
         skill: execution_target.skill,
         endpoint: execution_target.endpoint,
@@ -2215,7 +2215,7 @@ mod tests {
                 skill_id: 11,
                 interface_revision: InterfaceRevision(2),
             }],
-            default_target: None,
+            default_executor: None,
         }
     }
 
@@ -2265,15 +2265,15 @@ mod tests {
 
     #[cfg(feature = "bcs")]
     #[test]
-    fn tap_registry_object_bcs_decodes_move_option_default_target() {
+    fn tap_registry_object_bcs_decodes_move_option_default_executor() {
         #[derive(Serialize)]
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
             agents: MoveTable<sui::types::Address, TapAgentRecord>,
-            default_target: MoveOptionBcs<TapDefaultExecutionTarget>,
+            default_executor: MoveOptionBcs<DefaultDagExecutor>,
         }
 
-        let target = TapDefaultExecutionTarget {
+        let target = DefaultDagExecutor {
             agent_id: addr("0xa"),
             skill_id: 11,
         };
@@ -2282,13 +2282,13 @@ mod tests {
             let raw = RawTapRegistryObjectBcs {
                 id: addr("0xf"),
                 agents: MoveTable::new(addr("0x90"), 0),
-                default_target: expected.into(),
+                default_executor: expected.into(),
             };
             let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
             let decoded: TapRegistryObject =
                 bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
-            assert_eq!(decoded.default_target.0, expected);
+            assert_eq!(decoded.default_executor.0, expected);
         }
     }
 
@@ -2834,24 +2834,24 @@ mod tests {
     }
 
     #[test]
-    fn default_execution_target_requires_runtime_selected_skill() {
+    fn default_dag_executor_requires_runtime_selected_skill() {
         let mut registry = registry_with_active_skill();
-        registry.default_target = Some(TapDefaultExecutionTarget {
+        registry.default_executor = Some(DefaultDagExecutor {
             agent_id: addr("0xa"),
             skill_id: 11,
         });
 
-        let error = resolve_default_tap_execution_target(&registry)
+        let error = resolve_default_tap_dag_executor(&registry)
             .expect_err("pinned skill cannot be default runtime target");
         assert!(error.to_string().contains("is not runtime-DAG selected"));
 
         registry.skills[0].dag_binding = TapDagBinding::runtime_selected();
-        let target = resolve_default_tap_execution_target(&registry)
+        let target = resolve_default_tap_dag_executor(&registry)
             .expect("runtime-selected default skill resolves");
 
         assert_eq!(
             target.target,
-            TapDefaultExecutionTarget {
+            DefaultDagExecutor {
                 agent_id: addr("0xa"),
                 skill_id: 11,
             }

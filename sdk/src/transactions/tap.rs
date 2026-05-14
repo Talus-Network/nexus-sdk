@@ -163,56 +163,6 @@ pub fn interface_revision(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn bootstrap_default_runtime_dag_skill(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::types::Argument,
-    operator: sui::types::Address,
-    tap_package_id: sui::types::Address,
-    workflow_commitment: Vec<u8>,
-    requirements_commitment: Vec<u8>,
-    payment_policy: TapPaymentPolicy,
-    schedule_policy: TapSchedulePolicy,
-    capability_schema_commitment: Vec<u8>,
-    endpoint_object_id: sui::types::Address,
-    endpoint_object_version: u64,
-    endpoint_object_digest: Vec<u8>,
-    shared_objects: Vec<TapSharedObjectRef>,
-    config_digest: Vec<u8>,
-    active_for_new_executions: bool,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        tx.input(pure_arg(&operator)?),
-        tx.input(pure_arg(&tap_package_id)?),
-        tx.input(pure_arg(&workflow_commitment)?),
-        tx.input(pure_arg(&requirements_commitment)?),
-        tx.input(pure_arg(&payment_policy)?),
-        tx.input(pure_arg(&schedule_policy)?),
-        tx.input(pure_arg(&capability_schema_commitment)?),
-        tx.input(pure_arg(&endpoint_object_id)?),
-        tx.input(pure_arg(&endpoint_object_version)?),
-        tx.input(pure_arg(&endpoint_object_digest)?),
-        tx.input(pure_arg(&shared_objects)?),
-        tx.input(pure_arg(&config_digest)?),
-        tx.input(pure_arg(&active_for_new_executions)?),
-    ];
-
-    let result = tap_registry_call(
-        tx,
-        objects,
-        TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL,
-        args,
-    );
-    let agent = result
-        .nested(0)
-        .ok_or_else(|| anyhow::anyhow!("default TAP bootstrap did not return Agent"))?;
-    public_share_tap_identity(tx, objects, agent);
-
-    Ok(result)
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -237,7 +187,7 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     let result = tap_registry_call(
         tx,
         objects,
-        TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT_WITH_PACKAGE,
+        TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT,
         args,
     );
     let agent = result

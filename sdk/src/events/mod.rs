@@ -140,7 +140,7 @@ events! {
     AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
     AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
     SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
-    DefaultExecutionTargetUpdatedEvent => DefaultExecutionTargetUpdated, "DefaultExecutionTargetUpdatedEvent",
+    DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
     EndpointRevisionAnnouncedEvent => EndpointRevisionAnnounced, "EndpointRevisionAnnouncedEvent",
     EndpointRevisionActivatedEvent => EndpointRevisionActivated, "EndpointRevisionActivatedEvent",
     WorksheetResolvedEvent => WorksheetResolved, "WorksheetResolvedEvent",
@@ -408,9 +408,9 @@ pub struct SkillRegisteredEvent {
     pub capability_schema_commitment: Vec<u8>,
 }
 
-/// Fired when the network default standard TAP target changes.
+/// Fired when the network default standard TAP DAG executor changes.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct DefaultExecutionTargetUpdatedEvent {
+pub struct DefaultDagExecutorUpdatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
 }
@@ -1191,22 +1191,22 @@ mod tests {
         }
 
         let target_event = Wrapper {
-            event: DefaultExecutionTargetUpdatedEvent {
+            event: DefaultDagExecutorUpdatedEvent {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             },
         };
         let bytes = bcs::to_bytes(&target_event).unwrap();
         let (parsed, distribution) =
-            super::parse_bcs("DefaultExecutionTargetUpdatedEvent", &bytes).unwrap();
+            super::parse_bcs("DefaultDagExecutorUpdatedEvent", &bytes).unwrap();
 
         assert!(distribution.is_none());
         match parsed {
-            crate::events::NexusEventKind::DefaultExecutionTargetUpdated(parsed) => {
+            crate::events::NexusEventKind::DefaultDagExecutorUpdated(parsed) => {
                 assert_eq!(parsed.agent_id, target_event.event.agent_id);
                 assert_eq!(parsed.skill_id, target_event.event.skill_id);
             }
-            _ => panic!("Expected DefaultExecutionTargetUpdated variant"),
+            _ => panic!("Expected DefaultDagExecutorUpdated variant"),
         }
 
         let event = Wrapper {

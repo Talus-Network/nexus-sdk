@@ -16,7 +16,7 @@ use crate::{
     types::{
         resolve_active_tap_endpoint,
         resolve_active_tap_skill_execution_target,
-        resolve_default_tap_execution_target,
+        resolve_default_tap_dag_executor,
         AgentId,
         InterfaceRevision,
         NexusObjects,
@@ -26,8 +26,8 @@ use crate::{
         TapAgentPaymentVault,
         TapAgentVaultFieldKey,
         TapConfigDigestInput,
-        TapDefaultExecutionTarget,
-        TapDefaultExecutionTargetRecord,
+        DefaultDagExecutor,
+        DefaultDagExecutorRecord,
         TapEndpointKey,
         TapEndpointRecord,
         TapEndpointResolutionError,
@@ -839,7 +839,7 @@ pub async fn fetch_tap_registry(
             skills,
             endpoints,
             active_endpoints,
-            default_target: raw.data.default_target.0,
+            default_executor: raw.data.default_executor.0,
         },
     })
 }
@@ -884,10 +884,10 @@ pub fn configured_tap_registry_id(objects: &NexusObjects) -> anyhow::Result<sui:
         .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))
 }
 
-/// Return the configured standard default TAP execution target from deployment metadata.
-pub fn configured_default_tap_target(
+/// Return the configured standard default TAP DAG executor from deployment metadata.
+pub fn configured_default_tap_dag_executor(
     objects: &NexusObjects,
-) -> anyhow::Result<TapDefaultExecutionTarget> {
+) -> anyhow::Result<DefaultDagExecutor> {
     objects
         .default_tap_target()
         .ok_or_else(|| anyhow::anyhow!("NexusObjects missing default_tap_target metadata"))
@@ -930,13 +930,13 @@ pub async fn fetch_configured_active_tap_skill_execution_target(
     Ok(registry_response_with_data(registry, target))
 }
 
-/// Resolve the configured default TAP execution target from the configured registry.
-pub async fn fetch_configured_default_tap_execution_target(
+/// Resolve the configured default TAP DAG executor from the configured registry.
+pub async fn fetch_configured_default_tap_dag_executor(
     crawler: &Crawler,
     objects: &NexusObjects,
-) -> anyhow::Result<Response<TapDefaultExecutionTargetRecord>> {
+) -> anyhow::Result<Response<DefaultDagExecutorRecord>> {
     let registry = fetch_configured_tap_registry(crawler, objects).await?;
-    let target = resolve_default_tap_execution_target(&registry.data)?;
+    let target = resolve_default_tap_dag_executor(&registry.data)?;
 
     Ok(registry_response_with_data(registry, target))
 }
@@ -1146,7 +1146,7 @@ mod tests {
                 NexusObjects,
                 TapAgentRecord,
                 TapDagBinding,
-                TapDefaultExecutionTarget,
+                DefaultDagExecutor,
                 TapEndpointActivation,
                 TapEndpointKey,
                 TapEndpointRevision,
@@ -1268,7 +1268,7 @@ mod tests {
                 skill_id,
                 interface_revision: InterfaceRevision(2),
             }],
-            default_target: Some(TapDefaultExecutionTarget {
+            default_executor: Some(DefaultDagExecutor {
                 agent_id: agent,
                 skill_id,
             }),
@@ -1317,7 +1317,7 @@ mod tests {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-                default_target: registry.default_target.into(),
+                default_executor: registry.default_executor.into(),
             },
             agent_field_ref,
             skill_field_ref,
@@ -1449,9 +1449,9 @@ mod tests {
     }
 
     #[test]
-    fn configured_default_target_reads_nexus_objects_metadata() {
+    fn configured_default_executor_reads_nexus_objects_metadata() {
         let objects = NexusObjects {
-            default_tap_target: Some(TapDefaultExecutionTarget {
+            default_tap_target: Some(DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             }),
@@ -1459,8 +1459,8 @@ mod tests {
         };
 
         assert_eq!(
-            configured_default_tap_target(&objects).expect("configured default target"),
-            TapDefaultExecutionTarget {
+            configured_default_tap_dag_executor(&objects).expect("configured default DAG executor"),
+            DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             }

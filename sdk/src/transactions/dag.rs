@@ -1951,6 +1951,158 @@ pub fn prepare_standard_tap_execution(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_default_standard_tap_execution(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool_registry: sui::types::Argument,
+    tap_registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    dag: sui::types::Argument,
+    dag_id: sui::types::Argument,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    payment_coin: sui::types::Argument,
+    clock: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    // `network: ID`
+    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+
+    // `entry_group: EntryGroup`
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+
+    // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
+    let inner_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
+    ];
+
+    let outer_vec_map_type = vec![
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::VEC_MAP.module,
+            sui_framework::VecMap::VEC_MAP.name,
+            inner_vec_map_type.clone(),
+        ))),
+    ];
+
+    let with_vertex_inputs = tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::VecMap::EMPTY.module,
+            sui_framework::VecMap::EMPTY.name,
+            outer_vec_map_type.clone(),
+        ),
+        vec![],
+    );
+
+    for (vertex_name, data) in input_data {
+        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+        let with_vertex_input = tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::EMPTY.module,
+                sui_framework::VecMap::EMPTY.name,
+                inner_vec_map_type.clone(),
+            ),
+            vec![],
+        );
+
+        for (port_name, value) in data {
+            let port = workflow::Dag::input_port_from_str(
+                tx,
+                objects.workflow_pkg_id,
+                port_name.as_str(),
+            )?;
+
+            let value = match value.storage_kind() {
+                StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                )?,
+                StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
+                    tx,
+                    objects.primitives_pkg_id,
+                    value.as_json(),
+                )?,
+            };
+
+            tx.move_call(
+                sui::tx::Function::new(
+                    sui_framework::PACKAGE_ID,
+                    sui_framework::VecMap::INSERT.module,
+                    sui_framework::VecMap::INSERT.name,
+                    inner_vec_map_type.clone(),
+                ),
+                vec![with_vertex_input, port, value],
+            );
+        }
+
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::VecMap::INSERT.module,
+                sui_framework::VecMap::INSERT.name,
+                outer_vec_map_type.clone(),
+            ),
+            vec![with_vertex_inputs, vertex, with_vertex_input],
+        );
+    }
+
+    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let config = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
+            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag_id,
+            network,
+            entry_group,
+            with_vertex_inputs,
+            priority_fee_per_gas_unit,
+        ],
+    );
+
+    let payment_source = tx.input(pure_arg(&standard.payment_source)?);
+    let payment_max_budget = tx.input(pure_arg(&standard.payment_max_budget)?);
+    let payment_refund_mode = tx.input(pure_arg(&standard.payment_refund_mode)?);
+    let authorization_plan_commitment =
+        tx.input(pure_arg(&standard.authorization_plan_commitment)?);
+    let authorization_plan =
+        standard_tap_authorization_plan(tx, objects, &standard.authorization_plan)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module,
+            workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            tap_registry,
+            agent,
+            tool_registry,
+            config,
+            payment_coin,
+            payment_source,
+            payment_max_budget,
+            payment_refund_mode,
+            authorization_plan_commitment,
+            authorization_plan,
+            clock,
+        ],
+    ))
+}
+
 /// PTB template to lock execution payment state for the given tools.
 #[allow(clippy::too_many_arguments)]
 pub fn lock_payment_state_for_tools(
@@ -1987,6 +2139,59 @@ pub fn execute_standard_tap(
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     standard: &StandardTapExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    execute_standard_tap_internal(
+        tx,
+        objects,
+        dag,
+        agent,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
+        standard,
+        tools_gas,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn execute_default_standard_tap(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    agent: &sui::types::ObjectReference,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    execute_standard_tap_internal(
+        tx,
+        objects,
+        dag,
+        agent,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
+        standard,
+        tools_gas,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_standard_tap_internal(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    agent: &sui::types::ObjectReference,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    standard: &StandardTapExecuteInput,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    default_executor: bool,
 ) -> anyhow::Result<()> {
     let dag_id = sui_framework::Object::id_from_object_id(tx, *dag.object_id())?;
     let dag = tx.input(sui::tx::Input::shared(
@@ -2047,21 +2252,39 @@ pub fn execute_standard_tap(
             .ok_or_else(|| anyhow::anyhow!("failed to split standard TAP payment coin"))?
     };
 
-    let results = prepare_standard_tap_execution(
-        tx,
-        objects,
-        tool_registry,
-        tap_registry,
-        agent,
-        dag,
-        dag_id,
-        priority_fee_per_gas_unit,
-        entry_group,
-        input_data,
-        standard,
-        payment_coin,
-        clock,
-    )?;
+    let results = if default_executor {
+        prepare_default_standard_tap_execution(
+            tx,
+            objects,
+            tool_registry,
+            tap_registry,
+            agent,
+            dag,
+            dag_id,
+            priority_fee_per_gas_unit,
+            entry_group,
+            input_data,
+            standard,
+            payment_coin,
+            clock,
+        )?
+    } else {
+        prepare_standard_tap_execution(
+            tx,
+            objects,
+            tool_registry,
+            tap_registry,
+            agent,
+            dag,
+            dag_id,
+            priority_fee_per_gas_unit,
+            entry_group,
+            input_data,
+            standard,
+            payment_coin,
+            clock,
+        )?
+    };
 
     let Some(execution) = results.nested(0) else {
         return Err(anyhow::anyhow!(
@@ -3654,6 +3877,63 @@ mod tests {
             begin_call.arguments[5],
             sui::types::Argument::NestedResult(_, 0)
         );
+    }
+
+    #[test]
+    fn execute_default_standard_tap_uses_registry_owned_default_entrypoint() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let standard = StandardTapExecuteInput {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            payment_source: vec![1],
+            payment_coin: None,
+            payment_coin_balance: None,
+            payment_max_budget: 3,
+            payment_refund_mode: 4,
+            authorization_plan_commitment: None,
+            authorization_plan: Vec::new(),
+        };
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        execute_default_standard_tap(
+            &mut tx,
+            &nexus_objects,
+            &dag,
+            &agent,
+            0,
+            "group1",
+            &HashMap::new(),
+            &standard,
+            &HashSet::new(),
+        )
+        .expect("default standard TAP builder succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(calls.iter().any(|call| {
+            call.package == nexus_objects.workflow_pkg_id
+                && call.module == workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module
+                && call.function == workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name
+        }));
+        assert!(calls.iter().any(|call| {
+            call.package == nexus_objects.workflow_pkg_id
+                && call.module == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module
+                && call.function == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name
+        }));
+        assert!(!calls.iter().any(|call| {
+            call.package == nexus_objects.workflow_pkg_id
+                && call.module == workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.module
+                && call.function == workflow::Dag::NEW_STANDARD_TAP_EXECUTION_CONFIG.name
+        }));
     }
 
     #[test]

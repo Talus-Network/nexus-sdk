@@ -31,22 +31,11 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("announce_endpoint_revision"),
     };
-    pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("bootstrap_default_runtime_dag_skill"),
-    };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: STANDARD_TAP_MODULE,
             name: sui::types::Identifier::from_static(
                 "bootstrap_default_runtime_dag_skill_for_deployment",
-            ),
-        };
-    pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT_WITH_PACKAGE: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: STANDARD_TAP_MODULE,
-            name: sui::types::Identifier::from_static(
-                "bootstrap_default_runtime_dag_skill_for_deployment_with_package",
             ),
         };
     pub const CANCEL_SCHEDULED_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
@@ -99,9 +88,9 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("create_standard_endpoint"),
     };
-    pub const DEFAULT_EXECUTION_TARGET_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const DEFAULT_DAG_EXECUTOR_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("DefaultExecutionTargetUpdatedEvent"),
+        name: sui::types::Identifier::from_static("DefaultDagExecutorUpdatedEvent"),
     };
     /// Deposit SUI into a standard TAP `AgentPaymentVault`.
     pub const DEPOSIT_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {

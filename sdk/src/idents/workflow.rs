@@ -223,6 +223,11 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("abort_expired_execution"),
     };
+    /// `nexus_workflow::dag::BEGIN_DAG_EXECUTION_WITH_CONFIG`
+    pub const BEGIN_DAG_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("begin_dag_execution_with_config"),
+    };
     /// Witness type used by scheduler tasks that execute through the default standard TAP target.
     ///
     /// `nexus_workflow::dag::BeginDefaultStandardTapExecutionWitness`

@@ -26,7 +26,7 @@ use {
         transactions::dag,
         types::{
             resolve_active_tap_skill_execution_target,
-            resolve_default_tap_execution_target,
+            resolve_default_tap_dag_executor,
             tap_payment_source_for_address,
             validate_authorization_plan,
             validate_standard_tap_payment_options,
@@ -38,7 +38,7 @@ use {
             SkillId,
             StorageConf,
             TapDagBinding,
-            TapDefaultExecutionTargetRecord,
+            DefaultDagExecutorRecord,
             TapEndpointKey,
             TapExecutionPayment,
             TapRegistry,
@@ -97,10 +97,10 @@ pub struct StandardTapExecuteOptions {
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
 }
 
-fn resolve_default_standard_tap_target(
+fn resolve_default_standard_tap_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &TapRegistry,
-) -> anyhow::Result<TapDefaultExecutionTargetRecord> {
+) -> anyhow::Result<DefaultDagExecutorRecord> {
     if let Some(configured) = objects.default_tap_target() {
         if let Ok(target) = resolve_active_tap_skill_execution_target(
             registry,
@@ -108,7 +108,7 @@ fn resolve_default_standard_tap_target(
             configured.skill_id,
         ) {
             if target.skill.dag_binding == TapDagBinding::RuntimeSelected {
-                return Ok(TapDefaultExecutionTargetRecord {
+                return Ok(DefaultDagExecutorRecord {
                     target: configured,
                     skill: target.skill,
                     endpoint: target.endpoint,
@@ -117,7 +117,7 @@ fn resolve_default_standard_tap_target(
         }
     }
 
-    resolve_default_tap_execution_target(registry)
+    resolve_default_tap_dag_executor(registry)
 }
 
 pub struct InspectExecutionResult {
@@ -475,7 +475,7 @@ impl WorkflowActions {
         })
     }
 
-    /// Execute a published DAG through the configured standard default TAP target.
+    /// Execute a published DAG through the configured standard default TAP DAG executor.
     ///
     /// The `entry_data` [`HashMap`] already holds information about the storage
     /// kind for each port.
@@ -516,7 +516,7 @@ impl WorkflowActions {
         .await
     }
 
-    /// Execute a published DAG through the configured standard default TAP target
+    /// Execute a published DAG through the configured standard default TAP DAG executor
     /// with explicit standard payment options.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_standard_tap_default(
@@ -556,19 +556,20 @@ impl WorkflowActions {
         let registry = tap::fetch_configured_tap_registry(self.client.crawler(), nexus_objects)
             .await
             .map_err(NexusError::Rpc)?;
-        let default_target = resolve_default_standard_tap_target(nexus_objects, &registry.data)
-            .map_err(NexusError::Parsing)?;
+        let default_executor =
+            resolve_default_standard_tap_dag_executor(nexus_objects, &registry.data)
+                .map_err(NexusError::Parsing)?;
         let agent = self
             .client
             .crawler()
-            .get_object_metadata(default_target.target.agent_id)
+            .get_object_metadata(default_executor.target.agent_id)
             .await
             .map_err(NexusError::Rpc)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
         validate_standard_tap_payment_options(
-            default_target.target.agent_id,
-            &default_target.endpoint.requirements.payment_policy,
+            default_executor.target.agent_id,
+            &default_executor.endpoint.requirements.payment_policy,
             &options.payment_source,
             options.payment_max_budget,
             options.payment_refund_mode,
@@ -586,7 +587,7 @@ impl WorkflowActions {
         let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
         if !authorization_plan.is_empty() || options.authorization_plan_commitment.is_some() {
             validate_authorization_plan(
-                &default_target.endpoint.requirements,
+                &default_executor.endpoint.requirements,
                 &authorization_plan,
                 options.authorization_plan_commitment.as_deref(),
             )
@@ -602,8 +603,8 @@ impl WorkflowActions {
             )
         };
         let standard = dag::StandardTapExecuteInput {
-            agent_id: default_target.target.agent_id,
-            skill_id: default_target.target.skill_id,
+            agent_id: default_executor.target.agent_id,
+            skill_id: default_executor.target.skill_id,
             payment_source: options.payment_source,
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
@@ -613,7 +614,7 @@ impl WorkflowActions {
             authorization_plan: authorization_plan.0.clone(),
         };
 
-        if let Err(e) = dag::execute_standard_tap(
+        if let Err(e) = dag::execute_default_standard_tap(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
@@ -701,11 +702,11 @@ impl WorkflowActions {
             execution_object_id,
             tx_checkpoint: response.checkpoint,
             standard_tap: Some(StandardTapSubmitMetadata {
-                agent_id: default_target.target.agent_id,
-                skill_id: default_target.target.skill_id,
+                agent_id: default_executor.target.agent_id,
+                skill_id: default_executor.target.skill_id,
                 dag_id: dag.object_id,
-                endpoint_key: default_target.endpoint.key,
-                endpoint_object: default_target.endpoint.endpoint_object,
+                endpoint_key: default_executor.endpoint.key,
+                endpoint_object: default_executor.endpoint.endpoint_object,
                 payment_max_budget: options.payment_max_budget,
                 payment_refund_mode: options.payment_refund_mode,
                 authorization_plan_commitment,
@@ -1100,7 +1101,7 @@ mod tests {
                 Storable,
                 TapAgentRecord,
                 TapDagBinding,
-                TapDefaultExecutionTarget,
+                DefaultDagExecutor,
                 TapEndpointActivation,
                 TapEndpointRevision,
                 TapEndpointRevisionKey,
@@ -1161,7 +1162,7 @@ mod tests {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-                default_target: registry.default_target.into(),
+                default_executor: registry.default_executor.into(),
             },
             agent_field_ref: sui_mocks::mock_sui_object_ref(),
             skill_field_ref: sui_mocks::mock_sui_object_ref(),
@@ -1420,7 +1421,7 @@ mod tests {
             1,
             sui::types::Digest::generate(&mut rng),
         );
-        nexus_objects.default_tap_target = Some(TapDefaultExecutionTarget {
+        nexus_objects.default_tap_target = Some(DefaultDagExecutor {
             agent_id: default_agent,
             skill_id: default_skill_id,
         });
@@ -1486,7 +1487,7 @@ mod tests {
                 skill_id: default_skill_id,
                 interface_revision: InterfaceRevision(1),
             }],
-            default_target: Some(TapDefaultExecutionTarget {
+            default_executor: Some(DefaultDagExecutor {
                 agent_id: default_agent,
                 skill_id: default_skill_id,
             }),
@@ -1719,7 +1720,7 @@ mod tests {
                 skill_id,
                 interface_revision: InterfaceRevision(1),
             }],
-            default_target: None,
+            default_executor: None,
         };
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();

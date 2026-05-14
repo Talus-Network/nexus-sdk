@@ -869,7 +869,7 @@ pub fn register_begin_default_standard_tap_execution(
     ))
 }
 
-/// PTB template to invoke DAG execution from the scheduler through the standard default target.
+/// PTB template to invoke DAG execution from the scheduler through the standard default DAG executor.
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_default_standard_tap_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,

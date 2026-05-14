@@ -84,7 +84,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
 - SDK test fixtures now track the current standard TAP event and PTB layouts, fixing parsing and PTB-order regressions exposed after the standard TAP cutover.
-- Raw `TapRegistryObject` BCS decoding now models Move `Option<T>` layout for `default_target`, fixing default TAP target recovery from shared registry objects used by leader bootstrap and scheduler flows.
+- Raw `TapRegistryObject` BCS decoding now models Move `Option<T>` layout for `default_executor`, fixing default TAP DAG executor recovery from shared registry objects used by leader bootstrap and scheduler flows.
 
 #### Removed
 

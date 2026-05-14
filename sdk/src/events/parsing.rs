@@ -1200,14 +1200,14 @@ mod tests {
                 .expect("SkillRegisteredEvent sample serializes"),
             ),
             (
-                "DefaultExecutionTargetUpdatedEvent",
+                "DefaultDagExecutorUpdatedEvent",
                 bcs::to_bytes(&Wrapper {
-                    event: DefaultExecutionTargetUpdatedEvent {
+                    event: DefaultDagExecutorUpdatedEvent {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                     },
                 })
-                .expect("DefaultExecutionTargetUpdatedEvent sample serializes"),
+                .expect("DefaultDagExecutorUpdatedEvent sample serializes"),
             ),
             (
                 "EndpointRevisionAnnouncedEvent",
@@ -1900,7 +1900,7 @@ mod tests {
                 *name,
                 "AgentCreatedEvent"
                     | "SkillRegisteredEvent"
-                    | "DefaultExecutionTargetUpdatedEvent"
+                    | "DefaultDagExecutorUpdatedEvent"
                     | "EndpointRevisionAnnouncedEvent"
                     | "EndpointRevisionActivatedEvent"
                     | "WorksheetResolvedEvent"
