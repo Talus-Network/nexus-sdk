@@ -5,9 +5,7 @@ pub(crate) async fn schedule_skill_execution(
     agent_id: AgentId,
     skill_id: u64,
     long_term_gas_coin_id: sui::types::Address,
-    input_commitment_hex: String,
     refill_policy_hex: String,
-    authorization_plan_commitment_hex: Option<String>,
     schedule_entries_commitment_hex: String,
     recurrence_kind: String,
     min_interval_ms: u64,
@@ -17,10 +15,7 @@ pub(crate) async fn schedule_skill_execution(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let input_commitment = decode_hex_arg(&input_commitment_hex, "input-commitment")?;
     let refill_policy = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
-    let authorization_plan_commitment =
-        decode_optional_hex_arg(authorization_plan_commitment_hex, "authorization-plan-hash")?;
     let schedule_entries_commitment =
         decode_hex_arg(&schedule_entries_commitment_hex, "schedule-entries-hash")?;
     let schedule_policy = nexus_sdk::types::TapSchedulePolicy {
@@ -39,9 +34,7 @@ pub(crate) async fn schedule_skill_execution(
             agent_id,
             skill_id,
             long_term_gas_coin_id,
-            input_commitment,
             refill_policy,
-            authorization_plan_commitment,
             schedule_policy,
             schedule_entries_commitment,
             first_after_ms,
@@ -50,36 +43,4 @@ pub(crate) async fn schedule_skill_execution(
         .map_err(NexusCliError::Nexus)?;
 
     json_output(&schedule_result_json(long_term_gas_coin_id, &result))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn schedule_rejects_invalid_commitment_hex_before_rpc_client() {
-        let error = schedule_skill_execution(
-            sui::types::Address::from_static("0xa"),
-            11,
-            sui::types::Address::from_static("0xc"),
-            "0xinvalid".to_string(),
-            String::new(),
-            None,
-            String::new(),
-            "once".to_string(),
-            0,
-            1,
-            false,
-            0,
-            None,
-            DEFAULT_GAS_BUDGET,
-        )
-        .await
-        .expect_err("invalid input commitment");
-
-        assert!(
-            error.to_string().contains("invalid input-commitment hex"),
-            "unexpected error: {error}"
-        );
-    }
 }

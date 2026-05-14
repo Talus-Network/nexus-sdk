@@ -11,14 +11,6 @@ pub const STANDARD_TAP_MODULE: sui::types::Identifier = sui::types::Identifier::
 pub struct TapStandard;
 
 impl TapStandard {
-    pub const ACCOMPLISH_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("accomplish_execution"),
-    };
-    pub const ACCOMPLISH_EXECUTION_FROM_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("accomplish_execution_from_vault"),
-    };
     pub const AGENT_CREATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("AgentCreatedEvent"),
@@ -64,21 +56,9 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("confirm_tool_eval_for_walk"),
     };
-    pub const CONSUME_GAS_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("consume_gas_payment"),
-    };
     pub const CREATE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("create_agent"),
-    };
-    pub const CREATE_AGENT_SKILL_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("create_agent_skill_payment"),
-    };
-    pub const CREATE_AGENT_SKILL_PAYMENT_FROM_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("create_agent_skill_payment_from_vault"),
     };
     pub const CREATE_SCHEDULED_OCCURRENCE_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -92,6 +72,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultDagExecutorUpdatedEvent"),
     };
+    pub const DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("default_dag_executor_workflow_worksheet"),
+    };
     /// Deposit SUI into a standard TAP `AgentPaymentVault`.
     pub const DEPOSIT_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -104,10 +88,6 @@ impl TapStandard {
     pub const ENDPOINT_REVISION_ANNOUNCED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
-    };
-    pub const EXECUTE_AGENT_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("execute_agent_skill"),
     };
     pub const EXECUTION_PAYMENT_RECEIPT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -143,18 +123,6 @@ impl TapStandard {
                 "refill_scheduled_skill_execution_from_agent_vault",
             ),
         };
-    pub const REFUND_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("refund_execution"),
-    };
-    pub const REFUND_EXECUTION_FROM_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("refund_execution_from_vault"),
-    };
-    pub const REFUND_EXECUTION_PAYMENT_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("refund_execution_payment_vertex"),
-    };
     pub const REGISTER_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
@@ -174,6 +142,13 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("scheduled_occurrence_final_state_refunded"),
     };
+    pub const SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: STANDARD_TAP_MODULE,
+            name: sui::types::Identifier::from_static(
+                "schedule_default_dag_executor_skill_execution_address_funded",
+            ),
+        };
     pub const SCHEDULE_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("schedule_policy"),

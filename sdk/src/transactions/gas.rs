@@ -148,7 +148,6 @@ pub fn snapshot_dag_tool_costs(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     gas_service: sui::types::Argument,
-    agent: sui::types::Argument,
     execution: sui::types::Argument,
     dag: sui::types::Argument,
 ) -> sui::types::Argument {
@@ -159,7 +158,7 @@ pub fn snapshot_dag_tool_costs(
             workflow::Gas::SNAPSHOT_DAG_TOOL_COSTS.name,
             vec![],
         ),
-        vec![gas_service, agent, execution, dag],
+        vec![gas_service, execution, dag],
     )
 }
 
@@ -169,7 +168,6 @@ pub fn finalize_payment_state_for_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_gas: sui::types::Argument,
-    agent: sui::types::Argument,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     expected_vertex: sui::types::Argument,
@@ -181,7 +179,7 @@ pub fn finalize_payment_state_for_vertex(
             workflow::Gas::FINALIZE_PAYMENT_STATE_FOR_VERTEX.name,
             vec![],
         ),
-        vec![tool_gas, agent, dag, execution, expected_vertex],
+        vec![tool_gas, dag, execution, expected_vertex],
     )
 }
 
@@ -192,7 +190,6 @@ pub fn settle_payment_state_for_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_gas: sui::types::Argument,
-    agent: sui::types::Argument,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     expected_vertex: sui::types::Argument,
@@ -204,7 +201,7 @@ pub fn settle_payment_state_for_vertex(
             workflow::Gas::SETTLE_PAYMENT_STATE_FOR_VERTEX.name,
             vec![],
         ),
-        vec![tool_gas, agent, dag, execution, expected_vertex],
+        vec![tool_gas, dag, execution, expected_vertex],
     )
 }
 
@@ -214,7 +211,6 @@ pub fn refund_payment_state_for_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_gas: sui::types::Argument,
-    agent: sui::types::Argument,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     expected_vertex: sui::types::Argument,
@@ -226,7 +222,7 @@ pub fn refund_payment_state_for_vertex(
             workflow::Gas::REFUND_PAYMENT_STATE_FOR_VERTEX.name,
             vec![],
         ),
-        vec![tool_gas, agent, dag, execution, expected_vertex],
+        vec![tool_gas, dag, execution, expected_vertex],
     )
 }
 
@@ -496,7 +492,6 @@ mod tests {
             sui::types::Argument::Input(0),
             sui::types::Argument::Input(1),
             sui::types::Argument::Input(2),
-            sui::types::Argument::Input(3),
         );
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -513,7 +508,7 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(call.module, workflow::Gas::SNAPSHOT_DAG_TOOL_COSTS.module);
         assert_eq!(call.function, workflow::Gas::SNAPSHOT_DAG_TOOL_COSTS.name);
-        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]
@@ -528,7 +523,6 @@ mod tests {
             sui::types::Argument::Input(1),
             sui::types::Argument::Input(2),
             sui::types::Argument::Input(3),
-            sui::types::Argument::Input(4),
         );
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -551,7 +545,7 @@ mod tests {
             call.function,
             workflow::Gas::FINALIZE_PAYMENT_STATE_FOR_VERTEX.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 4);
     }
 
     #[test]
@@ -566,7 +560,6 @@ mod tests {
             sui::types::Argument::Input(1),
             sui::types::Argument::Input(2),
             sui::types::Argument::Input(3),
-            sui::types::Argument::Input(4),
         );
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -589,7 +582,7 @@ mod tests {
             call.function,
             workflow::Gas::SETTLE_PAYMENT_STATE_FOR_VERTEX.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 4);
     }
 
     #[test]
@@ -604,7 +597,6 @@ mod tests {
             sui::types::Argument::Input(1),
             sui::types::Argument::Input(2),
             sui::types::Argument::Input(3),
-            sui::types::Argument::Input(4),
         );
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -627,7 +619,7 @@ mod tests {
             call.function,
             workflow::Gas::REFUND_PAYMENT_STATE_FOR_VERTEX.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 4);
     }
 
     #[test]

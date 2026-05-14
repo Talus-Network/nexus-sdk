@@ -18,6 +18,10 @@ use crate::{
         resolve_active_tap_skill_execution_target,
         resolve_default_tap_dag_executor,
         AgentId,
+        DefaultDagExecutor,
+        DefaultDagExecutorFieldKey,
+        DefaultDagExecutorRecord,
+        DefaultDagExecutorValue,
         InterfaceRevision,
         NexusObjects,
         RuntimeVertex,
@@ -26,8 +30,6 @@ use crate::{
         TapAgentPaymentVault,
         TapAgentVaultFieldKey,
         TapConfigDigestInput,
-        DefaultDagExecutor,
-        DefaultDagExecutorRecord,
         TapEndpointKey,
         TapEndpointRecord,
         TapEndpointResolutionError,
@@ -120,13 +122,27 @@ pub struct ScheduleSkillExecutionAddressFundedParams {
     pub scheduler_task: sui::types::ObjectReference,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub input_commitment: Vec<u8>,
     pub prepay_amount: u64,
     pub refund_recipient: Option<sui::types::Address>,
     pub payment_source: Vec<u8>,
     pub occurrence_budget: u64,
     pub refund_mode: u8,
-    pub authorization_plan_commitment: Option<Vec<u8>>,
+    pub schedule_policy: TapSchedulePolicy,
+    pub refill_policy_commitment: Vec<u8>,
+    pub schedule_entries_commitment: Vec<u8>,
+    pub first_after_ms: u64,
+}
+
+/// Parameters for creating a durable address-funded TAP schedule for the
+/// registry-owned default DAG executor and linking it to a scheduler task.
+#[derive(Clone, Debug)]
+pub struct ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
+    pub scheduler_task: sui::types::ObjectReference,
+    pub prepay_amount: u64,
+    pub refund_recipient: Option<sui::types::Address>,
+    pub payment_source: Vec<u8>,
+    pub occurrence_budget: u64,
+    pub refund_mode: u8,
     pub schedule_policy: TapSchedulePolicy,
     pub refill_policy_commitment: Vec<u8>,
     pub schedule_entries_commitment: Vec<u8>,
@@ -558,9 +574,7 @@ impl TapActions {
         agent_id: AgentId,
         skill_id: SkillId,
         long_term_gas_coin_id: sui::types::Address,
-        input_commitment: Vec<u8>,
         refill_policy_commitment: Vec<u8>,
-        authorization_plan_commitment: Option<Vec<u8>>,
         schedule_policy: TapSchedulePolicy,
         schedule_entries_commitment: Vec<u8>,
         first_after_ms: u64,
@@ -589,10 +603,8 @@ impl TapActions {
             registry,
             agent,
             skill_id,
-            input_commitment,
             long_term_gas_coin_id,
             refill_policy_commitment,
-            authorization_plan_commitment,
             schedule_policy,
             schedule_entries_commitment,
             first_after_ms,
@@ -679,13 +691,11 @@ impl TapActions {
             agent,
             *params.scheduler_task.object_id(),
             params.skill_id,
-            params.input_commitment,
             prepayment_coin,
             refund_recipient,
             params.payment_source,
             params.occurrence_budget,
             params.refund_mode,
-            params.authorization_plan_commitment,
             params.schedule_policy,
             params.refill_policy_commitment,
             params.schedule_entries_commitment,
@@ -719,6 +729,92 @@ impl TapActions {
         .ok_or_else(|| {
             NexusError::Parsing(anyhow::anyhow!(
                 "ScheduledSkillExecutionCreatedEvent not found in durable TAP schedule response"
+            ))
+        })?;
+
+        Ok(ScheduleSkillExecutionResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            scheduled_task_id: event.scheduled_task_id,
+            agent_id: event.agent_id,
+            skill_id: event.skill_id,
+        })
+    }
+
+    /// Create an address-funded durable scheduled TAP task for the
+    /// registry-owned default DAG executor, attach it to the workflow scheduler
+    /// task, and share the TAP scheduled task.
+    pub async fn schedule_default_dag_executor_skill_execution_address_funded(
+        &self,
+        params: ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams,
+    ) -> Result<ScheduleSkillExecutionResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let refund_recipient = params.refund_recipient.unwrap_or(address);
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tap_tx::tap_registry_arg(&mut tx, nexus_objects)
+            .map_err(NexusError::TransactionBuilding)?;
+        let scheduler_task = tx.input(sui::tx::Input::shared(
+            *params.scheduler_task.object_id(),
+            params.scheduler_task.version(),
+            true,
+        ));
+        let prepay_amount_input = crate::idents::pure_arg(&params.prepay_amount)
+            .map_err(NexusError::TransactionBuilding)?;
+        let prepay_amount = tx.input(prepay_amount_input);
+        let prepayment_coin = tx
+            .split_coins(tx.gas(), vec![prepay_amount])
+            .nested(0)
+            .ok_or_else(|| {
+                NexusError::TransactionBuilding(anyhow::anyhow!(
+                    "failed to split default scheduled TAP prepayment coin"
+                ))
+            })?;
+
+        let scheduled_task = tap_tx::schedule_default_dag_executor_skill_execution_address_funded(
+            &mut tx,
+            nexus_objects,
+            registry,
+            *params.scheduler_task.object_id(),
+            prepayment_coin,
+            refund_recipient,
+            params.payment_source,
+            params.occurrence_budget,
+            params.refund_mode,
+            params.schedule_policy,
+            params.refill_policy_commitment,
+            params.schedule_entries_commitment,
+            params.first_after_ms,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        scheduler_tx::attach_tap_scheduled_task_link(
+            &mut tx,
+            nexus_objects,
+            scheduler_task,
+            scheduled_task,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let scheduled_task_type =
+            crate::idents::tap::scheduled_skill_task_type(nexus_objects.interface_pkg_id);
+        tx.move_call(
+            sui::tx::Function::new(
+                crate::idents::sui_framework::PACKAGE_ID,
+                crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+                crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+                vec![scheduled_task_type],
+            ),
+            vec![scheduled_task],
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        let event = find_event(&response, |kind| match kind {
+            NexusEventKind::ScheduledSkillExecutionCreated(event) => Some(event),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "ScheduledSkillExecutionCreatedEvent not found in default TAP schedule response"
             ))
         })?;
 
@@ -827,6 +923,48 @@ pub async fn fetch_tap_registry(
         agents.push(agent);
     }
 
+    let default_executor = match crawler
+        .get_dynamic_fields_bcs::<DefaultDagExecutorFieldKey, DefaultDagExecutorValue>(
+            raw.data.id,
+            0,
+        )
+        .await
+    {
+        Ok(mut fields) => fields
+            .remove(&DefaultDagExecutorFieldKey {})
+            .map(|value| value.target()),
+        Err(key_error) => {
+            let values = match crawler
+                .get_dynamic_field_values_bcs::<DefaultDagExecutorValue>(raw.data.id)
+                .await
+            {
+                Ok(values) => values
+                    .into_iter()
+                    .map(|(_value_type, value)| value)
+                    .collect::<Vec<_>>(),
+                Err(value_error) => crawler
+                    .get_dynamic_field_object_values_bcs::<
+                        DefaultDagExecutorFieldKey,
+                        DefaultDagExecutorValue,
+                    >(raw.data.id)
+                    .await
+                    .map_err(|object_error| {
+                        anyhow::anyhow!(
+                            "Could not fetch default DAG executor dynamic field for TapRegistry {}: key decode failed: {key_error}; value decode failed: {value_error}; field object decode failed: {object_error}",
+                            raw.data.id
+                        )
+                    })?,
+            };
+            if values.len() > 1 {
+                anyhow::bail!(
+                    "TapRegistry {} has multiple default DAG executor dynamic fields",
+                    raw.data.id
+                );
+            }
+            values.into_iter().next().map(|value| value.target())
+        }
+    };
+
     Ok(Response {
         object_id: raw.object_id,
         owner: raw.owner,
@@ -839,7 +977,7 @@ pub async fn fetch_tap_registry(
             skills,
             endpoints,
             active_endpoints,
-            default_executor: raw.data.default_executor.0,
+            default_executor,
         },
     })
 }
@@ -1079,11 +1217,23 @@ pub async fn fetch_workflow_vertex_authorization_grant(
     execution_id: sui::types::Address,
     vertex: RuntimeVertex,
 ) -> anyhow::Result<Response<WorkflowVertexAuthorizationGrant>> {
+    let key = WorkflowVertexAuthorizationGrantFieldKey { vertex };
+    let mut matches = crawler
+        .get_dynamic_object_field_refs_matching_key::<WorkflowVertexAuthorizationGrantFieldKey>(
+            execution_id,
+        )
+        .await?;
+    let field = matches
+        .drain(..)
+        .find(|field| field.name == key)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "workflow vertex authorization grant not found for execution '{execution_id}'"
+            )
+        })?;
+
     crawler
-        .get_dynamic_object_field::<
-            WorkflowVertexAuthorizationGrantFieldKey,
-            WorkflowVertexAuthorizationGrant,
-        >(execution_id, WorkflowVertexAuthorizationGrantFieldKey { vertex })
+        .get_object::<WorkflowVertexAuthorizationGrant>(field.child_id)
         .await
 }
 
@@ -1141,12 +1291,12 @@ mod tests {
             idents::primitives,
             test_utils::{nexus_mocks, sui_mocks},
             types::{
+                DefaultDagExecutor,
                 InterfaceRevision,
                 MoveTable,
                 NexusObjects,
                 TapAgentRecord,
                 TapDagBinding,
-                DefaultDagExecutor,
                 TapEndpointActivation,
                 TapEndpointKey,
                 TapEndpointRevision,
@@ -1281,6 +1431,8 @@ mod tests {
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
         endpoint_field_ref: sui::types::ObjectReference,
+        default_executor_field_ref: Option<sui::types::ObjectReference>,
+        default_executor_value: Option<DefaultDagExecutorValue>,
         agent_record: TapAgentRecord,
         skill_record: TapSkillRecord,
         endpoint_record: TapEndpointRevision,
@@ -1312,16 +1464,31 @@ mod tests {
         let agent_field_ref = sui_mocks::mock_sui_object_ref();
         let skill_field_ref = sui_mocks::mock_sui_object_ref();
         let endpoint_field_ref = sui_mocks::mock_sui_object_ref();
+        let default_executor_field_ref = registry
+            .default_executor
+            .map(|_| sui_mocks::mock_sui_object_ref());
+        let default_executor_value =
+            registry
+                .default_executor
+                .map(|default_executor| DefaultDagExecutorValue {
+                    agent: crate::types::TapAgentObject {
+                        id: default_executor.agent_id,
+                        next_skill_index: agent.next_skill_index,
+                        owner: agent.owner,
+                    },
+                    skill_id: default_executor.skill_id,
+                });
 
         RegistryObjectMock {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-                default_executor: registry.default_executor.into(),
             },
             agent_field_ref,
             skill_field_ref,
             endpoint_field_ref,
+            default_executor_field_ref,
+            default_executor_value,
             agent_record: agent,
             skill_record,
             endpoint_record,
@@ -1402,6 +1569,32 @@ mod tests {
                 mock.endpoint_record,
             )],
         );
+        if let (Some(field_ref), Some(value)) =
+            (mock.default_executor_field_ref, mock.default_executor_value)
+        {
+            sui_mocks::grpc::mock_list_dynamic_fields(
+                state_service_mock,
+                vec![(DefaultDagExecutorFieldKey {}, *field_ref.object_id())],
+            );
+            sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+                ledger_service_mock,
+                vec![(
+                    field_ref,
+                    sui::types::Owner::Shared(1),
+                    DefaultDagExecutorFieldKey {},
+                    value,
+                )],
+            );
+        } else {
+            sui_mocks::grpc::mock_list_dynamic_fields::<DefaultDagExecutorFieldKey>(
+                state_service_mock,
+                vec![],
+            );
+            sui_mocks::grpc::mock_get_dynamic_table_values_bcs::<
+                DefaultDagExecutorFieldKey,
+                DefaultDagExecutorValue,
+            >(ledger_service_mock, vec![]);
+        }
     }
 
     #[test]
@@ -1934,8 +2127,6 @@ mod tests {
                 11,
                 sui::types::Address::from_static("0xc"),
                 vec![1],
-                vec![2],
-                Some(vec![3]),
                 TapSchedulePolicy::default(),
                 vec![4],
                 10,
@@ -2024,13 +2215,11 @@ mod tests {
                 scheduler_task: scheduler_task_ref,
                 agent_id: *agent_ref.object_id(),
                 skill_id: 11,
-                input_commitment: vec![1],
                 prepay_amount: 25,
                 refund_recipient: None,
                 payment_source: vec![2],
                 occurrence_budget: 5,
                 refund_mode: 0,
-                authorization_plan_commitment: Some(vec![3]),
                 schedule_policy: TapSchedulePolicy::default(),
                 refill_policy_commitment: vec![4],
                 schedule_entries_commitment: vec![5],
@@ -2042,6 +2231,91 @@ mod tests {
         assert_eq!(result.scheduled_task_id, scheduled_task_id);
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
+        assert_eq!(result.tx_digest, digest);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_schedule_default_executor_address_funded_does_not_fetch_agent() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let scheduler_task_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0x66"),
+            5,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let default_agent_id = sui::types::Address::from_static("0xad");
+        let scheduled_task_id = sui::types::Address::from_static("0x77");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "ScheduledSkillExecutionCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::ScheduledSkillExecutionCreatedEvent {
+                        scheduled_task_id,
+                        scheduler_task_id: *scheduler_task_ref.object_id(),
+                        agent_id: default_agent_id,
+                        skill_id: 0,
+                        long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
+                        schedule_entries_commitment: vec![4],
+                        first_after_ms: 10,
+                        max_occurrences: 1,
+                        source_kind: crate::types::TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0xc"),
+                        prepaid_amount: 25,
+                        occurrence_budget: 5,
+                        refund_mode: 0,
+                    },
+                })
+                .unwrap(),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .schedule_default_dag_executor_skill_execution_address_funded(
+                ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
+                    scheduler_task: scheduler_task_ref,
+                    prepay_amount: 25,
+                    refund_recipient: None,
+                    payment_source: vec![2],
+                    occurrence_budget: 5,
+                    refund_mode: 0,
+                    schedule_policy: TapSchedulePolicy::default(),
+                    refill_policy_commitment: vec![4],
+                    schedule_entries_commitment: vec![5],
+                    first_after_ms: 10,
+                },
+            )
+            .await
+            .expect("default durable schedule succeeds");
+
+        assert_eq!(result.scheduled_task_id, scheduled_task_id);
+        assert_eq!(result.agent_id, default_agent_id);
+        assert_eq!(result.skill_id, 0);
         assert_eq!(result.tx_digest, digest);
     }
 

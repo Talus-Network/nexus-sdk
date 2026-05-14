@@ -33,12 +33,12 @@ use {
             AgentId,
             Dag as JsonDag,
             DataStorage,
+            DefaultDagExecutorRecord,
             PortsData,
             RuntimeVertex,
             SkillId,
             StorageConf,
             TapDagBinding,
-            DefaultDagExecutorRecord,
             TapEndpointKey,
             TapExecutionPayment,
             TapRegistry,
@@ -70,11 +70,11 @@ pub struct ExecuteResult {
     pub tx_digest: sui::types::Digest,
     pub execution_object_id: sui::types::Address,
     pub tx_checkpoint: u64,
-    pub standard_tap: Option<StandardTapSubmitMetadata>,
+    pub tap_execution: Option<TapExecutionSubmitMetadata>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StandardTapSubmitMetadata {
+pub struct TapExecutionSubmitMetadata {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
@@ -87,7 +87,7 @@ pub struct StandardTapSubmitMetadata {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct StandardTapExecuteOptions {
+pub struct AgentDagExecuteOptions {
     pub payment_source: Vec<u8>,
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
@@ -97,7 +97,7 @@ pub struct StandardTapExecuteOptions {
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
 }
 
-fn resolve_default_standard_tap_dag_executor(
+fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &TapRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
@@ -496,13 +496,13 @@ impl WorkflowActions {
         storage_conf: &StorageConf,
     ) -> Result<ExecuteResult, NexusError> {
         let address = self.client.signer.get_active_address();
-        self.execute_standard_tap_default(
+        self.execute_default_agent_dag(
             dag_object_id,
             entry_data,
             priority_fee_per_gas_unit,
             entry_group,
             storage_conf,
-            StandardTapExecuteOptions {
+            AgentDagExecuteOptions {
                 payment_source: tap_payment_source_for_address(address)
                     .map_err(NexusError::TransactionBuilding)?,
                 payment_coin: None,
@@ -519,14 +519,14 @@ impl WorkflowActions {
     /// Execute a published DAG through the configured standard default TAP DAG executor
     /// with explicit standard payment options.
     #[allow(clippy::too_many_arguments)]
-    pub async fn execute_standard_tap_default(
+    pub async fn execute_default_agent_dag(
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, PortsData>,
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
-        options: StandardTapExecuteOptions,
+        options: AgentDagExecuteOptions,
     ) -> Result<ExecuteResult, NexusError> {
         // == Commit data to their respective storage ==
 
@@ -556,15 +556,8 @@ impl WorkflowActions {
         let registry = tap::fetch_configured_tap_registry(self.client.crawler(), nexus_objects)
             .await
             .map_err(NexusError::Rpc)?;
-        let default_executor =
-            resolve_default_standard_tap_dag_executor(nexus_objects, &registry.data)
-                .map_err(NexusError::Parsing)?;
-        let agent = self
-            .client
-            .crawler()
-            .get_object_metadata(default_executor.target.agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
+        let default_executor = resolve_default_agent_dag_executor(nexus_objects, &registry.data)
+            .map_err(NexusError::Parsing)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
         validate_standard_tap_payment_options(
@@ -579,7 +572,7 @@ impl WorkflowActions {
         if let Some(balance) = options.payment_coin_balance {
             if balance < options.payment_max_budget {
                 return Err(NexusError::TransactionBuilding(anyhow!(
-                    "standard TAP payment coin balance {balance} is below requested budget {}",
+                    "TAP execution payment coin balance {balance} is below requested budget {}",
                     options.payment_max_budget
                 )));
             }
@@ -602,7 +595,7 @@ impl WorkflowActions {
                     .map_err(NexusError::TransactionBuilding)?,
             )
         };
-        let standard = dag::StandardTapExecuteInput {
+        let agent_execution = dag::AgentDagExecuteInput {
             agent_id: default_executor.target.agent_id,
             skill_id: default_executor.target.skill_id,
             payment_source: options.payment_source,
@@ -614,15 +607,14 @@ impl WorkflowActions {
             authorization_plan: authorization_plan.0.clone(),
         };
 
-        if let Err(e) = dag::execute_default_standard_tap(
+        if let Err(e) = dag::execute_default_agent_dag(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
-            &agent.object_ref(),
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
-            &standard,
+            &agent_execution,
             &tools_gas,
         ) {
             return Err(NexusError::TransactionBuilding(e));
@@ -643,7 +635,7 @@ impl WorkflowActions {
         let tx = tx
             .finish()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-        let owned_payment_coin = standard
+        let owned_payment_coin = agent_execution
             .payment_coin
             .as_ref()
             .map(|payment_coin| *payment_coin.object_id());
@@ -701,7 +693,7 @@ impl WorkflowActions {
             tx_digest: response.digest,
             execution_object_id,
             tx_checkpoint: response.checkpoint,
-            standard_tap: Some(StandardTapSubmitMetadata {
+            tap_execution: Some(TapExecutionSubmitMetadata {
                 agent_id: default_executor.target.agent_id,
                 skill_id: default_executor.target.skill_id,
                 dag_id: dag.object_id,
@@ -715,12 +707,12 @@ impl WorkflowActions {
         })
     }
 
-    /// Execute the active standard TAP skill for `(agent_id, skill_id)`.
+    /// Execute the active agent skill for `(agent_id, skill_id)`.
     ///
     /// This resolves the registered DAG from the configured TAP registry, then
-    /// calls the standard workflow entry instead of the legacy default TAP entry.
+    /// calls the explicit agent workflow entry instead of the legacy default TAP entry.
     #[allow(clippy::too_many_arguments)]
-    pub async fn execute_standard_tap(
+    pub async fn execute_agent_dag(
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
@@ -728,7 +720,7 @@ impl WorkflowActions {
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
-        options: StandardTapExecuteOptions,
+        options: AgentDagExecuteOptions,
     ) -> Result<ExecuteResult, NexusError> {
         let mut input_data = HashMap::new();
 
@@ -805,12 +797,12 @@ impl WorkflowActions {
         if let Some(balance) = options.payment_coin_balance {
             if balance < options.payment_max_budget {
                 return Err(NexusError::TransactionBuilding(anyhow!(
-                    "standard TAP payment coin balance {balance} is below requested budget {}",
+                    "TAP execution payment coin balance {balance} is below requested budget {}",
                     options.payment_max_budget
                 )));
             }
         }
-        let standard = dag::StandardTapExecuteInput {
+        let agent_execution = dag::AgentDagExecuteInput {
             agent_id,
             skill_id,
             payment_source: options.payment_source,
@@ -822,7 +814,7 @@ impl WorkflowActions {
             authorization_plan: authorization_plan.0.clone(),
         };
 
-        if let Err(e) = dag::execute_standard_tap(
+        if let Err(e) = dag::execute_agent_dag(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
@@ -830,7 +822,7 @@ impl WorkflowActions {
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
-            &standard,
+            &agent_execution,
             &tools_gas,
         ) {
             return Err(NexusError::TransactionBuilding(e));
@@ -851,7 +843,7 @@ impl WorkflowActions {
         let tx = tx
             .finish()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-        let owned_payment_coin = standard
+        let owned_payment_coin = agent_execution
             .payment_coin
             .as_ref()
             .map(|payment_coin| *payment_coin.object_id());
@@ -907,7 +899,7 @@ impl WorkflowActions {
             tx_digest: response.digest,
             execution_object_id,
             tx_checkpoint: response.checkpoint,
-            standard_tap: Some(StandardTapSubmitMetadata {
+            tap_execution: Some(TapExecutionSubmitMetadata {
                 agent_id,
                 skill_id,
                 dag_id,
@@ -1029,7 +1021,7 @@ impl WorkflowActions {
         build_execution_completion_result(events, dag_execution_id, storage_conf).await
     }
 
-    /// Fetch the standard TAP execution payment cost summary for a DAG
+    /// Fetch the TAP execution payment cost summary for a DAG
     /// execution.
     pub async fn execution_cost(
         &self,
@@ -1046,7 +1038,7 @@ impl WorkflowActions {
             .map_err(NexusError::Parsing)?
             .ok_or_else(|| {
                 NexusError::Parsing(anyhow!(
-                    "DAG execution '{dag_execution_id}' has no standard TAP payment context"
+                    "DAG execution '{dag_execution_id}' has no TAP payment context"
                 ))
             })?;
         let payment = tap::fetch_tap_execution_payment(crawler, context.payment_id)
@@ -1093,6 +1085,9 @@ mod tests {
             test_utils::{nexus_mocks, sui_mocks},
             types::{
                 derive_tool_gas_id,
+                DefaultDagExecutor,
+                DefaultDagExecutorFieldKey,
+                DefaultDagExecutorValue,
                 InterfaceRevision,
                 MoveTable,
                 NexusData,
@@ -1101,7 +1096,6 @@ mod tests {
                 Storable,
                 TapAgentRecord,
                 TapDagBinding,
-                DefaultDagExecutor,
                 TapEndpointActivation,
                 TapEndpointRevision,
                 TapEndpointRevisionKey,
@@ -1129,6 +1123,8 @@ mod tests {
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
         endpoint_field_ref: sui::types::ObjectReference,
+        default_executor_field_ref: Option<sui::types::ObjectReference>,
+        default_executor_value: Option<DefaultDagExecutorValue>,
         agent_record: TapAgentRecord,
         skill_record: TapSkillRecord,
         endpoint_record: TapEndpointRevision,
@@ -1157,16 +1153,31 @@ mod tests {
             .or_else(|| registry.endpoints.first())
             .expect("endpoint selected")
             .clone();
+        let default_executor_field_ref = registry
+            .default_executor
+            .map(|_| sui_mocks::mock_sui_object_ref());
+        let default_executor_value =
+            registry
+                .default_executor
+                .map(|default_executor| DefaultDagExecutorValue {
+                    agent: crate::types::TapAgentObject {
+                        id: default_executor.agent_id,
+                        next_skill_index: agent.next_skill_index,
+                        owner: agent.owner,
+                    },
+                    skill_id: default_executor.skill_id,
+                });
 
         RegistryObjectMock {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-                default_executor: registry.default_executor.into(),
             },
             agent_field_ref: sui_mocks::mock_sui_object_ref(),
             skill_field_ref: sui_mocks::mock_sui_object_ref(),
             endpoint_field_ref: sui_mocks::mock_sui_object_ref(),
+            default_executor_field_ref,
+            default_executor_value,
             agent_record: agent,
             skill_record,
             endpoint_record,
@@ -1247,6 +1258,32 @@ mod tests {
                 mock.endpoint_record,
             )],
         );
+        if let (Some(field_ref), Some(value)) =
+            (mock.default_executor_field_ref, mock.default_executor_value)
+        {
+            sui_mocks::grpc::mock_list_dynamic_fields(
+                state_service_mock,
+                vec![(DefaultDagExecutorFieldKey {}, *field_ref.object_id())],
+            );
+            sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+                ledger_service_mock,
+                vec![(
+                    field_ref,
+                    sui::types::Owner::Shared(1),
+                    DefaultDagExecutorFieldKey {},
+                    value,
+                )],
+            );
+        } else {
+            sui_mocks::grpc::mock_list_dynamic_fields::<DefaultDagExecutorFieldKey>(
+                state_service_mock,
+                vec![],
+            );
+            sui_mocks::grpc::mock_get_dynamic_table_values_bcs::<
+                DefaultDagExecutorFieldKey,
+                DefaultDagExecutorValue,
+            >(ledger_service_mock, vec![]);
+        }
     }
 
     fn mock_events_get_checkpoint_with_supported_events(
@@ -1634,12 +1671,12 @@ mod tests {
 
         assert_eq!(result.execution_object_id, execution_object_id);
         assert_eq!(result.tx_digest, tx_digest);
-        let standard_tap = result.standard_tap.expect("standard TAP metadata");
-        assert_eq!(standard_tap.payment_max_budget, 1000);
+        let tap_execution = result.tap_execution.expect("TAP execution metadata");
+        assert_eq!(tap_execution.payment_max_budget, 1000);
     }
 
     #[tokio::test]
-    async fn test_workflow_actions_execute_standard_tap_pinned_skill() {
+    async fn test_workflow_actions_execute_agent_dag_pinned_skill() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
@@ -1830,24 +1867,24 @@ mod tests {
 
         let result = client
             .workflow()
-            .execute_standard_tap(
+            .execute_agent_dag(
                 agent_id,
                 skill_id,
                 entry_data,
                 0,
                 Some("custom"),
                 &StorageConf::default(),
-                StandardTapExecuteOptions {
+                AgentDagExecuteOptions {
                     payment_max_budget: 100,
                     ..Default::default()
                 },
             )
             .await
-            .expect("standard TAP execution succeeds");
+            .expect("agent DAG execution succeeds");
 
         assert_eq!(result.execution_object_id, execution_object_id);
         assert_eq!(result.tx_digest, tx_digest);
-        let metadata = result.standard_tap.expect("standard TAP metadata");
+        let metadata = result.tap_execution.expect("TAP execution metadata");
         assert_eq!(metadata.agent_id, agent_id);
         assert_eq!(metadata.skill_id, skill_id);
         assert_eq!(metadata.dag_id, *dag_ref.object_id());

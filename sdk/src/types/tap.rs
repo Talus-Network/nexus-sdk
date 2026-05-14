@@ -73,15 +73,6 @@ fn default_tap_address() -> sui::types::Address {
     sui::types::Address::ZERO
 }
 
-fn deserialize_move_option_tap_default_executor<'de, D>(
-    deserializer: D,
-) -> Result<Option<DefaultDagExecutor>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    MoveOption::<DefaultDagExecutor>::deserialize(deserializer).map(|value| value.0)
-}
-
 fn deserialize_move_option_tap_address<'de, D>(
     deserializer: D,
 ) -> Result<Option<sui::types::Address>, D::Error>
@@ -107,13 +98,6 @@ where
     D: serde::Deserializer<'de>,
 {
     MoveOption::<TapPaymentSourceKind>::deserialize(deserializer).map(|value| value.0)
-}
-
-fn deserialize_move_option_bytes<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    MoveOption::<Vec<u8>>::deserialize(deserializer).map(|value| value.0)
 }
 
 fn deserialize_tap_byte_string<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -498,8 +482,6 @@ pub struct TapScheduledTaskLink {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub input_commitment: Vec<u8>,
     pub source_kind: TapPaymentSourceKind,
 }
 
@@ -812,12 +794,42 @@ pub struct DefaultDagExecutor {
     pub skill_id: SkillId,
 }
 
+/// Dynamic field key for the registry-owned default DAG executor value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DefaultDagExecutorFieldKey {}
+
+/// Stored `nexus_interface::tap::DefaultDagExecutor` value. The wrapper owns
+/// the default agent on chain; SDK callers only expose its public target IDs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultDagExecutorValue {
+    pub agent: TapAgentObject,
+    #[serde(deserialize_with = "deserialize_tap_u64_value")]
+    pub skill_id: SkillId,
+}
+
+impl DefaultDagExecutorValue {
+    pub fn target(&self) -> DefaultDagExecutor {
+        DefaultDagExecutor {
+            agent_id: self.agent.id,
+            skill_id: self.skill_id,
+        }
+    }
+}
+
+/// Stored `nexus_interface::tap::Agent` object shape.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TapAgentObject {
+    pub id: AgentId,
+    #[serde(deserialize_with = "deserialize_tap_u64_value")]
+    pub next_skill_index: u64,
+    pub owner: sui::types::Address,
+}
+
 /// Raw shared `nexus_registry::tap::TapRegistry` object contents.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapRegistryObject {
     pub id: sui::types::Address,
     pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
-    pub default_executor: MoveOption<DefaultDagExecutor>,
 }
 
 /// Expanded `nexus_registry::tap::TapRegistry` contents with table entries fetched.
@@ -828,10 +840,7 @@ pub struct TapRegistry {
     pub skills: Vec<TapSkillRecord>,
     pub endpoints: Vec<TapEndpointRevision>,
     pub active_endpoints: Vec<TapEndpointActivation>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_tap_default_executor"
-    )]
+    #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
 }
 
@@ -1513,8 +1522,6 @@ pub struct TapScheduledSkillTask {
         deserialize_with = "deserialize_move_option_interface_revision"
     )]
     pub pinned_revision: Option<InterfaceRevision>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub input_commitment: Vec<u8>,
     /// Payment-source identity anchor from the Move scheduled-task record.
     /// This is not spendable custody by itself; durable occurrence refill
     /// needs an explicit custody/linking contract.
@@ -1532,8 +1539,6 @@ pub struct TapScheduledSkillTask {
     #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
     pub remaining_funds: u64,
     pub refund_mode: u8,
-    #[serde(default, deserialize_with = "deserialize_move_option_bytes")]
-    pub authorization_plan_commitment: Option<Vec<u8>>,
     pub schedule_policy: TapSchedulePolicy,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub schedule_entries_commitment: Vec<u8>,
@@ -2265,31 +2270,23 @@ mod tests {
 
     #[cfg(feature = "bcs")]
     #[test]
-    fn tap_registry_object_bcs_decodes_move_option_default_executor() {
+    fn tap_registry_object_bcs_decodes_without_inline_default_executor() {
         #[derive(Serialize)]
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
             agents: MoveTable<sui::types::Address, TapAgentRecord>,
-            default_executor: MoveOptionBcs<DefaultDagExecutor>,
         }
 
-        let target = DefaultDagExecutor {
-            agent_id: addr("0xa"),
-            skill_id: 11,
+        let raw = RawTapRegistryObjectBcs {
+            id: addr("0xf"),
+            agents: MoveTable::new(addr("0x90"), 0),
         };
+        let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
+        let decoded: TapRegistryObject =
+            bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
-        for expected in [Some(target), None] {
-            let raw = RawTapRegistryObjectBcs {
-                id: addr("0xf"),
-                agents: MoveTable::new(addr("0x90"), 0),
-                default_executor: expected.into(),
-            };
-            let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
-            let decoded: TapRegistryObject =
-                bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
-
-            assert_eq!(decoded.default_executor.0, expected);
-        }
+        assert_eq!(decoded.id, addr("0xf"));
+        assert_eq!(decoded.agents.id, addr("0x90"));
     }
 
     #[test]
@@ -2890,7 +2887,6 @@ mod tests {
             "agent_id": "0xbb",
             "skill_id": "204",
             "pinned_revision": { "fields": { "vec": [{ "fields": { "value": "9" } }] } },
-            "input_commitment": [1, 2],
             "long_term_gas_coin_id": "0xee",
             "refill_policy_commitment": [3, 4],
             "payment_source": { "Address": { "refund_recipient": "0xee" } },
@@ -2899,7 +2895,6 @@ mod tests {
             "occurrence_budget": "25",
             "remaining_funds": { "value": "50" },
             "refund_mode": 0,
-            "authorization_plan_commitment": { "vec": [[5, 6]] },
             "schedule_policy": {
                 "recurrence_kind": "once",
                 "min_interval_ms": "0",
@@ -2940,7 +2935,6 @@ mod tests {
             TapScheduledOccurrenceFinalState::Refunded
         );
         assert!(task.can_spawn_occurrence());
-        assert_eq!(task.authorization_plan_commitment, Some(vec![5, 6]));
         assert_eq!(task.next_after_ms, 11);
         assert_eq!(task.occurrences_spawned, 2);
         assert!(task.active);
@@ -2952,7 +2946,6 @@ mod tests {
             "id": "0xaa",
             "agent_id": "0xbb",
             "skill_id": "204",
-            "input_commitment": [1, 2],
             "long_term_gas_coin_id": "0xee",
             "refill_policy_commitment": [3, 4],
             "payment_source": { "agent_vault": { "agent_id": "0xbb" } },

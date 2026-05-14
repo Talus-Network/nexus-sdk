@@ -41,7 +41,7 @@ use {
                 ScheduleSkillExecutionResult,
                 TapPackagePublishOptions,
             },
-            workflow::StandardTapExecuteOptions,
+            workflow::AgentDagExecuteOptions,
         },
         types::{
             Dag as JsonDag,
@@ -56,15 +56,14 @@ use {
     tap_agent::handle_agent_command,
     tap_announce::announce_endpoint_revision,
     tap_common::{
+        agent_execute_options_from_cli,
         agent_id_from_alias_or_arg,
         decode_hex_arg,
-        decode_optional_hex_arg,
         read_artifact,
-        standard_execute_options_from_cli,
     },
     tap_create_agent::create_agent,
     tap_dry_run::dry_run_skill,
-    tap_execute::execute_standard_tap_skill,
+    tap_execute::execute_agent_dag_skill,
     tap_output::{
         announce_result_json,
         create_agent_result_json,
@@ -88,7 +87,7 @@ use {
 };
 #[cfg(test)]
 use {
-    tap_execute::standard_execute_result_json,
+    tap_execute::agent_execute_result_json,
     tap_validate_skill::{
         collect_move_source_files,
         validate_tap_package_manifest,
@@ -301,8 +300,6 @@ pub(crate) enum TapCommand {
         skill_id: u64,
         #[arg(long, help = "Long-term gas coin ID.", value_name = "OBJECT_ID")]
         long_term_gas_coin_id: sui::types::Address,
-        #[arg(long, help = "Input commitment bytes as hex.", value_name = "HEX")]
-        input_commitment_hex: String,
         #[arg(
             long,
             default_value = "",
@@ -310,12 +307,6 @@ pub(crate) enum TapCommand {
             value_name = "HEX"
         )]
         refill_policy_hex: String,
-        #[arg(
-            long = "authorization-plan-hash-hex",
-            help = "Optional authorization-plan hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        authorization_plan_commitment_hex: Option<String>,
         #[arg(
             long,
             default_value = "",
@@ -489,7 +480,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             authorization_plan_commitment_hex,
             gas,
         } => {
-            execute_standard_tap_skill(
+            execute_agent_dag_skill(
                 agent_id,
                 skill_id,
                 entry_group,
@@ -509,9 +500,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             agent_id,
             skill_id,
             long_term_gas_coin_id,
-            input_commitment_hex,
             refill_policy_hex,
-            authorization_plan_commitment_hex,
             schedule_entries_commitment_hex,
             recurrence_kind,
             min_interval_ms,
@@ -524,9 +513,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 agent_id,
                 skill_id,
                 long_term_gas_coin_id,
-                input_commitment_hex,
                 refill_policy_hex,
-                authorization_plan_commitment_hex,
                 schedule_entries_commitment_hex,
                 recurrence_kind,
                 min_interval_ms,
@@ -548,7 +535,7 @@ mod tests {
         super::*,
         assert_matches::assert_matches,
         nexus_sdk::{
-            nexus::workflow::{ExecuteResult, StandardTapSubmitMetadata},
+            nexus::workflow::{ExecuteResult, TapExecutionSubmitMetadata},
             types::{
                 InterfaceRevision,
                 TapPaymentPolicy,
@@ -829,9 +816,7 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
             long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
-            input_commitment_hex: "0xinvalid".to_string(),
             refill_policy_hex: String::new(),
-            authorization_plan_commitment_hex: None,
             schedule_entries_commitment_hex: String::new(),
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
@@ -841,10 +826,10 @@ mod tests {
             gas: gas_args(),
         })
         .await
-        .expect_err("schedule dispatch decodes commitments first");
+        .expect_err("schedule dispatch reaches missing RPC");
         assert!(schedule_error
             .to_string()
-            .contains("invalid input-commitment hex"));
+            .contains("Sui RPC URL is not configured"));
     }
 
     #[tokio::test]
@@ -1338,14 +1323,10 @@ public struct WeatherSkill has drop {}
     }
 
     #[test]
-    fn standard_execute_options_decode_payment_and_authorization_args() {
-        let options = standard_execute_options_from_cli(
-            "0x0102".to_string(),
-            99,
-            7,
-            Some("0x0908".to_string()),
-        )
-        .expect("valid options");
+    fn agent_execute_options_decode_payment_and_authorization_args() {
+        let options =
+            agent_execute_options_from_cli("0x0102".to_string(), 99, 7, Some("0x0908".to_string()))
+                .expect("valid options");
 
         assert_eq!(options.payment_source, vec![1, 2]);
         assert_eq!(options.payment_max_budget, 99);
@@ -1354,8 +1335,8 @@ public struct WeatherSkill has drop {}
     }
 
     #[test]
-    fn standard_execute_options_accept_empty_optional_authorization_hash() {
-        let options = standard_execute_options_from_cli(String::new(), 0, 0, Some(String::new()))
+    fn agent_execute_options_accept_empty_optional_authorization_hash() {
+        let options = agent_execute_options_from_cli(String::new(), 0, 0, Some(String::new()))
             .expect("valid defaults");
 
         assert_eq!(options.payment_source, Vec::<u8>::new());
@@ -1363,12 +1344,12 @@ public struct WeatherSkill has drop {}
     }
 
     #[test]
-    fn standard_execute_result_json_includes_submit_metadata() {
+    fn agent_execute_result_json_includes_submit_metadata() {
         let result = ExecuteResult {
             tx_digest: sui::types::Digest::from([7; 32]),
             execution_object_id: sui::types::Address::from_static("0xc"),
             tx_checkpoint: 42,
-            standard_tap: Some(StandardTapSubmitMetadata {
+            tap_execution: Some(TapExecutionSubmitMetadata {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xd"),
@@ -1390,7 +1371,7 @@ public struct WeatherSkill has drop {}
         };
 
         let output =
-            standard_execute_result_json(sui::types::Address::from_static("0xa"), 11, &result);
+            agent_execute_result_json(sui::types::Address::from_static("0xa"), 11, &result);
 
         assert_eq!(
             output["execution_id"],

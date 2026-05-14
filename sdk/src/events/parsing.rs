@@ -69,9 +69,11 @@ impl FromSuiGrpcEvent for NexusEvent {
             );
         }
 
-        // Only accept events that come from the Nexus packages unless the
-        // event is marked as foreign.
-        if !is_nexus_package(event.package_id, objects) && !is_foreign_event(&event_name) {
+        // Public Nexus entrypoints can be invoked from extension packages, in
+        // which case Sui records the caller package as `event.package_id`.
+        // The wrapper package and inner Nexus event type checks above remain
+        // the trust boundary for those event names.
+        if !is_nexus_package(event.package_id, objects) && !allows_foreign_emitter(&event_name) {
             bail!(
                 "Event does not come from a Nexus package, it comes from '{}' instead",
                 event.package_id
@@ -492,13 +494,23 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
         || objects.is_workflow_package(address)
 }
 
-/// Helper function to determine whether the event name corresponds to a
-/// historical foreign compatibility event.
-///
-/// This keeps already-emitted V1 interface announcements decodable for replay
-/// and migration tooling. It is not an active standard TAP runtime path.
-fn is_foreign_event(event_name: &str) -> bool {
-    matches!(event_name, "AnnounceInterfacePackageEvent")
+/// Helper function to determine whether the event name may be emitted while
+/// Sui records a non-Nexus caller package as `event.package_id`.
+fn allows_foreign_emitter(event_name: &str) -> bool {
+    matches!(
+        event_name,
+        // Historical V1 interface announcements remain decodable for replay
+        // and migration tooling.
+        "AnnounceInterfacePackageEvent"
+            // Standard TAP and workflow grant events can be emitted by public
+            // Nexus functions invoked from a package-owned PTB.
+            | "AgentSkillExecutionRequestedEvent"
+            | "AgentSkillPaymentCreatedEvent"
+            | "RequestScheduledWalkEvent"
+            | "RequestWalkExecutionEvent"
+            | "VertexAuthorizationGrantCreatedEvent"
+            | "VertexAuthorizationGrantRequiredEvent"
+    )
 }
 
 /// Helper function to determine whether the provided struct tag corresponds to
@@ -565,6 +577,75 @@ mod tests {
         }
     }
 
+    fn wrapped_nexus_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        inner_package: sui::types::Address,
+        inner_module: &str,
+        event_name: &str,
+        event: T,
+    ) -> sui::types::Event {
+        let event_type = sui::types::StructTag::new(
+            inner_package,
+            sui::types::Identifier::new(inner_module).unwrap(),
+            sui::types::Identifier::new(event_name).unwrap(),
+            vec![],
+        );
+        wrapped_nexus_struct_event(objects, emitter_package, event_type, event)
+    }
+
+    fn wrapped_nexus_struct_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        event_type: sui::types::StructTag,
+        event: T,
+    ) -> sui::types::Event {
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let bcs = bcs::to_bytes(&Wrapper { event }).expect("wrapped event should serialize");
+
+        sui_mocks::mock_sui_event(
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        )
+    }
+
+    fn distributed_nexus_struct_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        event_type: sui::types::StructTag,
+        event: T,
+    ) -> sui::types::Event {
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let bcs = bcs::to_bytes(&DistributedWrapperBcs {
+            event,
+            deadline_ms: 30,
+            requested_at_ms: 1500,
+            task_id: sui::types::Address::from_static("0x51"),
+            leaders: vec![
+                sui::types::Address::from_static("0x52"),
+                sui::types::Address::from_static("0x53"),
+            ],
+        })
+        .expect("distributed wrapped event should serialize");
+
+        sui_mocks::mock_sui_event(
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        )
+    }
+
     #[derive(Clone, Debug, Serialize)]
     struct RequestWalkExecutionEventBcs {
         dag: sui::types::Address,
@@ -603,7 +684,6 @@ mod tests {
         skill_id: SkillId,
         interface_revision: InterfaceRevision,
         payment_id: sui::types::Address,
-        authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
     }
 
     #[test]
@@ -1030,6 +1110,164 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_from_grpc_public_tap_events_from_foreign_emitter_package() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let emitter_package = sui::types::Address::generate(&mut rng);
+
+        let requested_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.interface_pkg_id,
+            "tap",
+            "AgentSkillExecutionRequestedEvent",
+            AgentSkillExecutionRequestedEventBcs {
+                execution_id: sui::types::Address::from_static("0x22"),
+                agent_id: sui::types::Address::from_static("0x1"),
+                skill_id: 2,
+                interface_revision: InterfaceRevision(9),
+                payment_id: sui::types::Address::from_static("0x23"),
+            },
+        );
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, digest, &requested_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::AgentSkillExecutionRequested(AgentSkillExecutionRequestedEvent {
+                payment_id,
+                ..
+            }) if payment_id == sui::types::Address::from_static("0x23")
+        ));
+
+        let payment_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.interface_pkg_id,
+            "tap",
+            "AgentSkillPaymentCreatedEvent",
+            AgentSkillPaymentCreatedEvent {
+                payment_id: sui::types::Address::from_static("0x36"),
+                execution_id: sui::types::Address::from_static("0x37"),
+                agent_id: sui::types::Address::from_static("0x1"),
+                skill_id: 2,
+                interface_revision: InterfaceRevision(9),
+                payer: sui::types::Address::from_static("0x38"),
+                source_kind: TapPaymentSourceKind::AgentVault,
+                source_identity: sui::types::Address::from_static("0x1"),
+                max_budget: 10_000,
+                locked_budget: 10_000,
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(1, digest, &payment_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::AgentSkillPaymentCreated(AgentSkillPaymentCreatedEvent {
+                source_kind: TapPaymentSourceKind::AgentVault,
+                locked_budget: 10_000,
+                ..
+            })
+        ));
+
+        let grant_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.workflow_pkg_id,
+            "dag",
+            "VertexAuthorizationGrantCreatedEvent",
+            VertexAuthorizationGrantCreatedEvent {
+                grant_id: sui::types::Address::from_static("0x44"),
+                walk_execution_id: sui::types::Address::from_static("0x45"),
+                vertex: RuntimeVertex::plain("transfer"),
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(2, digest, &grant_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::VertexAuthorizationGrantCreated(VertexAuthorizationGrantCreatedEvent {
+                vertex,
+                ..
+            }) if vertex == RuntimeVertex::plain("transfer")
+        ));
+
+        let request_event = distributed_nexus_struct_event(
+            &objects,
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.workflow_pkg_id,
+                sui::types::Identifier::new("scheduler").unwrap(),
+                sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    sui::types::StructTag::new(
+                        objects.workflow_pkg_id,
+                        sui::types::Identifier::new("dag").unwrap(),
+                        sui::types::Identifier::new("RequestWalkExecutionEvent").unwrap(),
+                        vec![],
+                    ),
+                ))],
+            ),
+            RequestScheduledWalkEventBcs {
+                request: RequestWalkExecutionEventBcs {
+                    dag: sui::types::Address::from_static("0xa"),
+                    execution: sui::types::Address::from_static("0xb"),
+                    invoker: sui::types::Address::from_static("0xc"),
+                    walk_index: 1,
+                    next_vertex: RuntimeVertex::plain("transfer"),
+                    evaluations: sui::types::Address::from_static("0xd"),
+                    worksheet_from_type: TypeName::from("demo::tap::Witness"),
+                    worksheet_from_uid: sui::types::Address::from_static("0xe"),
+                    tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
+                    tap_skill_id: Some(2).into(),
+                    tap_interface_revision: Some(InterfaceRevision(3)).into(),
+                    tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
+                    tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
+                    tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
+                    tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
+                    tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
+                    tap_scheduled_task_id: None.into(),
+                    tap_scheduled_occurrence_index: None.into(),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(3, digest, &request_event, &objects).unwrap();
+        assert!(parsed.distribution.is_some());
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::RequestScheduledWalk(RequestScheduledWalkEvent {
+                request,
+                ..
+            }) if request.next_vertex == RuntimeVertex::plain("transfer")
+        ));
+    }
+
+    #[test]
+    fn test_parse_from_grpc_foreign_emitter_rejects_unlisted_nexus_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_nexus_event(
+            &objects,
+            sui::types::Address::generate(&mut rng),
+            objects.workflow_pkg_id,
+            "dag",
+            "DAGCreatedEvent",
+            DAGCreatedEvent {
+                dag: sui::types::Address::from_static("0xda6"),
+            },
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(0, digest, &event, &objects);
+        assert!(
+            result.is_err(),
+            "foreign package emitters remain rejected for non-public TAP events"
+        );
+    }
+
+    #[test]
     fn test_parse_from_grpc_non_event_wrapper_type() {
         let mut rng = rand::thread_rng();
         let index = 0u64;
@@ -1162,7 +1400,7 @@ mod tests {
                     assert_eq!(context.scheduled_occurrence_index, Some(7));
                 }
                 NexusEventKind::AgentSkillExecutionRequested(event) => {
-                    assert_eq!(event.authorization_plan_commitment, Some(vec![9, 9]));
+                    assert_eq!(event.payment_id, sui::types::Address::from_static("0x23"));
                 }
                 _ => {}
             }
@@ -1265,7 +1503,6 @@ mod tests {
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         payment_id: sui::types::Address::from_static("0x23"),
-                        authorization_plan_commitment: Some(vec![9, 9]).into(),
                     },
                 })
                 .expect("AgentSkillExecutionRequestedEvent sample serializes"),
@@ -1663,7 +1900,7 @@ mod tests {
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 35, 1, 2, 9, 9,
+                    0, 0, 0, 0, 0, 35,
                 ],
             ),
             (

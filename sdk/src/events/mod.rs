@@ -459,7 +459,6 @@ pub struct AgentSkillExecutionRequestedEvent {
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub payment_id: sui::types::Address,
-    pub authorization_plan_commitment: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -1,7 +1,7 @@
 use {super::*, crate::types::AgentId};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn execute_standard_tap_skill(
+pub(crate) async fn execute_agent_dag_skill(
     agent_id: AgentId,
     skill_id: u64,
     entry_group: String,
@@ -15,9 +15,9 @@ pub(crate) async fn execute_standard_tap_skill(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Executing standard TAP skill '{agent_id}:{skill_id}'");
+    command_title!("Executing agent DAG skill '{agent_id}:{skill_id}'");
 
-    let options = standard_execute_options_from_cli(
+    let options = agent_execute_options_from_cli(
         payment_source_hex,
         payment_max_budget,
         payment_refund_mode,
@@ -30,10 +30,10 @@ pub(crate) async fn execute_standard_tap_skill(
     let input_data =
         workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
 
-    let tx_handle = loading!("Crafting and executing standard TAP transaction...");
+    let tx_handle = loading!("Crafting and executing agent DAG transaction...");
     let result = match nexus_client
         .workflow()
-        .execute_standard_tap(
+        .execute_agent_dag(
             agent_id,
             skill_id,
             input_data,
@@ -67,22 +67,22 @@ pub(crate) async fn execute_standard_tap_skill(
             .truecolor(100, 100, 100)
     );
 
-    json_output(&standard_execute_result_json(agent_id, skill_id, &result))
+    json_output(&agent_execute_result_json(agent_id, skill_id, &result))
 }
 
-pub(crate) fn standard_execute_result_json(
+pub(crate) fn agent_execute_result_json(
     agent_id: AgentId,
     skill_id: SkillId,
     result: &nexus_sdk::nexus::workflow::ExecuteResult,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
+        "agent_dag": true,
         "agent_id": agent_id,
         "skill_id": skill_id,
         "execution_id": result.execution_object_id,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
-        "submit": result.standard_tap.as_ref().map(|submit| json!({
+        "submit": result.tap_execution.as_ref().map(|submit| json!({
             "agent_id": submit.agent_id,
             "skill_id": submit.skill_id,
             "dag_id": submit.dag_id,
@@ -102,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_rejects_invalid_payment_source_before_rpc_client() {
-        let error = execute_standard_tap_skill(
+        let error = execute_agent_dag_skill(
             sui::types::Address::from_static("0xa"),
             11,
             DEFAULT_ENTRY_GROUP.to_string(),

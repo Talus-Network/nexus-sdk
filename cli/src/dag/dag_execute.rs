@@ -11,7 +11,7 @@ use {
     },
     anyhow::anyhow,
     nexus_sdk::{
-        nexus::{error::NexusError, workflow::StandardTapExecuteOptions},
+        nexus::{error::NexusError, workflow::AgentDagExecuteOptions},
         types::tap_payment_source_for_address,
     },
 };
@@ -37,7 +37,7 @@ pub(crate) async fn execute_dag(
     let owner = pk.public_key().derive_address();
     if payment_coin.is_none() {
         return Err(NexusCliError::Any(anyhow!(
-            "nexus dag execute requires --payment-coin for standard TAP execution"
+            "nexus dag execute requires --payment-coin for default agent DAG execution"
         )));
     }
     if let (Some(gas_coin), Some(payment_coin)) = (sui_gas_coin, payment_coin) {
@@ -80,7 +80,7 @@ pub(crate) async fn execute_dag(
     // Store ports remote if they need to be stored remotely.
     let input_data =
         workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
-    let standard_tap_options = StandardTapExecuteOptions {
+    let agent_dag_options = AgentDagExecuteOptions {
         payment_source: tap_payment_source_for_address(owner).map_err(NexusCliError::Any)?,
         payment_coin: Some(payment_coin),
         payment_coin_balance: Some(balance),
@@ -94,13 +94,13 @@ pub(crate) async fn execute_dag(
 
     let workflow = nexus_client.workflow();
     let result = match workflow
-        .execute_standard_tap_default(
+        .execute_default_agent_dag(
             dag_id,
             input_data,
             priority_fee_per_gas_unit,
             Some(&entry_group),
             &storage_conf,
-            standard_tap_options,
+            agent_dag_options,
         )
         .await
     {

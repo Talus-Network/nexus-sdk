@@ -678,7 +678,7 @@ fn standard_tap_events_are_nexus_events() {
 }
 
 #[test]
-fn transaction_builders_select_standard_tap_functions() {
+fn transaction_builders_select_tap_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
@@ -728,22 +728,6 @@ fn transaction_builders_select_standard_tap_functions() {
     tap_tx::worksheet(&mut tx, &objects, registry, agent, 177, addr("0x41"))
         .expect("worksheet builder");
 
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, true));
-    let payment_id_arg = tx.input(pure_arg(&addr("0xc1")).unwrap());
-    let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
-    tap_tx::execute_agent_skill(
-        &mut tx,
-        &objects,
-        registry,
-        agent,
-        177,
-        vec![9],
-        payment_id_arg,
-        addr("0x41"),
-        None,
-    )
-    .expect("execute builder");
-
     let tx = finish_transaction(tx);
     let calls = move_calls(&tx);
 
@@ -762,16 +746,12 @@ fn transaction_builders_select_standard_tap_functions() {
     assert!(calls
         .iter()
         .any(|call| call.function == TapStandard::WORKSHEET.name));
-    assert!(calls
-        .iter()
-        .any(|call| call.function == TapStandard::EXECUTE_AGENT_SKILL.name));
 }
 
 #[test]
-fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
+fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let objects = nexus_objects();
     let agent_id = addr("0xa5");
-    let skill_id = 181;
     let dag_id = addr("0xd5");
     let tap_package_id = addr("0xe5");
     let endpoint_object_id = addr("0xf5");
@@ -836,45 +816,10 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
     )
     .expect("register skill");
 
-    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, true));
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
-    let payment_input =
-        tap_tx::AgentSkillPaymentInput::agent_vault_source(agent_id, skill_id, 50, 0)
-            .expect("agent-funded direct payment source");
-    assert_eq!(
-        payment_input.source,
-        nexus_sdk::types::tap_payment_source_for_address(agent_id).expect("agent address source")
-    );
-
-    let payment_amount = tx.input(pure_arg(&50_u64).unwrap());
-    let payment_coin = tx
-        .split_coins(tx.gas(), vec![payment_amount])
-        .nested(0)
-        .expect("payment coin split result");
-    let payment_id = tap_tx::create_agent_skill_payment(
-        &mut tx,
-        &objects,
-        registry,
-        agent_object,
-        payment_coin,
-        addr("0x99"),
-        payment_input,
-    )
-    .expect("payment");
-
-    let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
-    tap_tx::execute_agent_skill(
-        &mut tx,
-        &objects,
-        registry,
-        agent_object,
-        skill_id,
-        b"demo-input-commitment".to_vec(),
-        payment_id,
-        addr("0x99"),
-        Some(b"demo-auth-plan".to_vec()),
-    )
-    .expect("execute skill");
+    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, false));
+    tap_tx::workflow_worksheet(&mut tx, &objects, registry, agent_object, 181)
+        .expect("workflow worksheet");
 
     let tx = finish_transaction(tx);
     let calls = move_calls(&tx);
@@ -889,21 +834,16 @@ fn demo_tap_publish_bind_and_execute_lifecycle_ptb() {
     let share_endpoint = find_call(&TapStandard::SHARE_STANDARD_ENDPOINT.name);
     let create_agent = find_call(&TapStandard::CREATE_AGENT.name);
     let register_skill = find_call(&TapStandard::REGISTER_SKILL.name);
-    let payment = find_call(&TapStandard::CREATE_AGENT_SKILL_PAYMENT.name);
-    let execute = find_call(&TapStandard::EXECUTE_AGENT_SKILL.name);
+    let worksheet = find_call(&TapStandard::WORKFLOW_WORKSHEET.name);
 
     assert!(create_endpoint < share_endpoint);
     assert!(share_endpoint < create_agent);
     assert!(create_agent < register_skill);
-    assert!(register_skill < payment);
-    assert!(payment < execute);
-    assert!(calls
-        .iter()
-        .any(|call| call.function == TapStandard::SKILL_ID_FROM_U64.name));
+    assert!(register_skill < worksheet);
 }
 
 #[test]
-fn agent_payment_vault_builders_target_standard_tap_functions() {
+fn agent_payment_vault_builders_target_tap_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
@@ -1061,7 +1001,7 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     let worksheet = tx.input(pure_arg(&3_u64).unwrap());
     let leader_cap = tx.input(pure_arg(&4_u64).unwrap());
 
-    nexus_sdk::transactions::dag::leader_stamp_standard_tap_worksheet(
+    nexus_sdk::transactions::dag::leader_stamp_tap_worksheet(
         &mut tx,
         &objects,
         leader_registry,
@@ -1073,7 +1013,7 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     let execution = tx.input(pure_arg(&5_u64).unwrap());
     let worksheet = tx.input(pure_arg(&6_u64).unwrap());
     let leader_cap = tx.input(pure_arg(&7_u64).unwrap());
-    nexus_sdk::transactions::dag::pre_stamp_standard_tap_execution(
+    nexus_sdk::transactions::dag::pre_stamp_tap_execution(
         &mut tx,
         &objects,
         execution,
@@ -1086,7 +1026,7 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::Dag::LEADER_STAMP_STANDARD_TAP_WORKSHEET.name
+        nexus_sdk::idents::workflow::Dag::LEADER_STAMP_TAP_WORKSHEET.name
     );
     assert_eq!(
         move_call(&tx, 1).function,
@@ -1098,6 +1038,6 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     );
     assert_eq!(
         move_call(&tx, 3).function,
-        nexus_sdk::idents::workflow::Dag::PRE_STAMP_STANDARD_TAP_EXECUTION.name
+        nexus_sdk::idents::workflow::Dag::PRE_STAMP_TAP_EXECUTION.name
     );
 }

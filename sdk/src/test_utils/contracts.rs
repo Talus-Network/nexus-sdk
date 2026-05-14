@@ -8,7 +8,7 @@ use {
     std::{
         env,
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{Arc, OnceLock},
     },
     tempfile::{Builder, TempDir},
     tokio::sync::Mutex,
@@ -27,6 +27,23 @@ fn build_tempdir(prefix: &str) -> TempDir {
         .prefix(prefix)
         .tempdir_in(test_artifact_temp_root())
         .expect("Failed to create temporary directory in SDK test artifact root")
+}
+
+fn ensure_writable_move_home() {
+    static MOVE_HOME: OnceLock<PathBuf> = OnceLock::new();
+
+    let move_home = MOVE_HOME.get_or_init(|| {
+        let path = test_artifact_temp_root().join("move-home");
+        std::fs::create_dir_all(&path).expect("Failed to create SDK test MOVE_HOME");
+        path
+    });
+
+    // The Move package loader initializes a process-global MOVE_HOME on first use.
+    // Set it before building test packages so full SDK tests do not depend on a
+    // writable user-level ~/.move cache.
+    if env::var_os("MOVE_HOME").is_none() {
+        env::set_var("MOVE_HOME", move_home);
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) {
@@ -72,6 +89,8 @@ pub async fn publish_move_package_with_overrides(
     gas_coin: sui::types::ObjectReference,
     overrides: &[(&str, sui::types::Address)],
 ) -> ExecutedTransaction {
+    ensure_writable_move_home();
+
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source_install_dir = manifest_dir.join(path_str);
     let temp_package_root = build_tempdir("nexus-sdk-move-package-");

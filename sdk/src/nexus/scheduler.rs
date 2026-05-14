@@ -656,7 +656,7 @@ where
     Ok(active_start_ms)
 }
 
-pub async fn fetch_begin_default_standard_tap_execution_config(
+pub async fn fetch_begin_default_agent_execution_config(
     crawler: &Crawler,
     objects: &NexusObjects,
     configured_automaton_id: &sui::types::Address,
@@ -666,16 +666,16 @@ pub async fn fetch_begin_default_standard_tap_execution_config(
 
     let configs = crawler.get_dynamic_fields(&parent).await?;
 
-    extract_begin_default_standard_tap_execution_config(configs, objects)
+    extract_begin_default_agent_execution_config(configs, objects)
 }
 
-fn extract_begin_default_standard_tap_execution_config(
+fn extract_begin_default_agent_execution_config(
     configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
     objects: &NexusObjects,
 ) -> anyhow::Result<DagExecutionConfig> {
     let expected_config =
         workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
-    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_STANDARD_TAP_EXECUTION_WITNESS
+    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
     let mut candidates = configs.into_iter().filter(|(key, _)| {
@@ -688,7 +688,7 @@ fn extract_begin_default_standard_tap_execution_config(
     });
 
     let Some((_key, value)) = candidates.next() else {
-        bail!("Missing execution policy config for BeginDefaultStandardTapExecutionWitness");
+        bail!("Missing execution policy config for BeginDefaultAgentExecutionWitness");
     };
 
     let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
@@ -1734,7 +1734,6 @@ mod tests {
             scheduled_task_id: sui::types::Address::generate(&mut rng),
             agent_id: sui::types::Address::generate(&mut rng),
             skill_id: 7,
-            input_commitment: vec![1, 2, 3],
             source_kind: crate::types::TapPaymentSourceKind::Invoker,
         };
 
@@ -1745,7 +1744,6 @@ mod tests {
                     scheduled_task_id: sui::types::Address::ZERO,
                     agent_id: sui::types::Address::ZERO,
                     skill_id: 0,
-                    input_commitment: vec![],
                     source_kind: crate::types::TapPaymentSourceKind::AgentVault,
                 },
             ),

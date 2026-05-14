@@ -22,13 +22,13 @@ pub(crate) fn decode_optional_hex_arg(
         .transpose()
 }
 
-pub(crate) fn standard_execute_options_from_cli(
+pub(crate) fn agent_execute_options_from_cli(
     payment_source_hex: String,
     payment_max_budget: u64,
     payment_refund_mode: u8,
     authorization_plan_commitment_hex: Option<String>,
-) -> AnyResult<StandardTapExecuteOptions, NexusCliError> {
-    Ok(StandardTapExecuteOptions {
+) -> AnyResult<AgentDagExecuteOptions, NexusCliError> {
+    Ok(AgentDagExecuteOptions {
         payment_source: decode_hex_arg(&payment_source_hex, "payment-source")?,
         payment_coin: None,
         payment_coin_balance: None,

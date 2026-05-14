@@ -136,13 +136,24 @@ where
 
         match value {
             serde_json::Value::Null => Ok(Self(None)),
-            serde_json::Value::Array(mut vec) => Ok(Self(
-                vec.drain(..)
-                    .next()
-                    .map(deserialize_move_option_inner::<T, D::Error>)
-                    .transpose()
-                    .map_err(serde::de::Error::custom)?,
-            )),
+            serde_json::Value::Array(mut vec) => {
+                if vec.is_empty() {
+                    return Ok(Self(None));
+                }
+
+                let direct = serde_json::Value::Array(vec.clone());
+                if let Ok(parsed) = deserialize_move_option_inner::<T, D::Error>(direct) {
+                    return Ok(Self(Some(parsed)));
+                }
+
+                Ok(Self(
+                    vec.drain(..)
+                        .next()
+                        .map(deserialize_move_option_inner::<T, D::Error>)
+                        .transpose()
+                        .map_err(serde::de::Error::custom)?,
+                ))
+            }
             serde_json::Value::Object(mut object) => {
                 if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
                     let vec = strip_fields_owned(vec)
@@ -818,6 +829,17 @@ mod tests {
         let some: MoveOption<Vec<u8>> = serde_json::from_value(json!({"some": encoded}))
             .expect("explicit some byte-vector form is accepted");
         assert_eq!(some.0, Some(expected));
+    }
+
+    #[test]
+    fn move_option_deserializes_direct_byte_vector_payload() {
+        let direct: MoveOption<Vec<u8>> =
+            serde_json::from_value(json!([1, 2, 3])).expect("direct byte-vector form is accepted");
+        assert_eq!(direct.0, Some(vec![1, 2, 3]));
+
+        let option_layout: MoveOption<u64> =
+            serde_json::from_value(json!([5])).expect("Move option array form remains accepted");
+        assert_eq!(option_layout.0, Some(5));
     }
 
     #[cfg(feature = "bcs")]

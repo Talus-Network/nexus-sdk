@@ -223,25 +223,48 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("abort_expired_execution"),
     };
+    /// Accomplish an invoker-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::accomplish_tap_execution_payment`
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("accomplish_tap_execution_payment"),
+    };
+    /// Accomplish an agent-vault-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault`
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "accomplish_tap_execution_payment_from_agent_vault",
+            ),
+        };
+    /// The AgentExecutionConfig struct type.
+    ///
+    /// `nexus_workflow::dag::AgentExecutionConfig`
+    pub const AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("AgentExecutionConfig"),
+    };
+    /// Begin DAG execution through an explicit agent path using a prepared config.
+    ///
+    /// `nexus_workflow::dag::begin_agent_execution_with_config`
+    pub const BEGIN_AGENT_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("begin_agent_execution_with_config"),
+    };
     /// `nexus_workflow::dag::BEGIN_DAG_EXECUTION_WITH_CONFIG`
     pub const BEGIN_DAG_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("begin_dag_execution_with_config"),
     };
-    /// Witness type used by scheduler tasks that execute through the default standard TAP target.
+    /// Witness type used by scheduler tasks that execute through the default agent target.
     ///
-    /// `nexus_workflow::dag::BeginDefaultStandardTapExecutionWitness`
-    pub const BEGIN_DEFAULT_STANDARD_TAP_EXECUTION_WITNESS: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static("BeginDefaultStandardTapExecutionWitness"),
-        };
-    /// Begin DAG execution through the standard TAP path using a prepared config.
-    ///
-    /// `nexus_workflow::dag::begin_standard_tap_execution_with_config`
-    pub const BEGIN_STANDARD_TAP_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::BeginDefaultAgentExecutionWitness`
+    pub const BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("begin_standard_tap_execution_with_config"),
+        name: sui::types::Identifier::from_static("BeginDefaultAgentExecutionWitness"),
     };
     /// Create a workflow-owned vertex authorization grant under a DAGExecution.
     ///
@@ -362,12 +385,12 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
-    /// Stamp a standard TAP worksheet as the leader before tool execution.
+    /// Stamp a TAP worksheet as the leader before tool execution.
     ///
-    /// `nexus_workflow::dag::leader_stamp_standard_tap_worksheet`
-    pub const LEADER_STAMP_STANDARD_TAP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::leader_stamp_tap_worksheet`
+    pub const LEADER_STAMP_TAP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("leader_stamp_standard_tap_worksheet"),
+        name: sui::types::Identifier::from_static("leader_stamp_tap_worksheet"),
     };
     /// Stamp a worksheet as the leader before tool execution.
     ///
@@ -400,19 +423,19 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new"),
     };
+    /// Create a new explicit agent execution config value.
+    ///
+    /// `nexus_workflow::dag::new_agent_execution_config`
+    pub const NEW_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("new_agent_execution_config"),
+    };
     /// Create a new DAG execution config value.
     ///
     /// `nexus_workflow::dag::new_dag_execution_config`
     pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_dag_execution_config"),
-    };
-    /// Create a new standard TAP execution config value.
-    ///
-    /// `nexus_workflow::dag::new_standard_tap_execution_config`
-    pub const NEW_STANDARD_TAP_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("new_standard_tap_execution_config"),
     };
     /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
     ///
@@ -463,25 +486,25 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
     };
-    /// Scheduler entry point to invoke the default standard TAP execution route
+    /// Scheduler entry point to invoke the default agent execution route
     /// using a durable TAP scheduled payment reserve.
     ///
-    /// `nexus_workflow::dag::prepare_default_standard_tap_execution_from_scheduled_payment`
-    pub const PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
+    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduled_payment`
+    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: DAG_MODULE,
             name: sui::types::Identifier::from_static(
-                "prepare_default_standard_tap_execution_from_scheduled_payment",
+                "prepare_default_agent_execution_from_scheduled_payment",
             ),
         };
-    /// Scheduler entry point to invoke the default standard TAP execution route.
+    /// Scheduler entry point to invoke the default agent execution route.
     ///
-    /// `nexus_workflow::dag::prepare_default_standard_tap_execution_from_scheduler`
-    pub const PREPARE_DEFAULT_STANDARD_TAP_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent =
+    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduler`
+    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: DAG_MODULE,
             name: sui::types::Identifier::from_static(
-                "prepare_default_standard_tap_execution_from_scheduler",
+                "prepare_default_agent_execution_from_scheduler",
             ),
         };
     /// Stamp the worksheet with the execution ID before onchain tool execution.
@@ -491,23 +514,37 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("pre_stamp_execution"),
     };
-    /// Stamp standard TAP execution context before tool execution.
+    /// Stamp TAP execution context before tool execution.
     ///
-    /// `nexus_workflow::dag::pre_stamp_standard_tap_execution`
-    pub const PRE_STAMP_STANDARD_TAP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::pre_stamp_tap_execution`
+    pub const PRE_STAMP_TAP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("pre_stamp_standard_tap_execution"),
+        name: sui::types::Identifier::from_static("pre_stamp_tap_execution"),
     };
-    /// Register scheduler execution config for default standard TAP execution.
+    /// Refund an invoker-funded TAP payment owned by DAGExecution.
     ///
-    /// `nexus_workflow::dag::register_begin_default_standard_tap_execution`
-    pub const REGISTER_BEGIN_DEFAULT_STANDARD_TAP_EXECUTION: ModuleAndNameIdent =
+    /// `nexus_workflow::dag::refund_tap_execution_payment`
+    pub const REFUND_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("refund_tap_execution_payment"),
+    };
+    /// Refund an agent-vault-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::refund_tap_execution_payment_from_agent_vault`
+    pub const REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: DAG_MODULE,
             name: sui::types::Identifier::from_static(
-                "register_begin_default_standard_tap_execution",
+                "refund_tap_execution_payment_from_agent_vault",
             ),
         };
+    /// Register scheduler execution config for default agent execution.
+    ///
+    /// `nexus_workflow::dag::register_begin_default_agent_execution`
+    pub const REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("register_begin_default_agent_execution"),
+    };
     /// Function to call to continue to the next vertex in the given walk.
     ///
     /// `nexus_workflow::dag::request_network_to_execute_walks`
@@ -543,28 +580,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("runtime_vertex_with_iterator_from_string"),
     };
-    /// The standard TAP authorization grant reference struct type.
-    ///
-    /// `nexus_workflow::dag::StandardTapAuthorizationGrantRef`
-    pub const STANDARD_TAP_AUTHORIZATION_GRANT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("StandardTapAuthorizationGrantRef"),
-    };
-    /// Create a standard TAP authorization grant reference value.
-    ///
-    /// `nexus_workflow::dag::standard_tap_authorization_grant_ref`
-    pub const STANDARD_TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static("standard_tap_authorization_grant_ref"),
-        };
-    /// The StandardTapExecutionConfig struct type.
-    ///
-    /// `nexus_workflow::dag::StandardTapExecutionConfig`
-    pub const STANDARD_TAP_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("StandardTapExecutionConfig"),
-    };
     /// Canonical off-chain tool-result submission entrypoint.
     ///
     /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_v1`
@@ -588,6 +603,20 @@ impl Dag {
     pub const SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
+    };
+    /// The TAP authorization grant reference struct type.
+    ///
+    /// `nexus_workflow::dag::TapAuthorizationGrantRef`
+    pub const TAP_AUTHORIZATION_GRANT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("TapAuthorizationGrantRef"),
+    };
+    /// Create a TAP authorization grant reference value.
+    ///
+    /// `nexus_workflow::dag::tap_authorization_grant_ref`
+    pub const TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("tap_authorization_grant_ref"),
     };
     /// Convert TaggedOutput to DAG types.
     ///

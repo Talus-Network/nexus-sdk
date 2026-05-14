@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, pure_arg, sui_framework, tap::TapStandard},
+    idents::{move_std, pure_arg, tap::TapStandard},
     sui,
     types::{
         AgentId,
@@ -72,22 +72,6 @@ pub fn create_agent(
         TapStandard::CREATE_AGENT,
         vec![registry, operator],
     ))
-}
-
-fn public_share_tap_identity(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    agent: sui::types::Argument,
-) -> sui::types::Argument {
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![crate::idents::tap::agent_type(objects.interface_pkg_id)],
-        ),
-        vec![agent],
-    )
 }
 
 pub fn create_standard_endpoint(
@@ -190,11 +174,6 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
         TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT,
         args,
     );
-    let agent = result
-        .nested(0)
-        .ok_or_else(|| anyhow::anyhow!("default TAP deployment bootstrap did not return Agent"))?;
-    public_share_tap_identity(tx, objects, agent);
-
     Ok(result)
 }
 
@@ -371,6 +350,19 @@ pub fn workflow_worksheet(
     ))
 }
 
+pub fn default_dag_executor_workflow_worksheet(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tap_registry_call(
+        tx,
+        objects,
+        TapStandard::DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET,
+        vec![registry],
+    ))
+}
+
 pub fn confirm_tool_eval_for_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -413,9 +405,7 @@ impl AgentSkillPaymentInput {
 
     /// Build direct payment source bytes for an agent-funded policy.
     ///
-    /// This is the source encoding accepted by the direct Move
-    /// `create_agent_skill_payment` policy check. To settle from the agent's
-    /// on-chain vault, use `create_agent_skill_payment_from_vault` instead.
+    /// This is the source encoding accepted by the standard TAP payment policy.
     pub fn agent_vault_source(
         agent_id: AgentId,
         skill_id: SkillId,
@@ -430,35 +420,6 @@ impl AgentSkillPaymentInput {
             refund_mode,
         })
     }
-}
-
-pub fn create_agent_skill_payment(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    payment_coin: sui::types::Argument,
-    execution_id: sui::types::Address,
-    input: AgentSkillPaymentInput,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, input.skill_id)?;
-    let args = vec![
-        registry,
-        agent,
-        skill_id,
-        tx.input(pure_arg(&execution_id)?),
-        payment_coin,
-        tx.input(pure_arg(&input.source)?),
-        tx.input(pure_arg(&input.max_budget)?),
-        tx.input(pure_arg(&input.refund_mode)?),
-    ];
-
-    Ok(tap_registry_call(
-        tx,
-        objects,
-        TapStandard::CREATE_AGENT_SKILL_PAYMENT,
-        args,
-    ))
 }
 
 pub fn deposit_agent_payment_vault(
@@ -497,142 +458,14 @@ pub fn withdraw_agent_payment_vault(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn create_agent_skill_payment_from_vault(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    skill_id: SkillId,
-    execution_id: sui::types::Address,
-    max_budget: u64,
-    refund_mode: u8,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, skill_id)?;
-    let args = vec![
-        registry,
-        agent,
-        skill_id,
-        tx.input(pure_arg(&execution_id)?),
-        tx.input(pure_arg(&max_budget)?),
-        tx.input(pure_arg(&refund_mode)?),
-    ];
-
-    Ok(tap_registry_call(
-        tx,
-        objects,
-        TapStandard::CREATE_AGENT_SKILL_PAYMENT_FROM_VAULT,
-        args,
-    ))
-}
-
-pub fn consume_gas_payment(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution_id: sui::types::Address,
-    endpoint_object_id: sui::types::Address,
-    leader_cap_id: sui::types::Address,
-    amount: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let execution_id = tx.input(pure_arg(&execution_id)?);
-    let endpoint_object_id = tx.input(pure_arg(&endpoint_object_id)?);
-    let leader_cap_id = tx.input(pure_arg(&leader_cap_id)?);
-    let amount = tx.input(pure_arg(&amount)?);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::CONSUME_GAS_PAYMENT,
-        vec![
-            agent,
-            execution_id,
-            endpoint_object_id,
-            leader_cap_id,
-            amount,
-        ],
-    ))
-}
-
-pub fn accomplish_execution(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution_id: sui::types::Address,
-    endpoint_object_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
-    let execution_id = tx.input(pure_arg(&execution_id)?);
-    let endpoint_object_id = tx.input(pure_arg(&endpoint_object_id)?);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::ACCOMPLISH_EXECUTION,
-        vec![agent, execution_id, endpoint_object_id],
-    ))
-}
-
-pub fn refund_execution(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution_id: sui::types::Address,
-    endpoint_object_id: sui::types::Address,
-    refund_reason: Vec<u8>,
-) -> anyhow::Result<sui::types::Argument> {
-    let execution_id = tx.input(pure_arg(&execution_id)?);
-    let endpoint_object_id = tx.input(pure_arg(&endpoint_object_id)?);
-    let refund_reason = tx.input(pure_arg(&refund_reason)?);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::REFUND_EXECUTION,
-        vec![agent, execution_id, endpoint_object_id, refund_reason],
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn execute_agent_skill(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    skill_id: SkillId,
-    input_commitment: Vec<u8>,
-    payment_id: sui::types::Argument,
-    execution_id: sui::types::Address,
-    authorization_plan_commitment: Option<Vec<u8>>,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, skill_id)?;
-    let args = vec![
-        registry,
-        agent,
-        skill_id,
-        tx.input(pure_arg(&input_commitment)?),
-        payment_id,
-        tx.input(pure_arg(&execution_id)?),
-        tx.input(pure_arg(&authorization_plan_commitment)?),
-    ];
-
-    Ok(tap_registry_call(
-        tx,
-        objects,
-        TapStandard::EXECUTE_AGENT_SKILL,
-        args,
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn schedule_skill_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     skill_id: SkillId,
-    input_commitment: Vec<u8>,
     long_term_gas_coin_id: sui::types::Address,
     refill_policy_commitment: Vec<u8>,
-    authorization_plan_commitment: Option<Vec<u8>>,
     schedule_policy: TapSchedulePolicy,
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
@@ -643,10 +476,8 @@ pub fn schedule_skill_execution(
         registry,
         agent,
         skill_id,
-        tx.input(pure_arg(&input_commitment)?),
         tx.input(pure_arg(&long_term_gas_coin_id)?),
         tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&authorization_plan_commitment)?),
         schedule_policy,
         tx.input(pure_arg(&schedule_entries_commitment)?),
         tx.input(pure_arg(&first_after_ms)?),
@@ -668,13 +499,11 @@ pub fn schedule_skill_execution_address_funded(
     agent: sui::types::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
-    input_commitment: Vec<u8>,
     prepayment_coin: sui::types::Argument,
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
     refund_mode: u8,
-    authorization_plan_commitment: Option<Vec<u8>>,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -687,13 +516,11 @@ pub fn schedule_skill_execution_address_funded(
         agent,
         tx.input(pure_arg(&scheduler_task_id)?),
         skill_id,
-        tx.input(pure_arg(&input_commitment)?),
         prepayment_coin,
         tx.input(pure_arg(&refund_recipient)?),
         tx.input(pure_arg(&payment_source)?),
         tx.input(pure_arg(&occurrence_budget)?),
         tx.input(pure_arg(&refund_mode)?),
-        tx.input(pure_arg(&authorization_plan_commitment)?),
         schedule_policy,
         tx.input(pure_arg(&refill_policy_commitment)?),
         tx.input(pure_arg(&schedule_entries_commitment)?),
@@ -709,6 +536,45 @@ pub fn schedule_skill_execution_address_funded(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub fn schedule_default_dag_executor_skill_execution_address_funded(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    scheduler_task_id: sui::types::Address,
+    prepayment_coin: sui::types::Argument,
+    refund_recipient: sui::types::Address,
+    payment_source: Vec<u8>,
+    occurrence_budget: u64,
+    refund_mode: u8,
+    schedule_policy: TapSchedulePolicy,
+    refill_policy_commitment: Vec<u8>,
+    schedule_entries_commitment: Vec<u8>,
+    first_after_ms: u64,
+) -> anyhow::Result<sui::types::Argument> {
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let args = vec![
+        registry,
+        tx.input(pure_arg(&scheduler_task_id)?),
+        prepayment_coin,
+        tx.input(pure_arg(&refund_recipient)?),
+        tx.input(pure_arg(&payment_source)?),
+        tx.input(pure_arg(&occurrence_budget)?),
+        tx.input(pure_arg(&refund_mode)?),
+        schedule_policy,
+        tx.input(pure_arg(&refill_policy_commitment)?),
+        tx.input(pure_arg(&schedule_entries_commitment)?),
+        tx.input(pure_arg(&first_after_ms)?),
+    ];
+
+    Ok(tap_registry_call(
+        tx,
+        objects,
+        TapStandard::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED,
+        args,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn schedule_skill_execution_from_agent_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -716,11 +582,9 @@ pub fn schedule_skill_execution_from_agent_vault(
     agent: sui::types::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
-    input_commitment: Vec<u8>,
     prepay_amount: u64,
     occurrence_budget: u64,
     refund_mode: u8,
-    authorization_plan_commitment: Option<Vec<u8>>,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -733,11 +597,9 @@ pub fn schedule_skill_execution_from_agent_vault(
         agent,
         tx.input(pure_arg(&scheduler_task_id)?),
         skill_id,
-        tx.input(pure_arg(&input_commitment)?),
         tx.input(pure_arg(&prepay_amount)?),
         tx.input(pure_arg(&occurrence_budget)?),
         tx.input(pure_arg(&refund_mode)?),
-        tx.input(pure_arg(&authorization_plan_commitment)?),
         schedule_policy,
         tx.input(pure_arg(&refill_policy_commitment)?),
         tx.input(pure_arg(&schedule_entries_commitment)?),
@@ -1022,27 +884,6 @@ mod tests {
     fn execute_and_schedule_use_peer_standard_tap_idents() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&1_u64).unwrap());
-        let agent = tx.input(sui::tx::Input::shared(
-            sui::types::Address::from_static("0xa"),
-            1,
-            true,
-        ));
-        let payment = tx.input(pure_arg(&2_u64).unwrap());
-
-        execute_agent_skill(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            11,
-            vec![1],
-            payment,
-            sui::types::Address::from_static("0xd"),
-            Some(vec![2]),
-        )
-        .expect("execute builder succeeds");
-
         let registry = tx.input(pure_arg(&3_u64).unwrap());
         let schedule_agent = tx.input(sui::tx::Input::shared(
             sui::types::Address::from_static("0xa"),
@@ -1055,10 +896,8 @@ mod tests {
             registry,
             schedule_agent,
             11,
-            vec![1],
             sui::types::Address::from_static("0xc"),
             vec![3],
-            None,
             TapSchedulePolicy::default(),
             vec![4],
             55,
@@ -1074,14 +913,6 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        let execute_call = calls
-            .iter()
-            .find(|call| {
-                call.package == objects.registry_pkg_id()
-                    && call.module == TapStandard::EXECUTE_AGENT_SKILL.module
-                    && call.function == TapStandard::EXECUTE_AGENT_SKILL.name
-            })
-            .expect("execute_agent_skill call");
         let schedule_call = calls
             .iter()
             .find(|call| {
@@ -1090,7 +921,6 @@ mod tests {
                     && call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name
             })
             .expect("schedule_skill_execution call");
-        assert_eq!(execute_call.function, TapStandard::EXECUTE_AGENT_SKILL.name);
         assert_eq!(
             schedule_call.function,
             TapStandard::SCHEDULE_SKILL_EXECUTION.name
@@ -1101,27 +931,6 @@ mod tests {
     fn execute_and_schedule_prepare_tap_identity_handles_before_peer_calls() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&1_u64).unwrap());
-        let agent = tx.input(sui::tx::Input::shared(
-            sui::types::Address::from_static("0xa"),
-            1,
-            true,
-        ));
-        let payment = tx.input(pure_arg(&2_u64).unwrap());
-
-        execute_agent_skill(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            11,
-            vec![1],
-            payment,
-            sui::types::Address::from_static("0xd"),
-            Some(vec![2]),
-        )
-        .expect("execute builder succeeds");
-
         let registry = tx.input(pure_arg(&3_u64).unwrap());
         let schedule_agent = tx.input(sui::tx::Input::shared(
             sui::types::Address::from_static("0xa"),
@@ -1134,10 +943,8 @@ mod tests {
             registry,
             schedule_agent,
             11,
-            vec![1],
             sui::types::Address::from_static("0xc"),
             vec![3],
-            None,
             TapSchedulePolicy::default(),
             vec![4],
             55,
@@ -1154,10 +961,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let execute_idx = calls
-            .iter()
-            .position(|call| call.function == TapStandard::EXECUTE_AGENT_SKILL.name)
-            .expect("execute_agent_skill call");
         let schedule_idx = calls
             .iter()
             .position(|call| call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name)
@@ -1167,13 +970,11 @@ mod tests {
             .position(|call| call.function == TapStandard::SKILL_ID_FROM_U64.name)
             .expect("skill id conversion call");
 
-        assert!(first_skill_id_idx < execute_idx);
-        assert!(execute_idx < schedule_idx);
         assert!(
-            calls[execute_idx].arguments.iter().any(|argument| {
+            calls[schedule_idx].arguments.iter().any(|argument| {
                 matches!(argument, sui::types::Argument::Result(index) if *index as usize == first_skill_id_idx)
             }),
-            "execute call should use the converted skill id handle"
+            "schedule call should use the converted skill id handle"
         );
     }
 
@@ -1290,7 +1091,6 @@ mod tests {
             1,
             true,
         ));
-        let payment_coin = tx.input(pure_arg(&9_u64).unwrap());
         let vault_coin = tx.input(pure_arg(&10_u64).unwrap());
 
         let invoker_input = AgentSkillPaymentInput::invoker_source(
@@ -1311,56 +1111,8 @@ mod tests {
         .expect("agent vault source");
         assert_eq!(vault_input.max_budget, 101);
 
-        create_agent_skill_payment(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            payment_coin,
-            sui::types::Address::from_static("0xe"),
-            invoker_input,
-        )
-        .expect("create payment");
         deposit_agent_payment_vault(&mut tx, &objects, agent, vault_coin);
         withdraw_agent_payment_vault(&mut tx, &objects, registry, agent, 33).expect("withdraw");
-        create_agent_skill_payment_from_vault(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            vault_input.skill_id,
-            sui::types::Address::from_static("0xf"),
-            vault_input.max_budget,
-            vault_input.refund_mode,
-        )
-        .expect("create payment from vault");
-        consume_gas_payment(
-            &mut tx,
-            &objects,
-            agent,
-            sui::types::Address::from_static("0xe"),
-            sui::types::Address::from_static("0x30"),
-            sui::types::Address::from_static("0x31"),
-            44,
-        )
-        .expect("consume gas");
-        accomplish_execution(
-            &mut tx,
-            &objects,
-            agent,
-            sui::types::Address::from_static("0xe"),
-            sui::types::Address::from_static("0x30"),
-        )
-        .expect("accomplish");
-        refund_execution(
-            &mut tx,
-            &objects,
-            agent,
-            sui::types::Address::from_static("0xe"),
-            sui::types::Address::from_static("0x30"),
-            vec![3, 4],
-        )
-        .expect("refund");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let function_names = inspector
@@ -1380,13 +1132,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         for expected in [
-            TapStandard::CREATE_AGENT_SKILL_PAYMENT.name,
             TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,
             TapStandard::WITHDRAW_AGENT_PAYMENT_VAULT.name,
-            TapStandard::CREATE_AGENT_SKILL_PAYMENT_FROM_VAULT.name,
-            TapStandard::CONSUME_GAS_PAYMENT.name,
-            TapStandard::ACCOMPLISH_EXECUTION.name,
-            TapStandard::REFUND_EXECUTION.name,
         ] {
             assert!(
                 function_names.contains(&expected),
@@ -1411,6 +1158,7 @@ mod tests {
             true,
         ));
         let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
+        let default_prepayment_coin = tx.input(pure_arg(&8_u64).unwrap());
 
         agent_id_from_address(&mut tx, &objects, sui::types::Address::from_static("0xa"))
             .expect("agent id");
@@ -1453,19 +1201,33 @@ mod tests {
             agent,
             sui::types::Address::from_static("0x80"),
             11,
-            vec![1],
             prepayment_coin,
             sui::types::Address::from_static("0x81"),
             vec![2],
             100,
             0,
-            Some(vec![3]),
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
             200,
         )
         .expect("address funded schedule");
+        schedule_default_dag_executor_skill_execution_address_funded(
+            &mut tx,
+            &objects,
+            registry,
+            sui::types::Address::from_static("0x82"),
+            default_prepayment_coin,
+            sui::types::Address::from_static("0x83"),
+            vec![12],
+            100,
+            0,
+            TapSchedulePolicy::default(),
+            vec![14],
+            vec![15],
+            201,
+        )
+        .expect("default address funded schedule");
         schedule_skill_execution_from_agent_vault(
             &mut tx,
             &objects,
@@ -1473,11 +1235,9 @@ mod tests {
             agent,
             sui::types::Address::from_static("0x80"),
             11,
-            vec![1],
             300,
             100,
             0,
-            None,
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
@@ -1526,6 +1286,7 @@ mod tests {
             TapStandard::ANNOUNCE_ENDPOINT_REVISION.name,
             TapStandard::SET_ACTIVE_ENDPOINT_REVISION.name,
             TapStandard::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
+            TapStandard::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name,
             TapStandard::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
             TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
             TapStandard::COMPLETE_SCHEDULED_SKILL_OCCURRENCE.name,
