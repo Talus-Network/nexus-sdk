@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agent-scoped workflow gas helpers for standard TAP funding.
 - Durable scheduled TAP models, events, fetch helpers, and transaction builders for address-funded and agent-vault-funded scheduled prepayment, scheduled occurrence payment conversion, scheduled occurrence completion, and scheduler-task link attachment.
 - SDK-level `fetch_task_tap_scheduled_task_link` and `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain scheduled task state without local-only BCS parsing.
+- Default-DAG-executor address-funded scheduling action and PTB builder that omit `agent_id`/`skill_id` arguments and resolve the registry-owned default executor through `TapRegistry`.
 
 #### Changed
 
@@ -79,12 +80,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled occurrence transaction helpers now chain scheduler occurrence checks with standard TAP scheduled-payment preparation instead of requiring leader-built local payment arguments.
 - `DagExecution` decoding accepts Sui Move JSON `Option<u64>` scheduled occurrence indexes, including string-valued `vec` forms emitted by object JSON.
 - Standard TAP SDK models and PTB builders now match the Move package split: general TAP identities, payments, endpoint, worksheet, authorization, and schedule types resolve through `nexus_interface::tap`, while registry storage records remain under `nexus_registry::tap`.
+- Active execution APIs now expose explicit agent DAG execution and default-agent DAG execution names (`execute_agent_dag`, `execute_default_agent_dag`, `AgentDagExecuteInput`, and `AgentDagExecuteOptions`), while "standard TAP" remains reserved for protocol/model surfaces.
+- TAP payment settlement builders now target execution-owned `DAGExecution` payment helpers, with separate agent-vault variants only when vault accounting needs the explicit non-default `Agent`.
+- Default DAG execution and scheduling builders now use mutable `tap_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
 
 #### Fixed
 
 - Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
 - SDK test fixtures now track the current standard TAP event and PTB layouts, fixing parsing and PTB-order regressions exposed after the standard TAP cutover.
 - Raw `TapRegistryObject` BCS decoding now models Move `Option<T>` layout for `default_executor`, fixing default TAP DAG executor recovery from shared registry objects used by leader bootstrap and scheduler flows.
+- Default executor address-funded scheduling no longer fetches the configured default agent as a top-level object, fixing leader scheduled default TAP setup after default agent custody moved under `TapRegistry`.
 
 #### Removed
 
