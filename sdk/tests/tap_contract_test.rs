@@ -817,8 +817,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     .expect("register skill");
 
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("registry");
-    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, false));
-    tap_tx::workflow_worksheet(&mut tx, &objects, registry, agent_object, 181)
+    tap_tx::workflow_worksheet_for_ids(&mut tx, &objects, registry, agent_id, 181)
         .expect("workflow worksheet");
 
     let tx = finish_transaction(tx);
@@ -834,12 +833,16 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let share_endpoint = find_call(&TapStandard::SHARE_STANDARD_ENDPOINT.name);
     let create_agent = find_call(&TapStandard::CREATE_AGENT.name);
     let register_skill = find_call(&TapStandard::REGISTER_SKILL.name);
-    let worksheet = find_call(&TapStandard::WORKFLOW_WORKSHEET.name);
+    let worksheet = find_call(&TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name);
 
     assert!(create_endpoint < share_endpoint);
     assert!(share_endpoint < create_agent);
     assert!(create_agent < register_skill);
     assert!(register_skill < worksheet);
+    assert_eq!(
+        move_call(&tx, worksheet).function,
+        TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name
+    );
 }
 
 #[test]
@@ -973,10 +976,10 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, false));
 
-    let worksheet = tap_tx::workflow_worksheet(&mut tx, &objects, registry, agent, 177)
-        .expect("workflow worksheet builder");
+    let worksheet =
+        tap_tx::workflow_worksheet_for_ids(&mut tx, &objects, registry, addr("0xa1"), 177)
+            .expect("workflow worksheet builder");
 
     let registry = tap_tx::tap_registry_arg(&mut tx, &objects).expect("configured registry");
     tap_tx::confirm_tool_eval_for_walk(&mut tx, &objects, registry, worksheet);
@@ -984,10 +987,14 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        TapStandard::WORKFLOW_WORKSHEET.name
+        TapStandard::AGENT_ID_FROM_ADDRESS.name
     );
     assert_eq!(
         move_call(&tx, 1).function,
+        TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name
+    );
+    assert_eq!(
+        move_call(&tx, 2).function,
         TapStandard::CONFIRM_TOOL_EVAL_FOR_WALK.name
     );
 }

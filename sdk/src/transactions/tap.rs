@@ -333,19 +333,20 @@ pub fn worksheet(
     Ok(tap_registry_call(tx, objects, TapStandard::WORKSHEET, args))
 }
 
-pub fn workflow_worksheet(
+pub fn workflow_worksheet_for_ids(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![registry, agent, tx.input(pure_arg(&skill_id)?)];
+    let agent_id = agent_id_from_address(tx, objects, agent_id)?;
+    let args = vec![registry, agent_id, tx.input(pure_arg(&skill_id)?)];
 
     Ok(tap_registry_call(
         tx,
         objects,
-        TapStandard::WORKFLOW_WORKSHEET,
+        TapStandard::WORKFLOW_WORKSHEET_FOR_IDS,
         args,
     ))
 }
@@ -856,28 +857,32 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tx.input(pure_arg(&1_u64).unwrap());
-        let agent = tx.input(sui::tx::Input::shared(
-            sui::types::Address::from_static("0xa"),
-            1,
-            false,
-        ));
 
-        worksheet(
+        workflow_worksheet_for_ids(
             &mut tx,
             &objects,
             registry,
-            agent,
+            sui::types::Address::from_static("0xa"),
             11,
-            sui::types::Address::from_static("0xc"),
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
-        assert_eq!(call.package, objects.registry_pkg_id());
-        assert_eq!(call.module, TapStandard::WORKSHEET.module);
-        assert_eq!(call.function, TapStandard::WORKSHEET.name);
-        assert_eq!(call.arguments.len(), 4);
+        let worksheet_call = inspector.move_call(1);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, TapStandard::AGENT_ID_FROM_ADDRESS.module);
+        assert_eq!(call.function, TapStandard::AGENT_ID_FROM_ADDRESS.name);
+        assert_eq!(worksheet_call.package, objects.registry_pkg_id());
+        assert_eq!(
+            worksheet_call.module,
+            TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.module
+        );
+        assert_eq!(
+            worksheet_call.function,
+            TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name
+        );
+        assert_eq!(worksheet_call.arguments.len(), 3);
     }
 
     #[test]
