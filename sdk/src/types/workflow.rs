@@ -38,8 +38,6 @@ pub enum VerificationVerdict {
     InvalidLeaderProof,
     #[serde(rename = "invalid_tool_proof", alias = "InvalidToolProof")]
     InvalidToolProof,
-    #[serde(rename = "policy_bypass_allowed", alias = "PolicyBypassAllowed")]
-    PolicyBypassAllowed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -490,20 +488,6 @@ mod tests {
             invalid_tool_proof_string.0,
             VerificationVerdict::InvalidToolProof
         );
-
-        let policy_bypass_allowed_tagged: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("{\"@variant\":\"PolicyBypassAllowed\"}").unwrap();
-        assert_eq!(
-            policy_bypass_allowed_tagged.0,
-            VerificationVerdict::PolicyBypassAllowed
-        );
-
-        let policy_bypass_allowed_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"policy_bypass_allowed\"").unwrap();
-        assert_eq!(
-            policy_bypass_allowed_string.0,
-            VerificationVerdict::PolicyBypassAllowed
-        );
     }
 
     #[test]
@@ -532,17 +516,6 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&VerificationVerdict::InvalidToolProof).unwrap(),
             "\"invalid_tool_proof\""
-        );
-
-        let policy_bypass_allowed: VerificationVerdict =
-            serde_json::from_str("\"PolicyBypassAllowed\"").unwrap();
-        assert_eq!(
-            policy_bypass_allowed,
-            VerificationVerdict::PolicyBypassAllowed
-        );
-        assert_eq!(
-            serde_json::to_string(&VerificationVerdict::PolicyBypassAllowed).unwrap(),
-            "\"policy_bypass_allowed\""
         );
     }
 

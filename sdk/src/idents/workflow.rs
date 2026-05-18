@@ -632,19 +632,12 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("verifier_config"),
     };
-    /// Create the `VerifierMode::LeaderNautilusEnclave` variant.
+    /// Create the authenticated communication verifier mode.
     ///
-    /// `nexus_workflow::dag::verifier_mode_leader_nautilus_enclave`
-    pub const VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::verifier_mode_authenticated_communication`
+    pub const VERIFIER_MODE_AUTHENTICATED_COMMUNICATION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("verifier_mode_leader_nautilus_enclave"),
-    };
-    /// Create the `VerifierMode::LeaderRegisteredKey` variant.
-    ///
-    /// `nexus_workflow::dag::verifier_mode_leader_registered_key`
-    pub const VERIFIER_MODE_LEADER_REGISTERED_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("verifier_mode_leader_registered_key"),
+        name: sui::types::Identifier::from_static("verifier_mode_authenticated_communication"),
     };
     /// Create the `VerifierMode::None` variant.
     ///
@@ -977,8 +970,9 @@ impl Dag {
     ) -> sui::types::Argument {
         let ident = match mode {
             VerifierMode::None => Self::VERIFIER_MODE_NONE,
-            VerifierMode::LeaderRegisteredKey => Self::VERIFIER_MODE_LEADER_REGISTERED_KEY,
-            VerifierMode::LeaderNautilusEnclave => Self::VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE,
+            VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
+                Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION
+            }
             VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
 

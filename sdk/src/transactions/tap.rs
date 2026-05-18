@@ -116,21 +116,6 @@ pub fn agent_id_from_address(
     ))
 }
 
-pub fn skill_id_from_u64(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    skill_id: SkillId,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::SKILL_ID_FROM_U64,
-        vec![skill_id],
-    ))
-}
-
 pub fn interface_revision(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -471,7 +456,7 @@ pub fn schedule_skill_execution(
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
 ) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, skill_id)?;
+    let skill_id = tx.input(pure_arg(&skill_id)?);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
@@ -510,7 +495,7 @@ pub fn schedule_skill_execution_address_funded(
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
 ) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, skill_id)?;
+    let skill_id = tx.input(pure_arg(&skill_id)?);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
@@ -591,7 +576,7 @@ pub fn schedule_skill_execution_from_agent_vault(
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
 ) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = skill_id_from_u64(tx, objects, skill_id)?;
+    let skill_id = tx.input(pure_arg(&skill_id)?);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
@@ -843,6 +828,14 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing input at index {index}"))
         }
 
+        fn expect_u64(&self, argument: &sui::types::Argument, expected: u64) {
+            let sui::types::Input::Pure { value } = self.input(argument) else {
+                panic!("expected pure u64 input");
+            };
+            let actual: u64 = bcs::from_bytes(value).expect("u64 BCS decodes");
+            assert_eq!(actual, expected);
+        }
+
         fn move_call(&self, index: usize) -> &sui::types::MoveCall {
             match self.commands().get(index) {
                 Some(sui::types::Command::MoveCall(call)) => call,
@@ -966,21 +959,12 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let schedule_idx = calls
+        let schedule_call = calls
             .iter()
-            .position(|call| call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name)
+            .find(|call| call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name)
             .expect("schedule_skill_execution call");
-        let first_skill_id_idx = calls
-            .iter()
-            .position(|call| call.function == TapStandard::SKILL_ID_FROM_U64.name)
-            .expect("skill id conversion call");
 
-        assert!(
-            calls[schedule_idx].arguments.iter().any(|argument| {
-                matches!(argument, sui::types::Argument::Result(index) if *index as usize == first_skill_id_idx)
-            }),
-            "schedule call should use the converted skill id handle"
-        );
+        inspector.expect_u64(&schedule_call.arguments[2], 11);
     }
 
     #[test]

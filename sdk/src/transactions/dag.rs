@@ -1985,7 +1985,7 @@ pub fn prepare_agent_execution(
 
     let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
     let agent_id = tap::agent_id_from_address(tx, objects, agent_execution.agent_id)?;
-    let skill_id = tap::skill_id_from_u64(tx, objects, agent_execution.skill_id)?;
+    let skill_id = tx.input(pure_arg(&agent_execution.skill_id)?);
     let authorization_plan_commitment =
         tx.input(pure_arg(&agent_execution.authorization_plan_commitment)?);
     let authorization_plan =
@@ -3823,20 +3823,7 @@ mod tests {
         );
         inspector.expect_address(&agent_id_call.arguments[0], agent_execution.agent_id);
 
-        let sui::types::Argument::Result(skill_id_index) = config_call.arguments[6] else {
-            panic!("expected skill ID to come from tap::skill_id_from_u64");
-        };
-        let skill_id_call = inspector.move_call(skill_id_index as usize);
-        assert_eq!(skill_id_call.package, nexus_objects.interface_pkg_id);
-        assert_eq!(
-            skill_id_call.module,
-            crate::idents::tap::TapStandard::SKILL_ID_FROM_U64.module
-        );
-        assert_eq!(
-            skill_id_call.function,
-            crate::idents::tap::TapStandard::SKILL_ID_FROM_U64.name
-        );
-        inspector.expect_u64(&skill_id_call.arguments[0], agent_execution.skill_id);
+        inspector.expect_u64(&config_call.arguments[6], agent_execution.skill_id);
 
         let begin_call = inspector.move_call(begin_index);
         assert_eq!(
