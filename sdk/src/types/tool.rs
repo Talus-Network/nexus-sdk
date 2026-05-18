@@ -87,6 +87,8 @@ pub struct Tool {
         deserialize_with = "deserialize_bytes_to_json_value"
     )]
     pub output_schema: serde_json::Value,
+    #[serde(default)]
+    pub workflow_authorization_cap_first: bool,
     #[serde(
         rename = "registered_at_ms",
         serialize_with = "serialize_datetime_to_sui_u64",
@@ -206,6 +208,7 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: schema.clone(),
             output_schema: schema.clone(),
+            workflow_authorization_cap_first: false,
             registered_at: chrono::Utc::now(),
             unregistered_at: None,
         };
@@ -232,6 +235,7 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: schema.clone(),
             output_schema: schema.clone(),
+            workflow_authorization_cap_first: false,
             registered_at: chrono::Utc::now(),
             unregistered_at: None,
         };
@@ -251,6 +255,7 @@ mod tests {
             description: "A test tool".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
+            workflow_authorization_cap_first: true,
             registered_at: chrono::DateTime::from_timestamp_millis(
                 chrono::Utc::now().timestamp_millis(),
             )
@@ -315,6 +320,7 @@ mod tests {
             description: "Tool 1".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
+            workflow_authorization_cap_first: false,
             registered_at: chrono::Utc::now(),
             unregistered_at: Some(chrono::Utc::now()),
         };
@@ -327,6 +333,7 @@ mod tests {
             description: "Tool 1".to_string(),
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: serde_json::json!({ "type": "object" }),
+            workflow_authorization_cap_first: false,
             registered_at: tool1.registered_at,
             unregistered_at: tool1.unregistered_at,
         };

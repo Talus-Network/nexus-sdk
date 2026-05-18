@@ -4,7 +4,7 @@ use {
         types::{ExecutionTerminalRecord, RuntimeVertex, TypeName, WorkflowFailureClass},
     },
     anyhow::anyhow,
-    serde::{de::DeserializeOwned, Deserialize},
+    serde::{de::DeserializeOwned, ser::SerializeSeq, Deserialize, Serialize},
 };
 
 /// Unwrap Sui's Move-JSON `{ fields: { ... } }` wrapper when present.
@@ -54,8 +54,68 @@ where
 /// - `{ some: T }` / `{ none: ... }`,
 /// - `null`,
 /// - and a best-effort fallback treating the value as `T`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MoveOption<T>(pub Option<T>);
+
+impl<T> From<Option<T>> for MoveOption<T> {
+    fn from(value: Option<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> Serialize for MoveOption<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            return self.0.serialize(serializer);
+        }
+
+        let mut seq = serializer.serialize_seq(Some(usize::from(self.0.is_some())))?;
+        if let Some(value) = &self.0 {
+            seq.serialize_element(value)?;
+        }
+        seq.end()
+    }
+}
+
+fn deserialize_move_option_inner<T, E>(value: serde_json::Value) -> Result<T, E>
+where
+    T: DeserializeOwned,
+    E: serde::de::Error,
+{
+    let value = strip_fields_owned(value);
+    match serde_json::from_value::<T>(value.clone()) {
+        Ok(parsed) => Ok(parsed),
+        Err(original) => {
+            if let serde_json::Value::Object(object) = &value {
+                for key in ["value", "inner"] {
+                    if let Some(inner) = object.get(key) {
+                        match deserialize_move_option_inner::<T, E>(inner.clone()) {
+                            Ok(parsed) => return Ok(parsed),
+                            Err(_) => continue,
+                        }
+                    }
+                }
+            }
+
+            if let Some(bytes) = parse_byte_vector_value(&value).map_err(E::custom)? {
+                let bytes = bytes
+                    .into_iter()
+                    .map(serde_json::Value::from)
+                    .collect::<Vec<_>>();
+                return serde_json::from_value::<T>(serde_json::Value::Array(bytes))
+                    .map_err(E::custom);
+            }
+
+            Err(E::custom(original))
+        }
+    }
+}
 
 impl<'de, T> Deserialize<'de> for MoveOption<T>
 where
@@ -76,14 +136,24 @@ where
 
         match value {
             serde_json::Value::Null => Ok(Self(None)),
-            serde_json::Value::Array(mut vec) => Ok(Self(
-                vec.drain(..)
-                    .next()
-                    .map(strip_fields_owned)
-                    .map(serde_json::from_value::<T>)
-                    .transpose()
-                    .map_err(serde::de::Error::custom)?,
-            )),
+            serde_json::Value::Array(mut vec) => {
+                if vec.is_empty() {
+                    return Ok(Self(None));
+                }
+
+                let direct = serde_json::Value::Array(vec.clone());
+                if let Ok(parsed) = deserialize_move_option_inner::<T, D::Error>(direct) {
+                    return Ok(Self(Some(parsed)));
+                }
+
+                Ok(Self(
+                    vec.drain(..)
+                        .next()
+                        .map(deserialize_move_option_inner::<T, D::Error>)
+                        .transpose()
+                        .map_err(serde::de::Error::custom)?,
+                ))
+            }
             serde_json::Value::Object(mut object) => {
                 if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
                     let vec = strip_fields_owned(vec)
@@ -94,16 +164,13 @@ where
                     return Ok(Self(
                         vec.drain(..)
                             .next()
-                            .map(strip_fields_owned)
-                            .map(serde_json::from_value::<T>)
-                            .transpose()
-                            .map_err(serde::de::Error::custom)?,
+                            .map(deserialize_move_option_inner::<T, D::Error>)
+                            .transpose()?,
                     ));
                 }
 
                 if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
-                    let inner = serde_json::from_value::<T>(strip_fields_owned(inner))
-                        .map_err(serde::de::Error::custom)?;
+                    let inner = deserialize_move_option_inner::<T, D::Error>(inner)?;
                     return Ok(Self(Some(inner)));
                 }
 
@@ -112,15 +179,13 @@ where
                 }
 
                 // Fallback: treat as `T` directly.
-                serde_json::from_value::<T>(serde_json::Value::Object(object))
+                deserialize_move_option_inner::<T, D::Error>(serde_json::Value::Object(object))
                     .map(Some)
                     .map(Self)
-                    .map_err(serde::de::Error::custom)
             }
-            other => serde_json::from_value::<T>(other)
+            other => deserialize_move_option_inner::<T, D::Error>(other)
                 .map(Some)
-                .map(Self)
-                .map_err(serde::de::Error::custom),
+                .map(Self),
         }
     }
 }
@@ -747,6 +812,34 @@ mod tests {
         }))
         .expect("some inner fields wrapper should be tolerated");
         assert_eq!(some_wrapped.0, Some(Foo { a: 13 }));
+    }
+
+    #[test]
+    fn move_option_deserializes_base64_byte_vector_json_forms() {
+        let expected = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest([]).to_vec()
+        };
+        let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &expected);
+
+        let vec_some: MoveOption<Vec<u8>> = serde_json::from_value(json!({"vec": [encoded]}))
+            .expect("Sui Move option byte-vector form is accepted");
+        assert_eq!(vec_some.0, Some(expected.clone()));
+
+        let some: MoveOption<Vec<u8>> = serde_json::from_value(json!({"some": encoded}))
+            .expect("explicit some byte-vector form is accepted");
+        assert_eq!(some.0, Some(expected));
+    }
+
+    #[test]
+    fn move_option_deserializes_direct_byte_vector_payload() {
+        let direct: MoveOption<Vec<u8>> =
+            serde_json::from_value(json!([1, 2, 3])).expect("direct byte-vector form is accepted");
+        assert_eq!(direct.0, Some(vec![1, 2, 3]));
+
+        let option_layout: MoveOption<u64> =
+            serde_json::from_value(json!([5])).expect("Move option array form remains accepted");
+        assert_eq!(option_layout.0, Some(5));
     }
 
     #[cfg(feature = "bcs")]

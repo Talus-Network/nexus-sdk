@@ -611,6 +611,32 @@ mod tests {
         std::sync::atomic::Ordering,
     };
 
+    struct HomeGuard {
+        original_home: Option<std::ffi::OsString>,
+        _temp_home: tempfile::TempDir,
+    }
+
+    impl HomeGuard {
+        fn new() -> Self {
+            let original_home = std::env::var_os("HOME");
+            let temp_home = tempfile::tempdir().expect("temp home directory");
+            std::env::set_var("HOME", temp_home.path());
+            Self {
+                original_home,
+                _temp_home: temp_home,
+            }
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match &self.original_home {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
     #[test]
     fn test_build_final_schema_with_custom_names() {
         // Create a schema with integer keys and custom names using typed structs.
@@ -1273,7 +1299,7 @@ mod tests {
         assert!(output_json.is_object());
 
         // Verify input schema has expected parameters (counter and increase_with).
-        // After skipping ProofOfUID and TxContext, we should have 2 parameters.
+        // After skipping internal tool parameters and TxContext, we should have 2 parameters.
         assert_eq!(input_json.as_object().unwrap().len(), 2);
 
         // Verify output schema has expected variants.
@@ -1284,6 +1310,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_save_tool_owner_caps_success() {
+        let _home_guard = HomeGuard::new();
         let mut rng = rand::thread_rng();
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();

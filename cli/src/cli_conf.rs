@@ -1,6 +1,9 @@
 use {
     crate::prelude::*,
-    nexus_sdk::types::{SecretValue, StorageConf, StorageKind},
+    nexus_sdk::{
+        sui,
+        types::{SecretValue, StorageConf, StorageKind},
+    },
 };
 
 /// Struct holding the config structure.
@@ -10,6 +13,8 @@ pub(crate) struct CliConf {
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
+    #[serde(default, alias = "tap_agents")]
+    pub(crate) agents: HashMap<String, sui::types::Address>,
     #[serde(default)]
     pub(crate) secrets: SecretsConf,
     #[serde(default)]

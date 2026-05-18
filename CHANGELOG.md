@@ -2,8 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -11,95 +10,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- Terminal `_err_eval` event handling in DAG execution inspection, including
-  failure class, post-failure action, reason, duplicate-submission status, and
-  `_err_eval` hash output.
+- Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, creates and shares a standard endpoint object, and writes a complete endpoint-bound artifact for operator handoff.
 
 #### Changed
 
-- DAG execution inspection now includes terminal `_err_eval` trace entries in
-  JSON output and highlights duplicate terminal submissions in human-readable
-  output.
-- On-chain tool registration config persistence is now covered by a serialized
-  test to avoid cross-test config interference.
+- DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
+- On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
+- Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
 
 ### `nexus-sdk`
 
 #### Added
 
-- `TerminalErrEvalRecordedEvent` and
-  `SubmissionFailureEvidenceRecordedEvent` SDK event types.
-- Nested Move-JSON parsers for terminal `_err_eval` records and submission
-  failure evidence, including wrapper, option, enum, address, runtime-vertex,
-  byte-vector, and normalized string forms.
-- Workflow failure model types, including `FailureEvidenceKind`,
-  `WorkflowFailureClass`, `PostFailureAction`, and
-  `ExecutionTerminalRecord`.
-- DAG JSON `post_failure_action`, `leader_verifier`, and `tool_verifier`
-  support at both DAG and vertex scope.
-- Workflow Move identifiers and transaction helpers for post-failure actions,
-  verifier configs, failure-evidence kinds, terminal `_err_eval` submission,
-  success-path tool evaluation submission, failure-evidence submission, typed
-  on-chain tool result submission, off-chain verifier proof submission, and
-  expired execution aborts.
+- `TerminalErrEvalRecordedEvent` and `SubmissionFailureEvidenceRecordedEvent` SDK event types.
+- Nested Move-JSON parsers for terminal `_err_eval` records and submission failure evidence, including wrapper, option, enum, address, runtime-vertex, byte-vector, and normalized string forms.
+- Workflow failure model types, including `FailureEvidenceKind`, `WorkflowFailureClass`, `PostFailureAction`, and `ExecutionTerminalRecord`.
+- DAG JSON `post_failure_action`, `leader_verifier`, and `tool_verifier` support at both DAG and vertex scope.
+- Workflow Move identifiers and transaction helpers for post-failure actions, verifier configs, failure-evidence kinds, terminal `_err_eval` submission, success-path tool evaluation submission, failure-evidence submission, typed on-chain tool result submission, off-chain verifier proof submission, and expired execution aborts.
 - `settle_gas_state_for_vertex` gas transaction helper.
-- `WorkflowActions::inspect_execution_until_completion`, returning terminal
-  state, terminal `_err_eval` records, end-state outputs, and the underlying
-  execution event stream.
-- Focused coverage for branch-specific SDK transaction builder behavior,
-  including terminal `_err_eval` output shape, verifier config wiring,
-  no-verifier auxiliary routing, verifier proof routing, and explicit
-  on-chain witness passthrough.
-- Typed external-verifier PTB helper that constructs
-  `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps
-  the returned `VerifierContractResultV1` as typed verifier proof, and submits
-  through the verifier-aware workflow entrypoint.
-- Additional signed HTTP tests for response signing verification and
-  multi-variant output handling.
+- `WorkflowActions::inspect_execution_until_completion`, returning terminal state, terminal `_err_eval` records, end-state outputs, and the underlying execution event stream.
+- Focused coverage for branch-specific SDK transaction builder behavior, including terminal `_err_eval` output shape, verifier config wiring, no-verifier auxiliary routing, verifier proof routing, and explicit on-chain witness passthrough.
+- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
+- Additional signed HTTP tests for response signing verification and multi-variant output handling.
+- SDK-owned standard TAP authorization-plan models and current-vertex grant resolution helpers for fixed-tool execution.
+- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint creation, and complete publish-artifact construction.
+- Standard TAP transaction helpers for endpoint creation and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
+- Compatibility-focused parser fixtures for current standard TAP event BCS layouts, including Move `Option<T>` event fields used by request, payment, authorization, and scheduled-execution events.
+- Standard Talus agent payment vault models, fetch helper, deposit/withdraw PTB builders, and typed payment source helpers for invoker-funded and agent-vault-funded settlement.
+- Agent-scoped workflow gas helpers for standard TAP funding.
+- Durable scheduled TAP models, events, fetch helpers, and transaction builders for address-funded and agent-vault-funded scheduled prepayment, scheduled occurrence payment conversion, scheduled occurrence completion, and scheduler-task link attachment.
+- SDK-level `fetch_task_tap_scheduled_task_link` and `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain scheduled task state without local-only BCS parsing.
+- Default-DAG-executor address-funded scheduling action and PTB builder that omit `agent_id`/`skill_id` arguments and resolve the registry-owned default executor through `TapRegistry`.
 
 #### Changed
 
+- `full` and `nexus` no longer enable `move_publish`; package publishing APIs now require the explicit `move_publish` feature, and the CLI opts into it for deployment commands.
 - Optimized nested event value parsing with improved performance and reduced redundant checks
 - Made `parse_nested_event_value` public for use in nested event parsing
 - Fixed `FailureEvidenceKind` enum serialization with explicit serde rename attributes and backward compatibility aliases
 - Improved signed HTTP verification with proper body hash validation and detection of tampered requests
 - Enhanced canonical output body SHA256 calculation with validation for single-variant JSON structure
 - Fixed signature message generation to handle references correctly in signed HTTP operations
-- Removed unused sender parameters from `create_tool_binding_and_register_key`
-  and `create_leader_binding_and_register_key`; new binding objects are now
-  shared with `public_share_object` instead of transferred to a sender.
-- Event parsing now accepts terminal `_err_eval` and submission-failure records
-  from BCS-wrapped events and common nested Move-JSON trace shapes.
-- Move-JSON deserialization is more tolerant of Sui wrapper shapes for fields,
-  options, published Move enums, runtime vertices, execution terminal records,
-  strings, booleans, integers, byte vectors, and addresses.
-- `NexusEventKind` execution matching and workflow inspection now account for
-  terminal `_err_eval` events.
+- Removed unused sender parameters from `create_tool_binding_and_register_key` and `create_leader_binding_and_register_key`; new binding objects are now shared with `public_share_object` instead of transferred to a sender.
+- Event parsing now accepts terminal `_err_eval` and submission-failure records from BCS-wrapped events and common nested Move-JSON trace shapes.
+- Move-JSON deserialization is more tolerant of Sui wrapper shapes for fields, options, published Move enums, runtime vertices, execution terminal records, strings, booleans, integers, byte vectors, and addresses.
+- `NexusEventKind` execution matching and workflow inspection now account for terminal `_err_eval` events.
 - Walrus file downloads now flush the destination file before returning.
-- On-chain DAG transaction helpers now use the single typed
-  `submit_on_chain_tool_result_for_walk_v1` surface and no longer expose the
-  stale BCS-envelope or split success/failure helper API.
-- Signed HTTP response signing now steers low-level callers to
-  `sign_invoke_response_with_body_v1`; the deprecated status-only helper
-  rejects 2xx responses because `_err_eval` outcome derivation depends on the
-  response body.
+- On-chain DAG transaction helpers now use the single typed `submit_on_chain_tool_result_for_walk_v1` surface and no longer expose the stale BCS-envelope or split success/failure helper API.
+- Signed HTTP response signing now steers low-level callers to `sign_invoke_response_with_body_v1`; the deprecated status-only helper rejects 2xx responses because `_err_eval` outcome derivation depends on the response body.
+
+#### Fixed
+
+- Workflow-owned TAP authorization grant and authorization-plan decoding now accepts current Move-JSON runtime-vertex payloads, and standard runtime-stamp contract tests track explicit vertex construction calls.
 
 ### `nexus-toolkit`
 
 #### Changed
 
-- Runtime config hot reload now moves filesystem metadata checks and config
-  parsing onto Tokio's blocking pool and reduces fallback polling frequency,
-  while keeping notify-driven reloads as the fast path.
+- Runtime config hot reload now moves filesystem metadata checks and config parsing onto Tokio's blocking pool and reduces fallback polling frequency, while keeping notify-driven reloads as the fast path.
+- Standard fixed-tool schema generation hides TAP authorization-cap and workflow worksheet internal arguments from user-facing input schemas.
+- CLI and SDK object metadata now resolve default DAG execution through `tap_registry` and `default_tap_target` rather than a `default_tap` object.
+- Legacy `TapV1` and `AnnounceInterfacePackageEvent` support is retained only as compatibility for historical data; active standard builders use standard TAP idents.
+- SDK parser sample coverage now uses generated current-layout standard TAP event fixtures instead of stale hard-coded witness-era bytes.
+- scheduler and peer TAP PTB tests now assert standard TAP calls by package/module/function and current BCS argument layout rather than brittle absolute command indexes.
+- Standard TAP payment validation now accepts typed invoker and agent-vault payment sources while preserving legacy address-BCS compatibility.
+- `TapExecutionPayment` decoding now tolerates source kind, source identity, locked budget, and final-state fields emitted by the updated TAP interface.
+- `TapScheduledSkillTask` decoding now mirrors the durable on-chain `ScheduledSkillTask` shape, including payment source, remaining reserve, in-flight occurrence, occurrence records, and final state.
+- Scheduled occurrence transaction helpers now chain scheduler occurrence checks with standard TAP scheduled-payment preparation instead of requiring leader-built local payment arguments.
+- `DagExecution` decoding accepts Sui Move JSON `Option<u64>` scheduled occurrence indexes, including string-valued `vec` forms emitted by object JSON.
+- Standard TAP SDK models and PTB builders now match the Move package split: general TAP identities, payments, endpoint, worksheet, authorization, and schedule types resolve through `nexus_interface::tap`, while registry storage records remain under `nexus_registry::tap`.
+- Active execution APIs now expose explicit agent DAG execution and default-agent DAG execution names (`execute_agent_dag`, `execute_default_agent_dag`, `AgentDagExecuteInput`, and `AgentDagExecuteOptions`), while "standard TAP" remains reserved for protocol/model surfaces.
+- TAP payment settlement builders now target execution-owned `DAGExecution` payment helpers, with separate agent-vault variants only when vault accounting needs the explicit non-default `Agent`.
+- Default DAG execution and scheduling builders now use mutable `tap_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
 
 #### Fixed
 
 - Registered-key and external-verifier submissions now build typed verifier proof values and route through the single verifier-aware workflow entrypoint; no-verifier submissions route through the dedicated no-verifier entrypoint, and auxiliary bytes carry only optional `_err_eval` failure-evidence classification.
+- SDK test fixtures now track the current standard TAP event and PTB layouts, fixing parsing and PTB-order regressions exposed after the standard TAP cutover.
+- Raw `TapRegistryObject` BCS decoding now models Move `Option<T>` layout for `default_executor`, fixing default TAP DAG executor recovery from shared registry objects used by leader bootstrap and scheduler flows.
+- Default executor address-funded scheduling no longer fetches the configured default agent as a top-level object, fixing leader scheduled default TAP setup after default agent custody moved under `TapRegistry`.
 
 #### Removed
 
-- Stale `OnChainToolResultSubmissionV1` SDK type/export and obsolete onchain
-  BCS-envelope/split-submit Move identifiers.
+- Stale `OnChainToolResultSubmissionV1` SDK type/export and obsolete onchain BCS-envelope/split-submit Move identifiers.
+- Active SDK `DefaultTap`/`TapV1` default execution builders and `NexusObjects.default_tap` deployment metadata requirements.
+- active payment-auth parameters, wrapped-style `SkillId(...)` construction, and public `InvokerGas`/`ExecutionGas` caller paths from SDK and CLI TAP flows.
 
 ### `docs`
 
@@ -107,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Comprehensive DAG construction guide sections for `post_failure_action`, `leader_verifier`, and `tool_verifier` configuration at both DAG and vertex levels
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
+- Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
 
 ### Code
 

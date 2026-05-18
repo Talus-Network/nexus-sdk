@@ -227,7 +227,6 @@ mod tests {
         assert!(move_toml_contents.contains("edition = \"2024.beta\""));
         assert!(move_toml_contents.contains("nexus_primitives"));
         assert!(move_toml_contents.contains("nexus_workflow"));
-        assert!(move_toml_contents.contains("nexus_interface"));
 
         // Check that the main Move file was written with correct contents.
         let move_file_path = tempdir.join("test_tool/sources/test_tool.move");
@@ -240,6 +239,8 @@ mod tests {
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
         assert!(move_contents.contains("public fun execute("));
+        assert!(move_contents.contains("use nexus_workflow::dag::VertexAuthorizationCheckCap;"));
+        assert!(move_contents.contains("_cap: VertexAuthorizationCheckCap"));
         assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
         assert!(move_contents.contains("): TaggedOutput"));
         assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));

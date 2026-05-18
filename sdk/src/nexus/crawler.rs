@@ -14,10 +14,32 @@ use {
     tokio::sync::Mutex,
 };
 
+#[derive(Debug, Deserialize)]
+struct DynamicFieldNameBcs<K> {
+    #[allow(dead_code)]
+    id: sui::types::Address,
+    name: K,
+}
+
+fn parse_dynamic_field_name<K>(bytes: &[u8]) -> Result<K, bcs::Error>
+where
+    K: DeserializeOwned,
+{
+    bcs::from_bytes::<K>(bytes)
+        .or_else(|_| bcs::from_bytes::<DynamicFieldNameBcs<K>>(bytes).map(|field| field.name))
+}
+
 /// The main crawler struct.
 #[derive(Clone)]
 pub struct Crawler {
     client: Arc<Mutex<sui::grpc::Client>>,
+}
+
+#[derive(Debug)]
+pub struct DynamicObjectFieldReference<K> {
+    pub name: K,
+    pub field_id: sui::types::Address,
+    pub child_id: sui::types::Address,
 }
 
 impl Crawler {
@@ -233,6 +255,71 @@ impl Crawler {
             .collect()
     }
 
+    /// Fetch owned objects of a specific type for an owner and deserialize JSON contents.
+    pub async fn get_owned_objects<T>(
+        &self,
+        owner: sui::types::Address,
+        object_type: sui::types::StructTag,
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "json",
+        ]);
+        let mut results = Vec::new();
+        let mut page_token = None;
+
+        loop {
+            let mut request = sui::grpc::ListOwnedObjectsRequest::default()
+                .with_owner(owner)
+                .with_page_size(1000)
+                .with_object_type(object_type.clone())
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_owned_objects(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| anyhow!("Could not fetch owned objects for '{owner}': {e}"))?;
+
+            drop(client);
+            page_token = response.next_page_token;
+
+            for object in response.objects {
+                let object_id = Self::parse_object_id(&object)?;
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+                let data = Self::parse_object_content::<T>(self, &object)?;
+                results.push(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data,
+                    digest,
+                    balance,
+                });
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch all dynamic object fields for a given parent and parse them into a
     /// HashMap<K, V>.
     pub async fn get_dynamic_fields<K, V>(
@@ -340,6 +427,98 @@ impl Crawler {
         Ok(out)
     }
 
+    /// Fetch dynamic field values from their field objects without decoding key
+    /// names. This is useful for singleton dynamic fields whose on-chain name
+    /// encoding is package-version dependent.
+    pub async fn get_dynamic_field_object_values_bcs<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<V>>
+    where
+        K: DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        #[derive(Clone, Debug, Deserialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            #[allow(dead_code)]
+            id: sui::types::Address,
+            #[allow(dead_code)]
+            name: K,
+            value: V,
+        }
+
+        let names_and_ids = self.fetch_dynamic_fields_untyped(parent_id).await?;
+        let mut field_ids = Vec::with_capacity(names_and_ids.len());
+        for field_id in names_and_ids {
+            field_ids.push(field_id);
+        }
+
+        Ok(self
+            .get_objects_contents_bcs::<DynamicFieldValueBcs<K, V>>(&field_ids)
+            .await?
+            .into_iter()
+            .map(|response| response.data.value)
+            .collect())
+    }
+
+    /// Fetch all dynamic-field values for a parent object without attempting to decode keys.
+    pub async fn get_dynamic_field_values_bcs<V>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<(Option<String>, V)>>
+    where
+        V: DeserializeOwned,
+    {
+        let mut results = Vec::new();
+        let mut page_token = None;
+        let field_mask =
+            sui::grpc::FieldMask::from_paths(["field_id", "kind", "value", "value_type"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                let value = field.value_opt().ok_or_else(|| {
+                    anyhow!("Dynamic field value missing for parent '{parent_id}'")
+                })?;
+                let Some(bytes) = value.value_opt() else {
+                    bail!("Dynamic field value BCS missing for parent '{parent_id}'");
+                };
+                let decoded = bcs::from_bytes::<V>(bytes).map_err(|e| {
+                    anyhow!("Could not parse dynamic field value for parent '{parent_id}': {e}")
+                })?;
+                results.push((field.value_type, decoded));
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch all dynamic object fields for a given parent and parse them into a
     /// HashMap<K, V>. Since the values are objects, they need to be fetched
     /// first.
@@ -368,6 +547,125 @@ impl Crawler {
             .map(|(name, _, _)| name)
             .zip(child_objects)
             .collect())
+    }
+
+    /// Fetch all dynamic object fields for a parent object id without requiring
+    /// a local dynamic-object-map wrapper.
+    pub async fn get_dynamic_object_fields<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<HashMap<K, Response<V>>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let names_and_ids = self.fetch_dynamic_fields::<K>(parent_id, 0).await?;
+        let mut names = Vec::with_capacity(names_and_ids.len());
+        let mut child_ids = Vec::with_capacity(names_and_ids.len());
+
+        for (name, child_id, _) in names_and_ids {
+            let Some(child_id) = child_id else {
+                bail!("Dynamic object field child ID missing for parent '{parent_id}'");
+            };
+            names.push(name);
+            child_ids.push(child_id);
+        }
+
+        let child_objects = self.get_objects::<V>(&child_ids).await?;
+        Ok(names.into_iter().zip(child_objects).collect())
+    }
+
+    /// Fetch one dynamic object field child for a parent object id.
+    pub async fn get_dynamic_object_field<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        key: K,
+    ) -> anyhow::Result<Response<V>>
+    where
+        K: Eq + Hash + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        self.get_dynamic_object_fields::<K, V>(parent_id)
+            .await?
+            .remove(&key)
+            .ok_or_else(|| anyhow!("Dynamic object field not found for parent '{parent_id}'"))
+    }
+
+    /// Fetch dynamic object fields for a parent and keep only entries whose
+    /// key BCS decodes as `K`. Parents may legitimately contain several child
+    /// namespaces with unrelated key types.
+    pub async fn get_dynamic_object_field_refs_matching_key<K>(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<DynamicObjectFieldReference<K>>>
+    where
+        K: DeserializeOwned,
+    {
+        let mut results = Vec::new();
+        let mut page_token = None;
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                let Some(name_bcs) = field.name_opt() else {
+                    continue;
+                };
+                let Ok(name) = parse_dynamic_field_name::<K>(name_bcs.value()) else {
+                    continue;
+                };
+                let Some(field_id) = field
+                    .field_id_opt()
+                    .map(|id| id.parse())
+                    .transpose()
+                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?
+                else {
+                    continue;
+                };
+                let Some(child_id) = field
+                    .child_id_opt()
+                    .map(|id| id.parse())
+                    .transpose()
+                    .map_err(|_| anyhow!("Could not parse child ID for dynamic field"))?
+                else {
+                    continue;
+                };
+
+                results.push(DynamicObjectFieldReference {
+                    name,
+                    field_id,
+                    child_id,
+                });
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
     }
 
     /// Fetch all items in a `TableVec<T>` and return them as a `Vec<T>`.
@@ -548,7 +846,7 @@ impl Crawler {
 
             for field in response.dynamic_fields {
                 // Parse the dynamic field name as K.
-                let name = bcs::from_bytes::<K>(
+                let name = parse_dynamic_field_name::<K>(
                     field
                         .name_opt()
                         .ok_or_else(|| {
@@ -573,6 +871,55 @@ impl Crawler {
                     .map_err(|_| anyhow!("Could not parse child ID for dynamic field"))?;
 
                 results.push((name, child_id, field_id));
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn fetch_dynamic_fields_untyped(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<sui::types::Address>> {
+        let mut results = Vec::new();
+        let mut page_token = None;
+        let field_mask = sui::grpc::FieldMask::from_paths(["field_id"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                let field_id = field
+                    .field_id_opt()
+                    .ok_or_else(|| anyhow!("Dynamic field ID missing for parent '{parent_id}'"))?
+                    .parse()
+                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?;
+                results.push(field_id);
             }
 
             if page_token.is_none() {
@@ -1138,5 +1485,228 @@ pub fn prost_value_to_json_value(value: &prost_types::Value) -> anyhow::Result<s
 
             Ok(Value::Array(vec))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_utils::sui_mocks,
+        mockall::predicate::always,
+        serde::{Deserialize, Serialize},
+        serde_json::json,
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestValue {
+        value: u64,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    struct TestKey {
+        name: String,
+    }
+
+    fn object_with_json(
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        json_value: serde_json::Value,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(object_ref.object_id().to_string());
+        object.set_owner(sui::grpc::Owner::from(owner));
+        object.set_digest(*object_ref.digest());
+        object.set_version(object_ref.version());
+        object.json = Some(Box::new(json_value_to_prost_value(&json_value)));
+        object
+    }
+
+    fn json_value_to_prost_value(value: &serde_json::Value) -> prost_types::Value {
+        use prost_types::value::Kind;
+
+        let kind = match value {
+            serde_json::Value::Null => Kind::NullValue(0),
+            serde_json::Value::Bool(value) => Kind::BoolValue(*value),
+            serde_json::Value::Number(value) => {
+                Kind::NumberValue(value.as_f64().unwrap_or_default())
+            }
+            serde_json::Value::String(value) => Kind::StringValue(value.clone()),
+            serde_json::Value::Array(values) => Kind::ListValue(prost_types::ListValue {
+                values: values.iter().map(json_value_to_prost_value).collect(),
+            }),
+            serde_json::Value::Object(values) => Kind::StructValue(prost_types::Struct {
+                fields: values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), json_value_to_prost_value(value)))
+                    .collect(),
+            }),
+        };
+
+        prost_types::Value { kind: Some(kind) }
+    }
+
+    #[tokio::test]
+    async fn get_owned_objects_pages_and_deserializes_json() {
+        let owner = sui::types::Address::from_static("0xa");
+        let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let first_object = object_with_json(
+            first_ref.clone(),
+            sui::types::Owner::Address(owner),
+            json!({
+                "value": 7,
+                "label": "first",
+                "enabled": true,
+                "tags": ["a", "b"],
+                "optional": null
+            }),
+        );
+        let second_object = object_with_json(
+            second_ref.clone(),
+            sui::types::Owner::Address(owner),
+            json!({"value": 9}),
+        );
+        let responses: Vec<(Vec<sui::grpc::Object>, Option<Vec<u8>>)> = vec![
+            (vec![first_object], Some(Vec::from(&b"page-2"[..]))),
+            (vec![second_object], None),
+        ];
+        let mut responses = responses.into_iter();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(2)
+            .with(always())
+            .returning(move |_request| {
+                let (objects, next_page_token) = responses.next().expect("owned object page");
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(objects);
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let objects = crawler
+            .get_owned_objects::<TestValue>(
+                owner,
+                sui::types::StructTag::new(
+                    sui::types::Address::from_static("0x1"),
+                    sui::types::Identifier::from_static("test"),
+                    sui::types::Identifier::from_static("TestValue"),
+                    vec![],
+                ),
+            )
+            .await
+            .expect("owned objects load");
+
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].object_id, *first_ref.object_id());
+        assert_eq!(objects[0].data, TestValue { value: 7 });
+        assert_eq!(objects[1].object_id, *second_ref.object_id());
+        assert_eq!(objects[1].data, TestValue { value: 9 });
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_object_field_fetches_child_object_by_key() {
+        let parent_id = sui::types::Address::from_static("0x40");
+        let field_id = sui::types::Address::from_static("0x41");
+        let child_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x42"));
+        let key = TestKey {
+            name: "primary".to_string(),
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), field_id, *child_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_objects_json(
+            &mut ledger_service_mock,
+            vec![(
+                child_ref.clone(),
+                sui::types::Owner::Shared(child_ref.version()),
+                json!({"value": 11}),
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let object = crawler
+            .get_dynamic_object_field::<TestKey, TestValue>(parent_id, key)
+            .await
+            .expect("dynamic object field loads");
+
+        assert_eq!(object.object_id, *child_ref.object_id());
+        assert_eq!(object.data, TestValue { value: 11 });
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_field_values_bcs_pages_and_decodes_values() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let responses: Vec<(Vec<(&'static str, TestValue)>, Option<Vec<u8>>)> = vec![
+            (
+                vec![("test::First", TestValue { value: 3 })],
+                Some(Vec::from(&b"page-2"[..])),
+            ),
+            (vec![("test::Second", TestValue { value: 5 })], None),
+        ];
+        let mut responses = responses.into_iter();
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(2)
+            .with(always())
+            .returning(move |_request| {
+                let (fields, next_page_token) = responses.next().expect("dynamic field page");
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                response.set_dynamic_fields(
+                    fields
+                        .into_iter()
+                        .map(|(value_type, value)| {
+                            let mut field = sui::grpc::DynamicField::default();
+                            let mut bcs_value = sui::grpc::Bcs::default();
+                            bcs_value.set_value(bcs::to_bytes(&value).expect("value bcs"));
+                            field.set_value(bcs_value);
+                            field.set_value_type(value_type);
+                            field
+                        })
+                        .collect(),
+                );
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let values = crawler
+            .get_dynamic_field_values_bcs::<TestValue>(parent_id)
+            .await
+            .expect("dynamic field values load");
+
+        assert_eq!(
+            values,
+            vec![
+                (Some("test::First".to_string()), TestValue { value: 3 }),
+                (Some("test::Second".to_string()), TestValue { value: 5 }),
+            ]
+        );
     }
 }

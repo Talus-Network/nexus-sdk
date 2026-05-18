@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        idents::{move_std, sui_framework, workflow},
+        idents::{move_std, workflow},
         sui::{self, traits::ToBcs},
         types::RuntimeVertex,
         ToolFqn,
@@ -37,26 +37,6 @@ pub fn derive_tool_gas_id(
     let tag = move_std::into_type_tag(move_std::Ascii::STRING_TYPE);
 
     derive_object_id(gas_service, &tag, &tool_fqn)
-}
-
-/// Derives the object ID for an InvokerGas object given the gas service and invoker address.
-pub fn derive_invoker_gas_id(
-    gas_service: sui::types::Address,
-    invoker: sui::types::Address,
-) -> anyhow::Result<sui::types::Address> {
-    let tag = sui::types::TypeTag::Address;
-
-    derive_object_id(gas_service, &tag, &invoker)
-}
-
-/// Derives the object ID for an ExecutionGas object given the gas service and execution ID.
-pub fn derive_execution_gas_id(
-    gas_service: sui::types::Address,
-    execution: sui::types::Address,
-) -> anyhow::Result<sui::types::Address> {
-    let tag = sui_framework::into_type_tag(sui_framework::Object::ID);
-
-    derive_object_id(gas_service, &tag, &execution)
 }
 
 /// Derive the object ID for a [`RequestWalkExecutionEvent`] task given the
@@ -146,36 +126,6 @@ mod tests {
             "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da",
         );
         let derived_id = derive_tool_gas_id(registry_id, &fqn).unwrap();
-        assert_eq!(derived_id, expected_id);
-    }
-
-    #[test]
-    fn test_derive_invoker_gas_id() {
-        let registry_id = sui::types::Address::from_static(
-            "0x940f0dd81d4e4ae2cd476ff61ca5699e0d9356e1874d6c4ba3a5bdf28e67b9e9",
-        );
-        let address = sui::types::Address::from_static(
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-        );
-        let expected_id = sui::types::Address::from_static(
-            "0x62000f053c3d54fa76229a93d255b5d40584c374b9c84aefee95bfd91a9d6bb1",
-        );
-        let derived_id = derive_invoker_gas_id(registry_id, address).unwrap();
-        assert_eq!(derived_id, expected_id);
-    }
-
-    #[test]
-    fn test_derive_execution_gas_id() {
-        let registry_id = sui::types::Address::from_static(
-            "0x940f0dd81d4e4ae2cd476ff61ca5699e0d9356e1874d6c4ba3a5bdf28e67b9e9",
-        );
-        let execution_id = sui::types::Address::from_static(
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-        );
-        let expected_id = sui::types::Address::from_static(
-            "0x6cccb4844b7b37cfc085b976b9bb84f46763df213deea769072804164ffdb875",
-        );
-        let derived_id = derive_execution_gas_id(registry_id, execution_id).unwrap();
         assert_eq!(derived_id, expected_id);
     }
 

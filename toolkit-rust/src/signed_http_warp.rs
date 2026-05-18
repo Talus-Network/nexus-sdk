@@ -9,6 +9,7 @@ use {
     crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
     nexus_sdk::signed_http::v1::{
         engine::{
+            InvokerKeyResolver,
             ResponderDecisionV1,
             ResponderRejectionKindV1,
             SignatureHeadersRef,
@@ -18,7 +19,7 @@ use {
             SignedResponseV1,
         },
         error::SignedHttpError,
-        wire::HttpRequestMeta,
+        wire::{AllowedLeadersV1, HttpRequestMeta},
     },
     serde_json::json,
     std::{
@@ -27,6 +28,48 @@ use {
     },
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
+
+struct RefreshingAllowedLeadersResolver {
+    allowed_leaders: RwLock<AllowedLeadersV1>,
+}
+
+impl RefreshingAllowedLeadersResolver {
+    fn new(allowed_leaders: AllowedLeadersV1) -> Self {
+        Self {
+            allowed_leaders: RwLock::new(allowed_leaders),
+        }
+    }
+
+    fn refresh_from_source_path(&self) {
+        let Some(path) = self
+            .allowed_leaders
+            .read()
+            .unwrap()
+            .source_path()
+            .map(|path| path.to_path_buf())
+        else {
+            return;
+        };
+
+        let Ok(updated) = AllowedLeadersV1::from_path(&path) else {
+            return;
+        };
+
+        *self.allowed_leaders.write().unwrap() = updated;
+    }
+}
+
+impl InvokerKeyResolver for RefreshingAllowedLeadersResolver {
+    fn invoker_public_key(&self, invoker_id: &str, invoker_kid: u64) -> Option<[u8; 32]> {
+        // File-backed allowlists are refreshed on demand so sidecar sync updates are visible even
+        // when filesystem notification timing is coarse or a config reload is not triggered.
+        self.refresh_from_source_path();
+        self.allowed_leaders
+            .read()
+            .unwrap()
+            .leader_public_key_bytes(invoker_id, invoker_kid)
+    }
+}
 
 /// Auth mode for `/invoke` handling.
 ///
@@ -66,12 +109,15 @@ impl InvokeAuthRuntime {
             ..Default::default()
         });
 
+        let allowed_leaders =
+            RefreshingAllowedLeadersResolver::new((*signed_http.allowed_leaders).clone());
+
         Ok(Self::Signed(Box::new(
             engine.responder_with_in_memory_replay(
                 tool_id.to_string(),
                 tool.tool_kid,
                 tool.tool_signing_key.clone(),
-                signed_http.allowed_leaders.clone(),
+                allowed_leaders,
             ),
         )))
     }
@@ -116,7 +162,7 @@ impl InvokeAuth {
         let current_config = self.config.current();
         let current_ptr = Arc::as_ptr(&current_config) as usize;
 
-        // Check if config has changed by comparing Arc pointers
+        // Check if config has changed.
         {
             let guard = self.state.read().unwrap();
             if guard.config_ptr == current_ptr {
@@ -124,7 +170,7 @@ impl InvokeAuth {
             }
         }
 
-        // Config changed, rebuild auth runtime
+        // Config changed, rebuild auth runtime.
         let mut guard = self.state.write().unwrap();
         // Double-check after acquiring write lock
         if guard.config_ptr != current_ptr {
@@ -593,5 +639,124 @@ mod tests {
         // Cleanup
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
         let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn invoke_auth_reloads_file_backed_allowed_leaders() {
+        use {crate::config::Config, std::fs};
+
+        let leader_id = "0x1111";
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
+        let tool_id = "demo::tool::1.0.0";
+        let tool_sk_hex = hex::encode(SigningKey::from_bytes(&[9u8; 32]).to_bytes());
+
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let config_path = std::env::temp_dir().join(format!("invoke-auth-allowlist-{suffix}.json"));
+        let allowlist_path =
+            std::env::temp_dir().join(format!("invoke-auth-allowlist-{suffix}.leaders.json"));
+
+        fs::write(
+            &allowlist_path,
+            serde_json::to_vec(&serde_json::json!({
+                "version": 1,
+                "leaders": [],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            &config_path,
+            serde_json::to_vec(&serde_json::json!({
+                "version": 1,
+                "signed_http": {
+                    "mode": "required",
+                    "allowed_leaders_path": allowlist_path.display().to_string(),
+                    "tools": {
+                        tool_id.to_string(): {
+                            "tool_kid": 0,
+                            "tool_signing_key": tool_sk_hex,
+                        },
+                    },
+                },
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let config = Config::from_config(Arc::new(
+            ToolkitRuntimeConfig::from_path(&config_path).unwrap(),
+        ));
+        let invoke_auth = InvokeAuth::new_sync(config, tool_id.to_string()).unwrap();
+        let engine = SignedHttpEngineV1::new(SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        });
+        let invoker = build_invoker(&engine, leader_id, &leader_sk);
+        let http = HttpRequestMeta {
+            method: "POST",
+            path: "/invoke",
+            query: "",
+        };
+
+        let rejected_body = br#"{"hello":"before"}"#.to_vec();
+        let rejected = invoker
+            .begin_invoke_with_nonce(
+                tool_id.to_string(),
+                http.clone(),
+                &rejected_body,
+                "nonce-before".to_string(),
+            )
+            .unwrap();
+        let auth = invoke_auth.current().await;
+        let rejected_resp = handle_invoke(
+            auth.as_ref(),
+            http.clone(),
+            request_headers(rejected.request_headers()),
+            rejected_body,
+            |_ctx, _body| async { (StatusCode::OK, br#"{"ok":true}"#.to_vec()) },
+        )
+        .await;
+        assert_eq!(rejected_resp.status(), StatusCode::UNAUTHORIZED);
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        fs::write(
+            &allowlist_path,
+            serde_json::to_vec(&serde_json::json!({
+                "version": 1,
+                "leaders": [{
+                    "leader_id": leader_id,
+                    "keys": [{"kid": 0, "public_key": leader_pk_hex}],
+                }],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let accepted_body = br#"{"hello":"after"}"#.to_vec();
+        let accepted = invoker
+            .begin_invoke_with_nonce(
+                tool_id.to_string(),
+                http.clone(),
+                &accepted_body,
+                "nonce-after".to_string(),
+            )
+            .unwrap();
+        let accepted_resp = handle_invoke(
+            auth.as_ref(),
+            http,
+            request_headers(accepted.request_headers()),
+            accepted_body,
+            |_ctx, _body| async { (StatusCode::OK, br#"{"ok":true}"#.to_vec()) },
+        )
+        .await;
+        assert_eq!(accepted_resp.status(), StatusCode::OK);
+
+        let _ = fs::remove_file(config_path);
+        let _ = fs::remove_file(allowlist_path);
     }
 }

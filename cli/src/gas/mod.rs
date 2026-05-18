@@ -1,32 +1,12 @@
-mod gas_add_budget;
-mod gas_check_balance;
 mod tickets;
 
 use {
     crate::prelude::*,
-    gas_add_budget::*,
-    gas_check_balance::*,
     tickets::{expiry::*, limited_invocations::*},
 };
 
 #[derive(Subcommand)]
 pub(crate) enum GasCommand {
-    #[command(about = "Add a SUI coin as gas budget")]
-    AddBudget {
-        #[arg(
-            long = "coin",
-            short = 'c',
-            help = "Owned SUI coin object ID to use as budget",
-            value_name = "OBJECT_ID"
-        )]
-        coin: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Check the current Nexus gas balance for the invoker")]
-    Balance,
-
     #[command(subcommand, about = "Manage the expiry gas ticket extension")]
     Expiry(ExpiryCommand),
 
@@ -207,14 +187,6 @@ pub(crate) enum LimitedInvocationsCommand {
 /// [crate::main].
 pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        // == `$ nexus gas add-budget` ==
-        GasCommand::AddBudget { coin, gas } => {
-            add_gas_budget(coin, gas.sui_gas_coin, gas.sui_gas_budget).await
-        }
-
-        // == `$ nexus gas balance` ==
-        GasCommand::Balance => check_balance().await,
-
         // == `$ nexus gas expiry` ==
         GasCommand::Expiry(command) => match command {
             // == `$ nexus gas expiry enable` ==

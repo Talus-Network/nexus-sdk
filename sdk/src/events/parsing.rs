@@ -69,9 +69,11 @@ impl FromSuiGrpcEvent for NexusEvent {
             );
         }
 
-        // Only accept events that come from the Nexus packages unless the
-        // event is marked as foreign.
-        if !is_nexus_package(event.package_id, objects) && !is_foreign_event(&event_name) {
+        // Public Nexus entrypoints can be invoked from extension packages, in
+        // which case Sui records the caller package as `event.package_id`.
+        // The wrapper package and inner Nexus event type checks above remain
+        // the trust boundary for those event names.
+        if !is_nexus_package(event.package_id, objects) && !allows_foreign_emitter(&event_name) {
             bail!(
                 "Event does not come from a Nexus package, it comes from '{}' instead",
                 event.package_id
@@ -488,13 +490,27 @@ fn parse_optional_u64_value(value: &serde_json::Value) -> anyhow::Result<Option<
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
     address == objects.primitives_pkg_id
         || address == objects.interface_pkg_id
+        || address == objects.registry_pkg_id()
         || objects.is_workflow_package(address)
 }
 
-/// Helper function to determine whether the event name corresponds to a foreign
-/// event.
-fn is_foreign_event(event_name: &str) -> bool {
-    matches!(event_name, "AnnounceInterfacePackageEvent")
+/// Helper function to determine whether the event name may be emitted while
+/// Sui records a non-Nexus caller package as `event.package_id`.
+fn allows_foreign_emitter(event_name: &str) -> bool {
+    matches!(
+        event_name,
+        // Historical V1 interface announcements remain decodable for replay
+        // and migration tooling.
+        "AnnounceInterfacePackageEvent"
+            // Standard TAP and workflow grant events can be emitted by public
+            // Nexus functions invoked from a package-owned PTB.
+            | "AgentSkillExecutionRequestedEvent"
+            | "AgentSkillPaymentCreatedEvent"
+            | "RequestScheduledWalkEvent"
+            | "RequestWalkExecutionEvent"
+            | "VertexAuthorizationGrantCreatedEvent"
+            | "VertexAuthorizationGrantRequiredEvent"
+    )
 }
 
 /// Helper function to determine whether the provided struct tag corresponds to
@@ -515,7 +531,20 @@ mod tests {
             events::*,
             idents::primitives,
             test_utils::sui_mocks,
-            types::{PostFailureAction, RuntimeVertex, SharedObjectRef, WorkflowFailureClass},
+            types::{
+                AgentId,
+                InterfaceRevision,
+                PostFailureAction,
+                RuntimeVertex,
+                SharedObjectRef,
+                SkillId,
+                TapDagBinding,
+                TapSharedObjectRef,
+                TapSkillRequirements,
+                TapVertexAuthorizationPlanEntry,
+                TypeName,
+                WorkflowFailureClass,
+            },
         },
         serde::{Deserialize, Serialize},
         serde_json::json,
@@ -533,6 +562,128 @@ mod tests {
         requested_at_ms: u64,
         task_id: sui::types::Address,
         leaders: Vec<sui::types::Address>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct MoveOptionBcs<T> {
+        vec: Vec<T>,
+    }
+
+    impl<T> From<Option<T>> for MoveOptionBcs<T> {
+        fn from(value: Option<T>) -> Self {
+            Self {
+                vec: value.into_iter().collect(),
+            }
+        }
+    }
+
+    fn wrapped_nexus_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        inner_package: sui::types::Address,
+        inner_module: &str,
+        event_name: &str,
+        event: T,
+    ) -> sui::types::Event {
+        let event_type = sui::types::StructTag::new(
+            inner_package,
+            sui::types::Identifier::new(inner_module).unwrap(),
+            sui::types::Identifier::new(event_name).unwrap(),
+            vec![],
+        );
+        wrapped_nexus_struct_event(objects, emitter_package, event_type, event)
+    }
+
+    fn wrapped_nexus_struct_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        event_type: sui::types::StructTag,
+        event: T,
+    ) -> sui::types::Event {
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let bcs = bcs::to_bytes(&Wrapper { event }).expect("wrapped event should serialize");
+
+        sui_mocks::mock_sui_event(
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        )
+    }
+
+    fn distributed_nexus_struct_event<T: Serialize>(
+        objects: &NexusObjects,
+        emitter_package: sui::types::Address,
+        event_type: sui::types::StructTag,
+        event: T,
+    ) -> sui::types::Event {
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let bcs = bcs::to_bytes(&DistributedWrapperBcs {
+            event,
+            deadline_ms: 30,
+            requested_at_ms: 1500,
+            task_id: sui::types::Address::from_static("0x51"),
+            leaders: vec![
+                sui::types::Address::from_static("0x52"),
+                sui::types::Address::from_static("0x53"),
+            ],
+        })
+        .expect("distributed wrapped event should serialize");
+
+        sui_mocks::mock_sui_event(
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        )
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct RequestWalkExecutionEventBcs {
+        dag: sui::types::Address,
+        execution: sui::types::Address,
+        invoker: sui::types::Address,
+        walk_index: u64,
+        next_vertex: RuntimeVertex,
+        evaluations: sui::types::Address,
+        worksheet_from_type: TypeName,
+        worksheet_from_uid: sui::types::Address,
+        tap_agent_id: MoveOptionBcs<AgentId>,
+        tap_skill_id: MoveOptionBcs<SkillId>,
+        tap_interface_revision: MoveOptionBcs<InterfaceRevision>,
+        tap_endpoint_object_id: MoveOptionBcs<sui::types::Address>,
+        tap_payment_id: MoveOptionBcs<sui::types::Address>,
+        tap_selected_dag_id: MoveOptionBcs<sui::types::Address>,
+        tap_authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
+        tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
+        tap_scheduled_task_id: MoveOptionBcs<sui::types::Address>,
+        tap_scheduled_occurrence_index: MoveOptionBcs<u64>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct RequestScheduledWalkEventBcs {
+        request: RequestWalkExecutionEventBcs,
+        priority: u64,
+        request_ms: u64,
+        start_ms: u64,
+        deadline_ms: u64,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct AgentSkillExecutionRequestedEventBcs {
+        execution_id: sui::types::Address,
+        agent_id: AgentId,
+        skill_id: SkillId,
+        interface_revision: InterfaceRevision,
+        payment_id: sui::types::Address,
     }
 
     #[test]
@@ -691,6 +842,106 @@ mod tests {
                 assert!(!parsed.duplicate);
             }
             _ => panic!("Expected TerminalErrEvalRecorded event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_payment_lock_update_event() {
+        let index = 2u64;
+        let digest = sui::types::Digest::generate(rand::thread_rng());
+        let objects = sui_mocks::mock_nexus_objects();
+        let execution = sui::types::Address::from_static("0xee");
+        let vertex = RuntimeVertex::plain("payable");
+        let tool_fqn = crate::fqn!("xyz.taluslabs.payable@1");
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("gas").unwrap(),
+            sui::types::Identifier::new("PaymentLockUpdateEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let data = Wrapper {
+            event: PaymentLockUpdateEvent {
+                execution,
+                vertex: vertex.clone(),
+                tool_fqn: tool_fqn.clone(),
+                was_locked: true,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let nexus_event = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects).unwrap();
+        match nexus_event.data {
+            NexusEventKind::PaymentLockUpdate(parsed) => {
+                assert_eq!(parsed.execution, execution);
+                assert_eq!(parsed.vertex, vertex);
+                assert_eq!(parsed.tool_fqn, tool_fqn);
+                assert!(parsed.was_locked);
+            }
+            _ => panic!("Expected PaymentLockUpdate event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_payment_insufficient_gas_event() {
+        let index = 3u64;
+        let digest = sui::types::Digest::generate(rand::thread_rng());
+        let objects = sui_mocks::mock_nexus_objects();
+        let execution = sui::types::Address::from_static("0xee");
+        let vertex = RuntimeVertex::plain("payable");
+        let tool_fqn = crate::fqn!("xyz.taluslabs.payable@1");
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("gas").unwrap(),
+            sui::types::Identifier::new("PaymentInsufficientGasEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let data = Wrapper {
+            event: PaymentInsufficientGasEvent {
+                execution,
+                vertex: vertex.clone(),
+                tool_fqn: tool_fqn.clone(),
+                required_tool_fee: 12,
+                available_gas: 10,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let nexus_event = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects).unwrap();
+        match nexus_event.data {
+            NexusEventKind::PaymentInsufficientGas(parsed) => {
+                assert_eq!(parsed.execution, execution);
+                assert_eq!(parsed.vertex, vertex);
+                assert_eq!(parsed.tool_fqn, tool_fqn);
+                assert_eq!(parsed.required_tool_fee, 12);
+                assert_eq!(parsed.available_gas, 10);
+            }
+            _ => panic!("Expected PaymentInsufficientGas event"),
         }
     }
 
@@ -859,6 +1110,164 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_from_grpc_public_tap_events_from_foreign_emitter_package() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let emitter_package = sui::types::Address::generate(&mut rng);
+
+        let requested_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.interface_pkg_id,
+            "tap",
+            "AgentSkillExecutionRequestedEvent",
+            AgentSkillExecutionRequestedEventBcs {
+                execution_id: sui::types::Address::from_static("0x22"),
+                agent_id: sui::types::Address::from_static("0x1"),
+                skill_id: 2,
+                interface_revision: InterfaceRevision(9),
+                payment_id: sui::types::Address::from_static("0x23"),
+            },
+        );
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, digest, &requested_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::AgentSkillExecutionRequested(AgentSkillExecutionRequestedEvent {
+                payment_id,
+                ..
+            }) if payment_id == sui::types::Address::from_static("0x23")
+        ));
+
+        let payment_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.interface_pkg_id,
+            "tap",
+            "AgentSkillPaymentCreatedEvent",
+            AgentSkillPaymentCreatedEvent {
+                payment_id: sui::types::Address::from_static("0x36"),
+                execution_id: sui::types::Address::from_static("0x37"),
+                agent_id: sui::types::Address::from_static("0x1"),
+                skill_id: 2,
+                interface_revision: InterfaceRevision(9),
+                payer: sui::types::Address::from_static("0x38"),
+                source_kind: TapPaymentSourceKind::AgentVault,
+                source_identity: sui::types::Address::from_static("0x1"),
+                max_budget: 10_000,
+                locked_budget: 10_000,
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(1, digest, &payment_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::AgentSkillPaymentCreated(AgentSkillPaymentCreatedEvent {
+                source_kind: TapPaymentSourceKind::AgentVault,
+                locked_budget: 10_000,
+                ..
+            })
+        ));
+
+        let grant_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.workflow_pkg_id,
+            "dag",
+            "VertexAuthorizationGrantCreatedEvent",
+            VertexAuthorizationGrantCreatedEvent {
+                grant_id: sui::types::Address::from_static("0x44"),
+                walk_execution_id: sui::types::Address::from_static("0x45"),
+                vertex: RuntimeVertex::plain("transfer"),
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(2, digest, &grant_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::VertexAuthorizationGrantCreated(VertexAuthorizationGrantCreatedEvent {
+                vertex,
+                ..
+            }) if vertex == RuntimeVertex::plain("transfer")
+        ));
+
+        let request_event = distributed_nexus_struct_event(
+            &objects,
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.workflow_pkg_id,
+                sui::types::Identifier::new("scheduler").unwrap(),
+                sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    sui::types::StructTag::new(
+                        objects.workflow_pkg_id,
+                        sui::types::Identifier::new("dag").unwrap(),
+                        sui::types::Identifier::new("RequestWalkExecutionEvent").unwrap(),
+                        vec![],
+                    ),
+                ))],
+            ),
+            RequestScheduledWalkEventBcs {
+                request: RequestWalkExecutionEventBcs {
+                    dag: sui::types::Address::from_static("0xa"),
+                    execution: sui::types::Address::from_static("0xb"),
+                    invoker: sui::types::Address::from_static("0xc"),
+                    walk_index: 1,
+                    next_vertex: RuntimeVertex::plain("transfer"),
+                    evaluations: sui::types::Address::from_static("0xd"),
+                    worksheet_from_type: TypeName::from("demo::tap::Witness"),
+                    worksheet_from_uid: sui::types::Address::from_static("0xe"),
+                    tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
+                    tap_skill_id: Some(2).into(),
+                    tap_interface_revision: Some(InterfaceRevision(3)).into(),
+                    tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
+                    tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
+                    tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
+                    tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
+                    tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
+                    tap_scheduled_task_id: None.into(),
+                    tap_scheduled_occurrence_index: None.into(),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(3, digest, &request_event, &objects).unwrap();
+        assert!(parsed.distribution.is_some());
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::RequestScheduledWalk(RequestScheduledWalkEvent {
+                request,
+                ..
+            }) if request.next_vertex == RuntimeVertex::plain("transfer")
+        ));
+    }
+
+    #[test]
+    fn test_parse_from_grpc_foreign_emitter_rejects_unlisted_nexus_event() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_nexus_event(
+            &objects,
+            sui::types::Address::generate(&mut rng),
+            objects.workflow_pkg_id,
+            "dag",
+            "DAGCreatedEvent",
+            DAGCreatedEvent {
+                dag: sui::types::Address::from_static("0xda6"),
+            },
+        );
+
+        let result = NexusEvent::from_sui_grpc_event(0, digest, &event, &objects);
+        assert!(
+            result.is_err(),
+            "foreign package emitters remain rejected for non-public TAP events"
+        );
+    }
+
+    #[test]
     fn test_parse_from_grpc_non_event_wrapper_type() {
         let mut rng = rand::thread_rng();
         let index = 0u64;
@@ -945,38 +1354,350 @@ mod tests {
         }
     }
 
-    /// Return a sample list of various events in BCS directly from the chain.
-    fn sample_events() -> Vec<(&'static str, Vec<u8>)> {
+    #[test]
+    fn standard_tap_samples_cover_current_move_option_layouts() {
+        let samples = current_standard_tap_samples();
+        let names = samples.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+
+        assert!(names.contains(&"RequestWalkExecutionEvent"));
+        assert!(names.contains(&"RequestScheduledWalkEvent"));
+        assert!(names.contains(&"AgentSkillExecutionRequestedEvent"));
+
+        for (name, bytes) in samples {
+            let (event, distribution) =
+                parse_bcs(name, &bytes).unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            assert!(
+                distribution.is_none(),
+                "{name} sample should use the direct event wrapper"
+            );
+
+            match event {
+                NexusEventKind::RequestWalkExecution(event) => {
+                    let context = event
+                        .standard_tap_context()
+                        .expect("standard TAP context should validate")
+                        .expect("standard TAP context should be present");
+                    assert_eq!(context.agent_id, sui::types::Address::from_static("0x1"));
+                    assert_eq!(context.interface_revision, InterfaceRevision(3));
+                    assert_eq!(context.authorization_plan_commitment, Some(vec![1, 2, 3]));
+                }
+                NexusEventKind::RequestScheduledWalk(event) => {
+                    let context = event
+                        .request
+                        .standard_tap_context()
+                        .expect("scheduled standard TAP context should validate")
+                        .expect("scheduled standard TAP context should be present");
+                    assert_eq!(context.agent_id, sui::types::Address::from_static("0xa"));
+                    assert_eq!(context.interface_revision, InterfaceRevision(1));
+                    assert_eq!(
+                        context.authorization_plan_commitment,
+                        Some(vec![1, 2, 3, 4])
+                    );
+                    assert_eq!(
+                        context.scheduled_task_id,
+                        Some(sui::types::Address::from_static("0x12"))
+                    );
+                    assert_eq!(context.scheduled_occurrence_index, Some(7));
+                }
+                NexusEventKind::AgentSkillExecutionRequested(event) => {
+                    assert_eq!(event.payment_id, sui::types::Address::from_static("0x23"));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn current_standard_tap_samples() -> Vec<(&'static str, Vec<u8>)> {
         vec![
             (
-                "RequestScheduledWalkEvent",
-                vec![
-                    172, 45, 232, 250, 15, 55, 177, 42, 63, 139, 114, 186, 218, 6, 79, 233, 155,
-                    245, 118, 65, 38, 9, 194, 133, 80, 214, 234, 139, 42, 249, 215, 254, 137, 85,
-                    88, 251, 70, 35, 154, 244, 157, 83, 95, 160, 229, 41, 235, 87, 49, 34, 108,
-                    227, 130, 217, 34, 60, 63, 1, 217, 168, 78, 221, 225, 177, 225, 55, 128, 133,
-                    77, 55, 145, 161, 138, 59, 157, 111, 32, 91, 56, 106, 138, 120, 219, 83, 24,
-                    59, 31, 20, 245, 161, 67, 82, 113, 22, 105, 245, 0, 0, 0, 0, 0, 0, 0, 0, 1, 5,
-                    100, 117, 109, 109, 121, 15, 4, 47, 22, 180, 230, 20, 20, 148, 255, 73, 141,
-                    105, 187, 102, 235, 190, 39, 150, 230, 194, 116, 197, 79, 149, 160, 81, 118,
-                    119, 162, 50, 67, 98, 56, 48, 51, 48, 51, 101, 51, 57, 48, 100, 51, 99, 50, 51,
-                    99, 100, 51, 98, 100, 50, 101, 102, 97, 56, 52, 51, 100, 55, 53, 55, 50, 54,
-                    48, 57, 101, 51, 53, 51, 53, 48, 57, 51, 100, 50, 56, 101, 100, 55, 50, 50, 50,
-                    52, 48, 55, 55, 52, 49, 55, 56, 101, 50, 53, 101, 54, 58, 58, 100, 101, 102,
-                    97, 117, 108, 116, 95, 116, 97, 112, 58, 58, 68, 101, 102, 97, 117, 108, 116,
-                    84, 65, 80, 86, 49, 87, 105, 116, 110, 101, 115, 115, 194, 253, 110, 49, 44,
-                    232, 173, 17, 187, 224, 166, 199, 143, 30, 119, 151, 248, 210, 201, 14, 34, 15,
-                    69, 8, 49, 214, 26, 231, 17, 124, 250, 113, 0, 0, 0, 0, 0, 0, 0, 0, 212, 39,
-                    34, 195, 156, 1, 0, 0, 212, 39, 34, 195, 156, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    48, 117, 0, 0, 0, 0, 0, 0, 212, 39, 34, 195, 156, 1, 0, 0, 235, 182, 85, 86,
-                    227, 215, 174, 219, 221, 108, 207, 129, 228, 115, 113, 83, 118, 141, 234, 189,
-                    80, 32, 47, 194, 209, 37, 52, 154, 4, 96, 207, 221, 2, 103, 9, 248, 223, 25,
-                    42, 12, 58, 238, 126, 174, 234, 146, 57, 167, 24, 134, 63, 229, 18, 116, 169,
-                    175, 18, 228, 106, 208, 225, 232, 155, 93, 123, 249, 197, 12, 241, 105, 213,
-                    209, 99, 241, 22, 91, 54, 129, 43, 201, 235, 31, 195, 43, 0, 38, 92, 210, 42,
-                    35, 69, 206, 211, 21, 62, 247, 125,
-                ],
+                "AgentCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: AgentCreatedEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        vault_id: sui::types::Address::from_static("0x1a"),
+                        owner: sui::types::Address::from_static("0x18"),
+                        operator: sui::types::Address::from_static("0x19"),
+                    },
+                })
+                .expect("AgentCreatedEvent sample serializes"),
             ),
+            (
+                "SkillRegisteredEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: SkillRegisteredEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        dag_id: sui::types::Address::from_static("0x1a"),
+                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x1a")),
+                        tap_package_id: sui::types::Address::from_static("0x1b"),
+                        workflow_commitment: vec![1],
+                        requirements_commitment: vec![2],
+                        capability_schema_commitment: vec![5],
+                    },
+                })
+                .expect("SkillRegisteredEvent sample serializes"),
+            ),
+            (
+                "DefaultDagExecutorUpdatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: DefaultDagExecutorUpdatedEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                    },
+                })
+                .expect("DefaultDagExecutorUpdatedEvent sample serializes"),
+            ),
+            (
+                "EndpointRevisionAnnouncedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: EndpointRevisionAnnouncedEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        package_id: sui::types::Address::from_static("0x1c"),
+                        endpoint_object_id: sui::types::Address::from_static("0x1d"),
+                        endpoint_object_version: 4,
+                        endpoint_object_digest: vec![7; 32],
+                        shared_objects: vec![TapSharedObjectRef::mutable(
+                            sui::types::Address::from_static("0x1e"),
+                        )],
+                        requirements: TapSkillRequirements::default(),
+                        config_digest: vec![8, 8],
+                        active_for_new_executions: true,
+                    },
+                })
+                .expect("EndpointRevisionAnnouncedEvent sample serializes"),
+            ),
+            (
+                "EndpointRevisionActivatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: EndpointRevisionActivatedEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        active_for_new_executions: true,
+                    },
+                })
+                .expect("EndpointRevisionActivatedEvent sample serializes"),
+            ),
+            (
+                "WorksheetResolvedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: WorksheetResolvedEvent {
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        endpoint_object_id: sui::types::Address::from_static("0x1f"),
+                        execution_id: sui::types::Address::from_static("0x20"),
+                        worksheet_id: sui::types::Address::from_static("0x21"),
+                    },
+                })
+                .expect("WorksheetResolvedEvent sample serializes"),
+            ),
+            (
+                "AgentSkillExecutionRequestedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: AgentSkillExecutionRequestedEventBcs {
+                        execution_id: sui::types::Address::from_static("0x22"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        payment_id: sui::types::Address::from_static("0x23"),
+                    },
+                })
+                .expect("AgentSkillExecutionRequestedEvent sample serializes"),
+            ),
+            (
+                "AgentSkillPaymentCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: AgentSkillPaymentCreatedEvent {
+                        payment_id: sui::types::Address::from_static("0x36"),
+                        execution_id: sui::types::Address::from_static("0x37"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        payer: sui::types::Address::from_static("0x38"),
+                        source_kind: TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0x38"),
+                        max_budget: 10_000,
+                        locked_budget: 10_000,
+                    },
+                })
+                .expect("AgentSkillPaymentCreatedEvent sample serializes"),
+            ),
+            (
+                "GasPaymentConsumedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: GasPaymentConsumedEvent {
+                        payment_id: sui::types::Address::from_static("0x39"),
+                        execution_id: sui::types::Address::from_static("0x3a"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        amount: 500,
+                        consumed_total: 900,
+                    },
+                })
+                .expect("GasPaymentConsumedEvent sample serializes"),
+            ),
+            (
+                "ExecutionAccomplishedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ExecutionAccomplishedEvent {
+                        execution_id: sui::types::Address::from_static("0x3b"),
+                        payment_id: sui::types::Address::from_static("0x3c"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                    },
+                })
+                .expect("ExecutionAccomplishedEvent sample serializes"),
+            ),
+            (
+                "ExecutionRefundedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ExecutionRefundedEvent {
+                        execution_id: sui::types::Address::from_static("0x3d"),
+                        payment_id: sui::types::Address::from_static("0x3e"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        refund_reason: vec![7, 8],
+                    },
+                })
+                .expect("ExecutionRefundedEvent sample serializes"),
+            ),
+            (
+                "ScheduledSkillExecutionCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledSkillExecutionCreatedEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x3f"),
+                        scheduler_task_id: sui::types::Address::from_static("0x44"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        long_term_gas_coin_id: sui::types::Address::from_static("0x40"),
+                        schedule_entries_commitment: vec![1, 4, 9],
+                        first_after_ms: 1000,
+                        max_occurrences: 5,
+                        source_kind: TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0x40"),
+                        prepaid_amount: 50,
+                        occurrence_budget: 10,
+                        refund_mode: 0,
+                    },
+                })
+                .expect("ScheduledSkillExecutionCreatedEvent sample serializes"),
+            ),
+            (
+                "ScheduledSkillExecutionTriggeredEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledSkillExecutionTriggeredEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x41"),
+                        execution_id: sui::types::Address::from_static("0x42"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_revision: InterfaceRevision(9),
+                        occurrence_index: 2,
+                    },
+                })
+                .expect("ScheduledSkillExecutionTriggeredEvent sample serializes"),
+            ),
+            (
+                "ScheduledSkillExecutionCompletedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledSkillExecutionCompletedEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x43"),
+                        execution_id: sui::types::Address::from_static("0x44"),
+                        continue_recurring: true,
+                        next_after_ms: 2000,
+                    },
+                })
+                .expect("ScheduledSkillExecutionCompletedEvent sample serializes"),
+            ),
+            (
+                "RequestWalkExecutionEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: RequestWalkExecutionEventBcs {
+                        dag: sui::types::Address::from_static("0xa"),
+                        execution: sui::types::Address::from_static("0xb"),
+                        invoker: sui::types::Address::from_static("0xc"),
+                        walk_index: 1,
+                        next_vertex: RuntimeVertex::plain("vertex"),
+                        evaluations: sui::types::Address::from_static("0xd"),
+                        worksheet_from_type: TypeName::from(
+                            "d000000000000000000000000000000000000000000000000000000000000000::dag::LeaderRegistryWorkflowWitness",
+                        ),
+                        worksheet_from_uid: sui::types::Address::from_static("0xe"),
+                        tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
+                        tap_skill_id: Some(2).into(),
+                        tap_interface_revision: Some(InterfaceRevision(3)).into(),
+                        tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
+                        tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
+                        tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
+                        tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
+                        tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
+                        tap_scheduled_task_id: None.into(),
+                        tap_scheduled_occurrence_index: None.into(),
+                    },
+                })
+                .expect("RequestWalkExecutionEvent sample serializes"),
+            ),
+            (
+                "RequestScheduledWalkEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: RequestScheduledWalkEventBcs {
+                        request: RequestWalkExecutionEventBcs {
+                            dag: sui::types::Address::from_static("0x1"),
+                            execution: sui::types::Address::from_static("0x2"),
+                            invoker: sui::types::Address::from_static("0x3"),
+                            walk_index: 0,
+                            next_vertex: RuntimeVertex::plain("dummy"),
+                            evaluations: sui::types::Address::from_static("0x4"),
+                            worksheet_from_type: TypeName::from("legacy::compat::Witness"),
+                            worksheet_from_uid: sui::types::Address::from_static("0x5"),
+                            tap_agent_id: Some(sui::types::Address::from_static("0xa"))
+                                .into(),
+                            tap_skill_id: Some(11)
+                                .into(),
+                            tap_interface_revision: Some(InterfaceRevision(1)).into(),
+                            tap_endpoint_object_id: Some(sui::types::Address::from_static("0xc"))
+                                .into(),
+                            tap_payment_id: Some(sui::types::Address::from_static("0xd")).into(),
+                            tap_selected_dag_id: Some(sui::types::Address::from_static("0xe"))
+                                .into(),
+                            tap_authorization_plan_commitment: Some(vec![1, 2, 3, 4]).into(),
+                            tap_authorization_plan: Vec::new(),
+                            tap_scheduled_task_id: Some(sui::types::Address::from_static("0x12"))
+                                .into(),
+                            tap_scheduled_occurrence_index: Some(7).into(),
+                        },
+                        priority: 1,
+                        request_ms: 2,
+                        start_ms: 3,
+                        deadline_ms: 4,
+                    },
+                })
+                .expect("RequestScheduledWalkEvent sample serializes"),
+            ),
+            (
+                "PaymentInsufficientGasEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: PaymentInsufficientGasEvent {
+                        execution: sui::types::Address::from_static("0x70"),
+                        vertex: RuntimeVertex::plain("payable"),
+                        tool_fqn: crate::fqn!("xyz.taluslabs.payable@1"),
+                        required_tool_fee: 12,
+                        available_gas: 10,
+                    },
+                })
+                .expect("PaymentInsufficientGasEvent sample serializes"),
+            ),
+        ]
+    }
+
+    /// Return deterministic BCS samples emitted by the matching Move event types.
+    fn sample_events() -> Vec<(&'static str, Vec<u8>)> {
+        let mut samples = vec![
             (
                 "DAGCreatedEvent",
                 vec![
@@ -985,7 +1706,7 @@ mod tests {
                 ],
             ),
             (
-                "GasLockUpdateEvent",
+                "PaymentLockUpdateEvent",
                 vec![
                     137, 85, 88, 251, 70, 35, 154, 244, 157, 83, 95, 160, 229, 41, 235, 87, 49, 34,
                     108, 227, 130, 217, 34, 60, 63, 1, 217, 168, 78, 221, 225, 177, 1, 5, 100, 117,
@@ -1112,7 +1833,328 @@ mod tests {
                     44, 100, 109, 189, 198, 0, 29, 25,
                 ],
             ),
-        ]
+            (
+                "AgentCreatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 4, 1, 2, 3, 4, 1,
+                ],
+            ),
+            (
+                "SkillRegisteredEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 27, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5,
+                ],
+            ),
+            (
+                "EndpointRevisionAnnouncedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 29, 4, 0, 0, 0, 0, 0, 0, 0, 32, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+                    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 1, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 30, 5, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 1, 3, 0, 16, 39, 0, 0, 0, 0, 0,
+                    0, 2, 1, 2, 2, 3, 4, 111, 110, 99, 101, 10, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,
+                    0, 0, 0, 1, 1, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 4, 116, 111, 111, 108, 3, 114, 117,
+                    110, 1, 5, 1, 2, 8, 8, 1,
+                ],
+            ),
+            (
+                "EndpointRevisionActivatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 1,
+                ],
+            ),
+            (
+                "WorksheetResolvedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 31,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33,
+                ],
+            ),
+            (
+                "AgentSkillExecutionRequestedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 35,
+                ],
+            ),
+            (
+                "AgentSkillPaymentCreatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 16, 39, 0, 0, 0, 0, 0, 0, 2,
+                ],
+            ),
+            (
+                "GasPaymentConsumedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0,
+                    0, 0, 0, 0, 0, 0, 244, 1, 0, 0, 0, 0, 0, 0, 132, 3, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "ExecutionAccomplishedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0,
+                    0, 0, 0, 0, 0, 0, 3, 4, 5, 6,
+                ],
+            ),
+            (
+                "ExecutionRefundedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 61, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0,
+                    0, 0, 0, 0, 0, 0, 2, 7, 8,
+                ],
+            ),
+            (
+                "ScheduledSkillExecutionCreatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 3, 1,
+                    4, 9, 232, 3, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "ScheduledSkillExecutionTriggeredEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0,
+                    0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "ScheduledSkillExecutionCompletedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 67, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 68, 1, 208, 7, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "RequestWalkExecutionEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 1, 0, 0, 0, 0, 0, 0, 0,
+                    1, 6, 118, 101, 114, 116, 101, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 100, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 58,
+                    58, 100, 97, 103, 58, 58, 76, 101, 97, 100, 101, 114, 82, 101, 103, 105, 115,
+                    116, 114, 121, 87, 111, 114, 107, 102, 108, 111, 119, 87, 105, 116, 110, 101,
+                    115, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 14, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 3, 0,
+                    0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 1, 3, 1, 2, 3,
+                ],
+            ),
+            (
+                "OccurrenceScheduledEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 33, 0, 98, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 58, 58, 115, 99, 104, 101, 100,
+                    117, 108, 101, 114, 58, 58, 81, 117, 101, 117, 101, 71, 101, 110, 101, 114, 97,
+                    116, 111, 114, 87, 105, 116, 110, 101, 115, 115,
+                ],
+            ),
+            (
+                "ToolUnregisteredEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 70, 27, 120, 121, 122, 46, 116, 97, 108, 117, 115, 108, 97, 98,
+                    115, 46, 115, 97, 109, 112, 108, 101, 95, 116, 111, 111, 108, 64, 49,
+                ],
+            ),
+            (
+                "WalkFailedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 73, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 74, 4, 0, 0, 0, 0, 0, 0, 0, 0, 8, 102, 97,
+                    105, 108, 97, 98, 108, 101, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 14,
+                    115, 97, 109, 112, 108, 101, 32, 102, 97, 105, 108, 117, 114, 101,
+                ],
+            ),
+            (
+                "TerminalErrEvalRecordedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 75, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 76, 5, 0, 0, 0, 0, 0, 0, 0, 1, 8, 116, 101,
+                    114, 109, 105, 110, 97, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 77, 1, 0, 22, 111, 117, 116, 112,
+                    117, 116, 32, 115, 99, 104, 101, 109, 97, 32, 109, 105, 115, 109, 97, 116, 99,
+                    104, 3, 8, 7, 6, 0,
+                ],
+            ),
+            (
+                "VerificationVerdictEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 79, 6, 0, 0, 0, 0, 0, 0, 0, 1, 8, 118, 101,
+                    114, 105, 102, 105, 101, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 0, 0, 1, 14, 115, 105, 103,
+                    110, 101, 100, 95, 104, 116, 116, 112, 95, 118, 49, 0, 0, 1, 11, 0, 0, 0, 0, 0,
+                    0, 0, 0, 4, 1, 2, 3, 4, 1, 2, 5, 6, 1, 2, 7, 8, 0,
+                ],
+            ),
+            (
+                "WalkAbortedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 82, 7, 0, 0, 0, 0, 0, 0, 0, 1, 5, 97, 98, 111,
+                    114, 116,
+                ],
+            ),
+            (
+                "WalkCancelledEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 84, 8, 0, 0, 0, 0, 0, 0, 0, 1, 6, 99, 97, 110,
+                    99, 101, 108,
+                ],
+            ),
+            (
+                "MissedOccurrenceEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 89, 232, 3, 0, 0, 0, 0, 0, 0, 1, 76, 4, 0, 0, 0, 0, 0, 0, 176,
+                    4, 0, 0, 0, 0, 0, 0, 77, 0, 0, 0, 0, 0, 0, 0, 0, 98, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+                    48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 58, 58,
+                    115, 99, 104, 101, 100, 117, 108, 101, 114, 58, 58, 81, 117, 101, 117, 101, 71,
+                    101, 110, 101, 114, 97, 116, 111, 114, 87, 105, 116, 110, 101, 115, 115,
+                ],
+            ),
+            (
+                "TaskCreatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 91,
+                ],
+            ),
+            (
+                "TaskPausedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 92,
+                ],
+            ),
+            (
+                "TaskResumedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 93,
+                ],
+            ),
+            (
+                "TaskCanceledEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 94,
+                ],
+            ),
+            (
+                "PeriodicScheduleConfiguredEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 96, 1, 136, 19, 0, 0, 0, 0, 0, 0, 1, 244, 1, 0, 0, 0, 0, 0, 0,
+                    1, 12, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0, 0, 0, 1, 99, 0, 0, 0, 0, 0, 0,
+                    0, 1, 16, 39, 0, 0, 0, 0, 0, 0,
+                ],
+            ),
+            (
+                "ToolRegistryCreatedEvent",
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 105,
+                ],
+            ),
+        ];
+        samples.retain(|(name, _)| {
+            !matches!(
+                *name,
+                "AgentCreatedEvent"
+                    | "SkillRegisteredEvent"
+                    | "DefaultDagExecutorUpdatedEvent"
+                    | "EndpointRevisionAnnouncedEvent"
+                    | "EndpointRevisionActivatedEvent"
+                    | "WorksheetResolvedEvent"
+                    | "AgentSkillExecutionRequestedEvent"
+                    | "AgentSkillPaymentCreatedEvent"
+                    | "GasPaymentConsumedEvent"
+                    | "ExecutionAccomplishedEvent"
+                    | "ExecutionRefundedEvent"
+                    | "ScheduledSkillExecutionCreatedEvent"
+                    | "ScheduledSkillExecutionTriggeredEvent"
+                    | "ScheduledSkillExecutionCompletedEvent"
+                    | "RequestWalkExecutionEvent"
+                    | "RequestScheduledWalkEvent"
+            )
+        });
+        samples.extend(current_standard_tap_samples());
+        samples
     }
 
     #[test]

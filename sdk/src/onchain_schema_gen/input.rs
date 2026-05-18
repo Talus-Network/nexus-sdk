@@ -1,7 +1,7 @@
 //! Input schema generation for Move onchain tools.
 
 use {
-    super::types::{convert_move_signature_to_schema, is_tx_context_param},
+    super::types::{convert_move_signature_to_schema, is_hidden_internal_tool_param},
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
@@ -13,7 +13,8 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
+/// skips internal parameters such as `ProofOfUID`, `VertexAuthorizationCheckCap`,
+/// and `TxContext`.
 pub async fn generate_input_schema(
     client: Arc<Mutex<sui::grpc::Client>>,
     package_address: sui::types::Address,
@@ -64,10 +65,9 @@ pub async fn generate_input_schema(
             anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
         })?;
 
-        let is_tx_context = is_tx_context_param(body);
-
-        // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
-        if i == 0 || is_tx_context {
+        // Skip internal parameters. The first-parameter fallback preserves
+        // legacy packages that used a local placeholder ProofOfUID type.
+        if i == 0 || is_hidden_internal_tool_param(body) {
             continue;
         }
 
@@ -183,9 +183,9 @@ mod tests {
             serde_json::from_str(&schema_str).expect("Failed to parse schema JSON");
 
         // Verify schema structure.
-        // The execute function has signature:
+        // The execute function has hidden internal parameters:
         // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
-        // After skipping ProofOfUID (first) and TxContext (last), we should have:
+        // After skipping hidden internal parameters, we should have:
         // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
         // - Parameter 1: increase_with (u64).
 
@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(param1["description"], "64-bit unsigned integer");
         assert!(param1.get("mutable").is_none());
 
-        // Verify only 2 parameters (ProofOfUID and TxContext were skipped).
+        // Verify only 2 user-facing parameters remain after internal params are skipped.
         assert_eq!(schema.as_object().unwrap().len(), 2);
     }
 }

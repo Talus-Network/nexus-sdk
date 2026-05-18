@@ -1,5 +1,5 @@
 use crate::{
-    idents::{pure_arg, sui_framework::Address, ModuleAndNameIdent},
+    idents::{pure_arg, ModuleAndNameIdent},
     sui,
     types::{
         EdgeKind,
@@ -11,52 +11,6 @@ use crate::{
     },
     ToolFqn,
 };
-
-// == `nexus_workflow::default_tap` ==
-
-pub struct DefaultTap;
-
-const DEFAULT_TAP_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("default_tap");
-
-impl DefaultTap {
-    /// The witness type needed to register DAG execution.
-    ///
-    /// `nexus_workflow::default_tap::BeginDagExecutionWitness`
-    pub const BEGIN_DAG_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("BeginDagExecutionWitness"),
-    };
-    /// The DefaultTAP struct type.
-    ///
-    /// `nexus_workflow::default_tap::DefaultTAP`
-    pub const DEFAULT_TAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("DefaultTAP"),
-    };
-    /// This function is called when a DAG is to be executed using the default
-    /// TAP implementation.
-    ///
-    /// `nexus_workflow::default_tap::prepare_dag_execution`
-    pub const PREPARE_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("prepare_dag_execution"),
-    };
-    /// Scheduler entry point to invoke DAG execution via the default TAP.
-    ///
-    /// `nexus_workflow::default_tap::prepare_dag_execution_from_scheduler`
-    pub const PREPARE_DAG_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("prepare_dag_execution_from_scheduler"),
-    };
-    /// Register DAG execution configuration on the execution policy.
-    ///
-    /// `nexus_workflow::default_tap::register_begin_execution`
-    pub const REGISTER_BEGIN_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DEFAULT_TAP_MODULE,
-        name: sui::types::Identifier::from_static("register_begin_execution"),
-    };
-}
 
 // == `nexus_workflow::scheduler` ==
 
@@ -78,6 +32,13 @@ impl Scheduler {
     pub const ADD_OCCURRENCE_RELATIVE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("add_occurrence_relative_for_task"),
+    };
+    /// Attach a TAP scheduled task link to a scheduler task.
+    ///
+    /// `nexus_workflow::scheduler::attach_tap_scheduled_task_link`
+    pub const ATTACH_TAP_SCHEDULED_TASK_LINK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("attach_tap_scheduled_task_link"),
     };
     /// Cancel scheduling for a task.
     ///
@@ -262,6 +223,56 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("abort_expired_execution"),
     };
+    /// Accomplish an invoker-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::accomplish_tap_execution_payment`
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("accomplish_tap_execution_payment"),
+    };
+    /// Accomplish an agent-vault-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault`
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "accomplish_tap_execution_payment_from_agent_vault",
+            ),
+        };
+    /// The AgentExecutionConfig struct type.
+    ///
+    /// `nexus_workflow::dag::AgentExecutionConfig`
+    pub const AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("AgentExecutionConfig"),
+    };
+    /// Begin DAG execution through an explicit agent path using a prepared config.
+    ///
+    /// `nexus_workflow::dag::begin_agent_execution_with_config`
+    pub const BEGIN_AGENT_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("begin_agent_execution_with_config"),
+    };
+    /// `nexus_workflow::dag::BEGIN_DAG_EXECUTION_WITH_CONFIG`
+    pub const BEGIN_DAG_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("begin_dag_execution_with_config"),
+    };
+    /// Witness type used by scheduler tasks that execute through the default agent target.
+    ///
+    /// `nexus_workflow::dag::BeginDefaultAgentExecutionWitness`
+    pub const BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("BeginDefaultAgentExecutionWitness"),
+    };
+    /// Create a workflow-owned vertex authorization grant under a DAGExecution.
+    ///
+    /// `nexus_workflow::dag::create_vertex_authorization_grant`
+    pub const CREATE_VERTEX_AUTHORIZATION_GRANT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("create_vertex_authorization_grant"),
+    };
     /// The DAG struct. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::DAG`
@@ -339,7 +350,7 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("entry_group_from_string"),
     };
-    /// The `FailureEvidenceKind` enum type.
+    /// The FailureEvidenceKind enum. Mostly used for creating generic types.
     ///
     /// `nexus_workflow::dag::FailureEvidenceKind`
     pub const FAILURE_EVIDENCE_KIND: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -374,6 +385,13 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
+    /// Stamp a TAP worksheet as the leader before tool execution.
+    ///
+    /// `nexus_workflow::dag::leader_stamp_tap_worksheet`
+    pub const LEADER_STAMP_TAP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_tap_worksheet"),
+    };
     /// Stamp a worksheet as the leader before tool execution.
     ///
     /// `nexus_workflow::dag::leader_stamp_worksheet`
@@ -388,6 +406,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("leader_stamp_worksheet_for_dry_run"),
     };
+    /// Mint a workflow vertex authorization check cap for the current on-chain walk.
+    ///
+    /// `nexus_workflow::dag::mint_vertex_authorization_check_cap_for_onchain_walk`
+    pub const MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "mint_vertex_authorization_check_cap_for_onchain_walk",
+            ),
+        };
     /// Create a new DAG object.
     ///
     /// `nexus_workflow::dag::new`
@@ -395,12 +423,26 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new"),
     };
+    /// Create a new explicit agent execution config value.
+    ///
+    /// `nexus_workflow::dag::new_agent_execution_config`
+    pub const NEW_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("new_agent_execution_config"),
+    };
     /// Create a new DAG execution config value.
     ///
     /// `nexus_workflow::dag::new_dag_execution_config`
     pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_dag_execution_config"),
+    };
+    /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
+    ///
+    /// `nexus_workflow::dag::on_chain_tool_result_submission_v1_bytes`
+    pub const ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("on_chain_tool_result_submission_v1_bytes"),
     };
     /// The OutputPort struct. Mostly used for creating generic types.
     ///
@@ -444,12 +486,64 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
     };
+    /// Scheduler entry point to invoke the default agent execution route
+    /// using a durable TAP scheduled payment reserve.
+    ///
+    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduled_payment`
+    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "prepare_default_agent_execution_from_scheduled_payment",
+            ),
+        };
+    /// Scheduler entry point to invoke the default agent execution route.
+    ///
+    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduler`
+    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "prepare_default_agent_execution_from_scheduler",
+            ),
+        };
     /// Stamp the worksheet with the execution ID before onchain tool execution.
     ///
     /// `nexus_workflow::dag::pre_stamp_execution`
     pub const PRE_STAMP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("pre_stamp_execution"),
+    };
+    /// Stamp TAP execution context before tool execution.
+    ///
+    /// `nexus_workflow::dag::pre_stamp_tap_execution`
+    pub const PRE_STAMP_TAP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("pre_stamp_tap_execution"),
+    };
+    /// Refund an invoker-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::refund_tap_execution_payment`
+    pub const REFUND_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("refund_tap_execution_payment"),
+    };
+    /// Refund an agent-vault-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::refund_tap_execution_payment_from_agent_vault`
+    pub const REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "refund_tap_execution_payment_from_agent_vault",
+            ),
+        };
+    /// Register scheduler execution config for default agent execution.
+    ///
+    /// `nexus_workflow::dag::register_begin_default_agent_execution`
+    pub const REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("register_begin_default_agent_execution"),
     };
     /// Function to call to continue to the next vertex in the given walk.
     ///
@@ -464,6 +558,13 @@ impl Dag {
     pub const REQUEST_WALK_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("request_walk_execution"),
+    };
+    /// Returns a new hot potato object RequestWalkExecution for one active walk.
+    ///
+    /// `nexus_workflow::dag::request_walk_execution_for_walk`
+    pub const REQUEST_WALK_EXECUTION_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("request_walk_execution_for_walk"),
     };
     /// Create a `RuntimeVertex::Plain` from a string.
     ///
@@ -503,6 +604,20 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
     };
+    /// The TAP authorization grant reference struct type.
+    ///
+    /// `nexus_workflow::dag::TapAuthorizationGrantRef`
+    pub const TAP_AUTHORIZATION_GRANT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("TapAuthorizationGrantRef"),
+    };
+    /// Create a TAP authorization grant reference value.
+    ///
+    /// `nexus_workflow::dag::tap_authorization_grant_ref`
+    pub const TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("tap_authorization_grant_ref"),
+    };
     /// Convert TaggedOutput to DAG types.
     ///
     /// `nexus_workflow::dag::tagged_output_to_dag_types`
@@ -517,19 +632,12 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("verifier_config"),
     };
-    /// Create the `VerifierMode::LeaderNautilusEnclave` variant.
+    /// Create the authenticated communication verifier mode.
     ///
-    /// `nexus_workflow::dag::verifier_mode_leader_nautilus_enclave`
-    pub const VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::dag::verifier_mode_authenticated_communication`
+    pub const VERIFIER_MODE_AUTHENTICATED_COMMUNICATION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("verifier_mode_leader_nautilus_enclave"),
-    };
-    /// Create the `VerifierMode::LeaderRegisteredKey` variant.
-    ///
-    /// `nexus_workflow::dag::verifier_mode_leader_registered_key`
-    pub const VERIFIER_MODE_LEADER_REGISTERED_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("verifier_mode_leader_registered_key"),
+        name: sui::types::Identifier::from_static("verifier_mode_authenticated_communication"),
     };
     /// Create the `VerifierMode::None` variant.
     ///
@@ -862,8 +970,9 @@ impl Dag {
     ) -> sui::types::Argument {
         let ident = match mode {
             VerifierMode::None => Self::VERIFIER_MODE_NONE,
-            VerifierMode::LeaderRegisteredKey => Self::VERIFIER_MODE_LEADER_REGISTERED_KEY,
-            VerifierMode::LeaderNautilusEnclave => Self::VERIFIER_MODE_LEADER_NAUTILUS_ENCLAVE,
+            VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
+                Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION
+            }
             VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
 
@@ -987,6 +1096,16 @@ impl ToolRegistry {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_on_chain_tool"),
     };
+    /// Register a cap-gated on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_workflow::tool_registry::register_on_chain_tool_with_workflow_authorization_cap`
+    pub const REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: TOOL_REGISTRY_MODULE,
+            name: sui::types::Identifier::from_static(
+                "register_on_chain_tool_with_workflow_authorization_cap",
+            ),
+        };
     /// Tool struct type. Used for fetching tool info.
     ///
     /// `nexus_workflow::tool_registry::Tool`
@@ -1048,48 +1167,6 @@ pub struct Gas;
 const GAS_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("gas");
 
 impl Gas {
-    /// Add Balance<SUI> to the tx sender's gas budget.
-    ///
-    /// `nexus_workflow::gas::add_gas_budget`
-    pub const ADD_GAS_BUDGET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("add_gas_budget"),
-    };
-    /// Assert that an aborted execution was fully refunded.
-    ///
-    /// `nexus_workflow::gas::assert_aborted_execution_fully_refunded`
-    pub const ASSERT_ABORTED_EXECUTION_FULLY_REFUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("assert_aborted_execution_fully_refunded"),
-    };
-    /// Claim leader gas for this evaluation.
-    ///
-    /// `nexus_workflow::gas::claim_leader_gas`
-    pub const CLAIM_LEADER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("claim_leader_gas"),
-    };
-    /// Claim leader gas specifically for pre-key handshakes.
-    ///
-    /// `nexus_workflow::gas::claim_leader_gas_for_pre_key`
-    pub const CLAIM_LEADER_GAS_FOR_PRE_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("claim_leader_gas_for_pre_key"),
-    };
-    /// Claim leader gas and transfer Coin to the tx sender.
-    ///
-    /// `nexus_workflow::gas::claim_leader_gas_for_self`
-    pub const CLAIM_LEADER_GAS_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("claim_leader_gas_for_self"),
-    };
-    /// Derive an `InvokerGas` object.
-    ///
-    /// `nexus_workflow::gas::create_invoker_gas`
-    pub const CREATE_INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("create_invoker_gas"),
-    };
     /// Derive a `ToolGas` object while setting the initial invocation price.
     ///
     /// `nexus_workflow::gas::create_tool_gas`
@@ -1111,19 +1188,12 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("deescalate"),
     };
-    /// ExecutionGas struct type.
+    /// Finalize payment settlement by transferring funds to a tool vault.
     ///
-    /// `nexus_workflow::gas::ExecutionGas`
-    pub const EXECUTION_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::gas::finalize_payment_state_for_vertex`
+    pub const FINALIZE_PAYMENT_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("ExecutionGas"),
-    };
-    /// Finalize gas settlement by transferring funds to a tool vault.
-    ///
-    /// `nexus_workflow::gas::finalize_gas_state_for_vertex`
-    pub const FINALIZE_GAS_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("finalize_gas_state_for_vertex"),
+        name: sui::types::Identifier::from_static("finalize_payment_state_for_vertex"),
     };
     /// GasService type for lookups.
     ///
@@ -1132,19 +1202,12 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("GasService"),
     };
-    /// InvokerGas struct type.
+    /// Lock execution payment for a tool in the current execution.
     ///
-    /// `nexus_workflow::gas::InvokerGas`
-    pub const INVOKER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::gas::lock_payment_state_for_tool`
+    pub const LOCK_PAYMENT_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("InvokerGas"),
-    };
-    /// Lock gas for a tool in the current execution.
-    ///
-    /// `nexus_workflow::gas::lock_gas_state_for_tool`
-    pub const LOCK_GAS_STATE_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("lock_gas_state_for_tool"),
+        name: sui::types::Identifier::from_static("lock_payment_state_for_tool"),
     };
     /// OverGas owner cap generic.
     ///
@@ -1153,12 +1216,19 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("OverGas"),
     };
-    /// Refund gas for an aborted execution in a tool's context.
+    /// Refund payment for a vertex in a tool's context.
     ///
-    /// `nexus_workflow::gas::refund_aborted_execution_gas_for_tool`
-    pub const REFUND_ABORTED_EXECUTION_GAS_FOR_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_workflow::gas::refund_payment_state_for_vertex`
+    pub const REFUND_PAYMENT_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("refund_aborted_execution_gas_for_tool"),
+        name: sui::types::Identifier::from_static("refund_payment_state_for_vertex"),
+    };
+    /// Create an agent scope.
+    ///
+    /// `nexus_workflow::gas::scope_agent`
+    pub const SCOPE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("scope_agent"),
     };
     /// Create an Execution scope.
     ///
@@ -1181,6 +1251,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("scope_worksheet_type"),
     };
+    /// Settle payment for a vertex using the DAG pending-settlement directive.
+    ///
+    /// `nexus_workflow::gas::settle_payment_state_for_vertex`
+    pub const SETTLE_PAYMENT_STATE_FOR_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("settle_payment_state_for_vertex"),
+    };
     /// Set a tool invocation cost in MIST.
     ///
     /// `nexus_workflow::gas::set_single_invocation_cost_mist`
@@ -1188,25 +1265,13 @@ impl Gas {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("set_single_invocation_cost_mist"),
     };
-
-    /// Convert an object ID to an InvokerAddress scope.
-    pub fn scope_invoker_address_from_object_id(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        object_id: sui::types::Address,
-    ) -> anyhow::Result<sui::types::Argument> {
-        let address = Address::address_from_type(tx, object_id)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::SCOPE_INVOKER_ADDRESS.module,
-                Self::SCOPE_INVOKER_ADDRESS.name,
-                vec![],
-            ),
-            vec![address],
-        ))
-    }
+    /// Snapshot all DAG tool costs into a TAP execution payment.
+    ///
+    /// `nexus_workflow::gas::snapshot_dag_tool_costs`
+    pub const SNAPSHOT_DAG_TOOL_COSTS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_MODULE,
+        name: sui::types::Identifier::from_static("snapshot_dag_tool_costs"),
+    };
 }
 
 // == `nexus_workflow::gas_extension` ==
