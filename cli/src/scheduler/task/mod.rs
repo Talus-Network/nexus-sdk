@@ -78,24 +78,16 @@ pub(crate) enum TaskCommand {
         /// Metadata entries to attach to the task as key=value pairs.
         #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
         metadata: Vec<String>,
-        /// Priority fee per gas unit for DAG executions launched by the task.
-        #[arg(
-            long = "execution-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        execution_priority_fee_per_gas_unit: u64,
+        /// Optional priority fee excess quote for DAG executions launched by the task.
+        #[arg(long = "execution-priority-fee-excess-quote", value_name = "AMOUNT")]
+        execution_priority_fee_excess_quote: Option<u64>,
         #[command(flatten)]
         schedule_start: ScheduleStartOptions,
         #[command(flatten)]
         schedule_deadline: ScheduleDeadlineOptions,
-        /// Priority fee per gas unit for the initial occurrence.
-        #[arg(
-            long = "schedule-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        schedule_priority_fee_per_gas_unit: u64,
+        /// Optional priority fee excess quote for the initial occurrence.
+        #[arg(long = "schedule-priority-fee-excess-quote", value_name = "AMOUNT")]
+        schedule_priority_fee_excess_quote: Option<u64>,
         /// Generator responsible for producing future occurrences for this task.
         #[arg(
             long = "generator",
@@ -163,10 +155,10 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             input_json,
             remote,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_excess_quote,
             schedule_start,
             schedule_deadline,
-            schedule_priority_fee_per_gas_unit,
+            schedule_priority_fee_excess_quote,
             generator,
             gas,
         } => {
@@ -184,11 +176,11 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 input_json,
                 remote,
                 metadata,
-                execution_priority_fee_per_gas_unit,
+                execution_priority_fee_excess_quote,
                 schedule_start_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_excess_quote,
                 generator.into(),
                 gas,
             )

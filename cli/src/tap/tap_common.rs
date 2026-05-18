@@ -33,6 +33,7 @@ pub(crate) fn agent_execute_options_from_cli(
         payment_coin: None,
         payment_coin_balance: None,
         payment_max_budget,
+        payment_total_budget: None,
         payment_refund_mode,
         authorization_plan_commitment: decode_optional_hex_arg(
             authorization_plan_commitment_hex,

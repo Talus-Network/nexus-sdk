@@ -27,10 +27,12 @@ pub struct DagExecutionConfig {
     pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
     pub invoker: sui::types::Address,
     #[serde(
+        alias = "priority_fee_excess_quote",
+        alias = "priority_fee_per_gas_unit",
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub priority_fee_per_gas_unit: u64,
+    pub effective_priority_fee: u64,
 }
 
 /// Representation of `nexus_workflow::dag::AgentExecutionConfig`.
@@ -42,10 +44,11 @@ pub struct AgentExecutionConfig {
     pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
     pub invoker: sui::types::Address,
     #[serde(
+        alias = "priority_fee_per_gas_unit",
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
-    pub priority_fee_per_gas_unit: u64,
+    pub effective_priority_fee: u64,
     pub agent_id: AgentId,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
@@ -440,7 +443,7 @@ mod tests {
         let expected = DagExecutionConfig {
             dag: dag_id,
             network: network_id,
-            priority_fee_per_gas_unit: 1000,
+            effective_priority_fee: 20,
             entry_group: SchedulerEntryGroup {
                 name: "default".to_string(),
             },
@@ -454,12 +457,35 @@ mod tests {
         assert_eq!(parsed.dag, expected.dag);
         assert_eq!(parsed.network, expected.network);
         assert_eq!(
-            parsed.priority_fee_per_gas_unit,
-            expected.priority_fee_per_gas_unit
+            parsed.effective_priority_fee,
+            expected.effective_priority_fee
         );
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
         assert_eq!(parsed.invoker, expected.invoker);
+    }
+
+    #[test]
+    fn dag_execution_config_deserializes_move_priority_fee_field() {
+        let mut rng = rand::thread_rng();
+        let expected = DagExecutionConfig {
+            dag: sui::types::Address::generate(&mut rng),
+            network: sui::types::Address::generate(&mut rng),
+            effective_priority_fee: 20,
+            entry_group: SchedulerEntryGroup {
+                name: "default".to_string(),
+            },
+            inputs: Map::default(),
+            invoker: sui::types::Address::generate(&mut rng),
+        };
+        let mut value = serde_json::to_value(&expected).unwrap();
+        let fields = value.as_object_mut().unwrap();
+        let fee = fields.remove("effective_priority_fee").unwrap();
+        fields.insert("priority_fee_per_gas_unit".to_string(), fee);
+
+        let parsed: DagExecutionConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(parsed, expected);
     }
 
     #[test]
@@ -473,7 +499,7 @@ mod tests {
         let expected = AgentExecutionConfig {
             dag: dag_id,
             network: network_id,
-            priority_fee_per_gas_unit: 1000,
+            effective_priority_fee: 20,
             entry_group: SchedulerEntryGroup {
                 name: "delayed".to_string(),
             },
@@ -492,8 +518,8 @@ mod tests {
         assert_eq!(parsed.dag, expected.dag);
         assert_eq!(parsed.network, expected.network);
         assert_eq!(
-            parsed.priority_fee_per_gas_unit,
-            expected.priority_fee_per_gas_unit
+            parsed.effective_priority_fee,
+            expected.effective_priority_fee
         );
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
@@ -506,6 +532,35 @@ mod tests {
             expected.authorization_plan_commitment
         );
         assert_eq!(parsed.authorization_plan, expected.authorization_plan);
+    }
+
+    #[test]
+    fn agent_execution_config_deserializes_move_priority_fee_field() {
+        let mut rng = rand::thread_rng();
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let expected = AgentExecutionConfig {
+            dag: dag_id,
+            network: sui::types::Address::generate(&mut rng),
+            effective_priority_fee: 20,
+            entry_group: SchedulerEntryGroup {
+                name: "default".to_string(),
+            },
+            inputs: Map::default(),
+            invoker: sui::types::Address::generate(&mut rng),
+            agent_id: sui::types::Address::generate(&mut rng),
+            skill_id: 7,
+            selected_dag_id: dag_id,
+            authorization_plan_commitment: None,
+            authorization_plan: Vec::new(),
+        };
+        let mut value = serde_json::to_value(&expected).unwrap();
+        let fields = value.as_object_mut().unwrap();
+        let fee = fields.remove("effective_priority_fee").unwrap();
+        fields.insert("priority_fee_per_gas_unit".to_string(), fee);
+
+        let parsed: AgentExecutionConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(parsed, expected);
     }
 
     #[test]

@@ -508,6 +508,10 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             | "AgentSkillExecutionRequestedEvent"
             | "AgentSkillPaymentCreatedEvent"
             | "PaymentLockUpdateEvent"
+            | "ExecutionPaymentFeesRecordedEvent"
+            | "FeeBreakdownConsumedEvent"
+            | "PriorityFeeDepositedEvent"
+            | "PriorityFeeWithdrawnEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
             | "ScheduledAuthorizationGrantCreatedEvent"
@@ -1157,6 +1161,7 @@ mod tests {
                 source_identity: sui::types::Address::from_static("0x1"),
                 max_budget: 10_000,
                 locked_budget: 10_000,
+                effective_priority_fee: 20,
             },
         );
         let parsed = NexusEvent::from_sui_grpc_event(1, digest, &payment_event, &objects).unwrap();
@@ -1165,6 +1170,35 @@ mod tests {
             NexusEventKind::AgentSkillPaymentCreated(AgentSkillPaymentCreatedEvent {
                 source_kind: TapPaymentSourceKind::AgentVault,
                 locked_budget: 10_000,
+                effective_priority_fee: 20,
+                ..
+            })
+        ));
+
+        let fee_recorded_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.interface_pkg_id,
+            "tap",
+            "ExecutionPaymentFeesRecordedEvent",
+            ExecutionPaymentFeesRecordedEvent {
+                payment_id: sui::types::Address::from_static("0x36"),
+                execution_id: sui::types::Address::from_static("0x37"),
+                agent_id: sui::types::Address::from_static("0x1"),
+                skill_id: 2,
+                gas_fee: 1_000,
+                tool_fee: 200,
+                priority_fee: 200,
+                effective_priority_fee: 20,
+            },
+        );
+        let parsed =
+            NexusEvent::from_sui_grpc_event(2, digest, &fee_recorded_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::ExecutionPaymentFeesRecorded(ExecutionPaymentFeesRecordedEvent {
+                priority_fee: 200,
+                effective_priority_fee: 20,
                 ..
             })
         ));
@@ -1535,9 +1569,52 @@ mod tests {
                         source_identity: sui::types::Address::from_static("0x38"),
                         max_budget: 10_000,
                         locked_budget: 10_000,
+                        effective_priority_fee: 20,
                     },
                 })
                 .expect("AgentSkillPaymentCreatedEvent sample serializes"),
+            ),
+            (
+                "PriorityFeeDepositedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: PriorityFeeDepositedEvent {
+                        vault: sui::types::Address::from_static("0x41"),
+                        leader_cap_id: sui::types::Address::from_static("0x42"),
+                        amount: 200,
+                    },
+                })
+                .expect("PriorityFeeDepositedEvent sample serializes"),
+            ),
+            (
+                "PriorityFeeWithdrawnEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: PriorityFeeWithdrawnEvent {
+                        vault: sui::types::Address::from_static("0x41"),
+                        leader_cap_id: sui::types::Address::from_static("0x42"),
+                        amount: 75,
+                    },
+                })
+                .expect("PriorityFeeWithdrawnEvent sample serializes"),
+            ),
+            (
+                "FeeBreakdownConsumedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: FeeBreakdownConsumedEvent {
+                        receipt_id: sui::types::Address::from_static("0x43"),
+                        execution_id: sui::types::Address::from_static("0x37"),
+                        payment_id: sui::types::Address::from_static("0x36"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        payer: sui::types::Address::from_static("0x38"),
+                        source_kind: TapPaymentSourceKind::Invoker,
+                        source_identity: sui::types::Address::from_static("0x38"),
+                        gas_fee: 1_000,
+                        tool_fee: 200,
+                        priority_fee: 200,
+                        effective_priority_fee: 20,
+                    },
+                })
+                .expect("FeeBreakdownConsumedEvent sample serializes"),
             ),
             (
                 "GasPaymentConsumedEvent",

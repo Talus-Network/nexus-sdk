@@ -10,6 +10,9 @@ use {
 
 const TAP_PAYMENT_SOURCE_KIND_INVOKER: u8 = 0;
 const TAP_PAYMENT_SOURCE_KIND_AGENT_VAULT: u8 = 1;
+pub const DEFAULT_PRIORITY_FEE: u64 = 20;
+pub const MIN_PRIORITY_FEE: u64 = 10;
+pub const MAX_PRIORITY_FEE: u64 = 10000;
 
 fn deserialize_tap_address_value<'de, D>(deserializer: D) -> Result<sui::types::Address, D::Error>
 where
@@ -335,6 +338,113 @@ pub struct TapPaymentPolicy {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub token_type_commitment: Vec<u8>,
     pub refund_mode: u8,
+}
+
+/// Input values used to compute a paid-priority TAP execution gas budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriorityPaymentBudgetInput {
+    pub total_budget: u64,
+    pub priority_fee_excess_quote: Option<u64>,
+    pub cap: Option<u64>,
+}
+
+/// Integer-only budget quote for a paid-priority TAP execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriorityPaymentQuote {
+    pub total_budget: u64,
+    pub max_gas_budget: u64,
+    pub expected_priority_fee: u64,
+    pub total_required_at_max_gas: u64,
+    pub effective_priority_fee: u64,
+    pub capped: bool,
+}
+
+impl PriorityPaymentBudgetInput {
+    pub fn quote(self) -> anyhow::Result<PriorityPaymentQuote> {
+        quote_priority_payment_budget(self)
+    }
+}
+
+pub fn effective_priority_fee(priority_fee_excess_quote: Option<u64>) -> anyhow::Result<u64> {
+    match priority_fee_excess_quote {
+        Some(value) if (MIN_PRIORITY_FEE..=MAX_PRIORITY_FEE).contains(&value) => Ok(value),
+        Some(value) => anyhow::bail!(
+            "priority fee {value} is outside the supported range {MIN_PRIORITY_FEE}..={MAX_PRIORITY_FEE}"
+        ),
+        None => Ok(DEFAULT_PRIORITY_FEE),
+    }
+}
+
+pub fn priority_fee_for_gas(gas_budget: u64, effective_priority_fee: u64) -> anyhow::Result<u64> {
+    Ok(checked_percent_floor(gas_budget, effective_priority_fee)?)
+}
+
+pub fn quote_priority_payment_budget(
+    input: PriorityPaymentBudgetInput,
+) -> anyhow::Result<PriorityPaymentQuote> {
+    let effective_priority_fee = effective_priority_fee(input.priority_fee_excess_quote)?;
+    let uncapped = max_gas_budget_for_available(input.total_budget, effective_priority_fee)?;
+    let capped = input.cap.is_some_and(|cap| cap < uncapped);
+    let max_gas_budget = input.cap.map_or(uncapped, |cap| cap.min(uncapped));
+    let expected_priority_fee = priority_fee_for_gas(max_gas_budget, effective_priority_fee)?;
+    let total_required_at_max_gas = max_gas_budget
+        .checked_add(expected_priority_fee)
+        .ok_or_else(|| anyhow::anyhow!("priority payment total overflows u64"))?;
+
+    Ok(PriorityPaymentQuote {
+        total_budget: input.total_budget,
+        max_gas_budget,
+        expected_priority_fee,
+        total_required_at_max_gas,
+        effective_priority_fee,
+        capped,
+    })
+}
+
+fn max_gas_budget_for_available(
+    available_after_tool_fees: u64,
+    priority_fee: u64,
+) -> anyhow::Result<u64> {
+    if available_after_tool_fees == 0 {
+        return Ok(0);
+    }
+
+    let mut low = 0u64;
+    let mut high = available_after_tool_fees;
+    while low < high {
+        let span = high - low;
+        let mid = low + (span / 2) + (span % 2);
+        if gas_budget_fits(mid, available_after_tool_fees, priority_fee)? {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    Ok(low)
+}
+
+fn gas_budget_fits(
+    gas_budget: u64,
+    available_after_tool_fees: u64,
+    priority_fee: u64,
+) -> anyhow::Result<bool> {
+    let reserve = priority_fee_for_gas(gas_budget, priority_fee)?;
+    let required = gas_budget
+        .checked_add(reserve)
+        .ok_or_else(|| anyhow::anyhow!("priority gas budget overflows u64"))?;
+    Ok(required <= available_after_tool_fees)
+}
+
+fn checked_percent_floor(value: u64, percent: u64) -> anyhow::Result<u64> {
+    value
+        .checked_mul(percent)
+        .map(|value| value / 100)
+        .ok_or_else(|| anyhow::anyhow!("priority percentage calculation overflows u64"))
+}
+
+fn default_priority_fee() -> u64 {
+    DEFAULT_PRIORITY_FEE
 }
 
 /// Source kind for standard TAP execution payment.
@@ -941,6 +1051,15 @@ pub struct TapExecutionPayment {
     pub locked_budget: u64,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub consumed: u64,
+    #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
+    pub tool_fee_charged: u64,
+    #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
+    pub priority_fee_charged: u64,
+    #[serde(
+        default = "default_priority_fee",
+        deserialize_with = "deserialize_tap_u64_value_or_default"
+    )]
+    pub effective_priority_fee: u64,
     pub refund_mode: u8,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub payment_source_hash: Vec<u8>,
@@ -2804,5 +2923,67 @@ mod tests {
         assert_eq!(task.source_kind(), TapPaymentSourceKind::AgentVault);
         assert_eq!(task.source_identity(), addr("0xbb"));
         assert!(!task.can_spawn_occurrence());
+    }
+
+    #[test]
+    fn priority_budget_quote_is_maximal_without_cap() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            total_budget: 120,
+            priority_fee_excess_quote: None,
+            cap: None,
+        })
+        .expect("quote should fit");
+
+        assert_eq!(quote.total_budget, 120);
+        assert_eq!(quote.effective_priority_fee, DEFAULT_PRIORITY_FEE);
+        assert_eq!(quote.max_gas_budget, 100);
+        assert_eq!(quote.expected_priority_fee, 20);
+        assert_eq!(quote.total_required_at_max_gas, 120);
+
+        let next_reserve =
+            priority_fee_for_gas(quote.max_gas_budget + 1, quote.effective_priority_fee).unwrap();
+        assert!(quote.max_gas_budget + 1 + next_reserve > 120);
+    }
+
+    #[test]
+    fn priority_budget_quote_reports_cap_when_cap_limits_result() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            total_budget: 20_200,
+            priority_fee_excess_quote: Some(MAX_PRIORITY_FEE),
+            cap: Some(100),
+        })
+        .expect("quote should fit");
+
+        assert!(quote.capped);
+        assert_eq!(quote.max_gas_budget, 100);
+        assert_eq!(quote.expected_priority_fee, 10_000);
+        assert_eq!(quote.total_required_at_max_gas, 10_100);
+    }
+
+    #[test]
+    fn priority_budget_quote_rejects_invalid_priority_and_overflow() {
+        assert_eq!(
+            effective_priority_fee(None).expect("missing priority uses default"),
+            DEFAULT_PRIORITY_FEE
+        );
+        assert_eq!(
+            effective_priority_fee(Some(MIN_PRIORITY_FEE)).expect("minimum priority is valid"),
+            MIN_PRIORITY_FEE
+        );
+        assert_eq!(
+            effective_priority_fee(Some(MAX_PRIORITY_FEE)).expect("maximum priority is valid"),
+            MAX_PRIORITY_FEE
+        );
+
+        assert!(quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            total_budget: 100,
+            priority_fee_excess_quote: Some(9),
+            cap: None,
+        })
+        .is_err());
+
+        assert!(effective_priority_fee(Some(MAX_PRIORITY_FEE + 1)).is_err());
+
+        assert!(priority_fee_for_gas(u64::MAX, MAX_PRIORITY_FEE).is_err());
     }
 }

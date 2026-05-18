@@ -90,14 +90,13 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
-        /// Priority fee per gas unit for the DAG execution.
+        /// Priority fee excess quote for the DAG execution.
         #[arg(
-            long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit to pass to the DAG execution. Defaults to 0 when omitted.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
+            long = "priority-fee-excess-quote",
+            help = "Optional priority fee excess quote to pass to the DAG execution.",
+            value_name = "AMOUNT"
         )]
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         #[arg(
             long = "payment-coin",
             help = "SUI coin object ID to lock as the standard TAP execution payment.",
@@ -167,7 +166,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             input_json,
             remote,
             inspect,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             payment_coin,
             payment_budget,
             gas,
@@ -181,7 +180,7 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 input_json,
                 remote,
                 inspect,
-                priority_fee_per_gas_unit,
+                priority_fee_excess_quote,
                 payment_coin,
                 payment_budget,
                 gas.sui_gas_coin,
