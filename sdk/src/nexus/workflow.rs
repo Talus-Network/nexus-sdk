@@ -19,7 +19,17 @@ use {
             client::NexusClient,
             crawler::{Crawler, Response},
             error::NexusError,
-            models::{Dag, DagExecution, DagVertexInfo},
+            models::{
+                Dag,
+                DagEdge,
+                DagEdgeBcs,
+                DagExecution,
+                DagOutputVariantPort,
+                DagVertexInfo,
+                DagVertexInfoBcs,
+                DagVertexInputPort,
+                LinkedTableNodeBcs,
+            },
             tap,
         },
         sui,
@@ -268,13 +278,75 @@ pub fn dag_vertex_requires_verifier_proof(dag: &Dag, vertex: &DagVertexInfo) -> 
     )
 }
 
+pub async fn fetch_dag_vertices_bcs(
+    crawler: &Crawler,
+    dag: &Dag,
+) -> anyhow::Result<HashMap<crate::types::TypeName, DagVertexInfo>> {
+    crawler
+        .get_dynamic_fields_bcs::<
+            crate::types::TypeName,
+            LinkedTableNodeBcs<crate::types::TypeName, DagVertexInfoBcs>,
+        >(dag.vertices.id(), dag.vertices.size())
+        .await?
+        .into_iter()
+        .map(|(vertex, node)| Ok((vertex, node.value.into_sdk()?)))
+        .collect()
+}
+
+pub async fn fetch_dag_default_values_bcs<T>(
+    crawler: &Crawler,
+    dag: &Dag,
+) -> anyhow::Result<HashMap<DagVertexInputPort, T>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    crawler
+        .get_dynamic_fields_bcs::<DagVertexInputPort, T>(
+            dag.defaults_to_input_ports.id(),
+            dag.defaults_to_input_ports.size(),
+        )
+        .await
+}
+
+pub async fn fetch_dag_edges_bcs(
+    crawler: &Crawler,
+    dag: &Dag,
+) -> anyhow::Result<HashMap<crate::types::TypeName, Vec<DagEdge>>> {
+    crawler
+        .get_dynamic_fields_bcs::<crate::types::TypeName, Vec<DagEdgeBcs>>(
+            dag.edges.id(),
+            dag.edges.size(),
+        )
+        .await?
+        .into_iter()
+        .map(|(vertex, edges)| {
+            Ok((
+                vertex,
+                edges.into_iter().map(DagEdgeBcs::into_sdk).collect(),
+            ))
+        })
+        .collect()
+}
+
+pub async fn fetch_dag_outputs_bcs(
+    crawler: &Crawler,
+    dag: &Dag,
+) -> anyhow::Result<HashMap<crate::types::TypeName, Vec<DagOutputVariantPort>>> {
+    crawler
+        .get_dynamic_fields_bcs::<crate::types::TypeName, Vec<DagOutputVariantPort>>(
+            dag.outputs.id(),
+            dag.outputs.size(),
+        )
+        .await
+}
+
 pub async fn offchain_success_requires_verifier_proof(
     crawler: &Crawler,
     dag_object_id: sui::types::Address,
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
     let dag = crawler.get_object::<Dag>(dag_object_id).await?;
-    let mut vertices = crawler.get_dynamic_fields(&dag.data.vertices).await?;
+    let mut vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
     let vertex_name = next_vertex.name();
     let vertex = vertices
         .remove(&vertex_name)
@@ -288,7 +360,7 @@ pub async fn fetch_vertex_input_port_names(
     dag: &Dag,
     vertex_name: &crate::types::TypeName,
 ) -> anyhow::Result<Vec<String>> {
-    let mut vertices = crawler.get_dynamic_fields(&dag.vertices).await?;
+    let mut vertices = fetch_dag_vertices_bcs(crawler, dag).await?;
     let vertex = vertices.remove(vertex_name).ok_or_else(|| {
         anyhow!("Vertex '{vertex_name}' not found in DAG vertices dynamic fields")
     })?;
@@ -2502,5 +2574,27 @@ mod tests {
             vertex.declared_input_port_names(),
             vec!["a_port".to_string(), "z_port".to_string()]
         );
+    }
+
+    #[test]
+    fn dag_edge_bcs_into_sdk_keeps_the_public_edge_shape() {
+        let edge = DagEdgeBcs {
+            from: DagOutputVariantPort {
+                variant: crate::types::TypeName::from("ok"),
+                port: crate::types::TypeName::from("value"),
+            },
+            to: DagVertexInputPort {
+                vertex: crate::types::TypeName::from("next"),
+                port: crate::nexus::models::DagInputPort {
+                    name: "input".to_string(),
+                },
+            },
+            kind: crate::nexus::models::DagEdgeKindBcs::Static,
+        };
+
+        let sdk = edge.into_sdk();
+
+        assert_eq!(sdk.from.variant, crate::types::TypeName::from("ok"));
+        assert_eq!(sdk.from.port, crate::types::TypeName::from("value"));
     }
 }

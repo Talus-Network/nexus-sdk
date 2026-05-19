@@ -1414,7 +1414,7 @@ pub struct WorkflowVertexAuthorizationGrant {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub walk_execution_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
     pub vertex: RuntimeVertex,
 }
@@ -2868,13 +2868,13 @@ mod tests {
     fn workflow_vertex_authorization_grant_model_matches_live_object_shape() {
         let grant: WorkflowVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
             "id": "0xaa",
-            "walk_execution_id": "0xff",
+            "execution_id": "0xff",
             "vertex": [101, 110, 116, 114, 121]
         }))
         .expect("grant should deserialize");
 
         assert_eq!(grant.id, addr("0xaa"));
-        assert_eq!(grant.walk_execution_id, addr("0xff"));
+        assert_eq!(grant.execution_id, addr("0xff"));
         assert_eq!(grant.vertex, RuntimeVertex::plain("entry"));
     }
 

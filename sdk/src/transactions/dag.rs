@@ -1518,14 +1518,10 @@ pub fn mint_vertex_authorization_check_cap_for_onchain_walk(
     objects: &NexusObjects,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
     leader_cap: sui::types::Argument,
     walk_index: u64,
-    expected_vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Argument> {
     let walk_index = tx.input(pure_arg(&walk_index)?);
-    let expected_vertex =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -1533,14 +1529,7 @@ pub fn mint_vertex_authorization_check_cap_for_onchain_walk(
             workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name,
             vec![],
         ),
-        vec![
-            dag,
-            execution,
-            request_walk_execution,
-            leader_cap,
-            walk_index,
-            expected_vertex,
-        ],
+        vec![dag, execution, leader_cap, walk_index],
     ))
 }
 
@@ -3322,6 +3311,39 @@ mod tests {
             objects.workflow_pkg_id,
             witness,
         );
+    }
+
+    #[test]
+    fn test_mint_vertex_authorization_check_cap_for_onchain_walk_uses_active_walk_args() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = sui::types::Argument::Result(0);
+        let execution = sui::types::Argument::Result(1);
+        let leader_cap = sui::types::Argument::Result(2);
+
+        mint_vertex_authorization_check_cap_for_onchain_walk(
+            &mut tx, &objects, dag, execution, leader_cap, 17,
+        )
+        .expect("mint helper should build");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name
+        );
+        assert_eq!(call.arguments.len(), 4);
+        assert_eq!(call.arguments[0], dag);
+        assert_eq!(call.arguments[1], execution);
+        assert_eq!(call.arguments[2], leader_cap);
+        inspector.expect_u64(&call.arguments[3], 17);
+        assert_eq!(inspector.inputs().len(), 1);
     }
 
     fn assert_on_chain_submit_call_uses_sdk_move_values(
