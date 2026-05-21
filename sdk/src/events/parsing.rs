@@ -506,6 +506,7 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             // Nexus functions invoked from a package-owned PTB.
             | "AgentSkillExecutionRequestedEvent"
             | "AgentSkillPaymentCreatedEvent"
+            | "PaymentLockUpdateEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
             | "VertexAuthorizationGrantCreatedEvent"
@@ -1177,7 +1178,7 @@ mod tests {
             "VertexAuthorizationGrantCreatedEvent",
             VertexAuthorizationGrantCreatedEvent {
                 grant_id: sui::types::Address::from_static("0x44"),
-                walk_execution_id: sui::types::Address::from_static("0x45"),
+                execution_id: sui::types::Address::from_static("0x45"),
                 vertex: RuntimeVertex::plain("transfer"),
             },
         );
@@ -1241,6 +1242,29 @@ mod tests {
                 request,
                 ..
             }) if request.next_vertex == RuntimeVertex::plain("transfer")
+        ));
+
+        let lock_event = wrapped_nexus_event(
+            &objects,
+            emitter_package,
+            objects.workflow_pkg_id,
+            "gas",
+            "PaymentLockUpdateEvent",
+            PaymentLockUpdateEvent {
+                execution: sui::types::Address::from_static("0x56"),
+                vertex: RuntimeVertex::plain("transfer"),
+                tool_fqn: crate::fqn!("demo.taluslabs.demo_onchain_vertex@1"),
+                was_locked: true,
+            },
+        );
+        let parsed = NexusEvent::from_sui_grpc_event(4, digest, &lock_event, &objects).unwrap();
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::PaymentLockUpdate(PaymentLockUpdateEvent {
+                vertex,
+                was_locked: true,
+                ..
+            }) if vertex == RuntimeVertex::plain("transfer")
         ));
     }
 

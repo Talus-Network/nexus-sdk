@@ -464,7 +464,7 @@ pub struct AgentSkillExecutionRequestedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VertexAuthorizationGrantCreatedEvent {
     pub grant_id: sui::types::Address,
-    pub walk_execution_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
     pub vertex: RuntimeVertex,
 }
 

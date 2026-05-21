@@ -2,7 +2,10 @@
 //! and dynamic field data from Sui GRPC and deserialize them into Rust structs.
 
 use {
-    crate::sui::{self, traits::FieldMaskUtil},
+    crate::{
+        sui::{self, traits::FieldMaskUtil},
+        types::strip_fields_owned,
+    },
     anyhow::{anyhow, bail},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     std::{
@@ -1431,9 +1434,51 @@ impl<V> ValueOrWrapper<V> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn strip_dynamic_value_owned(value: serde_json::Value) -> serde_json::Value {
+    let value = strip_fields_owned(value);
+    let serde_json::Value::Object(mut object) = value else {
+        return value;
+    };
+
+    if let Some(inner) = object.remove("value") {
+        object.insert("value".to_string(), strip_fields_owned(inner));
+    }
+
+    serde_json::Value::Object(object)
+}
+
+#[derive(Clone, Debug)]
 struct DynamicValue<V> {
     value: ValueOrWrapper<V>,
+}
+
+impl<'de, V> Deserialize<'de> for DynamicValue<V>
+where
+    V: DeserializeOwned,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawDynamicValue {
+            value: serde_json::Value,
+        }
+
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            struct BcsDynamicValue<V> {
+                value: ValueOrWrapper<V>,
+            }
+
+            return BcsDynamicValue::deserialize(deserializer).map(|raw| Self { value: raw.value });
+        }
+
+        let raw = RawDynamicValue::deserialize(deserializer)?;
+        let value = strip_dynamic_value_owned(raw.value);
+        let value = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+        Ok(Self { value })
+    }
 }
 
 // == Helper functions ==
@@ -1651,6 +1696,187 @@ mod tests {
 
         assert_eq!(object.object_id, *child_ref.object_id());
         assert_eq!(object.data, TestValue { value: 11 });
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_fields_accepts_fields_wrapped_values() {
+        let parent =
+            DynamicMap::<TestKey, TestValue>::new(sui::types::Address::from_static("0x70"), 1);
+        let key = TestKey {
+            name: "wanted".to_string(),
+        };
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x71"));
+        let json = json!({
+            "id": field_ref.object_id(),
+            "name": key,
+            "value": {
+                "fields": {
+                    "value": 42
+                }
+            }
+        });
+
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), *field_ref.object_id())],
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_batch_get_objects()
+            .times(1)
+            .with(always())
+            .returning(move |_| {
+                let object = object_with_json(
+                    field_ref.clone(),
+                    sui::types::Owner::Shared(1),
+                    json.clone(),
+                );
+                let mut result = sui::grpc::GetObjectResult::default();
+                result.set_object(object);
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                response.set_objects(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let fields = crawler
+            .get_dynamic_fields(&parent)
+            .await
+            .expect("wrapped dynamic field value decodes");
+
+        assert_eq!(fields.get(&key), Some(&TestValue { value: 42 }));
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_fields_accepts_linked_table_node_wrapped_values() {
+        let parent =
+            DynamicMap::<TestKey, TestValue>::new(sui::types::Address::from_static("0x72"), 1);
+        let key = TestKey {
+            name: "node".to_string(),
+        };
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x73"));
+        let json = json!({
+            "id": field_ref.object_id(),
+            "name": key,
+            "value": {
+                "type": "0x2::linked_table::Node<test::TestKey, test::TestValue>",
+                "fields": {
+                    "next": null,
+                    "prev": null,
+                    "value": {
+                        "type": "test::TestValue",
+                        "fields": {
+                            "value": 42
+                        }
+                    }
+                }
+            }
+        });
+
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), *field_ref.object_id())],
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_batch_get_objects()
+            .times(1)
+            .with(always())
+            .returning(move |_| {
+                let object = object_with_json(
+                    field_ref.clone(),
+                    sui::types::Owner::Shared(1),
+                    json.clone(),
+                );
+                let mut result = sui::grpc::GetObjectResult::default();
+                result.set_object(object);
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                response.set_objects(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let fields = crawler
+            .get_dynamic_fields(&parent)
+            .await
+            .expect("linked-table dynamic field value decodes");
+
+        assert_eq!(fields.get(&key), Some(&TestValue { value: 42 }));
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_fields_accepts_sui_linked_table_node_json() {
+        let parent =
+            DynamicMap::<TestKey, TestValue>::new(sui::types::Address::from_static("0x74"), 1);
+        let key = TestKey {
+            name: "node".to_string(),
+        };
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x75"));
+        let json = json!({
+            "id": field_ref.object_id(),
+            "name": key,
+            "value": {
+                "next": null,
+                "prev": null,
+                "value": {
+                    "value": 42
+                }
+            }
+        });
+
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), *field_ref.object_id())],
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_batch_get_objects()
+            .times(1)
+            .with(always())
+            .returning(move |_| {
+                let object = object_with_json(
+                    field_ref.clone(),
+                    sui::types::Owner::Shared(1),
+                    json.clone(),
+                );
+                let mut result = sui::grpc::GetObjectResult::default();
+                result.set_object(object);
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                response.set_objects(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let fields = crawler
+            .get_dynamic_fields(&parent)
+            .await
+            .expect("linked-table Sui JSON dynamic field value decodes");
+
+        assert_eq!(fields.get(&key), Some(&TestValue { value: 42 }));
     }
 
     #[tokio::test]

@@ -11,19 +11,21 @@ use {
             AgentId,
             InterfaceRevision,
             MoveOption,
+            MoveVecSet,
             NexusData,
             SkillId,
             TapVertexAuthorizationPlan,
             TapVertexAuthorizationPlanEntry,
             TypeName,
             VerifierConfig,
+            VerifierMode,
         },
         ToolFqn,
     },
-    anyhow::bail,
+    anyhow::{anyhow, bail},
     serde::{Deserialize, Serialize},
     serde_json::Value,
-    std::collections::HashMap,
+    std::collections::{HashMap, HashSet},
 };
 
 /// Struct holding the DAG definition from our Move code.
@@ -169,6 +171,120 @@ impl DagVertexKind {
             DagVertexKind::OnChain { tool_fqn } => tool_fqn,
         }
     }
+}
+
+/// BCS-facing DAG vertex metadata used for linked-table dynamic-field decoding.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct DagVertexInfoBcs {
+    pub(crate) kind: DagVertexKindBcs,
+    pub(crate) input_ports: MoveVecSet<DagInputPort>,
+    #[allow(dead_code)]
+    pub(crate) post_failure_action: MoveOption<PostFailureActionBcs>,
+    pub(crate) leader_verifier: MoveOption<VerifierConfigBcs>,
+    pub(crate) tool_verifier: MoveOption<VerifierConfigBcs>,
+}
+
+impl DagVertexInfoBcs {
+    pub(crate) fn into_sdk(self) -> anyhow::Result<DagVertexInfo> {
+        let input_ports = self
+            .input_ports
+            .contents
+            .into_iter()
+            .collect::<HashSet<_>>();
+        Ok(DagVertexInfo {
+            kind: self.kind.into_sdk()?,
+            leader_verifier: self
+                .leader_verifier
+                .0
+                .map(VerifierConfigBcs::into_sdk)
+                .transpose()?,
+            tool_verifier: self
+                .tool_verifier
+                .0
+                .map(VerifierConfigBcs::into_sdk)
+                .transpose()?,
+            input_ports: input_ports.into_iter().collect(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) enum DagVertexKindBcs {
+    OnChain {
+        #[allow(dead_code)]
+        _variant_name: String,
+        tool_fqn: String,
+    },
+    OffChain {
+        #[allow(dead_code)]
+        _variant_name: String,
+        tool_fqn: String,
+    },
+}
+
+impl DagVertexKindBcs {
+    fn into_sdk(self) -> anyhow::Result<DagVertexKind> {
+        match self {
+            Self::OnChain { tool_fqn, .. } => Ok(DagVertexKind::OnChain {
+                tool_fqn: parse_dag_tool_fqn(tool_fqn)?,
+            }),
+            Self::OffChain { tool_fqn, .. } => Ok(DagVertexKind::OffChain {
+                tool_fqn: parse_dag_tool_fqn(tool_fqn)?,
+            }),
+        }
+    }
+}
+
+fn parse_dag_tool_fqn(value: String) -> anyhow::Result<ToolFqn> {
+    value
+        .parse::<ToolFqn>()
+        .map_err(|error| anyhow!("DAG BCS tool FQN '{value}' did not parse: {error}"))
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct VerifierConfigBcs {
+    mode: VerifierModeBcs,
+    method: String,
+}
+
+impl VerifierConfigBcs {
+    fn into_sdk(self) -> anyhow::Result<VerifierConfig> {
+        Ok(VerifierConfig {
+            mode: match self.mode {
+                VerifierModeBcs::None => VerifierMode::None,
+                VerifierModeBcs::LeaderRegisteredKey => VerifierMode::LeaderRegisteredKey,
+                VerifierModeBcs::ToolVerifierContract => VerifierMode::ToolVerifierContract,
+            },
+            method: self.method,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) enum VerifierModeBcs {
+    None,
+    LeaderRegisteredKey,
+    ToolVerifierContract,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) enum PostFailureActionBcs {
+    Terminate,
+    TransientContinue,
+}
+
+/// BCS-facing `sui::linked_table::Node<K, V>`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(
+    deserialize = "K: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned",
+    serialize = "K: Serialize, V: Serialize"
+))]
+pub(crate) struct LinkedTableNodeBcs<K, V> {
+    #[allow(dead_code)]
+    pub(crate) prev: MoveOption<K>,
+    #[allow(dead_code)]
+    pub(crate) next: MoveOption<K>,
+    pub(crate) value: V,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -369,6 +485,31 @@ pub struct DagEdge {
     pub from: DagOutputVariantPort,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct DagEdgeBcs {
+    pub(crate) from: DagOutputVariantPort,
+    #[allow(dead_code)]
+    pub(crate) to: DagVertexInputPort,
+    #[allow(dead_code)]
+    pub(crate) kind: DagEdgeKindBcs,
+}
+
+impl DagEdgeBcs {
+    pub(crate) fn into_sdk(self) -> DagEdge {
+        DagEdge { from: self.from }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) enum DagEdgeKindBcs {
+    Normal,
+    ForEach,
+    Collect,
+    DoWhile,
+    Break,
+    Static,
+}
+
 /// Struct holding the output variant and port pair.
 ///
 /// See <sui/workflow/sources/dag.move:OutputVariantPort> for documentation.
@@ -410,6 +551,58 @@ mod tests {
         let json = serde_json::to_string(&kind).unwrap();
         let deserialized: DagVertexKind = serde_json::from_str(&json).unwrap();
         assert_eq!(kind.tool_fqn(), deserialized.tool_fqn());
+    }
+
+    #[test]
+    fn test_dag_vertex_info_bcs_converts_linked_table_node() {
+        let value = LinkedTableNodeBcs {
+            prev: MoveOption(None::<TypeName>),
+            next: MoveOption(None::<TypeName>),
+            value: DagVertexInfoBcs {
+                kind: DagVertexKindBcs::OnChain {
+                    _variant_name: "OnChain".to_string(),
+                    tool_fqn: "demo.taluslabs.demo_onchain_vertex@1".to_string(),
+                },
+                input_ports: MoveVecSet {
+                    contents: vec![
+                        DagInputPort {
+                            name: "prompt".to_string(),
+                        },
+                        DagInputPort {
+                            name: "recipient".to_string(),
+                        },
+                    ],
+                },
+                post_failure_action: MoveOption(None),
+                leader_verifier: MoveOption(None),
+                tool_verifier: MoveOption(Some(VerifierConfigBcs {
+                    mode: VerifierModeBcs::ToolVerifierContract,
+                    method: "demo_verifier_v1".to_string(),
+                })),
+            },
+        };
+
+        let encoded = bcs::to_bytes(&value).unwrap();
+        let decoded: LinkedTableNodeBcs<TypeName, DagVertexInfoBcs> =
+            bcs::from_bytes(&encoded).unwrap();
+        let vertex = decoded.value.into_sdk().unwrap();
+
+        assert!(matches!(vertex.kind, DagVertexKind::OnChain { .. }));
+        assert_eq!(
+            vertex.kind.tool_fqn().to_string(),
+            "demo.taluslabs.demo_onchain_vertex@1"
+        );
+        assert_eq!(
+            vertex.declared_input_port_names(),
+            vec!["prompt".to_string(), "recipient".to_string()]
+        );
+        assert_eq!(
+            vertex.tool_verifier,
+            Some(VerifierConfig {
+                mode: VerifierMode::ToolVerifierContract,
+                method: "demo_verifier_v1".to_string(),
+            })
+        );
     }
 
     #[test]
