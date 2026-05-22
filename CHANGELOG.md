@@ -23,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
+- SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
+- `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.
+- PTB helpers now cover vertex authorization grant creation and active-walk authorization-check-cap minting for cap-gated on-chain tools.
 - `TerminalErrEvalRecordedEvent` and `SubmissionFailureEvidenceRecordedEvent` SDK event types.
 - Nested Move-JSON parsers for terminal `_err_eval` records and submission failure evidence, including wrapper, option, enum, address, runtime-vertex, byte-vector, and normalized string forms.
 - Workflow failure model types, including `FailureEvidenceKind`, `WorkflowFailureClass`, `PostFailureAction`, and `ExecutionTerminalRecord`.
@@ -45,6 +49,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Workflow object decoding now treats the standard TAP execution context as complete only when agent, skill, endpoint revision, payment, selected DAG, authorization plan, and scheduled occurrence fields are consistent.
+- `VertexAuthorizationGrantCreatedEvent` and `WorkflowVertexAuthorizationGrant` now use `execution_id`, matching the current Move object/event layout.
+- Default DAG execution helpers prefer the configured `default_tap_target` when it resolves to a runtime-selected active skill, then fall back to registry recovery.
 - `full` and `nexus` no longer enable `move_publish`; package publishing APIs now require the explicit `move_publish` feature, and the CLI opts into it for deployment commands.
 - Optimized nested event value parsing with improved performance and reduced redundant checks
 - Made `parse_nested_event_value` public for use in nested event parsing
