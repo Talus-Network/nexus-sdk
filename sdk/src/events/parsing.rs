@@ -491,6 +491,7 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
     address == objects.primitives_pkg_id
         || address == objects.interface_pkg_id
         || address == objects.registry_pkg_id()
+        || objects.is_scheduler_package(address)
         || objects.is_workflow_package(address)
 }
 
@@ -509,6 +510,8 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             | "PaymentLockUpdateEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
+            | "ScheduledAuthorizationGrantCreatedEvent"
+            | "ScheduledAuthorizationGrantMaterializedEvent"
             | "VertexAuthorizationGrantCreatedEvent"
             | "VertexAuthorizationGrantRequiredEvent"
     )
@@ -1195,8 +1198,8 @@ mod tests {
             &objects,
             emitter_package,
             sui::types::StructTag::new(
-                objects.workflow_pkg_id,
-                sui::types::Identifier::new("scheduler").unwrap(),
+                objects.primitives_pkg_id,
+                sui::types::Identifier::new("scheduled_request").unwrap(),
                 sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
                 vec![sui::types::TypeTag::Struct(Box::new(
                     sui::types::StructTag::new(
@@ -1453,7 +1456,6 @@ mod tests {
                         skill_id: 2,
                         dag_id: sui::types::Address::from_static("0x1a"),
                         dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x1a")),
-                        tap_package_id: sui::types::Address::from_static("0x1b"),
                         workflow_commitment: vec![1],
                         requirements_commitment: vec![2],
                         capability_schema_commitment: vec![5],
@@ -1478,7 +1480,6 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
-                        package_id: sui::types::Address::from_static("0x1c"),
                         endpoint_object_id: sui::types::Address::from_static("0x1d"),
                         endpoint_object_version: 4,
                         endpoint_object_digest: vec![7; 32],
@@ -2144,8 +2145,8 @@ mod tests {
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 96, 1, 136, 19, 0, 0, 0, 0, 0, 0, 1, 244, 1, 0, 0, 0, 0, 0, 0,
-                    1, 12, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0, 0, 0, 1, 99, 0, 0, 0, 0, 0, 0,
-                    0, 1, 16, 39, 0, 0, 0, 0, 0, 0,
+                    1, 12, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0, 0, 0, 99, 0, 0, 0, 0, 0, 0, 0,
+                    1, 16, 39, 0, 0, 0, 0, 0, 0,
                 ],
             ),
             (

@@ -625,7 +625,7 @@ impl WorkflowActions {
 
         let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
 
-        let registry = tap::fetch_configured_tap_registry(self.client.crawler(), nexus_objects)
+        let registry = tap::fetch_configured_agent_registry(self.client.crawler(), nexus_objects)
             .await
             .map_err(NexusError::Rpc)?;
         let default_executor = resolve_default_agent_dag_executor(nexus_objects, &registry.data)
@@ -1272,7 +1272,7 @@ mod tests {
             sui::types::StructTag::new(
                 nexus_objects.registry_pkg_id(),
                 crate::idents::tap::STANDARD_TAP_MODULE,
-                sui::types::Identifier::from_static("TapRegistry"),
+                sui::types::Identifier::from_static("AgentRegistry"),
                 vec![],
             ),
         );
@@ -1543,9 +1543,9 @@ mod tests {
             schedule_policy: TapSchedulePolicy::default(),
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
         };
-        let tap_registry = TapRegistry {
+        let agent_registry = TapRegistry {
             id: *nexus_objects
-                .tap_registry()
+                .agent_registry()
                 .expect("tap registry ref")
                 .object_id(),
             agents: vec![TapAgentRecord {
@@ -1567,7 +1567,6 @@ mod tests {
                 skill_id: default_skill_id,
                 dag_id: *dag_ref.object_id(),
                 dag_binding: TapDagBinding::runtime_selected(),
-                tap_package_id: sui::types::Address::generate(&mut rng),
                 workflow_commitment: requirements.workflow_commitment.clone(),
                 requirements_commitment: requirements.input_schema_commitment.clone(),
                 metadata_commitment: requirements.metadata_commitment.clone(),
@@ -1580,7 +1579,6 @@ mod tests {
                 agent_id: default_agent,
                 skill_id: default_skill_id,
                 interface_revision: InterfaceRevision(1),
-                package_id: sui::types::Address::generate(&mut rng),
                 endpoint_object_id: sui::types::Address::generate(&mut rng),
                 endpoint_object_version: 1,
                 endpoint_object_digest: sui::types::Digest::generate(&mut rng).inner().to_vec(),
@@ -1681,10 +1679,10 @@ mod tests {
             &mut state_service_mock,
             &nexus_objects,
             nexus_objects
-                .tap_registry()
+                .agent_registry()
                 .expect("tap registry ref")
                 .clone(),
-            &tap_registry,
+            &agent_registry,
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -1776,9 +1774,9 @@ mod tests {
             schedule_policy: TapSchedulePolicy::default(),
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
         };
-        let tap_registry = TapRegistry {
+        let agent_registry = TapRegistry {
             id: *nexus_objects
-                .tap_registry()
+                .agent_registry()
                 .expect("tap registry ref")
                 .object_id(),
             agents: vec![TapAgentRecord {
@@ -1800,7 +1798,6 @@ mod tests {
                 skill_id,
                 dag_id: *dag_ref.object_id(),
                 dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
-                tap_package_id: sui::types::Address::generate(&mut rng),
                 workflow_commitment: requirements.workflow_commitment.clone(),
                 requirements_commitment: requirements.input_schema_commitment.clone(),
                 metadata_commitment: requirements.metadata_commitment.clone(),
@@ -1813,7 +1810,6 @@ mod tests {
                 agent_id,
                 skill_id,
                 interface_revision: InterfaceRevision(1),
-                package_id: sui::types::Address::generate(&mut rng),
                 endpoint_object_id: sui::types::Address::generate(&mut rng),
                 endpoint_object_version: 7,
                 endpoint_object_digest: endpoint_digest.inner().to_vec(),
@@ -1870,10 +1866,10 @@ mod tests {
             &mut state_service_mock,
             &nexus_objects,
             nexus_objects
-                .tap_registry()
+                .agent_registry()
                 .expect("tap registry ref")
                 .clone(),
-            &tap_registry,
+            &agent_registry,
         );
         sui_mocks::grpc::mock_get_object_json(
             &mut ledger_service_mock,

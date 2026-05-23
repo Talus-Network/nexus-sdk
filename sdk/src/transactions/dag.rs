@@ -182,7 +182,7 @@ fn tap_authorization_grant_ref(
     ))
 }
 
-fn tap_authorization_plan(
+pub(crate) fn tap_authorization_plan(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     entries: &[TapVertexAuthorizationPlanEntry],
@@ -1874,7 +1874,7 @@ pub fn prepare_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_registry: sui::types::Argument,
-    tap_registry: sui::types::Argument,
+    agent_registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag: sui::types::Argument,
     dag_id: sui::types::Argument,
@@ -2013,7 +2013,7 @@ pub fn prepare_agent_execution(
         ),
         vec![
             dag,
-            tap_registry,
+            agent_registry,
             agent,
             tool_registry,
             config,
@@ -2031,7 +2031,7 @@ pub fn prepare_default_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_registry: sui::types::Argument,
-    tap_registry: sui::types::Argument,
+    agent_registry: sui::types::Argument,
     dag: sui::types::Argument,
     dag_id: sui::types::Argument,
     priority_fee_per_gas_unit: u64,
@@ -2162,7 +2162,7 @@ pub fn prepare_default_agent_execution(
         ),
         vec![
             dag,
-            tap_registry,
+            agent_registry,
             tool_registry,
             config,
             payment_coin,
@@ -2286,16 +2286,16 @@ fn execute_agent_dag_internal(
         false,
     ));
 
-    let tap_registry = tx.input(sui::tx::Input::shared(
+    let agent_registry = tx.input(sui::tx::Input::shared(
         *objects
-            .tap_registry()
-            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?
+            .agent_registry()
+            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?
             .object_id(),
         objects
-            .tap_registry()
+            .agent_registry()
             .expect("tap registry checked above")
             .version(),
-        default_executor,
+        false,
     ));
 
     let clock = tx.input(sui::tx::Input::shared(
@@ -2331,7 +2331,7 @@ fn execute_agent_dag_internal(
             tx,
             objects,
             tool_registry,
-            tap_registry,
+            agent_registry,
             dag,
             dag_id,
             priority_fee_per_gas_unit,
@@ -2348,7 +2348,7 @@ fn execute_agent_dag_internal(
             tx,
             objects,
             tool_registry,
-            tap_registry,
+            agent_registry,
             agent,
             dag,
             dag_id,
@@ -3780,7 +3780,7 @@ mod tests {
             &nexus_objects,
             &dag,
             &agent,
-            0,
+            13,
             entry_group,
             &input_data,
             &agent_execution,
@@ -3830,6 +3830,7 @@ mod tests {
             sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
+        inspector.expect_u64(&config_call.arguments[4], 13);
         let sui::types::Argument::Result(agent_id_index) = config_call.arguments[5] else {
             panic!("expected agent ID to come from tap::agent_id_from_address");
         };
@@ -4000,7 +4001,7 @@ mod tests {
             &mut tx,
             &nexus_objects,
             &dag,
-            0,
+            17,
             "group1",
             &HashMap::new(),
             &agent_execution,
@@ -4027,6 +4028,16 @@ mod tests {
                 && call.module == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module
                 && call.function == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name
         }));
+        let config_index = inspector
+            .move_call_indices_to(
+                nexus_objects.workflow_pkg_id,
+                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
+                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
+            )
+            .into_iter()
+            .next()
+            .expect("default execution config call");
+        inspector.expect_u64(&inspector.move_call(config_index).arguments[4], 17);
         assert!(!calls.iter().any(|call| {
             call.package == nexus_objects.workflow_pkg_id
                 && call.module == workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module
@@ -4044,10 +4055,10 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(shared_inputs.iter().any(|(id, mutable)| {
             id == nexus_objects
-                .tap_registry()
+                .agent_registry()
                 .expect("tap registry configured")
                 .object_id()
-                && *mutable
+                && !*mutable
         }));
     }
 

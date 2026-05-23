@@ -12,203 +12,6 @@ use crate::{
     ToolFqn,
 };
 
-// == `nexus_workflow::scheduler` ==
-
-pub struct Scheduler;
-
-const SCHEDULER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("scheduler");
-
-impl Scheduler {
-    /// Enqueue a new occurrence for a task with explicit deadline.
-    ///
-    /// `nexus_workflow::scheduler::add_occurrence_absolute_for_task`
-    pub const ADD_OCCURRENCE_ABSOLUTE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("add_occurrence_absolute_for_task"),
-    };
-    /// Enqueue a new occurrence relative to the current time.
-    ///
-    /// `nexus_workflow::scheduler::add_occurrence_relative_for_task`
-    pub const ADD_OCCURRENCE_RELATIVE_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("add_occurrence_relative_for_task"),
-    };
-    /// Attach a TAP scheduled task link to a scheduler task.
-    ///
-    /// `nexus_workflow::scheduler::attach_tap_scheduled_task_link`
-    pub const ATTACH_TAP_SCHEDULED_TASK_LINK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("attach_tap_scheduled_task_link"),
-    };
-    /// Cancel scheduling for a task.
-    ///
-    /// `nexus_workflow::scheduler::cancel_time_constraint_for_task`
-    pub const CANCEL_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("cancel_time_constraint_for_task"),
-    };
-    /// Run scheduler checks to consume the next periodic occurrence.
-    ///
-    /// `nexus_workflow::scheduler::check_periodic_occurrence`
-    pub const CHECK_PERIODIC_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("check_periodic_occurrence"),
-    };
-    /// Run scheduler checks to consume the next queue occurrence.
-    ///
-    /// `nexus_workflow::scheduler::check_queue_occurrence`
-    pub const CHECK_QUEUE_OCCURRENCE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("check_queue_occurrence"),
-    };
-    /// Disable periodic scheduling for a task.
-    ///
-    /// `nexus_workflow::scheduler::disable_periodic_for_task`
-    pub const DISABLE_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("disable_periodic_for_task"),
-    };
-    /// Execute the DAG witness advancing logic.
-    ///
-    /// `nexus_workflow::scheduler::execute`
-    pub const EXECUTE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("execute"),
-    };
-    /// Finalize a task run ensuring policies reached accepting states.
-    ///
-    /// `nexus_workflow::scheduler::finish`
-    pub const FINISH: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("finish"),
-    };
-    /// Creates a new task with metadata and policies.
-    ///
-    /// `nexus_workflow::scheduler::new`
-    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new"),
-    };
-    /// Creates the default constraints policy.
-    ///
-    /// `nexus_workflow::scheduler::new_constraints_policy`
-    pub const NEW_CONSTRAINTS_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_constraints_policy"),
-    };
-    /// Creates the default execution policy.
-    ///
-    /// `nexus_workflow::scheduler::new_execution_policy`
-    pub const NEW_EXECUTION_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_execution_policy"),
-    };
-    /// Creates a metadata container from key/value pairs.
-    ///
-    /// `nexus_workflow::scheduler::new_metadata`
-    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_metadata"),
-    };
-    /// Configure or update periodic scheduling for a task.
-    ///
-    /// `nexus_workflow::scheduler::new_or_modify_periodic_for_task`
-    pub const NEW_OR_MODIFY_PERIODIC_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_or_modify_periodic_for_task"),
-    };
-    /// Create a periodic generator state.
-    ///
-    /// `nexus_workflow::scheduler::new_periodic_generator_state`
-    pub const NEW_PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_periodic_generator_state"),
-    };
-    /// Create a queue generator state.
-    ///
-    /// `nexus_workflow::scheduler::new_queue_generator_state`
-    pub const NEW_QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_queue_generator_state"),
-    };
-    /// Pause the scheduler for a task.
-    ///
-    /// `nexus_workflow::scheduler::pause_time_constraint_for_task`
-    pub const PAUSE_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("pause_time_constraint_for_task"),
-    };
-    /// The PeriodicGeneratorState struct type.
-    ///
-    /// `nexus_workflow::scheduler::PeriodicGeneratorState`
-    pub const PERIODIC_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("PeriodicGeneratorState"),
-    };
-    /// Witness type registered for periodic generators.
-    ///
-    /// `nexus_workflow::scheduler::PeriodicGeneratorWitness`
-    pub const PERIODIC_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("PeriodicGeneratorWitness"),
-    };
-    /// The QueueGeneratorState struct type.
-    ///
-    /// `nexus_workflow::scheduler::QueueGeneratorState`
-    pub const QUEUE_GENERATOR_STATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("QueueGeneratorState"),
-    };
-    /// Witness type registered for queue-based generators.
-    ///
-    /// `nexus_workflow::scheduler::QueueGeneratorWitness`
-    pub const QUEUE_GENERATOR_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("QueueGeneratorWitness"),
-    };
-    /// Register the periodic generator state on the constraints policy.
-    ///
-    /// `nexus_workflow::scheduler::register_periodic_generator`
-    pub const REGISTER_PERIODIC_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("register_periodic_generator"),
-    };
-    /// Register the queue generator state on the constraints policy.
-    ///
-    /// `nexus_workflow::scheduler::register_queue_generator`
-    pub const REGISTER_QUEUE_GENERATOR: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("register_queue_generator"),
-    };
-    /// Resume the scheduler for a task.
-    ///
-    /// `nexus_workflow::scheduler::resume_time_constraint_for_task`
-    pub const RESUME_TIME_CONSTRAINT_FOR_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("resume_time_constraint_for_task"),
-    };
-    /// The Task struct type. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::scheduler::Task`
-    pub const TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("Task"),
-    };
-    /// The TimeConstraint struct type.
-    ///
-    /// `nexus_workflow::scheduler::TimeConstraint`
-    pub const TIME_CONSTRAINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("TimeConstraint"),
-    };
-    /// Updates task metadata with the provided values.
-    ///
-    /// `nexus_workflow::scheduler::update_metadata`
-    pub const UPDATE_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("update_metadata"),
-    };
-}
 // == `nexus_workflow::dag` ==
 
 pub struct Dag;
@@ -253,6 +56,13 @@ impl Dag {
     pub const BEGIN_AGENT_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("begin_agent_execution_with_config"),
+    };
+    /// Witness type used by scheduler tasks that execute a registered agent target.
+    ///
+    /// `nexus_workflow::dag::BeginAgentExecutionWitness`
+    pub const BEGIN_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("BeginAgentExecutionWitness"),
     };
     /// `nexus_workflow::dag::BEGIN_DAG_EXECUTION_WITH_CONFIG`
     pub const BEGIN_DAG_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -486,6 +296,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
     };
+    /// Prepare a registered TAP agent DAG execution using a scheduled occurrence payment.
+    ///
+    /// `nexus_workflow::dag::prepare_agent_execution_from_scheduled_payment`
+    pub const PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "prepare_agent_execution_from_scheduled_payment",
+            ),
+        };
     /// Scheduler entry point to invoke the default agent execution route
     /// using a durable TAP scheduled payment reserve.
     ///
@@ -538,6 +358,13 @@ impl Dag {
                 "refund_tap_execution_payment_from_agent_vault",
             ),
         };
+    /// Register a scheduler execution policy config for a registered TAP agent execution.
+    ///
+    /// `nexus_workflow::dag::register_begin_agent_execution`
+    pub const REGISTER_BEGIN_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("register_begin_agent_execution"),
+    };
     /// Register scheduler execution config for default agent execution.
     ///
     /// `nexus_workflow::dag::register_begin_default_agent_execution`
@@ -1323,68 +1150,6 @@ impl GasExtension {
     pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_EXTENSION_MODULE,
         name: sui::types::Identifier::from_static("enable_limited_invocations"),
-    };
-}
-
-// == `nexus_workflow::network_auth` ==
-
-pub struct NetworkAuth;
-
-const NETWORK_AUTH_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("network_auth");
-
-impl NetworkAuth {
-    /// Create a new key binding for an identity.
-    ///
-    /// `nexus_workflow::network_auth::create_binding`
-    pub const CREATE_BINDING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("create_binding"),
-    };
-    /// Move type `nexus_workflow::network_auth::IdentityKey`.
-    pub const IDENTITY_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("IdentityKey"),
-    };
-    /// Move type `nexus_workflow::network_auth::KeyBinding`.
-    pub const KEY_BINDING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("KeyBinding"),
-    };
-    /// The NetworkAuth struct type.
-    ///
-    /// `nexus_workflow::network_auth::NetworkAuth`
-    pub const NETWORK_AUTH: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("NetworkAuth"),
-    };
-    /// Construct a proof-of-possession for a key registration slot.
-    ///
-    /// `nexus_workflow::network_auth::new_proof_of_key`
-    pub const NEW_PROOF_OF_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("new_proof_of_key"),
-    };
-    /// Create proof-of-identity for a leader (sender), using a leader capability.
-    ///
-    /// `nexus_workflow::network_auth::prove_leader`
-    pub const PROVE_LEADER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("prove_leader"),
-    };
-    /// Create proof-of-identity for an off-chain tool (checked against ToolRegistry).
-    ///
-    /// `nexus_workflow::network_auth::prove_offchain_tool`
-    pub const PROVE_OFFCHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("prove_offchain_tool"),
-    };
-    /// Register a new key on an existing binding and set it active.
-    ///
-    /// `nexus_workflow::network_auth::register_key`
-    pub const REGISTER_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: NETWORK_AUTH_MODULE,
-        name: sui::types::Identifier::from_static("register_key"),
     };
 }
 

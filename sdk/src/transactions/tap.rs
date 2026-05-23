@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, pure_arg, tap::TapStandard},
+    idents::{move_std, pure_arg, registry::AgentRegistry, tap::TapStandard},
     sui,
     types::{
         AgentId,
@@ -8,12 +8,13 @@ use crate::{
         SkillId,
         TapPaymentPolicy,
         TapSchedulePolicy,
+        TapScheduledAuthorizationGrantTemplate,
         TapScheduledOccurrenceFinalState,
         TapSharedObjectRef,
     },
 };
 
-fn tap_registry_call(
+fn agent_registry_call(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     ident: crate::idents::ModuleAndNameIdent,
@@ -43,21 +44,21 @@ fn tap_call_with_package(
     )
 }
 
-pub fn tap_registry_arg(
+pub fn agent_registry_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
+    mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry = objects
-        .tap_registry()
-        .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?;
+        .agent_registry()
+        .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?;
 
     Ok(tx.input(sui::tx::Input::shared(
         *registry.object_id(),
         registry.version(),
-        true,
+        mutability,
     )))
 }
-
 pub fn create_agent(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -66,10 +67,10 @@ pub fn create_agent(
 ) -> anyhow::Result<sui::types::Argument> {
     let operator = tx.input(pure_arg(&operator)?);
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::CREATE_AGENT,
+        AgentRegistry::CREATE_AGENT,
         vec![registry, operator],
     ))
 }
@@ -77,14 +78,12 @@ pub fn create_agent(
 pub fn create_standard_endpoint(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    package_id: sui::types::Address,
 ) -> anyhow::Result<sui::types::Argument> {
-    let package_id = tx.input(pure_arg(&package_id)?);
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::CREATE_STANDARD_ENDPOINT,
-        vec![package_id],
+        AgentRegistry::CREATE_STANDARD_ENDPOINT,
+        vec![],
     ))
 }
 
@@ -93,10 +92,10 @@ pub fn share_standard_endpoint(
     objects: &NexusObjects,
     endpoint: sui::types::Argument,
 ) -> sui::types::Argument {
-    tap_registry_call(
+    agent_registry_call(
         tx,
         objects,
-        TapStandard::SHARE_STANDARD_ENDPOINT,
+        AgentRegistry::SHARE_STANDARD_ENDPOINT,
         vec![endpoint],
     )
 }
@@ -137,7 +136,6 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     objects: &NexusObjects,
     registry: sui::types::Argument,
     operator: sui::types::Address,
-    tap_package_id: sui::types::Address,
     endpoint_object_id: sui::types::Address,
     endpoint_object_version: u64,
     endpoint_object_digest: Vec<u8>,
@@ -146,17 +144,16 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     let args = vec![
         registry,
         tx.input(pure_arg(&operator)?),
-        tx.input(pure_arg(&tap_package_id)?),
         tx.input(pure_arg(&endpoint_object_id)?),
         tx.input(pure_arg(&endpoint_object_version)?),
         tx.input(pure_arg(&endpoint_object_digest)?),
         tx.input(pure_arg(&config_digest)?),
     ];
 
-    let result = tap_registry_call(
+    let result = agent_registry_call(
         tx,
         objects,
-        TapStandard::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT,
+        AgentRegistry::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT,
         args,
     );
     Ok(result)
@@ -169,7 +166,6 @@ pub fn register_skill(
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag_id: sui::types::Address,
-    tap_package_id: sui::types::Address,
     workflow_commitment: Vec<u8>,
     requirements_commitment: Vec<u8>,
     metadata_commitment: Vec<u8>,
@@ -190,7 +186,6 @@ pub fn register_skill(
         registry,
         agent,
         tx.input(pure_arg(&dag_id)?),
-        tx.input(pure_arg(&tap_package_id)?),
         tx.input(pure_arg(&workflow_commitment)?),
         tx.input(pure_arg(&requirements_commitment)?),
         tx.input(pure_arg(&metadata_commitment)?),
@@ -205,10 +200,10 @@ pub fn register_skill(
         tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::REGISTER_SKILL,
+        AgentRegistry::REGISTER_SKILL,
         args,
     ))
 }
@@ -222,10 +217,10 @@ pub fn get_skill_requirements(
 ) -> anyhow::Result<sui::types::Argument> {
     let skill_id = tx.input(pure_arg(&skill_id)?);
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::GET_SKILL_REQUIREMENTS,
+        AgentRegistry::GET_SKILL_REQUIREMENTS,
         vec![registry, agent, skill_id],
     ))
 }
@@ -267,10 +262,10 @@ pub fn announce_endpoint_revision(
         tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::ANNOUNCE_ENDPOINT_REVISION,
+        AgentRegistry::ANNOUNCE_ENDPOINT_REVISION,
         args,
     ))
 }
@@ -292,10 +287,10 @@ pub fn set_active_endpoint_revision(
         tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::SET_ACTIVE_ENDPOINT_REVISION,
+        AgentRegistry::SET_ACTIVE_ENDPOINT_REVISION,
         args,
     ))
 }
@@ -315,7 +310,12 @@ pub fn worksheet(
         tx.input(pure_arg(&execution_id)?),
     ];
 
-    Ok(tap_registry_call(tx, objects, TapStandard::WORKSHEET, args))
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::WORKSHEET,
+        args,
+    ))
 }
 
 pub fn workflow_worksheet_for_ids(
@@ -328,10 +328,10 @@ pub fn workflow_worksheet_for_ids(
     let agent_id = agent_id_from_address(tx, objects, agent_id)?;
     let args = vec![registry, agent_id, tx.input(pure_arg(&skill_id)?)];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::WORKFLOW_WORKSHEET_FOR_IDS,
+        AgentRegistry::WORKFLOW_WORKSHEET_FOR_IDS,
         args,
     ))
 }
@@ -341,10 +341,10 @@ pub fn default_dag_executor_workflow_worksheet(
     objects: &NexusObjects,
     registry: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET,
+        AgentRegistry::DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET,
         vec![registry],
     ))
 }
@@ -355,10 +355,10 @@ pub fn confirm_tool_eval_for_walk(
     registry: sui::types::Argument,
     worksheet: sui::types::Argument,
 ) -> sui::types::Argument {
-    tap_registry_call(
+    agent_registry_call(
         tx,
         objects,
-        TapStandard::CONFIRM_TOOL_EVAL_FOR_WALK,
+        AgentRegistry::CONFIRM_TOOL_EVAL_FOR_WALK,
         vec![registry, worksheet],
     )
 }
@@ -435,10 +435,10 @@ pub fn withdraw_agent_payment_vault(
     // owner or operator registered in the TapRegistry.
     let amount = tx.input(pure_arg(&amount)?);
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::WITHDRAW_AGENT_PAYMENT_VAULT,
+        AgentRegistry::WITHDRAW_AGENT_PAYMENT_VAULT,
         vec![registry, agent, amount],
     ))
 }
@@ -469,10 +469,10 @@ pub fn schedule_skill_execution(
         tx.input(pure_arg(&first_after_ms)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::SCHEDULE_SKILL_EXECUTION,
+        AgentRegistry::SCHEDULE_SKILL_EXECUTION,
         args,
     ))
 }
@@ -513,10 +513,58 @@ pub fn schedule_skill_execution_address_funded(
         tx.input(pure_arg(&first_after_ms)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED,
+        AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED,
+        args,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn schedule_skill_execution_address_funded_with_grants(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    scheduler_task_id: sui::types::Address,
+    skill_id: SkillId,
+    prepayment_coin: sui::types::Argument,
+    refund_recipient: sui::types::Address,
+    payment_source: Vec<u8>,
+    occurrence_budget: u64,
+    refund_mode: u8,
+    schedule_policy: TapSchedulePolicy,
+    refill_policy_commitment: Vec<u8>,
+    schedule_entries_commitment: Vec<u8>,
+    first_after_ms: u64,
+    grant_templates: Vec<TapScheduledAuthorizationGrantTemplate>,
+) -> anyhow::Result<sui::types::Argument> {
+    let skill_id = tx.input(pure_arg(&skill_id)?);
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let grant_templates =
+        scheduled_authorization_grant_templates_arg(tx, objects, &grant_templates)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&scheduler_task_id)?),
+        skill_id,
+        prepayment_coin,
+        tx.input(pure_arg(&refund_recipient)?),
+        tx.input(pure_arg(&payment_source)?),
+        tx.input(pure_arg(&occurrence_budget)?),
+        tx.input(pure_arg(&refund_mode)?),
+        schedule_policy,
+        tx.input(pure_arg(&refill_policy_commitment)?),
+        tx.input(pure_arg(&schedule_entries_commitment)?),
+        tx.input(pure_arg(&first_after_ms)?),
+        grant_templates,
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS,
         args,
     ))
 }
@@ -552,10 +600,10 @@ pub fn schedule_default_dag_executor_skill_execution_address_funded(
         tx.input(pure_arg(&first_after_ms)?),
     ];
 
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED,
+        AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED,
         args,
     ))
 }
@@ -592,10 +640,54 @@ pub fn schedule_skill_execution_from_agent_vault(
         tx.input(pure_arg(&first_after_ms)?),
     ];
 
-    Ok(tap_interface_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT,
+        AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT,
+        args,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn schedule_skill_execution_from_agent_vault_with_grants(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    scheduler_task_id: sui::types::Address,
+    skill_id: SkillId,
+    prepay_amount: u64,
+    occurrence_budget: u64,
+    refund_mode: u8,
+    schedule_policy: TapSchedulePolicy,
+    refill_policy_commitment: Vec<u8>,
+    schedule_entries_commitment: Vec<u8>,
+    first_after_ms: u64,
+    grant_templates: Vec<TapScheduledAuthorizationGrantTemplate>,
+) -> anyhow::Result<sui::types::Argument> {
+    let skill_id = tx.input(pure_arg(&skill_id)?);
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let grant_templates =
+        scheduled_authorization_grant_templates_arg(tx, objects, &grant_templates)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&scheduler_task_id)?),
+        skill_id,
+        tx.input(pure_arg(&prepay_amount)?),
+        tx.input(pure_arg(&occurrence_budget)?),
+        tx.input(pure_arg(&refund_mode)?),
+        schedule_policy,
+        tx.input(pure_arg(&refill_policy_commitment)?),
+        tx.input(pure_arg(&schedule_entries_commitment)?),
+        tx.input(pure_arg(&first_after_ms)?),
+        grant_templates,
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT_WITH_GRANTS,
         args,
     ))
 }
@@ -636,10 +728,12 @@ fn payment_mode_arg(
             TapStandard::PAYMENT_MODE_USER_FUNDED,
             vec![],
         )),
-        _ => anyhow::bail!(
-            "TAP payment mode {:?} is not yet supported by PTB builder",
-            mode
-        ),
+        crate::types::TapPaymentMode::AgentFunded => Ok(tap_interface_call(
+            tx,
+            objects,
+            TapStandard::PAYMENT_MODE_AGENT_FUNDED,
+            vec![],
+        )),
     }
 }
 
@@ -714,6 +808,67 @@ fn shared_object_refs_arg(
     Ok(vector)
 }
 
+fn scheduled_authorization_grant_template_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    template: &TapScheduledAuthorizationGrantTemplate,
+) -> anyhow::Result<sui::types::Argument> {
+    let dag_id = tx.input(pure_arg(&template.dag_id)?);
+    let vertex = move_std::Ascii::ascii_string_from_str(tx, &template.vertex)?;
+    let tool_package = tx.input(pure_arg(&template.tool_package)?);
+    let tool_module = move_std::Ascii::ascii_string_from_str(tx, &template.tool_module)?;
+    let tool_function = move_std::Ascii::ascii_string_from_str(tx, &template.tool_function)?;
+    let operation_commitment = tx.input(pure_arg(&template.operation_commitment)?);
+    let constraints_commitment = tx.input(pure_arg(&template.constraints_commitment)?);
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::SCHEDULED_AUTHORIZATION_GRANT_TEMPLATE,
+        vec![
+            dag_id,
+            vertex,
+            tool_package,
+            tool_module,
+            tool_function,
+            operation_commitment,
+            constraints_commitment,
+        ],
+    ))
+}
+
+fn scheduled_authorization_grant_templates_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    grant_templates: &[TapScheduledAuthorizationGrantTemplate],
+) -> anyhow::Result<sui::types::Argument> {
+    let template_type =
+        crate::idents::tap::scheduled_authorization_grant_template_type(objects.interface_pkg_id);
+    let vector = tx.move_call(
+        sui::tx::Function::new(
+            move_std::PACKAGE_ID,
+            move_std::Vector::EMPTY.module,
+            move_std::Vector::EMPTY.name,
+            vec![template_type.clone()],
+        ),
+        vec![],
+    );
+
+    for template in grant_templates {
+        let item = scheduled_authorization_grant_template_arg(tx, objects, template)?;
+        tx.move_call(
+            sui::tx::Function::new(
+                move_std::PACKAGE_ID,
+                move_std::Vector::PUSH_BACK.module,
+                move_std::Vector::PUSH_BACK.name,
+                vec![template_type.clone()],
+            ),
+            vec![vector, item],
+        );
+    }
+
+    Ok(vector)
+}
+
 pub fn trigger_scheduled_skill_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -722,10 +877,10 @@ pub fn trigger_scheduled_skill_execution(
     execution_id: sui::types::Address,
 ) -> anyhow::Result<sui::types::Argument> {
     let execution_id = tx.input(pure_arg(&execution_id)?);
-    Ok(tap_registry_call(
+    Ok(agent_registry_call(
         tx,
         objects,
-        TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION,
+        AgentRegistry::TRIGGER_SCHEDULED_SKILL_EXECUTION,
         vec![registry, scheduled_task, execution_id],
     ))
 }
@@ -836,6 +991,25 @@ mod tests {
             assert_eq!(actual, expected);
         }
 
+        fn expect_shared_object(
+            &self,
+            argument: &sui::types::Argument,
+            expected: &sui::types::ObjectReference,
+            expected_mutable: bool,
+        ) {
+            let sui::types::Input::Shared {
+                object_id,
+                initial_shared_version,
+                mutable,
+            } = self.input(argument)
+            else {
+                panic!("expected shared object input");
+            };
+            assert_eq!(object_id, expected.object_id());
+            assert_eq!(*initial_shared_version, expected.version());
+            assert_eq!(*mutable, expected_mutable);
+        }
+
         fn move_call(&self, index: usize) -> &sui::types::MoveCall {
             match self.commands().get(index) {
                 Some(sui::types::Command::MoveCall(call)) => call,
@@ -869,13 +1043,39 @@ mod tests {
         assert_eq!(worksheet_call.package, objects.registry_pkg_id());
         assert_eq!(
             worksheet_call.module,
-            TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.module
+            AgentRegistry::WORKFLOW_WORKSHEET_FOR_IDS.module
         );
         assert_eq!(
             worksheet_call.function,
-            TapStandard::WORKFLOW_WORKSHEET_FOR_IDS.name
+            AgentRegistry::WORKFLOW_WORKSHEET_FOR_IDS.name
         );
         assert_eq!(worksheet_call.arguments.len(), 3);
+    }
+
+    #[test]
+    fn registry_arg_helpers_select_expected_mutability() {
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let mut immutable_tx = sui::tx::TransactionBuilder::new();
+        let immutable_registry =
+            agent_registry_arg(&mut immutable_tx, &objects, false).expect("immutable registry");
+        let immutable_inspector =
+            TxInspector::new(sui_mocks::mock_finish_transaction(immutable_tx));
+        immutable_inspector.expect_shared_object(
+            &immutable_registry,
+            objects.agent_registry().expect("mock has agent registry"),
+            false,
+        );
+
+        let mut mutable_tx = sui::tx::TransactionBuilder::new();
+        let mutable_registry =
+            agent_registry_arg(&mut mutable_tx, &objects, true).expect("mutable registry");
+        let mutable_inspector = TxInspector::new(sui_mocks::mock_finish_transaction(mutable_tx));
+        mutable_inspector.expect_shared_object(
+            &mutable_registry,
+            objects.agent_registry().expect("mock has agent registry"),
+            true,
+        );
     }
 
     #[test]
@@ -915,13 +1115,13 @@ mod tests {
             .iter()
             .find(|call| {
                 call.package == objects.registry_pkg_id()
-                    && call.module == TapStandard::SCHEDULE_SKILL_EXECUTION.module
-                    && call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name
+                    && call.module == AgentRegistry::SCHEDULE_SKILL_EXECUTION.module
+                    && call.function == AgentRegistry::SCHEDULE_SKILL_EXECUTION.name
             })
             .expect("schedule_skill_execution call");
         assert_eq!(
             schedule_call.function,
-            TapStandard::SCHEDULE_SKILL_EXECUTION.name
+            AgentRegistry::SCHEDULE_SKILL_EXECUTION.name
         );
     }
 
@@ -961,7 +1161,7 @@ mod tests {
 
         let schedule_call = calls
             .iter()
-            .find(|call| call.function == TapStandard::SCHEDULE_SKILL_EXECUTION.name)
+            .find(|call| call.function == AgentRegistry::SCHEDULE_SKILL_EXECUTION.name)
             .expect("schedule_skill_execution call");
 
         inspector.expect_u64(&schedule_call.arguments[2], 11);
@@ -973,8 +1173,7 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
 
         let endpoint =
-            create_standard_endpoint(&mut tx, &objects, sui::types::Address::from_static("0x44"))
-                .expect("create endpoint builder succeeds");
+            create_standard_endpoint(&mut tx, &objects).expect("create endpoint builder succeeds");
         share_standard_endpoint(&mut tx, &objects, endpoint);
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
@@ -982,29 +1181,23 @@ mod tests {
         assert_eq!(create_call.package, objects.registry_pkg_id());
         assert_eq!(
             create_call.module,
-            TapStandard::CREATE_STANDARD_ENDPOINT.module
+            AgentRegistry::CREATE_STANDARD_ENDPOINT.module
         );
         assert_eq!(
             create_call.function,
-            TapStandard::CREATE_STANDARD_ENDPOINT.name
+            AgentRegistry::CREATE_STANDARD_ENDPOINT.name
         );
-        assert_eq!(create_call.arguments.len(), 1);
-        let sui::types::Input::Pure { value } = inspector.input(&create_call.arguments[0]) else {
-            panic!("expected pure package id input");
-        };
-        let package_id: sui::types::Address =
-            bcs::from_bytes(value).expect("package id BCS decodes");
-        assert_eq!(package_id, sui::types::Address::from_static("0x44"));
+        assert_eq!(create_call.arguments.len(), 0);
 
         let share_call = inspector.move_call(1);
         assert_eq!(share_call.package, objects.registry_pkg_id());
         assert_eq!(
             share_call.module,
-            TapStandard::SHARE_STANDARD_ENDPOINT.module
+            AgentRegistry::SHARE_STANDARD_ENDPOINT.module
         );
         assert_eq!(
             share_call.function,
-            TapStandard::SHARE_STANDARD_ENDPOINT.name
+            AgentRegistry::SHARE_STANDARD_ENDPOINT.name
         );
         assert_eq!(share_call.arguments, vec![endpoint]);
     }
@@ -1026,7 +1219,6 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
             vec![1],
             vec![2],
             vec![3],
@@ -1058,23 +1250,23 @@ mod tests {
                     command,
                     sui::types::Command::MoveCall(call)
                         if call.package == objects.registry_pkg_id()
-                            && call.module == TapStandard::REGISTER_SKILL.module
-                            && call.function == TapStandard::REGISTER_SKILL.name
+                            && call.module == AgentRegistry::REGISTER_SKILL.module
+                            && call.function == AgentRegistry::REGISTER_SKILL.name
                 )
             })
             .expect("register_skill call");
         let call = inspector.move_call(register_call_idx);
         assert_eq!(call.package, objects.registry_pkg_id());
-        assert_eq!(call.module, TapStandard::REGISTER_SKILL.module);
-        assert_eq!(call.function, TapStandard::REGISTER_SKILL.name);
-        assert_eq!(call.arguments.len(), 16);
+        assert_eq!(call.module, AgentRegistry::REGISTER_SKILL.module);
+        assert_eq!(call.function, AgentRegistry::REGISTER_SKILL.name);
+        assert_eq!(call.arguments.len(), 15);
     }
 
     #[test]
     fn payment_and_vault_builders_target_standard_tap_functions() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tap_registry_arg(&mut tx, &objects).expect("registry");
+        let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry");
         let agent = tx.input(sui::tx::Input::shared(
             sui::types::Address::from_static("0xa"),
             1,
@@ -1122,7 +1314,7 @@ mod tests {
 
         for expected in [
             TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,
-            TapStandard::WITHDRAW_AGENT_PAYMENT_VAULT.name,
+            AgentRegistry::WITHDRAW_AGENT_PAYMENT_VAULT.name,
         ] {
             assert!(
                 function_names.contains(&expected),
@@ -1135,7 +1327,13 @@ mod tests {
     fn endpoint_and_schedule_builders_cover_variants() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tap_registry_arg(&mut tx, &objects).expect("registry");
+        let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry");
+        let agent_registry = objects.agent_registry().expect("mock has tap registry");
+        let immutable_registry = tx.input(sui::tx::Input::shared(
+            *agent_registry.object_id(),
+            agent_registry.version(),
+            false,
+        ));
         let agent = tx.input(sui::tx::Input::shared(
             sui::types::Address::from_static("0xa"),
             1,
@@ -1204,7 +1402,7 @@ mod tests {
         schedule_default_dag_executor_skill_execution_address_funded(
             &mut tx,
             &objects,
-            registry,
+            immutable_registry,
             sui::types::Address::from_static("0x82"),
             default_prepayment_coin,
             sui::types::Address::from_static("0x83"),
@@ -1271,13 +1469,13 @@ mod tests {
         for expected in [
             TapStandard::AGENT_ID_FROM_ADDRESS.name,
             TapStandard::INTERFACE_REVISION.name,
-            TapStandard::GET_SKILL_REQUIREMENTS.name,
-            TapStandard::ANNOUNCE_ENDPOINT_REVISION.name,
-            TapStandard::SET_ACTIVE_ENDPOINT_REVISION.name,
-            TapStandard::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
-            TapStandard::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name,
-            TapStandard::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
-            TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
+            AgentRegistry::GET_SKILL_REQUIREMENTS.name,
+            AgentRegistry::ANNOUNCE_ENDPOINT_REVISION.name,
+            AgentRegistry::SET_ACTIVE_ENDPOINT_REVISION.name,
+            AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
+            AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name,
+            AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
+            AgentRegistry::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
             TapStandard::COMPLETE_SCHEDULED_SKILL_OCCURRENCE.name,
             TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT.name,
             TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED.name,
@@ -1291,7 +1489,197 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_payment_mode_is_rejected_before_register_call() {
+    fn default_address_funded_schedule_accepts_immutable_registry() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let agent_registry = objects.agent_registry().expect("mock has tap registry");
+        let registry = tx.input(sui::tx::Input::shared(
+            *agent_registry.object_id(),
+            agent_registry.version(),
+            false,
+        ));
+        let prepayment_coin = tx.input(pure_arg(&8_u64).unwrap());
+
+        schedule_default_dag_executor_skill_execution_address_funded(
+            &mut tx,
+            &objects,
+            registry,
+            sui::types::Address::from_static("0x82"),
+            prepayment_coin,
+            sui::types::Address::from_static("0x83"),
+            vec![12],
+            100,
+            0,
+            TapSchedulePolicy::default(),
+            vec![14],
+            vec![15],
+            201,
+        )
+        .expect("default address funded schedule");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let schedule_call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .find(|call| {
+                call.package == objects.registry_pkg_id()
+                    && call.function
+                        == AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name
+            })
+            .expect("default address funded schedule call");
+        assert_eq!(schedule_call.arguments.len(), 11);
+        inspector.expect_shared_object(
+            &schedule_call.arguments[0],
+            objects.agent_registry().expect("mock has tap registry"),
+            false,
+        );
+    }
+
+    #[test]
+    fn address_funded_schedule_builder_accepts_scheduled_grant_templates() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = agent_registry_arg(&mut tx, &objects, false).expect("registry");
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            false,
+        ));
+        let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
+
+        schedule_skill_execution_address_funded_with_grants(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0x80"),
+            11,
+            prepayment_coin,
+            sui::types::Address::from_static("0x81"),
+            vec![2],
+            100,
+            0,
+            TapSchedulePolicy::default(),
+            vec![4],
+            vec![5],
+            200,
+            vec![TapScheduledAuthorizationGrantTemplate {
+                dag_id: sui::types::Address::from_static("0xd"),
+                vertex: "demo_delayed_fire_vertex".to_string(),
+                tool_package: sui::types::Address::from_static("0xf"),
+                tool_module: "demo_delayed_fire_vertex".to_string(),
+                tool_function: "execute".to_string(),
+                operation_commitment: b"demo-tap-delayed-fire".to_vec(),
+                constraints_commitment: Vec::new(),
+            }],
+        )
+        .expect("address funded schedule with grant template succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let template_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.interface_pkg_id
+                    && call.function == TapStandard::SCHEDULED_AUTHORIZATION_GRANT_TEMPLATE.name
+            })
+            .expect("scheduled grant template constructor call");
+        assert_eq!(template_call.arguments.len(), 7);
+
+        let schedule_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.registry_pkg_id()
+                    && call.function
+                        == AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS.name
+            })
+            .expect("address funded schedule with grants call");
+        assert_eq!(
+            schedule_call.function,
+            AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS.name
+        );
+        assert_eq!(schedule_call.arguments.len(), 14);
+        inspector.expect_u64(&schedule_call.arguments[3], 11);
+    }
+
+    #[test]
+    fn agent_vault_schedule_builder_accepts_scheduled_grant_templates() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = agent_registry_arg(&mut tx, &objects, false).expect("registry");
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            true,
+        ));
+
+        schedule_skill_execution_from_agent_vault_with_grants(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0x80"),
+            12,
+            50,
+            25,
+            0,
+            TapSchedulePolicy::default(),
+            vec![4],
+            vec![5],
+            200,
+            vec![TapScheduledAuthorizationGrantTemplate {
+                dag_id: sui::types::Address::from_static("0xd"),
+                vertex: "demo_delayed_fire_vertex".to_string(),
+                tool_package: sui::types::Address::from_static("0xf"),
+                tool_module: "demo_delayed_fire_vertex".to_string(),
+                tool_function: "execute".to_string(),
+                operation_commitment: b"demo-tap-delayed-fire".to_vec(),
+                constraints_commitment: Vec::new(),
+            }],
+        )
+        .expect("agent vault schedule with grant template succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert!(calls.iter().any(|call| {
+            call.package == objects.interface_pkg_id
+                && call.function == TapStandard::SCHEDULED_AUTHORIZATION_GRANT_TEMPLATE.name
+        }));
+        let schedule_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.registry_pkg_id()
+                    && call.function
+                        == AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT_WITH_GRANTS.name
+            })
+            .expect("agent vault schedule with grants call");
+        assert_eq!(schedule_call.arguments.len(), 12);
+        inspector.expect_u64(&schedule_call.arguments[3], 12);
+        inspector.expect_u64(&schedule_call.arguments[4], 50);
+    }
+
+    #[test]
+    fn register_skill_builder_supports_agent_funded_payment_mode() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tx.input(pure_arg(&1_u64).unwrap());
@@ -1301,13 +1689,12 @@ mod tests {
             true,
         ));
 
-        let error = register_skill(
+        register_skill(
             &mut tx,
             &objects,
             registry,
             agent,
             sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
             vec![1],
             vec![2],
             vec![3],
@@ -1326,10 +1713,23 @@ mod tests {
             vec![6],
             true,
         )
-        .expect_err("unsupported payment mode");
+        .expect("agent funded payment mode is supported");
 
-        assert!(error
-            .to_string()
-            .contains("not yet supported by PTB builder"));
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let function_names = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) if call.package == objects.interface_pkg_id => {
+                    Some(call.function.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            function_names.contains(&TapStandard::PAYMENT_MODE_AGENT_FUNDED.name),
+            "missing agent-funded payment mode constructor"
+        );
     }
 }

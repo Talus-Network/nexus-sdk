@@ -101,6 +101,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("interface_revision"),
     };
+    pub const PAYMENT_MODE_AGENT_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("payment_mode_agent_funded"),
+    };
     pub const PAYMENT_MODE_USER_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("payment_mode_user_funded"),
@@ -126,6 +130,10 @@ impl TapStandard {
     pub const REGISTER_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
+    };
+    pub const SCHEDULED_AUTHORIZATION_GRANT_TEMPLATE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("scheduled_authorization_grant_template"),
     };
     pub const SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED: ModuleAndNameIdent =
         ModuleAndNameIdent {
@@ -230,6 +238,17 @@ pub fn scheduled_skill_task_type(package_id: sui::types::Address) -> sui::types:
     )))
 }
 
+pub fn scheduled_authorization_grant_template_type(
+    package_id: sui::types::Address,
+) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        package_id,
+        STANDARD_TAP_MODULE,
+        sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
+        vec![],
+    )))
+}
+
 pub fn agent_type(package_id: sui::types::Address) -> sui::types::TypeTag {
     sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         package_id,
@@ -282,6 +301,10 @@ mod tests {
             sui::types::Identifier::from_static("schedule_skill_execution")
         );
         assert_eq!(
+            TapStandard::SCHEDULED_AUTHORIZATION_GRANT_TEMPLATE.name,
+            sui::types::Identifier::from_static("scheduled_authorization_grant_template")
+        );
+        assert_eq!(
             TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,
             sui::types::Identifier::from_static("deposit_agent_payment_vault")
         );
@@ -308,6 +331,10 @@ mod tests {
             (
                 scheduled_skill_task_type(package),
                 sui::types::Identifier::from_static("ScheduledSkillTask"),
+            ),
+            (
+                scheduled_authorization_grant_template_type(package),
+                sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
             ),
             (
                 standard_endpoint_type(package),

@@ -257,7 +257,7 @@ pub(crate) enum TapCommand {
         remote: Vec<String>,
         #[arg(
             long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit for the DAG execution.",
+            help = "Priority fee per gas unit for the DAG execution. Defaults to 0 when omitted.",
             value_name = "AMOUNT",
             default_value_t = 0u64
         )]

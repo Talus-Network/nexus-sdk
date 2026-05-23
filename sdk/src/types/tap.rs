@@ -214,7 +214,7 @@ impl fmt::Display for TapEndpointKey {
     }
 }
 
-/// Dynamic table key used by `nexus_registry::tap::AgentRecord.endpoints`.
+/// Dynamic table key used by `nexus_registry::agent_registry::AgentRecord.endpoints`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapEndpointRevisionKey {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -474,7 +474,7 @@ impl TapScheduledPaymentSource {
     }
 }
 
-/// TAP scheduled-task link stored in `nexus_workflow::scheduler::Task.data`.
+/// TAP scheduled-task link stored in `nexus_scheduler::scheduler::Task.data`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapScheduledTaskLink {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -683,7 +683,7 @@ pub struct TapSkillRequirements {
     pub vertex_authorization_schema: TapVertexAuthorizationSchema,
 }
 
-/// Stored `nexus_registry::tap::AgentRecord`.
+/// Stored `nexus_registry::agent_registry::AgentRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapAgentRecord {
     pub agent_id: AgentId,
@@ -705,7 +705,6 @@ pub struct TapSkillRecord {
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub dag_binding: TapDagBinding,
-    pub tap_package_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub workflow_commitment: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
@@ -726,7 +725,6 @@ pub struct TapEndpointRevision {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub package_id: sui::types::Address,
     pub endpoint_object_id: sui::types::Address,
     pub endpoint_object_version: u64,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
@@ -760,7 +758,6 @@ impl TapEndpointRevision {
 
         let record = TapEndpointRecord {
             key: self.key(),
-            package_id: self.package_id,
             endpoint_object: sui::types::ObjectReference::new(
                 self.endpoint_object_id,
                 self.endpoint_object_version,
@@ -825,14 +822,14 @@ pub struct TapAgentObject {
     pub owner: sui::types::Address,
 }
 
-/// Raw shared `nexus_registry::tap::TapRegistry` object contents.
+/// Raw shared `nexus_registry::agent_registry::AgentRegistry` object contents.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapRegistryObject {
     pub id: sui::types::Address,
     pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
 }
 
-/// Expanded `nexus_registry::tap::TapRegistry` contents with table entries fetched.
+/// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapRegistry {
     pub id: sui::types::Address,
@@ -927,7 +924,7 @@ impl TapRegistry {
 
     pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
         self.default_executor
-            .ok_or_else(|| anyhow::anyhow!("TapRegistry missing default TAP DAG executor"))
+            .ok_or_else(|| anyhow::anyhow!("AgentRegistry missing default TAP DAG executor"))
     }
 
     fn is_active_endpoint(
@@ -948,7 +945,6 @@ impl TapRegistry {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapEndpointRecord {
     pub key: TapEndpointKey,
-    pub package_id: sui::types::Address,
     pub endpoint_object: sui::types::ObjectReference,
     pub shared_objects: Vec<TapSharedObjectRef>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
@@ -977,7 +973,7 @@ impl TapEndpointRecord {
 }
 
 /// Legacy standalone active endpoint pointer model. New standard TAP recovery
-/// should read `TapRegistry.active_endpoints` instead.
+/// should read `AgentRegistry.active_endpoints` instead.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapActiveEndpoint {
     pub agent_id: AgentId,
@@ -1417,6 +1413,8 @@ pub struct WorkflowVertexAuthorizationGrant {
     pub execution_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
     pub vertex: RuntimeVertex,
+    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
+    pub scheduled_grant_id: Option<sui::types::Address>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1504,6 +1502,51 @@ impl TapVertexAuthorizationPlan {
     }
 }
 
+/// Creation-time template for a scheduled TAP authorization grant.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TapScheduledAuthorizationGrantTemplate {
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub dag_id: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub vertex: String,
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub tool_package: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub tool_module: String,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub tool_function: String,
+    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
+    pub operation_commitment: Vec<u8>,
+    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
+    pub constraints_commitment: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TapScheduledAuthorizationGrantRef {
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub scheduled_grant_id: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub scheduled_task_id: sui::types::Address,
+    pub agent_id: AgentId,
+    #[serde(deserialize_with = "deserialize_tap_u64_value")]
+    pub skill_id: SkillId,
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub dag_id: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub vertex: String,
+    #[serde(deserialize_with = "deserialize_tap_address_value")]
+    pub tool_package: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub tool_module: String,
+    #[serde(deserialize_with = "deserialize_tap_byte_string")]
+    pub tool_function: String,
+    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
+    pub operation_commitment: Vec<u8>,
+    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
+    pub constraints_commitment: Vec<u8>,
+    pub consumed: bool,
+}
+
 /// Scheduled peer of immediate skill execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapScheduledSkillTask {
@@ -1550,6 +1593,8 @@ pub struct TapScheduledSkillTask {
     pub occurrences_finalized: u64,
     #[serde(default)]
     pub in_flight: Vec<TapScheduledOccurrenceRecord>,
+    #[serde(default)]
+    pub scheduled_authorization_grants: Vec<TapScheduledAuthorizationGrantRef>,
     pub state: TapScheduledTaskState,
     pub active: bool,
 }
@@ -1609,7 +1654,6 @@ pub struct DefaultDagExecutorRecord {
 /// Digest input committed by endpoint announcements and publish artifacts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapConfigDigestInput {
-    pub package_id: sui::types::Address,
     pub endpoint_object_id: Option<sui::types::Address>,
     pub interface_revision: InterfaceRevision,
     pub shared_objects: Vec<TapSharedObjectRef>,
@@ -1631,7 +1675,6 @@ impl<T> From<Option<T>> for MoveOptionBcs<T> {
 
 #[derive(Serialize)]
 struct TapConfigDigestInputBcs {
-    package_id: sui::types::Address,
     endpoint_object_id: MoveOptionBcs<sui::types::Address>,
     interface_revision: InterfaceRevision,
     shared_objects: Vec<TapSharedObjectRef>,
@@ -1641,7 +1684,6 @@ struct TapConfigDigestInputBcs {
 impl TapConfigDigestInput {
     pub fn digest(&self) -> anyhow::Result<Vec<u8>> {
         let input = TapConfigDigestInputBcs {
-            package_id: self.package_id,
             endpoint_object_id: self.endpoint_object_id.into(),
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
@@ -1670,9 +1712,8 @@ pub struct TapSkillConfig {
 }
 
 impl TapSkillConfig {
-    pub fn digest_input(&self, package_id: sui::types::Address) -> TapConfigDigestInput {
+    pub fn digest_input(&self) -> TapConfigDigestInput {
         TapConfigDigestInput {
-            package_id,
             endpoint_object_id: None,
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
@@ -1728,7 +1769,7 @@ impl TapPublishArtifact {
         tap_package_id: sui::types::Address,
     ) -> anyhow::Result<Self> {
         config.validate()?;
-        let digest_input = config.digest_input(tap_package_id);
+        let digest_input = config.digest_input();
         let config_digest = digest_input.digest()?;
         let config_digest_hex = hex::encode(&config_digest);
 
@@ -1777,7 +1818,6 @@ impl TapPublishArtifact {
         endpoint_object_id: sui::types::Address,
     ) -> TapConfigDigestInput {
         TapConfigDigestInput {
-            package_id: self.tap_package_id,
             endpoint_object_id: Some(endpoint_object_id),
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
@@ -2168,7 +2208,6 @@ mod tests {
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
             },
-            package_id: addr("0xc"),
             endpoint_object: object_ref,
             shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
             config_digest: vec![9],
@@ -2183,7 +2222,6 @@ mod tests {
             skill_id: 11,
             dag_id: addr("0x44"),
             dag_binding: TapDagBinding::pinned(addr("0x44")),
-            tap_package_id: addr("0xc"),
             workflow_commitment: vec![2],
             requirements_commitment: vec![1],
             metadata_commitment: vec![3],
@@ -2206,7 +2244,6 @@ mod tests {
                 agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(2),
-                package_id: addr("0xc"),
                 endpoint_object_id: addr("0x123"),
                 endpoint_object_version: 7,
                 endpoint_object_digest: vec![1; 32],
@@ -2227,7 +2264,6 @@ mod tests {
     #[test]
     fn config_digest_is_deterministic() {
         let input = TapConfigDigestInput {
-            package_id: addr("0x1"),
             endpoint_object_id: Some(addr("0x2")),
             interface_revision: InterfaceRevision(3),
             shared_objects: vec![TapSharedObjectRef::mutable(addr("0x4"))],
@@ -2270,7 +2306,7 @@ mod tests {
 
     #[cfg(feature = "bcs")]
     #[test]
-    fn tap_registry_object_bcs_decodes_without_inline_default_executor() {
+    fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
         #[derive(Serialize)]
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
@@ -2331,7 +2367,6 @@ mod tests {
             .endpoint_config_digest(endpoint_object_id)
             .expect("endpoint digest");
 
-        assert_eq!(input.package_id, artifact.tap_package_id);
         assert_eq!(input.endpoint_object_id, Some(endpoint_object_id));
         assert_eq!(
             artifact
@@ -2869,13 +2904,15 @@ mod tests {
         let grant: WorkflowVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
             "id": "0xaa",
             "execution_id": "0xff",
-            "vertex": [101, 110, 116, 114, 121]
+            "vertex": [101, 110, 116, 114, 121],
+            "scheduled_grant_id": { "fields": { "vec": ["0x77"] } }
         }))
         .expect("grant should deserialize");
 
         assert_eq!(grant.id, addr("0xaa"));
         assert_eq!(grant.execution_id, addr("0xff"));
         assert_eq!(grant.vertex, RuntimeVertex::plain("entry"));
+        assert_eq!(grant.scheduled_grant_id, Some(addr("0x77")));
     }
 
     #[test]
@@ -2914,6 +2951,20 @@ mod tests {
                 "budget": "25",
                 "final_state": "refunded"
             }],
+            "scheduled_authorization_grants": [{
+                "scheduled_grant_id": "0x91",
+                "scheduled_task_id": "0xaa",
+                "agent_id": "0xbb",
+                "skill_id": "204",
+                "dag_id": "0xda6",
+                "vertex": [101, 110, 116, 114, 121],
+                "tool_package": "0x1234",
+                "tool_module": [116, 111, 111, 108],
+                "tool_function": [101, 120, 101, 99, 117, 116, 101],
+                "operation_commitment": [1, 2],
+                "constraints_commitment": [],
+                "consumed": false
+            }],
             "state": "active",
             "active": true
         }))
@@ -2934,6 +2985,13 @@ mod tests {
             task.in_flight[0].final_state,
             TapScheduledOccurrenceFinalState::Refunded
         );
+        assert_eq!(task.scheduled_authorization_grants.len(), 1);
+        assert_eq!(
+            task.scheduled_authorization_grants[0].scheduled_grant_id,
+            addr("0x91")
+        );
+        assert_eq!(task.scheduled_authorization_grants[0].vertex, "entry");
+        assert_eq!(task.scheduled_authorization_grants[0].tool_module, "tool");
         assert!(task.can_spawn_occurrence());
         assert_eq!(task.next_after_ms, 11);
         assert_eq!(task.occurrences_spawned, 2);

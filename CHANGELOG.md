@@ -77,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Runtime config hot reload now moves filesystem metadata checks and config parsing onto Tokio's blocking pool and reduces fallback polling frequency, while keeping notify-driven reloads as the fast path.
 - Standard fixed-tool schema generation hides TAP authorization-cap and workflow worksheet internal arguments from user-facing input schemas.
-- CLI and SDK object metadata now resolve default DAG execution through `tap_registry` and `default_tap_target` rather than a `default_tap` object.
+- CLI and SDK object metadata now resolve default DAG execution through `agent_registry` and `default_tap_target` rather than a `default_tap` object.
 - Legacy `TapV1` and `AnnounceInterfacePackageEvent` support is retained only as compatibility for historical data; active standard builders use standard TAP idents.
 - SDK parser sample coverage now uses generated current-layout standard TAP event fixtures instead of stale hard-coded witness-era bytes.
 - scheduler and peer TAP PTB tests now assert standard TAP calls by package/module/function and current BCS argument layout rather than brittle absolute command indexes.
@@ -89,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Standard TAP SDK models and PTB builders now match the Move package split: general TAP identities, payments, endpoint, worksheet, authorization, and schedule types resolve through `nexus_interface::tap`, while registry storage records remain under `nexus_registry::tap`.
 - Active execution APIs now expose explicit agent DAG execution and default-agent DAG execution names (`execute_agent_dag`, `execute_default_agent_dag`, `AgentDagExecuteInput`, and `AgentDagExecuteOptions`), while "standard TAP" remains reserved for protocol/model surfaces.
 - TAP payment settlement builders now target execution-owned `DAGExecution` payment helpers, with separate agent-vault variants only when vault accounting needs the explicit non-default `Agent`.
-- Default DAG execution and scheduling builders now use mutable `tap_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
+- Default DAG execution and scheduling builders now use mutable `agent_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
 
 #### Fixed
 

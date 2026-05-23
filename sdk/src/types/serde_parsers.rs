@@ -154,8 +154,21 @@ pub fn deserialize_bytes_to_string<'de, D>(deserializer: D) -> Result<String, D:
 where
     D: Deserializer<'de>,
 {
-    let bytes = deserialize_encoded_bytes(deserializer)?;
-    String::from_utf8(bytes).map_err(serde::de::Error::custom)
+    if deserializer.is_human_readable() {
+        match Value::deserialize(deserializer)? {
+            Value::String(value) => match BASE64_STANDARD.decode(&value) {
+                Ok(bytes) => String::from_utf8(bytes).map_err(serde::de::Error::custom),
+                Err(_) => Ok(value),
+            },
+            value => {
+                let bytes = deserialize_encoded_bytes(value).map_err(serde::de::Error::custom)?;
+                String::from_utf8(bytes).map_err(serde::de::Error::custom)
+            }
+        }
+    } else {
+        let bytes = deserialize_encoded_bytes(deserializer)?;
+        String::from_utf8(bytes).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Inverse of [deserialize_bytes_to_string].
@@ -596,6 +609,15 @@ mod tests {
 
         let ser = serde_json::to_string(&result).unwrap();
         assert_eq!(ser, input);
+    }
+
+    #[test]
+    fn test_bytes_to_string_accepts_plain_json_string() {
+        let result: TestStringStruct = serde_json::from_str(r#"{"value":"hello world"}"#).unwrap();
+        assert_eq!(result.value, "hello world");
+
+        let ser = serde_json::to_string(&result).unwrap();
+        assert_eq!(ser, r#"{"value":"aGVsbG8gd29ybGQ="}"#);
     }
 
     #[test]

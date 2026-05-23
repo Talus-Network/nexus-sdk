@@ -354,7 +354,7 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [tap_registry]
+                [agent_registry]
                 object_id = "0x70"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
@@ -425,7 +425,9 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            objects.tap_registry().map(|registry| *registry.object_id()),
+            objects
+                .agent_registry()
+                .map(|registry| *registry.object_id()),
             Some(sui::types::Address::from_static("0x70"))
         );
         assert_eq!(

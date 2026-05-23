@@ -147,6 +147,8 @@ events! {
     AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
     VertexAuthorizationGrantCreatedEvent => VertexAuthorizationGrantCreated, "VertexAuthorizationGrantCreatedEvent",
     VertexAuthorizationGrantRequiredEvent => VertexAuthorizationGrantRequired, "VertexAuthorizationGrantRequiredEvent",
+    ScheduledAuthorizationGrantCreatedEvent => ScheduledAuthorizationGrantCreated, "ScheduledAuthorizationGrantCreatedEvent",
+    ScheduledAuthorizationGrantMaterializedEvent => ScheduledAuthorizationGrantMaterialized, "ScheduledAuthorizationGrantMaterializedEvent",
     AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
     GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
     ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
@@ -402,7 +404,6 @@ pub struct SkillRegisteredEvent {
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub dag_binding: TapDagBinding,
-    pub tap_package_id: sui::types::Address,
     pub workflow_commitment: Vec<u8>,
     pub requirements_commitment: Vec<u8>,
     pub capability_schema_commitment: Vec<u8>,
@@ -421,7 +422,6 @@ pub struct EndpointRevisionAnnouncedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub package_id: sui::types::Address,
     pub endpoint_object_id: sui::types::Address,
     pub endpoint_object_version: u64,
     pub endpoint_object_digest: Vec<u8>,
@@ -488,6 +488,30 @@ pub struct VertexAuthorizationGrantRequiredEvent {
         skip_serializing_if = "Option::is_none"
     )]
     pub skill_id: Option<SkillId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ScheduledAuthorizationGrantCreatedEvent {
+    pub scheduled_grant_id: sui::types::Address,
+    pub scheduled_task_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub dag_id: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    pub vertex: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ScheduledAuthorizationGrantMaterializedEvent {
+    pub scheduled_grant_id: sui::types::Address,
+    pub scheduled_task_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub dag_id: sui::types::Address,
+    #[serde(deserialize_with = "deserialize_bytes_to_string")]
+    pub vertex: String,
+    pub execution_id: sui::types::Address,
+    pub grant_id: sui::types::Address,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -851,7 +875,7 @@ pub struct PeriodicScheduleConfiguredEvent {
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
     pub generated: Option<u64>,
-    pub priority_fee_per_gas_unit: Option<u64>,
+    pub priority_fee_per_gas_unit: u64,
     pub last_generated_start_ms: Option<u64>,
 }
 
@@ -1167,7 +1191,6 @@ mod tests {
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xc"),
                 dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xc")),
-                tap_package_id: sui::types::Address::from_static("0xd"),
                 workflow_commitment: vec![1],
                 requirements_commitment: vec![2],
                 capability_schema_commitment: vec![5],
@@ -1213,7 +1236,6 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(3),
-                package_id: sui::types::Address::from_static("0xc"),
                 endpoint_object_id: sui::types::Address::from_static("0xd"),
                 endpoint_object_version: 7,
                 endpoint_object_digest: vec![4; 32],
