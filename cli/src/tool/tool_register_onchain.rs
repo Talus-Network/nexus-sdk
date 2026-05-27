@@ -8,7 +8,15 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{idents::primitives, nexus::error::NexusError, sui, transactions::tool},
+    nexus_sdk::{
+        idents::primitives,
+        nexus::{
+            error::NexusError,
+            tool::{RegisterOnChainToolParams, RegisterOnChainToolResult},
+        },
+        sui,
+        transactions::tool,
+    },
     serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
     std::{
@@ -31,6 +39,8 @@ pub(crate) async fn register_onchain_tool(
     witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
+    workflow_authorization_cap_first: bool,
+    reuse_if_exists: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -55,6 +65,42 @@ pub(crate) async fn register_onchain_tool(
     let conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
 
+    if reuse_if_exists {
+        let preview = nexus_client
+            .tool()
+            .inspect_on_chain_tool(&fqn)
+            .await
+            .map_err(NexusCliError::Nexus)?;
+        if preview.exists {
+            notify_success!(
+                "Reusing already-registered on-chain tool '{fqn}'",
+                fqn = fqn.to_string().truecolor(100, 100, 100)
+            );
+            let result = nexus_client
+                .tool()
+                .register_on_chain_or_reuse(RegisterOnChainToolParams {
+                    package_address: package,
+                    module: module.clone(),
+                    fqn: fqn.clone(),
+                    description: description.clone(),
+                    input_schema: String::new(),
+                    output_schema: String::new(),
+                    timeout,
+                    witness_id,
+                    collateral_coin: sui::types::ObjectReference::new(
+                        sui::types::Address::ZERO,
+                        0,
+                        sui::types::Digest::from([0u8; 32]),
+                    ),
+                    workflow_authorization_cap_first,
+                })
+                .await
+                .map_err(NexusCliError::Nexus)?;
+            json_output(&register_onchain_result_json(&result, None, None, None))?;
+            return Ok(());
+        }
+    }
+
     let collateral_coin = fetch_coin(client.clone(), address, collateral_coin, 1).await?;
 
     // Generate and customize schemas.
@@ -65,7 +111,7 @@ pub(crate) async fn register_onchain_tool(
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = tool::register_on_chain_for_self(
+    if let Err(e) = tool::register_on_chain_for_self_with_workflow_authorization_cap(
         &mut tx,
         nexus_objects,
         package,
@@ -78,6 +124,7 @@ pub(crate) async fn register_onchain_tool(
         witness_id,
         &collateral_coin,
         address,
+        workflow_authorization_cap_first,
     ) {
         tx_handle.error();
 
@@ -154,9 +201,23 @@ pub(crate) async fn register_onchain_tool(
         save_tool_owner_caps(fqn.clone(), over_tool_id).await?;
     }
 
+    let tool_id = nexus_sdk::types::derive_tool_id(
+        *nexus_objects.tool_registry.object_id(),
+        &fqn,
+    )
+    .map_err(NexusCliError::Any)?;
+    let tool_gas_id = nexus_sdk::types::derive_tool_gas_id(
+        *nexus_objects.gas_service.object_id(),
+        &fqn,
+    )
+    .map_err(NexusCliError::Any)?;
+
     json_output(&json!({
         "digest": response.digest,
+        "tx_checkpoint": response.checkpoint,
         "tool_fqn": fqn,
+        "tool_id": tool_id,
+        "tool_gas_id": tool_gas_id,
         "package_address": package,
         "module_name": module,
         "witness_id": witness_id.to_string(),
@@ -165,10 +226,39 @@ pub(crate) async fn register_onchain_tool(
         "output_schema": output_schema,
         "owner_cap_over_tool_id": over_tool_id,
         "owner_cap_over_gas_id": null,
+        "workflow_authorization_cap_first": workflow_authorization_cap_first,
+        "reused": false,
         "already_registered": false,
     }))?;
 
     Ok(())
+}
+
+/// JSON output for the reuse-path. Mirrors the live registration JSON shape.
+pub(crate) fn register_onchain_result_json(
+    result: &RegisterOnChainToolResult,
+    input_schema: Option<&str>,
+    output_schema: Option<&str>,
+    description: Option<&str>,
+) -> serde_json::Value {
+    json!({
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "tool_fqn": result.fqn,
+        "tool_id": result.tool_id,
+        "tool_gas_id": result.tool_gas_id,
+        "package_address": result.package_address,
+        "module_name": result.module_name.as_str(),
+        "witness_id": result.witness_id.to_string(),
+        "description": description,
+        "input_schema": input_schema,
+        "output_schema": output_schema,
+        "owner_cap_over_tool_id": result.owner_cap_over_tool,
+        "owner_cap_over_gas_id": result.owner_cap_over_gas,
+        "workflow_authorization_cap_first": result.workflow_authorization_cap_first,
+        "reused": result.reused,
+        "already_registered": result.reused,
+    })
 }
 
 /// Generate input and output schemas and allow user customization.

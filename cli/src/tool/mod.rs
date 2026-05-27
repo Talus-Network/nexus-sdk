@@ -1,5 +1,6 @@
 mod tool_auth;
 mod tool_claim_collateral;
+mod tool_inspect_onchain;
 mod tool_list;
 mod tool_new;
 mod tool_register_offchain;
@@ -13,6 +14,7 @@ use {
     crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
+    tool_inspect_onchain::inspect_onchain,
     tool_list::*,
     tool_new::*,
     tool_register_offchain::register_off_chain_tool,
@@ -255,6 +257,18 @@ pub(crate) enum RegisterCommand {
         )]
         no_save: bool,
 
+        #[arg(
+            long = "workflow-authorization-cap-first",
+            help = "Use the cap-gated WAC register_on_chain_tool_with_workflow_authorization_cap entrypoint."
+        )]
+        workflow_authorization_cap_first: bool,
+
+        #[arg(
+            long = "reuse-if-exists",
+            help = "If the Tool and ToolGas objects already exist for this FQN, decode them and skip registration."
+        )]
+        reuse_if_exists: bool,
+
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -399,6 +413,17 @@ pub(crate) enum ToolCommand {
         //
     },
 
+    #[command(about = "Inspect a single on-chain tool by FQN, returning derived IDs and decoded Sui refs.")]
+    InspectOnchain {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to inspect.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+    },
+
     #[command(about = "Manage tool auth for signed HTTP.")]
     Auth {
         #[command(subcommand)]
@@ -483,6 +508,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 witness_id,
                 collateral_coin,
                 no_save,
+                workflow_authorization_cap_first,
+                reuse_if_exists,
                 gas,
             } => {
                 register_onchain_tool(
@@ -494,6 +521,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     witness_id,
                     collateral_coin,
                     no_save,
+                    workflow_authorization_cap_first,
+                    reuse_if_exists,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
                 )
@@ -544,6 +573,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
+
+        // == `$ nexus tool inspect-onchain` ==
+        ToolCommand::InspectOnchain { tool_fqn } => inspect_onchain(tool_fqn).await,
 
         // == `$ nexus tool auth` ==
         ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,

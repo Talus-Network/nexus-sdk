@@ -1,13 +1,17 @@
 mod tap_agent;
 mod tap_announce;
+mod tap_bind;
 mod tap_common;
 mod tap_create_agent;
+mod tap_default_target;
 mod tap_dry_run;
+mod tap_endpoint;
 mod tap_execute;
 mod tap_output;
 mod tap_payments;
 mod tap_publish_skill;
 mod tap_register_skill;
+mod tap_registry;
 mod tap_requirements;
 mod tap_scaffold;
 mod tap_schedule;
@@ -55,6 +59,7 @@ use {
     regex::Regex,
     tap_agent::handle_agent_command,
     tap_announce::announce_endpoint_revision,
+    tap_bind::bind_agent_skill,
     tap_common::{
         agent_execute_options_from_cli,
         agent_id_from_alias_or_arg,
@@ -62,7 +67,9 @@ use {
         read_artifact,
     },
     tap_create_agent::create_agent,
+    tap_default_target::show_default_target,
     tap_dry_run::dry_run_skill,
+    tap_endpoint::{create_endpoint, inspect_endpoint},
     tap_execute::execute_agent_dag_skill,
     tap_output::{
         announce_result_json,
@@ -75,6 +82,7 @@ use {
     tap_payments::handle_payments_command,
     tap_publish_skill::publish_skill,
     tap_register_skill::register_skill,
+    tap_registry::show_registry,
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
     tap_schedule::schedule_skill_execution,
@@ -206,8 +214,36 @@ pub(crate) enum TapCommand {
     Agent(AgentCommand),
     #[command(subcommand, about = "Inspect Talus agent payment vaults.")]
     Vault(VaultCommand),
-    #[command(subcommand, about = "Inspect standard TAP execution payment history.")]
+    #[command(subcommand, about = "Inspect standard TAP execution payments and history.")]
     Payments(PaymentsCommand),
+    #[command(subcommand, about = "Create and inspect standard TAP endpoint objects.")]
+    Endpoint(EndpointCommand),
+    #[command(subcommand, about = "Inspect the standard TAP registry.")]
+    Registry(RegistryCommand),
+    #[command(
+        subcommand,
+        about = "Inspect the standard TAP default DAG executor metadata."
+    )]
+    DefaultTarget(DefaultTargetCommand),
+    #[command(about = "Create a Talus agent and register its first skill atomically.")]
+    Bind {
+        #[arg(
+            long,
+            help = "Path to the publish artifact JSON.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        artifact: PathBuf,
+        #[arg(long, help = "Agent operator address.", value_name = "ADDRESS")]
+        operator: sui::types::Address,
+        #[arg(
+            long,
+            help = "Endpoint object ID override. Defaults to artifact metadata when present.",
+            value_name = "OBJECT_ID"
+        )]
+        endpoint_object_id: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
     #[command(about = "Fetch live skill requirements from the TAP registry.")]
     Requirements {
         #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
@@ -368,7 +404,57 @@ pub(crate) enum VaultCommand {
 }
 
 #[derive(Subcommand)]
+pub(crate) enum EndpointCommand {
+    #[command(about = "Create and share a standard TAP endpoint for a TAP package.")]
+    Create {
+        #[arg(long, help = "TAP package ID.", value_name = "ADDRESS")]
+        package: sui::types::Address,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Inspect a standard TAP endpoint object and its registry revisions.")]
+    Inspect {
+        #[arg(long = "endpoint-id", help = "Endpoint object ID.", value_name = "OBJECT_ID")]
+        endpoint_id: sui::types::Address,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum RegistryCommand {
+    #[command(about = "Print the standard TAP registry contents as JSON.")]
+    Show,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum DefaultTargetCommand {
+    #[command(about = "Print the configured standard TAP default DAG executor as JSON.")]
+    Show,
+}
+
+#[derive(Subcommand)]
 pub(crate) enum PaymentsCommand {
+    #[command(about = "Show a standard TAP execution payment by ID.")]
+    Show {
+        #[arg(long = "payment-id", help = "Execution payment object ID.", value_name = "OBJECT_ID")]
+        payment_id: sui::types::Address,
+    },
+    #[command(about = "Wait for a standard TAP execution payment to settle.")]
+    Wait {
+        #[arg(long = "payment-id", help = "Execution payment object ID.", value_name = "OBJECT_ID")]
+        payment_id: sui::types::Address,
+        #[arg(
+            long = "timeout-secs",
+            default_value_t = 120u64,
+            help = "Maximum seconds to wait."
+        )]
+        timeout_secs: u64,
+        #[arg(
+            long = "poll-secs",
+            default_value_t = 2u64,
+            help = "Seconds between polls."
+        )]
+        poll_secs: u64,
+    },
     #[command(about = "List wallet-owned and optional agent-vault execution payment receipts.")]
     List {
         #[arg(
@@ -463,6 +549,29 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::Agent(command) => handle_agent_command(command).await,
         TapCommand::Vault(command) => handle_vault_command(command).await,
         TapCommand::Payments(command) => handle_payments_command(command).await,
+        TapCommand::Endpoint(EndpointCommand::Create { package, gas }) => {
+            create_endpoint(package, gas.sui_gas_coin, gas.sui_gas_budget).await
+        }
+        TapCommand::Endpoint(EndpointCommand::Inspect { endpoint_id }) => {
+            inspect_endpoint(endpoint_id).await
+        }
+        TapCommand::Registry(RegistryCommand::Show) => show_registry().await,
+        TapCommand::DefaultTarget(DefaultTargetCommand::Show) => show_default_target().await,
+        TapCommand::Bind {
+            artifact,
+            operator,
+            endpoint_object_id,
+            gas,
+        } => {
+            bind_agent_skill(
+                artifact,
+                operator,
+                endpoint_object_id,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
         TapCommand::Requirements { agent_id, skill_id } => {
             fetch_requirements(agent_id, skill_id).await
         }

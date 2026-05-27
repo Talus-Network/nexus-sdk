@@ -33,7 +33,9 @@ use crate::{
         TapEndpointKey,
         TapEndpointRecord,
         TapEndpointResolutionError,
+        TapEndpointRevision,
         TapExecutionPayment,
+        TapExecutionPaymentFinalState,
         TapExecutionPaymentHistoryFieldKey,
         TapExecutionPaymentHistoryList,
         TapExecutionPaymentReceipt,
@@ -52,6 +54,8 @@ use crate::{
 };
 #[cfg(feature = "move_publish")]
 use {std::path::PathBuf, sui_move_build::CompiledPackage};
+
+use std::time::{Duration, Instant};
 
 /// High-level standard TAP actions exposed through [`NexusClient`].
 #[derive(Clone)]
@@ -182,6 +186,63 @@ pub struct PublishSkillResult {
     pub dag: crate::nexus::workflow::PublishResult,
     pub endpoint: CreateStandardEndpointResult,
     pub artifact: TapPublishArtifact,
+}
+
+/// Endpoint object metadata plus any registry-stored revisions bound to it.
+#[derive(Clone, Debug)]
+pub struct EndpointInspection {
+    /// On-chain object ref of the endpoint itself.
+    pub object_ref: sui::types::ObjectReference,
+    /// Package id used to create the endpoint. `None` if the endpoint exists
+    /// but no revision is bound to it yet.
+    pub package_id: Option<sui::types::Address>,
+    /// Resolved endpoint record (with active-revision flag) when at least one
+    /// revision is bound to this endpoint object.
+    pub active_record: Option<TapEndpointRecord>,
+    /// All endpoint revisions in the registry that reference this object id.
+    pub revisions: Vec<TapEndpointRevision>,
+}
+
+/// Inputs to [`TapActions::bind_agent_skill`].
+#[derive(Clone, Debug)]
+pub struct BindAgentSkillParams {
+    pub operator: sui::types::Address,
+    pub artifact: TapPublishArtifact,
+    pub endpoint_object_id: Option<sui::types::Address>,
+}
+
+/// Result returned by [`TapActions::bind_agent_skill`].
+#[derive(Clone, Debug)]
+pub struct BindAgentSkillResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub agent_id: AgentId,
+    pub agent_object: sui::types::ObjectReference,
+    pub skill_id: SkillId,
+    pub endpoint_object: sui::types::ObjectReference,
+    pub config_digest: Vec<u8>,
+    pub config_digest_input: TapConfigDigestInput,
+}
+
+/// Result returned by [`TapActions::wait_for_payment_settled`].
+#[derive(Clone, Debug)]
+pub struct WaitForPaymentResult {
+    pub payment: TapExecutionPayment,
+    pub terminal: bool,
+    pub elapsed_ms: u64,
+    pub timed_out: bool,
+}
+
+/// Whether a [`TapExecutionPayment`] has reached an irrecoverable final state.
+pub fn payment_is_terminal(payment: &TapExecutionPayment) -> bool {
+    if payment.accomplished || payment.refunded {
+        return true;
+    }
+    matches!(
+        payment.final_state,
+        Some(TapExecutionPaymentFinalState::Accomplished)
+            | Some(TapExecutionPaymentFinalState::Refunded)
+    )
 }
 
 impl TapActions {
@@ -825,6 +886,216 @@ impl TapActions {
             agent_id: event.agent_id,
             skill_id: event.skill_id,
         })
+    }
+
+    /// Read endpoint object metadata plus the live registry revision/record
+    /// keyed to it, so callers do not need to walk raw Sui object internals.
+    pub async fn inspect_endpoint(
+        &self,
+        endpoint_object_id: sui::types::Address,
+    ) -> Result<EndpointInspection, NexusError> {
+        let crawler = self.client.crawler();
+        let object_meta = crawler
+            .get_object_metadata(endpoint_object_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let registry = fetch_configured_tap_registry(crawler, &self.client.nexus_objects)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+
+        let revisions: Vec<TapEndpointRevision> = registry
+            .endpoints
+            .iter()
+            .filter(|endpoint| endpoint.endpoint_object_id == endpoint_object_id)
+            .cloned()
+            .collect();
+
+        let active_record = revisions
+            .iter()
+            .find_map(|revision| registry.endpoint_record(revision.key()).ok());
+
+        let package_id = revisions.first().map(|revision| revision.package_id);
+
+        Ok(EndpointInspection {
+            object_ref: object_meta.object_ref(),
+            package_id,
+            active_record,
+            revisions,
+        })
+    }
+
+    /// Create a standard Talus agent and register its first skill atomically.
+    pub async fn bind_agent_skill(
+        &self,
+        params: BindAgentSkillParams,
+    ) -> Result<BindAgentSkillResult, NexusError> {
+        let BindAgentSkillParams {
+            operator,
+            artifact,
+            endpoint_object_id,
+        } = params;
+
+        let endpoint_object_id = artifact
+            .endpoint_object_id_or(endpoint_object_id)
+            .map_err(NexusError::TransactionBuilding)?;
+        let endpoint_object = self
+            .client
+            .crawler()
+            .get_object_metadata(endpoint_object_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let config_digest_input = artifact.endpoint_config_digest_input(endpoint_object_id);
+        let config_digest = config_digest_input
+            .digest()
+            .map_err(NexusError::TransactionBuilding)?;
+
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tap_tx::tap_registry_arg(&mut tx, nexus_objects)
+            .map_err(NexusError::TransactionBuilding)?;
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
+            .map_err(NexusError::TransactionBuilding)?;
+
+        tap_tx::register_skill(
+            &mut tx,
+            nexus_objects,
+            registry,
+            agent,
+            artifact.dag_id,
+            artifact.tap_package_id,
+            artifact.requirements.workflow_commitment.clone(),
+            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.metadata_commitment.clone(),
+            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.schedule_policy.clone(),
+            artifact
+                .requirements
+                .vertex_authorization_schema
+                .schema_commitment
+                .clone(),
+            *endpoint_object.object_id(),
+            endpoint_object.version(),
+            endpoint_object.digest().inner().to_vec(),
+            artifact.shared_objects.clone(),
+            config_digest.clone(),
+            true,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+
+        tx.move_call(
+            sui::tx::Function::new(
+                sui_framework::PACKAGE_ID,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+                vec![crate::idents::tap::agent_type(
+                    nexus_objects.interface_pkg_id,
+                )],
+            ),
+            vec![agent],
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+
+        let agent_event = find_event(&response, |kind| match kind {
+            NexusEventKind::AgentCreated(event) => Some(event),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "AgentCreatedEvent not found in TAP bind response"
+            ))
+        })?;
+        let skill_event = find_event(&response, |kind| match kind {
+            NexusEventKind::SkillRegistered(event) => Some(event),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "SkillRegisteredEvent not found in TAP bind response"
+            ))
+        })?;
+
+        let agent_object = response
+            .objects
+            .iter()
+            .find_map(|object| match object.object_type() {
+                sui::types::ObjectType::Struct(tag)
+                    if *tag.address() == nexus_objects.interface_pkg_id
+                        && *tag.module() == crate::idents::tap::STANDARD_TAP_MODULE
+                        && *tag.name() == sui::types::Identifier::from_static("Agent") =>
+                {
+                    Some(sui::types::ObjectReference::new(
+                        object.object_id(),
+                        object.version(),
+                        object.digest(),
+                    ))
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Standard Talus Agent object not found in TAP bind response"
+                ))
+            })?;
+
+        Ok(BindAgentSkillResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            agent_id: agent_event.agent_id,
+            agent_object,
+            skill_id: skill_event.skill_id,
+            endpoint_object,
+            config_digest,
+            config_digest_input,
+        })
+    }
+
+    /// Poll a [`TapExecutionPayment`] until it reaches a terminal state
+    /// (accomplished, refunded, or a non-pending [`TapExecutionPaymentFinalState`])
+    /// or `timeout` elapses.
+    pub async fn wait_for_payment_settled(
+        &self,
+        payment_id: sui::types::Address,
+        timeout: Duration,
+        poll_interval: Duration,
+    ) -> Result<WaitForPaymentResult, NexusError> {
+        let crawler = self.client.crawler();
+        let started_at = Instant::now();
+
+        loop {
+            let payment = fetch_tap_execution_payment(crawler, payment_id)
+                .await
+                .map_err(NexusError::Rpc)?
+                .data;
+
+            let terminal = payment_is_terminal(&payment);
+            let elapsed_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
+
+            if terminal {
+                return Ok(WaitForPaymentResult {
+                    payment,
+                    terminal: true,
+                    elapsed_ms,
+                    timed_out: false,
+                });
+            }
+
+            if started_at.elapsed() >= timeout {
+                return Ok(WaitForPaymentResult {
+                    payment,
+                    terminal: false,
+                    elapsed_ms,
+                    timed_out: true,
+                });
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
     }
 
     async fn submit_tap_transaction(
@@ -2357,5 +2628,55 @@ mod tests {
             InterfaceRevision(2)
         );
         assert_eq!(result.requirements.workflow_commitment, vec![3]);
+    }
+
+    fn baseline_payment(
+        accomplished: bool,
+        refunded: bool,
+        final_state: Option<TapExecutionPaymentFinalState>,
+    ) -> TapExecutionPayment {
+        TapExecutionPayment {
+            id: sui::types::Address::from_static("0x1"),
+            execution_id: sui::types::Address::from_static("0x2"),
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            interface_revision: InterfaceRevision(1),
+            endpoint_object_id: sui::types::Address::from_static("0xf"),
+            payer: sui::types::Address::from_static("0xc"),
+            payment_mode: crate::types::TapPaymentMode::UserFunded,
+            source_kind: None,
+            source_identity: None,
+            max_budget: 1_000_000,
+            locked_budget: 0,
+            consumed: 0,
+            refund_mode: 0,
+            payment_source_hash: vec![],
+            accomplished,
+            refunded,
+            final_state,
+            locked_vertices: vec![],
+        }
+    }
+
+    #[test]
+    fn payment_is_terminal_recognizes_each_settled_form() {
+        assert!(!payment_is_terminal(&baseline_payment(false, false, None)));
+        assert!(payment_is_terminal(&baseline_payment(true, false, None)));
+        assert!(payment_is_terminal(&baseline_payment(false, true, None)));
+        assert!(payment_is_terminal(&baseline_payment(
+            false,
+            false,
+            Some(TapExecutionPaymentFinalState::Accomplished)
+        )));
+        assert!(payment_is_terminal(&baseline_payment(
+            false,
+            false,
+            Some(TapExecutionPaymentFinalState::Refunded)
+        )));
+        assert!(!payment_is_terminal(&baseline_payment(
+            false,
+            false,
+            Some(TapExecutionPaymentFinalState::Pending)
+        )));
     }
 }
