@@ -240,6 +240,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new_agent_execution_config"),
     };
+    /// Build authenticated verifier request evidence from workflow execution and leader cap.
+    ///
+    /// `nexus_workflow::dag::new_authenticated_offchain_request_evidence_v1`
+    pub const NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "new_authenticated_offchain_request_evidence_v1",
+            ),
+        };
     /// Create a new DAG execution config value.
     ///
     /// `nexus_workflow::dag::new_dag_execution_config`
@@ -341,6 +351,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("pre_stamp_tap_execution"),
     };
+    /// Refund a scheduled agent-vault-funded TAP payment owned by DAGExecution.
+    ///
+    /// `nexus_workflow::dag::refund_scheduled_tap_execution_payment_from_agent_vault`
+    pub const REFUND_SCHEDULED_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "refund_scheduled_tap_execution_payment_from_agent_vault",
+            ),
+        };
     /// Refund an invoker-funded TAP payment owned by DAGExecution.
     ///
     /// `nexus_workflow::dag::refund_tap_execution_payment`

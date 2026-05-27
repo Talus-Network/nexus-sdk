@@ -236,14 +236,16 @@ mod tests {
         assert!(move_contents.contains("public struct TEST_TOOL has drop {}"));
         assert!(move_contents.contains("public struct TestToolWitness has key, store"));
         assert!(move_contents.contains("public struct TestToolState has key"));
+        assert!(move_contents.contains("witness: Bag"));
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
         assert!(move_contents.contains("public fun execute("));
         assert!(move_contents.contains("use nexus_workflow::dag::VertexAuthorizationCheckCap;"));
         assert!(move_contents.contains("_cap: VertexAuthorizationCheckCap"));
         assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
+        assert!(move_contents.contains("worksheet.stamp_with_data(&state.witness().id"));
         assert!(move_contents.contains("): TaggedOutput"));
-        assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));
+        assert!(move_contents.contains("public fun tool_witness_id(self: &TestToolState): ID"));
         assert!(
             move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")
         );

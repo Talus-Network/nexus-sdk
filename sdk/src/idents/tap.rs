@@ -64,10 +64,6 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("create_scheduled_occurrence_payment"),
     };
-    pub const CREATE_STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("create_standard_endpoint"),
-    };
     pub const DEFAULT_DAG_EXECUTOR_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("DefaultDagExecutorUpdatedEvent"),
@@ -80,10 +76,6 @@ impl TapStandard {
     pub const DEPOSIT_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("deposit_agent_payment_vault"),
-    };
-    pub const ENDPOINT_REVISION_ACTIVATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("EndpointRevisionActivatedEvent"),
     };
     pub const ENDPOINT_REVISION_ANNOUNCED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -177,17 +169,17 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("settle_execution_payment_vertex"),
     };
-    pub const SET_ACTIVE_ENDPOINT_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const SET_SKILL_ACTIVE_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("set_active_endpoint_revision"),
+        name: sui::types::Identifier::from_static("set_skill_active_revision"),
     };
     pub const SHARED_OBJECT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("shared_object_ref"),
     };
-    pub const SHARE_STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const SKILL_ACTIVE_REVISION_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("share_standard_endpoint"),
+        name: sui::types::Identifier::from_static("SkillActiveRevisionUpdatedEvent"),
     };
     pub const SKILL_REGISTERED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -254,15 +246,6 @@ pub fn agent_type(package_id: sui::types::Address) -> sui::types::TypeTag {
         package_id,
         STANDARD_TAP_MODULE,
         sui::types::Identifier::from_static("Agent"),
-        vec![],
-    )))
-}
-
-pub fn standard_endpoint_type(package_id: sui::types::Address) -> sui::types::TypeTag {
-    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        package_id,
-        STANDARD_TAP_MODULE,
-        sui::types::Identifier::from_static("StandardEndpoint"),
         vec![],
     )))
 }
@@ -335,10 +318,6 @@ mod tests {
             (
                 scheduled_authorization_grant_template_type(package),
                 sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
-            ),
-            (
-                standard_endpoint_type(package),
-                sui::types::Identifier::from_static("StandardEndpoint"),
             ),
             (
                 execution_payment_receipt_type(package),

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
-- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, creates and shares a standard endpoint object, and writes a complete endpoint-bound artifact for operator handoff.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
 
 #### Changed
 
@@ -38,8 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
 - Additional signed HTTP tests for response signing verification and multi-variant output handling.
 - SDK-owned standard TAP authorization-plan models and current-vertex grant resolution helpers for fixed-tool execution.
-- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint creation, and complete publish-artifact construction.
-- Standard TAP transaction helpers for endpoint creation and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
+- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint revision metadata construction, and complete publish-artifact construction.
+- Standard TAP transaction helpers for endpoint revision announcement, active skill-revision updates, and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
 - Compatibility-focused parser fixtures for current standard TAP event BCS layouts, including Move `Option<T>` event fields used by request, payment, authorization, and scheduled-execution events.
 - Standard Talus agent payment vault models, fetch helper, deposit/withdraw PTB builders, and typed payment source helpers for invoker-funded and agent-vault-funded settlement.
 - Agent-scoped workflow gas helpers for standard TAP funding.

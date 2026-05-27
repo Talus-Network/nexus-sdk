@@ -142,7 +142,7 @@ events! {
     SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
     DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
     EndpointRevisionAnnouncedEvent => EndpointRevisionAnnounced, "EndpointRevisionAnnouncedEvent",
-    EndpointRevisionActivatedEvent => EndpointRevisionActivated, "EndpointRevisionActivatedEvent",
+    SkillActiveRevisionUpdatedEvent => SkillActiveRevisionUpdated, "SkillActiveRevisionUpdatedEvent",
     WorksheetResolvedEvent => WorksheetResolved, "WorksheetResolvedEvent",
     AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
     VertexAuthorizationGrantCreatedEvent => VertexAuthorizationGrantCreated, "VertexAuthorizationGrantCreatedEvent",
@@ -228,16 +228,6 @@ pub struct RequestWalkExecutionEvent {
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
-    /// Historical worksheet proof type.
-    ///
-    /// Active standard TAP executions still emit this for workflow proof
-    /// compatibility, but callers must use the standard TAP context below for
-    /// agent/skill/payment identity. Leader runtime rejects events where that
-    /// standard context is absent.
-    pub worksheet_from_type: TypeName,
-    /// Historical worksheet proof creator UID. This is not the active TAP
-    /// lookup identity after the standard TAP cutover.
-    pub worksheet_from_uid: sui::types::Address,
     /// Standard Talus agent identity. Absent for legacy witness executions.
     #[serde(
         default,
@@ -259,13 +249,6 @@ pub struct RequestWalkExecutionEvent {
         skip_serializing_if = "Option::is_none"
     )]
     pub tap_interface_revision: Option<InterfaceRevision>,
-    /// Standard TAP endpoint object pinned for this execution.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_endpoint_object_id: Option<sui::types::Address>,
     /// Standard TAP payment object bound to this execution.
     #[serde(
         default,
@@ -311,7 +294,6 @@ pub struct RequestWalkStandardTapContext {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
     pub payment_id: sui::types::Address,
     pub selected_dag_id: sui::types::Address,
     pub authorization_plan_commitment: Option<Vec<u8>>,
@@ -320,12 +302,29 @@ pub struct RequestWalkStandardTapContext {
     pub scheduled_occurrence_index: Option<u64>,
 }
 
+impl RequestWalkStandardTapContext {
+    pub fn endpoint_key(&self) -> TapEndpointKey {
+        TapEndpointKey {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_revision,
+        }
+    }
+}
+
 impl RequestWalkExecutionEvent {
+    pub fn endpoint_key(&self) -> Option<TapEndpointKey> {
+        Some(TapEndpointKey {
+            agent_id: self.tap_agent_id?,
+            skill_id: self.tap_skill_id?,
+            interface_revision: self.tap_interface_revision?,
+        })
+    }
+
     pub fn standard_tap_context(&self) -> Result<Option<RequestWalkStandardTapContext>> {
         if self.tap_agent_id.is_none()
             && self.tap_skill_id.is_none()
             && self.tap_interface_revision.is_none()
-            && self.tap_endpoint_object_id.is_none()
             && self.tap_payment_id.is_none()
             && self.tap_selected_dag_id.is_none()
             && self.tap_authorization_plan_commitment.is_none()
@@ -351,11 +350,6 @@ impl RequestWalkExecutionEvent {
                 "RequestWalkExecutionEvent has partial standard TAP context: missing tap_interface_revision"
             );
         };
-        let Some(endpoint_object_id) = self.tap_endpoint_object_id else {
-            bail!(
-                "RequestWalkExecutionEvent has partial standard TAP context: missing tap_endpoint_object_id"
-            );
-        };
         let Some(payment_id) = self.tap_payment_id else {
             bail!("RequestWalkExecutionEvent has partial standard TAP context: missing tap_payment_id");
         };
@@ -369,7 +363,6 @@ impl RequestWalkExecutionEvent {
             agent_id,
             skill_id,
             interface_revision,
-            endpoint_object_id,
             payment_id,
             selected_dag_id,
             authorization_plan_commitment: self.tap_authorization_plan_commitment.clone(),
@@ -422,22 +415,18 @@ pub struct EndpointRevisionAnnouncedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
-    pub endpoint_object_version: u64,
-    pub endpoint_object_digest: Vec<u8>,
     pub shared_objects: Vec<TapSharedObjectRef>,
     pub requirements: TapSkillRequirements,
     pub config_digest: Vec<u8>,
-    pub active_for_new_executions: bool,
 }
 
 /// Fired when active revision state changes for a skill.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EndpointRevisionActivatedEvent {
+pub struct SkillActiveRevisionUpdatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-    pub active_for_new_executions: bool,
+    pub previous_revision: InterfaceRevision,
+    pub active_interface_revision: InterfaceRevision,
 }
 
 /// Fired when worksheet routing resolves a pinned endpoint.
@@ -446,9 +435,7 @@ pub struct WorksheetResolvedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
     pub execution_id: sui::types::Address,
-    pub worksheet_id: sui::types::Address,
 }
 
 /// Fired when immediate execution is requested for an agent skill.
@@ -612,7 +599,6 @@ pub struct ScheduledOccurrencePaymentCreatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
     pub occurrence_budget: u64,
     pub remaining_prepaid_amount: u64,
 }
@@ -1236,15 +1222,11 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(3),
-                endpoint_object_id: sui::types::Address::from_static("0xd"),
-                endpoint_object_version: 7,
-                endpoint_object_digest: vec![4; 32],
                 shared_objects: vec![TapSharedObjectRef::mutable(
                     sui::types::Address::from_static("0xe"),
                 )],
                 requirements: TapSkillRequirements::default(),
                 config_digest: vec![1, 2, 3],
-                active_for_new_executions: true,
             },
         };
 
@@ -1259,7 +1241,6 @@ mod tests {
                 assert_eq!(parsed.skill_id, event.event.skill_id);
                 assert_eq!(parsed.interface_revision, InterfaceRevision(3));
                 assert!(parsed.shared_objects[0].mutable);
-                assert!(parsed.active_for_new_executions);
             }
             _ => panic!("Expected EndpointRevisionAnnounced variant"),
         }

@@ -75,31 +75,6 @@ pub fn create_agent(
     ))
 }
 
-pub fn create_standard_endpoint(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-) -> anyhow::Result<sui::types::Argument> {
-    Ok(agent_registry_call(
-        tx,
-        objects,
-        AgentRegistry::CREATE_STANDARD_ENDPOINT,
-        vec![],
-    ))
-}
-
-pub fn share_standard_endpoint(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    endpoint: sui::types::Argument,
-) -> sui::types::Argument {
-    agent_registry_call(
-        tx,
-        objects,
-        AgentRegistry::SHARE_STANDARD_ENDPOINT,
-        vec![endpoint],
-    )
-}
-
 pub fn agent_id_from_address(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -136,17 +111,11 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     objects: &NexusObjects,
     registry: sui::types::Argument,
     operator: sui::types::Address,
-    endpoint_object_id: sui::types::Address,
-    endpoint_object_version: u64,
-    endpoint_object_digest: Vec<u8>,
     config_digest: Vec<u8>,
 ) -> anyhow::Result<sui::types::Argument> {
     let args = vec![
         registry,
         tx.input(pure_arg(&operator)?),
-        tx.input(pure_arg(&endpoint_object_id)?),
-        tx.input(pure_arg(&endpoint_object_version)?),
-        tx.input(pure_arg(&endpoint_object_digest)?),
         tx.input(pure_arg(&config_digest)?),
     ];
 
@@ -172,12 +141,8 @@ pub fn register_skill(
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
     capability_schema_commitment: Vec<u8>,
-    endpoint_object_id: sui::types::Address,
-    endpoint_object_version: u64,
-    endpoint_object_digest: Vec<u8>,
     shared_objects: Vec<TapSharedObjectRef>,
     config_digest: Vec<u8>,
-    active_for_new_executions: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
@@ -192,12 +157,8 @@ pub fn register_skill(
         payment_policy,
         schedule_policy,
         tx.input(pure_arg(&capability_schema_commitment)?),
-        tx.input(pure_arg(&endpoint_object_id)?),
-        tx.input(pure_arg(&endpoint_object_version)?),
-        tx.input(pure_arg(&endpoint_object_digest)?),
         shared_objects,
         tx.input(pure_arg(&config_digest)?),
-        tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
     Ok(agent_registry_call(
@@ -233,15 +194,11 @@ pub fn announce_endpoint_revision(
     agent: sui::types::Argument,
     skill_id: SkillId,
     interface_revision: InterfaceRevision,
-    endpoint_object_id: sui::types::Address,
-    endpoint_object_version: u64,
-    endpoint_object_digest: Vec<u8>,
     shared_objects: Vec<TapSharedObjectRef>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
     capability_schema_commitment: Vec<u8>,
     config_digest: Vec<u8>,
-    active_for_new_executions: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
@@ -251,15 +208,11 @@ pub fn announce_endpoint_revision(
         agent,
         tx.input(pure_arg(&skill_id)?),
         tx.input(pure_arg(&interface_revision)?),
-        tx.input(pure_arg(&endpoint_object_id)?),
-        tx.input(pure_arg(&endpoint_object_version)?),
-        tx.input(pure_arg(&endpoint_object_digest)?),
         shared_objects,
         payment_policy,
         schedule_policy,
         tx.input(pure_arg(&capability_schema_commitment)?),
         tx.input(pure_arg(&config_digest)?),
-        tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
     Ok(agent_registry_call(
@@ -270,27 +223,25 @@ pub fn announce_endpoint_revision(
     ))
 }
 
-pub fn set_active_endpoint_revision(
+pub fn set_skill_active_revision(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     skill_id: SkillId,
     interface_revision: InterfaceRevision,
-    active_for_new_executions: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let args = vec![
         registry,
         agent,
         tx.input(pure_arg(&skill_id)?),
         tx.input(pure_arg(&interface_revision)?),
-        tx.input(pure_arg(&active_for_new_executions)?),
     ];
 
     Ok(agent_registry_call(
         tx,
         objects,
-        AgentRegistry::SET_ACTIVE_ENDPOINT_REVISION,
+        AgentRegistry::SET_SKILL_ACTIVE_REVISION,
         args,
     ))
 }
@@ -1168,41 +1119,6 @@ mod tests {
     }
 
     #[test]
-    fn standard_endpoint_builders_use_standard_tap_create_and_share_idents() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        let endpoint =
-            create_standard_endpoint(&mut tx, &objects).expect("create endpoint builder succeeds");
-        share_standard_endpoint(&mut tx, &objects, endpoint);
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let create_call = inspector.move_call(0);
-        assert_eq!(create_call.package, objects.registry_pkg_id());
-        assert_eq!(
-            create_call.module,
-            AgentRegistry::CREATE_STANDARD_ENDPOINT.module
-        );
-        assert_eq!(
-            create_call.function,
-            AgentRegistry::CREATE_STANDARD_ENDPOINT.name
-        );
-        assert_eq!(create_call.arguments.len(), 0);
-
-        let share_call = inspector.move_call(1);
-        assert_eq!(share_call.package, objects.registry_pkg_id());
-        assert_eq!(
-            share_call.module,
-            AgentRegistry::SHARE_STANDARD_ENDPOINT.module
-        );
-        assert_eq!(
-            share_call.function,
-            AgentRegistry::SHARE_STANDARD_ENDPOINT.name
-        );
-        assert_eq!(share_call.arguments, vec![endpoint]);
-    }
-
-    #[test]
     fn register_skill_builder_carries_artifact_identity_and_config() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -1230,14 +1146,10 @@ mod tests {
             },
             TapSchedulePolicy::default(),
             vec![4],
-            sui::types::Address::from_static("0xf"),
-            1,
-            vec![5],
             vec![TapSharedObjectRef::immutable(
                 sui::types::Address::from_static("0x10"),
             )],
             vec![6],
-            true,
         )
         .expect("register skill builder succeeds");
 
@@ -1259,7 +1171,7 @@ mod tests {
         assert_eq!(call.package, objects.registry_pkg_id());
         assert_eq!(call.module, AgentRegistry::REGISTER_SKILL.module);
         assert_eq!(call.function, AgentRegistry::REGISTER_SKILL.name);
-        assert_eq!(call.arguments.len(), 15);
+        assert_eq!(call.arguments.len(), 11);
     }
 
     #[test]
@@ -1358,9 +1270,6 @@ mod tests {
             agent,
             11,
             InterfaceRevision(3),
-            sui::types::Address::from_static("0x60"),
-            4,
-            vec![1; 32],
             vec![TapSharedObjectRef::mutable(
                 sui::types::Address::from_static("0x61"),
             )],
@@ -1368,19 +1277,10 @@ mod tests {
             TapSchedulePolicy::default(),
             vec![8],
             vec![9],
-            true,
         )
         .expect("announce");
-        set_active_endpoint_revision(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            11,
-            InterfaceRevision(3),
-            true,
-        )
-        .expect("set active");
+        set_skill_active_revision(&mut tx, &objects, registry, agent, 11, InterfaceRevision(3))
+            .expect("set active");
         schedule_skill_execution_address_funded(
             &mut tx,
             &objects,
@@ -1471,7 +1371,7 @@ mod tests {
             TapStandard::INTERFACE_REVISION.name,
             AgentRegistry::GET_SKILL_REQUIREMENTS.name,
             AgentRegistry::ANNOUNCE_ENDPOINT_REVISION.name,
-            AgentRegistry::SET_ACTIVE_ENDPOINT_REVISION.name,
+            AgentRegistry::SET_SKILL_ACTIVE_REVISION.name,
             AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
             AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name,
             AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
@@ -1706,12 +1606,8 @@ mod tests {
             },
             TapSchedulePolicy::default(),
             vec![4],
-            sui::types::Address::from_static("0xf"),
-            1,
-            vec![5],
             vec![],
             vec![6],
-            true,
         )
         .expect("agent funded payment mode is supported");
 

@@ -125,7 +125,7 @@ pub(crate) enum TapCommand {
         )]
         tap_package: Option<PathBuf>,
     },
-    #[command(about = "Publish a TAP package, DAG, endpoint object, and publish artifact.")]
+    #[command(about = "Publish a TAP package, DAG, and publish artifact.")]
     PublishSkill {
         #[arg(
             long,
@@ -166,12 +166,6 @@ pub(crate) enum TapCommand {
         artifact: PathBuf,
         #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
         agent_id: sui::types::Address,
-        #[arg(
-            long,
-            help = "Endpoint object ID override. Defaults to artifact metadata when present.",
-            value_name = "OBJECT_ID"
-        )]
-        endpoint_object_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -187,18 +181,6 @@ pub(crate) enum TapCommand {
         agent_id: sui::types::Address,
         #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
         skill_id: u64,
-        #[arg(
-            long,
-            help = "Endpoint object ID override. Defaults to artifact metadata when present.",
-            value_name = "OBJECT_ID"
-        )]
-        endpoint_object_id: Option<sui::types::Address>,
-        #[arg(
-            long,
-            default_value_t = true,
-            help = "Whether this revision becomes active for new executions."
-        )]
-        active_for_new_executions: bool,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -429,32 +411,18 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::RegisterSkill {
             artifact,
             agent_id,
-            endpoint_object_id,
             gas,
-        } => {
-            register_skill(
-                artifact,
-                agent_id,
-                endpoint_object_id,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
+        } => register_skill(artifact, agent_id, gas.sui_gas_coin, gas.sui_gas_budget).await,
         TapCommand::Announce {
             artifact,
             agent_id,
             skill_id,
-            endpoint_object_id,
-            active_for_new_executions,
             gas,
         } => {
             announce_endpoint_revision(
                 artifact,
                 agent_id,
                 skill_id,
-                endpoint_object_id,
-                active_for_new_executions,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -607,7 +575,6 @@ mod tests {
             },
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
 
         TapPublishArtifact::from_config(
@@ -622,35 +589,13 @@ mod tests {
         config_path: PathBuf,
         dag_id: sui::types::Address,
         tap_package_id: sui::types::Address,
-        endpoint_object_id: Option<sui::types::Address>,
-        endpoint_object_version: Option<u64>,
-        endpoint_object_digest_hex: Option<String>,
         out: Option<PathBuf>,
     ) -> AnyResult<(), NexusCliError> {
         let config = validate_skill(config_path, None).await?;
         command_title!("Creating TAP publish artifact");
 
-        let mut artifact = TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
+        let artifact = TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
             .map_err(NexusCliError::Any)?;
-        let has_endpoint_metadata = endpoint_object_id.is_some()
-            || endpoint_object_version.is_some()
-            || endpoint_object_digest_hex.is_some();
-        if let (Some(id), Some(version), Some(digest_hex)) = (
-            endpoint_object_id,
-            endpoint_object_version,
-            endpoint_object_digest_hex,
-        ) {
-            let digest_bytes = decode_hex_arg(&digest_hex, "endpoint-object-digest")?;
-            let digest = sui::types::Digest::from_bytes(digest_bytes.as_slice())
-                .map_err(|e| NexusCliError::Any(e.into()))?;
-            artifact = artifact
-                .with_endpoint_object(sui::types::ObjectReference::new(id, version, digest))
-                .map_err(NexusCliError::Any)?;
-        } else if has_endpoint_metadata {
-            return Err(NexusCliError::Any(anyhow!(
-            "endpoint-object-id, endpoint-object-version, and endpoint-object-digest-hex must be provided together"
-        )));
-        }
         let artifact_json =
             serde_json::to_string_pretty(&artifact).map_err(|e| NexusCliError::Any(e.into()))?;
 
@@ -724,21 +669,18 @@ mod tests {
         let register_error = handle(TapCommand::RegisterSkill {
             artifact: artifact_path.clone(),
             agent_id: sui::types::Address::from_static("0xa"),
-            endpoint_object_id: None,
             gas: gas_args(),
         })
         .await
-        .expect_err("register dispatch requires endpoint metadata");
+        .expect_err("register dispatch reaches missing RPC");
         assert!(register_error
             .to_string()
-            .contains("TAP endpoint object ID is required"));
+            .contains("Sui RPC URL is not configured"));
 
         let announce_error = handle(TapCommand::Announce {
             artifact: root.join("missing-artifact.json"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            endpoint_object_id: None,
-            active_for_new_executions: true,
             gas: gas_args(),
         })
         .await
@@ -854,7 +796,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn publish_artifact_flow_can_embed_endpoint_metadata() {
+    async fn publish_artifact_flow_writes_revision_metadata() {
         let tempdir = tempfile::tempdir().unwrap().keep();
 
         scaffold_tap_skill("weather skill".to_string(), tempdir.clone())
@@ -868,9 +810,6 @@ mod tests {
             config_path,
             sui::types::Address::from_static("0xd"),
             sui::types::Address::from_static("0xe"),
-            Some(sui::types::Address::from_static("0xf")),
-            Some(7),
-            Some(hex::encode([8_u8; 32])),
             Some(artifact_path.clone()),
         )
         .await
@@ -878,46 +817,16 @@ mod tests {
 
         let artifact_text = tokio::fs::read_to_string(artifact_path).await.unwrap();
         let artifact: TapPublishArtifact = serde_json::from_str(&artifact_text).unwrap();
+        assert_eq!(artifact.dag_id, sui::types::Address::from_static("0xd"));
         assert_eq!(
-            artifact.endpoint_object_id,
-            Some(sui::types::Address::from_static("0xf"))
+            artifact.tap_package_id,
+            sui::types::Address::from_static("0xe")
         );
-        assert_eq!(artifact.endpoint_object_version, Some(7));
-        assert_eq!(artifact.endpoint_object_digest, Some(vec![8; 32]));
-        assert!(artifact.endpoint_config_digest.is_some());
-        assert_eq!(
-            artifact.endpoint_config_digest_hex.as_ref().unwrap().len(),
-            64
-        );
-    }
-
-    #[tokio::test]
-    async fn publish_artifact_rejects_partial_endpoint_metadata() {
-        let tempdir = tempfile::tempdir().unwrap().keep();
-
-        scaffold_tap_skill("weather skill".to_string(), tempdir.clone())
-            .await
-            .expect("scaffold succeeds");
-
-        let error = publish_skill_artifact(
-            tempdir.join("weather-skill/skill.tap.json"),
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-            Some(sui::types::Address::from_static("0xf")),
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect_err("partial endpoint metadata should fail");
-
-        assert!(error
-            .to_string()
-            .contains("endpoint-object-id, endpoint-object-version"));
+        assert_eq!(artifact.config_digest_hex.len(), 64);
     }
 
     #[test]
-    fn announce_result_digest_fields_are_endpoint_bound() {
+    fn announce_result_digest_fields_are_revision_bound() {
         let config = TapSkillConfig {
             name: "weather skill".to_string(),
             tap_package_name: "weather_tap".to_string(),
@@ -933,7 +842,6 @@ mod tests {
             },
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
         let artifact = TapPublishArtifact::from_config(
             &config,
@@ -941,8 +849,7 @@ mod tests {
             sui::types::Address::from_static("0xe"),
         )
         .expect("valid artifact");
-        let endpoint_object_id = sui::types::Address::from_static("0xf");
-        let digest_input = artifact.endpoint_config_digest_input(endpoint_object_id);
+        let digest_input = artifact.endpoint_config_digest_input();
         let digest = digest_input.digest().expect("endpoint digest");
         let output = announce_result_json(
             &artifact,
@@ -954,27 +861,14 @@ mod tests {
                     skill_id: 11,
                     interface_revision: InterfaceRevision(1),
                 },
-                endpoint_object: sui::types::ObjectReference::new(
-                    endpoint_object_id,
-                    7,
-                    sui::types::Digest::from([8; 32]),
-                ),
                 config_digest: digest,
                 config_digest_input: digest_input,
             },
         )
         .expect("announce result json");
 
-        assert_eq!(
-            output["endpoint_object_id"],
-            serde_json::Value::String(endpoint_object_id.to_string())
-        );
-        assert_eq!(
-            output["config_digest_input"]["endpoint_object_id"],
-            serde_json::Value::String(endpoint_object_id.to_string())
-        );
         assert_eq!(output["config_digest_hex"].as_str().unwrap().len(), 64);
-        assert_ne!(output["config_digest_hex"], artifact.config_digest_hex);
+        assert_eq!(output["config_digest_hex"], artifact.config_digest_hex);
     }
 
     #[tokio::test]
@@ -995,7 +889,6 @@ mod tests {
             },
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
         let config_path = tempdir.join("skill.tap.json");
         tokio::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
@@ -1152,7 +1045,6 @@ public struct WeatherSkill has drop {}
             requirements: TapSkillRequirements::default(),
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
 
         let missing = tempdir.join("missing/Move.toml");
@@ -1206,7 +1098,6 @@ public struct WeatherSkill has drop {}
             requirements: TapSkillRequirements::default(),
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
 
         let missing_root = tempdir.join("missing");
@@ -1265,7 +1156,6 @@ public struct WeatherSkill has drop {}
             },
             shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
         let artifact = TapPublishArtifact::from_config(
             &config,
@@ -1358,11 +1248,6 @@ public struct WeatherSkill has drop {}
                     skill_id: 11,
                     interface_revision: InterfaceRevision(3),
                 },
-                endpoint_object: sui::types::ObjectReference::new(
-                    sui::types::Address::from_static("0xe"),
-                    9,
-                    sui::types::Digest::from([8; 32]),
-                ),
                 payment_max_budget: 99,
                 payment_refund_mode: 7,
                 authorization_plan_commitment: Some(vec![1, 2, 3]),
@@ -1413,7 +1298,6 @@ public struct WeatherSkill has drop {}
                 },
                 shared_objects: Vec::new(),
                 interface_revision: InterfaceRevision(1),
-                active_for_new_executions: true,
             },
             sui::types::Address::from_static("0xd"),
             sui::types::Address::from_static("0xe"),
@@ -1441,7 +1325,6 @@ public struct WeatherSkill has drop {}
 
         let register_output = register_skill_result_json(
             &artifact,
-            sui::types::Address::from_static("0xf"),
             &RegisterSkillResult {
                 tx_digest: sui::types::Digest::from([8; 32]),
                 tx_checkpoint: 12,
@@ -1451,8 +1334,8 @@ public struct WeatherSkill has drop {}
         );
         assert_eq!(register_output["skill_id"], serde_json::json!(11));
         assert_eq!(
-            register_output["endpoint_object_id"],
-            serde_json::json!(sui::types::Address::from_static("0xf").to_string())
+            register_output["dag_id"],
+            serde_json::json!("0x000000000000000000000000000000000000000000000000000000000000000d")
         );
     }
 
@@ -1474,18 +1357,11 @@ public struct WeatherSkill has drop {}
                 },
                 shared_objects: Vec::new(),
                 interface_revision: InterfaceRevision(1),
-                active_for_new_executions: true,
             },
             sui::types::Address::from_static("0xd"),
             sui::types::Address::from_static("0xe"),
         )
-        .expect("valid artifact")
-        .with_endpoint_object(sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xf"),
-            7,
-            sui::types::Digest::from([8; 32]),
-        ))
-        .expect("endpoint artifact");
+        .expect("valid artifact");
 
         let output = publish_skill_result_json(&PublishSkillResult {
             tap_package: nexus_sdk::nexus::tap::TapPackagePublishResult {
@@ -1497,15 +1373,6 @@ public struct WeatherSkill has drop {}
                 tx_digest: sui::types::Digest::from([2; 32]),
                 tx_checkpoint: 11,
                 dag_object_id: sui::types::Address::from_static("0xd"),
-            },
-            endpoint: nexus_sdk::nexus::tap::CreateStandardEndpointResult {
-                tx_digest: sui::types::Digest::from([3; 32]),
-                tx_checkpoint: 12,
-                endpoint_object: sui::types::ObjectReference::new(
-                    sui::types::Address::from_static("0xf"),
-                    7,
-                    sui::types::Digest::from([8; 32]),
-                ),
             },
             artifact,
         });
@@ -1519,15 +1386,7 @@ public struct WeatherSkill has drop {}
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
         assert_eq!(
-            output["endpoint_object_id"],
-            serde_json::json!(sui::types::Address::from_static("0xf").to_string())
-        );
-        assert_eq!(
-            output["artifact"]["endpoint_object_id"],
-            serde_json::json!(sui::types::Address::from_static("0xf").to_string())
-        );
-        assert_eq!(
-            output["artifact"]["endpoint_config_digest_hex"]
+            output["artifact"]["config_digest_hex"]
                 .as_str()
                 .unwrap()
                 .len(),

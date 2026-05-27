@@ -12,7 +12,7 @@ use sui::clock::Clock;
 /// One-time witness for package initialization.
 public struct {{ name_uppercase }} has drop {}
 
-/// Witness object used to identify this tool.
+/// Witness object used as the worksheet stamp locator for this tool.
 public struct {{ name_pascal_case }}Witness has key, store {
     id: UID,
 }
@@ -20,7 +20,7 @@ public struct {{ name_pascal_case }}Witness has key, store {
 /// Your tool's state object (customize as needed).
 public struct {{ name_pascal_case }}State has key {
     id: UID,
-    /// Store the witness object that identifies this tool.
+    /// Store the independent witness object that identifies this tool's stamp.
     witness: Bag,
     // Add your application-specific fields here.
     // Example: value: u64,
@@ -67,7 +67,7 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 /// 2. Internal workflow proof parameter: worksheet: &mut ProofOfUID
 /// 3. Last parameter: ctx: &mut TxContext
 /// 4. Return type: TaggedOutput
-/// 5. Must stamp worksheet with witness ID
+/// 5. Must stamp worksheet with tool witness ID
 public fun execute(
     _cap: VertexAuthorizationCheckCap,
     worksheet: &mut ProofOfUID,
@@ -77,11 +77,8 @@ public fun execute(
     clock: &Clock,
     ctx: &mut TxContext,
 ): TaggedOutput {
-    // Get the witness for stamping.
-    let witness = state.witness();
-
-    // REQUIRED: Stamp the worksheet to prove execution.
-    worksheet.stamp_with_data(&witness.id, b"{{ name_snake_case }}_executed");
+    // REQUIRED: Stamp the worksheet with the tool witness ID to prove execution.
+    worksheet.stamp_with_data(&state.witness().id, b"{{ name_snake_case }}_executed");
 
     // Implement your tool logic here.
     if (input_value == 0) {
@@ -108,10 +105,10 @@ fun witness(self: &{{ name_pascal_case }}State): &{{ name_pascal_case }}Witness 
     self.witness.borrow(b"witness")
 }
 
-/// Get the witness ID for external reference.
+/// Get the tool witness ID for external reference.
 /// Useful for registering the tool onchain.
-public fun witness_id(self: &{{ name_pascal_case }}State): ID {
-    self.witness().id.to_inner()
+public fun tool_witness_id(self: &{{ name_pascal_case }}State): ID {
+    object::uid_to_inner(&self.witness().id)
 }
 
 // Add getters for your custom fields.

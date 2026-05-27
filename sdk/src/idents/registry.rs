@@ -23,13 +23,6 @@ impl AgentRegistry {
                 "bootstrap_default_runtime_dag_skill_for_deployment",
             ),
         };
-    pub const CANCEL_SCHEDULED_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "cancel_scheduled_skill_execution_address_funded",
-            ),
-        };
     pub const CANCEL_SCHEDULED_SKILL_EXECUTION_FROM_AGENT_VAULT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: AGENT_REGISTRY_MODULE,
@@ -37,10 +30,6 @@ impl AgentRegistry {
                 "cancel_scheduled_skill_execution_from_agent_vault",
             ),
         };
-    pub const COMPLETE_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("complete_scheduled_skill_execution"),
-    };
     pub const CONFIRM_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("confirm_tool_eval_for_walk"),
@@ -52,10 +41,6 @@ impl AgentRegistry {
     pub const CREATE_SCHEDULED_OCCURRENCE_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("create_scheduled_occurrence_payment"),
-    };
-    pub const CREATE_STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("create_standard_endpoint"),
     };
     pub const DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
@@ -83,11 +68,11 @@ impl AgentRegistry {
                 "new_scheduled_occurrence_payment_for_execution",
             ),
         };
-    pub const NEW_SCHEDULED_OCCURRENCE_PAYMENT_FOR_EXECUTION_BY_AGENT_ID: ModuleAndNameIdent =
+    pub const NEW_SCHEDULED_OCCURRENCE_PAYMENT_FOR_EXECUTION_FROM_TASK: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: AGENT_REGISTRY_MODULE,
             name: sui::types::Identifier::from_static(
-                "new_scheduled_occurrence_payment_for_execution_by_agent_id",
+                "new_scheduled_occurrence_payment_for_execution_from_task",
             ),
         };
     pub const REGISTER_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -127,17 +112,9 @@ impl AgentRegistry {
                 "schedule_skill_execution_from_agent_vault_with_grants",
             ),
         };
-    pub const SET_ACTIVE_ENDPOINT_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const SET_SKILL_ACTIVE_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("set_active_endpoint_revision"),
-    };
-    pub const SHARE_STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("share_standard_endpoint"),
-    };
-    pub const STANDARD_ENDPOINT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("StandardEndpoint"),
+        name: sui::types::Identifier::from_static("set_skill_active_revision"),
     };
     pub const TRIGGER_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,

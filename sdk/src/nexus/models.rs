@@ -14,6 +14,7 @@ use {
             MoveVecSet,
             NexusData,
             SkillId,
+            TapEndpointKey,
             TapVertexAuthorizationPlan,
             TapVertexAuthorizationPlanEntry,
             TypeName,
@@ -59,8 +60,6 @@ pub struct DagExecution {
     #[serde(default = "empty_move_option")]
     pub tap_interface_revision: MoveOption<InterfaceRevision>,
     #[serde(default = "empty_move_option")]
-    pub tap_endpoint_object_id: MoveOption<sui::types::Address>,
-    #[serde(default = "empty_move_option")]
     pub tap_payment_id: MoveOption<sui::types::Address>,
     #[serde(default = "empty_move_option")]
     pub tap_selected_dag_id: MoveOption<sui::types::Address>,
@@ -76,11 +75,18 @@ pub struct DagExecution {
 }
 
 impl DagExecution {
+    pub fn endpoint_key(&self) -> Option<TapEndpointKey> {
+        Some(TapEndpointKey {
+            agent_id: self.tap_agent_id.0?,
+            skill_id: self.tap_skill_id.0?,
+            interface_revision: self.tap_interface_revision.0?,
+        })
+    }
+
     pub fn standard_tap_context(&self) -> anyhow::Result<Option<RequestWalkStandardTapContext>> {
         if self.tap_agent_id.0.is_none()
             && self.tap_skill_id.0.is_none()
             && self.tap_interface_revision.0.is_none()
-            && self.tap_endpoint_object_id.0.is_none()
             && self.tap_payment_id.0.is_none()
             && self.tap_selected_dag_id.0.is_none()
             && self.tap_authorization_plan_commitment.0.is_none()
@@ -100,9 +106,6 @@ impl DagExecution {
         let Some(interface_revision) = self.tap_interface_revision.0 else {
             bail!("DAGExecution has partial standard TAP context: missing tap_interface_revision");
         };
-        let Some(endpoint_object_id) = self.tap_endpoint_object_id.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_endpoint_object_id");
-        };
         let Some(payment_id) = self.tap_payment_id.0 else {
             bail!("DAGExecution has partial standard TAP context: missing tap_payment_id");
         };
@@ -114,7 +117,6 @@ impl DagExecution {
             agent_id,
             skill_id,
             interface_revision,
-            endpoint_object_id,
             payment_id,
             selected_dag_id,
             authorization_plan_commitment: self.tap_authorization_plan_commitment.0.clone(),
@@ -707,7 +709,6 @@ mod tests {
             tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
             tap_skill_id: MoveOption(Some(11)),
             tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-            tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static("0xc"))),
             tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
             tap_selected_dag_id: MoveOption(Some(sui::types::Address::from_static("0xe"))),
             tap_authorization_plan_commitment: MoveOption(Some(vec![1, 2, 3])),
@@ -727,7 +728,6 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(7),
-                endpoint_object_id: sui::types::Address::from_static("0xc"),
                 payment_id: sui::types::Address::from_static("0xd"),
                 selected_dag_id: sui::types::Address::from_static("0xe"),
                 authorization_plan_commitment: Some(vec![1, 2, 3]),
@@ -785,7 +785,6 @@ mod tests {
             tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
             tap_skill_id: MoveOption(None),
             tap_interface_revision: MoveOption(None),
-            tap_endpoint_object_id: MoveOption(None),
             tap_payment_id: MoveOption(None),
             tap_selected_dag_id: MoveOption(None),
             tap_authorization_plan_commitment: MoveOption(None),
@@ -806,7 +805,6 @@ mod tests {
                     tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(None),
-                    tap_endpoint_object_id: MoveOption(None),
                     tap_payment_id: MoveOption(None),
                     tap_selected_dag_id: MoveOption(None),
                     tap_authorization_plan_commitment: MoveOption(None),
@@ -822,25 +820,6 @@ mod tests {
                     tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-                    tap_endpoint_object_id: MoveOption(None),
-                    tap_payment_id: MoveOption(None),
-                    tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_commitment: MoveOption(None),
-                    tap_authorization_plan: Vec::new(),
-                    tap_scheduled_task_id: MoveOption(None),
-                    tap_scheduled_occurrence_index: MoveOption(None),
-                },
-                "missing tap_endpoint_object_id",
-            ),
-            (
-                DagExecution {
-                    invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-                    tap_skill_id: MoveOption(Some(11)),
-                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-                    tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
-                        "0xc",
-                    ))),
                     tap_payment_id: MoveOption(None),
                     tap_selected_dag_id: MoveOption(None),
                     tap_authorization_plan_commitment: MoveOption(None),
@@ -856,9 +835,6 @@ mod tests {
                     tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
                     tap_skill_id: MoveOption(Some(11)),
                     tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-                    tap_endpoint_object_id: MoveOption(Some(sui::types::Address::from_static(
-                        "0xc",
-                    ))),
                     tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
                     tap_selected_dag_id: MoveOption(None),
                     tap_authorization_plan_commitment: MoveOption(None),
@@ -887,7 +863,6 @@ mod tests {
         assert_eq!(execution.tap_agent_id.0, None);
         assert_eq!(execution.tap_skill_id.0, None);
         assert_eq!(execution.tap_interface_revision.0, None);
-        assert_eq!(execution.tap_endpoint_object_id.0, None);
         assert_eq!(execution.tap_payment_id.0, None);
         assert_eq!(execution.tap_selected_dag_id.0, None);
         assert_eq!(execution.tap_authorization_plan_commitment.0, None);

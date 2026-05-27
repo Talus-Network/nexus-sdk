@@ -694,7 +694,6 @@ pub struct TapAgentRecord {
     pub next_skill_index: u64,
     pub skills: MoveTable<SkillId, TapSkillRecord>,
     pub endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
-    pub active_endpoints: Vec<TapEndpointActivation>,
 }
 
 /// Stored `nexus_interface::tap::SkillRecord`.
@@ -715,6 +714,7 @@ pub struct TapSkillRecord {
     pub schedule_policy: TapSchedulePolicy,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub capability_schema_commitment: Vec<u8>,
+    pub active_interface_revision: InterfaceRevision,
     pub active: bool,
 }
 
@@ -725,15 +725,10 @@ pub struct TapEndpointRevision {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
-    pub endpoint_object_version: u64,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub endpoint_object_digest: Vec<u8>,
     pub shared_objects: Vec<TapSharedObjectRef>,
     pub requirements: TapSkillRequirements,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub config_digest: Vec<u8>,
-    pub active_for_new_executions: bool,
 }
 
 impl TapEndpointRevision {
@@ -746,41 +741,16 @@ impl TapEndpointRevision {
     }
 
     pub fn to_endpoint_record(&self) -> anyhow::Result<TapEndpointRecord> {
-        let endpoint_object_digest = sui::types::Digest::from_bytes(
-            self.endpoint_object_digest.as_slice(),
-        )
-        .map_err(|error| {
-            anyhow::anyhow!(
-                "invalid TAP endpoint object digest for endpoint {}: {error}",
-                self.key()
-            )
-        })?;
-
         let record = TapEndpointRecord {
             key: self.key(),
-            endpoint_object: sui::types::ObjectReference::new(
-                self.endpoint_object_id,
-                self.endpoint_object_version,
-                endpoint_object_digest,
-            ),
             shared_objects: self.shared_objects.clone(),
             config_digest: self.config_digest.clone(),
             requirements: self.requirements.clone(),
-            active_for_new_executions: self.active_for_new_executions,
         };
 
         record.validate()?;
         Ok(record)
     }
-}
-
-/// Stored `nexus_interface::tap::EndpointActivation`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapEndpointActivation {
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
 }
 
 /// Standard network default DAG executor for arbitrary-DAG execution.
@@ -820,6 +790,7 @@ pub struct TapAgentObject {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub next_skill_index: u64,
     pub owner: sui::types::Address,
+    pub registry_id: MoveOption<sui::types::Address>,
 }
 
 /// Raw shared `nexus_registry::agent_registry::AgentRegistry` object contents.
@@ -836,26 +807,16 @@ pub struct TapRegistry {
     pub agents: Vec<TapAgentRecord>,
     pub skills: Vec<TapSkillRecord>,
     pub endpoints: Vec<TapEndpointRevision>,
-    pub active_endpoints: Vec<TapEndpointActivation>,
     #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
 }
 
 impl TapRegistry {
-    /// Convert all endpoint revisions into leader-facing endpoint records,
-    /// normalizing active state from the registry activation vector.
+    /// Convert all endpoint revisions into leader-facing endpoint records.
     pub fn endpoint_records(&self) -> anyhow::Result<Vec<TapEndpointRecord>> {
         self.endpoints
             .iter()
-            .map(|endpoint| {
-                let mut record = endpoint.to_endpoint_record()?;
-                record.active_for_new_executions = self.is_active_endpoint(
-                    endpoint.agent_id,
-                    endpoint.skill_id,
-                    endpoint.interface_revision,
-                );
-                Ok(record)
-            })
+            .map(TapEndpointRevision::to_endpoint_record)
             .collect()
     }
 
@@ -868,12 +829,7 @@ impl TapRegistry {
 
         match matches.as_slice() {
             [] => anyhow::bail!("TAP endpoint revision not found for key {key}"),
-            [endpoint] => {
-                let mut record = endpoint.to_endpoint_record()?;
-                record.active_for_new_executions =
-                    self.is_active_endpoint(key.agent_id, key.skill_id, key.interface_revision);
-                Ok(record)
-            }
+            [endpoint] => endpoint.to_endpoint_record(),
             _ => anyhow::bail!("duplicate TAP endpoint revisions found for key {key}"),
         }
     }
@@ -883,13 +839,13 @@ impl TapRegistry {
         agent_id: AgentId,
         skill_id: SkillId,
     ) -> anyhow::Result<TapEndpointRecord> {
-        let activations = self
-            .active_endpoints
+        let skills = self
+            .skills
             .iter()
-            .filter(|active| active.agent_id == agent_id && active.skill_id == skill_id)
+            .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id)
             .collect::<Vec<_>>();
 
-        let activation = match activations.as_slice() {
+        let skill = match skills.as_slice() {
             [] => {
                 return Err(TapEndpointResolutionError::MissingActiveRevision {
                     agent_id,
@@ -897,12 +853,19 @@ impl TapRegistry {
                 }
                 .into())
             }
-            [activation] => *activation,
+            [skill] if skill.active => *skill,
+            [_] => {
+                return Err(TapEndpointResolutionError::MissingActiveRevision {
+                    agent_id,
+                    skill_id,
+                }
+                .into())
+            }
             _ => {
                 return Err(TapEndpointResolutionError::DuplicateActiveRevision {
                     agent_id,
                     skill_id,
-                    count: activations.len(),
+                    count: skills.len(),
                 }
                 .into())
             }
@@ -911,33 +874,14 @@ impl TapRegistry {
         let key = TapEndpointKey {
             agent_id,
             skill_id,
-            interface_revision: activation.interface_revision,
+            interface_revision: skill.active_interface_revision,
         };
-        let record = self.endpoint_record(key)?;
-
-        if !record.active_for_new_executions {
-            anyhow::bail!("active TAP endpoint activation resolved inactive endpoint {key}");
-        }
-
-        Ok(record)
+        self.endpoint_record(key)
     }
 
     pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
         self.default_executor
             .ok_or_else(|| anyhow::anyhow!("AgentRegistry missing default TAP DAG executor"))
-    }
-
-    fn is_active_endpoint(
-        &self,
-        agent_id: AgentId,
-        skill_id: SkillId,
-        interface_revision: InterfaceRevision,
-    ) -> bool {
-        self.active_endpoints.iter().any(|active| {
-            active.agent_id == agent_id
-                && active.skill_id == skill_id
-                && active.interface_revision == interface_revision
-        })
     }
 }
 
@@ -945,12 +889,10 @@ impl TapRegistry {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapEndpointRecord {
     pub key: TapEndpointKey,
-    pub endpoint_object: sui::types::ObjectReference,
     pub shared_objects: Vec<TapSharedObjectRef>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub config_digest: Vec<u8>,
     pub requirements: TapSkillRequirements,
-    pub active_for_new_executions: bool,
 }
 
 impl TapEndpointRecord {
@@ -972,17 +914,6 @@ impl TapEndpointRecord {
     }
 }
 
-/// Legacy standalone active endpoint pointer model. New standard TAP recovery
-/// should read `AgentRegistry.active_endpoints` instead.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapActiveEndpoint {
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub active_revision: InterfaceRevision,
-    pub endpoint_object_id: sui::types::Address,
-}
-
 /// Execution-linked payment object model used by leader recovery.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapExecutionPayment {
@@ -994,8 +925,6 @@ pub struct TapExecutionPayment {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub endpoint_object_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub payer: sui::types::Address,
     pub payment_mode: TapPaymentMode,
@@ -1629,8 +1558,6 @@ pub struct TapScheduledOccurrenceRecord {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub payment_id: sui::types::Address,
     pub interface_revision: InterfaceRevision,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub endpoint_object_id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub budget: u64,
     pub final_state: TapScheduledOccurrenceFinalState,
@@ -1654,28 +1581,13 @@ pub struct DefaultDagExecutorRecord {
 /// Digest input committed by endpoint announcements and publish artifacts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapConfigDigestInput {
-    pub endpoint_object_id: Option<sui::types::Address>,
     pub interface_revision: InterfaceRevision,
     pub shared_objects: Vec<TapSharedObjectRef>,
     pub requirements: TapSkillRequirements,
 }
 
 #[derive(Serialize)]
-struct MoveOptionBcs<T> {
-    vec: Vec<T>,
-}
-
-impl<T> From<Option<T>> for MoveOptionBcs<T> {
-    fn from(value: Option<T>) -> Self {
-        Self {
-            vec: value.into_iter().collect(),
-        }
-    }
-}
-
-#[derive(Serialize)]
 struct TapConfigDigestInputBcs {
-    endpoint_object_id: MoveOptionBcs<sui::types::Address>,
     interface_revision: InterfaceRevision,
     shared_objects: Vec<TapSharedObjectRef>,
     requirements: TapSkillRequirements,
@@ -1684,7 +1596,6 @@ struct TapConfigDigestInputBcs {
 impl TapConfigDigestInput {
     pub fn digest(&self) -> anyhow::Result<Vec<u8>> {
         let input = TapConfigDigestInputBcs {
-            endpoint_object_id: self.endpoint_object_id.into(),
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
             requirements: self.requirements.clone(),
@@ -1708,13 +1619,11 @@ pub struct TapSkillConfig {
     pub requirements: TapSkillRequirements,
     pub shared_objects: Vec<TapSharedObjectRef>,
     pub interface_revision: InterfaceRevision,
-    pub active_for_new_executions: bool,
 }
 
 impl TapSkillConfig {
     pub fn digest_input(&self) -> TapConfigDigestInput {
         TapConfigDigestInput {
-            endpoint_object_id: None,
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
             requirements: self.requirements.clone(),
@@ -1748,16 +1657,6 @@ pub struct TapPublishArtifact {
     pub interface_revision: InterfaceRevision,
     pub config_digest: Vec<u8>,
     pub config_digest_hex: String,
-    #[serde(default)]
-    pub endpoint_object_id: Option<sui::types::Address>,
-    #[serde(default)]
-    pub endpoint_object_version: Option<u64>,
-    #[serde(default)]
-    pub endpoint_object_digest: Option<Vec<u8>>,
-    #[serde(default)]
-    pub endpoint_config_digest: Option<Vec<u8>>,
-    #[serde(default)]
-    pub endpoint_config_digest_hex: Option<String>,
     pub shared_objects: Vec<TapSharedObjectRef>,
     pub requirements: TapSkillRequirements,
 }
@@ -1780,80 +1679,25 @@ impl TapPublishArtifact {
             interface_revision: config.interface_revision,
             config_digest,
             config_digest_hex,
-            endpoint_object_id: None,
-            endpoint_object_version: None,
-            endpoint_object_digest: None,
-            endpoint_config_digest: None,
-            endpoint_config_digest_hex: None,
             shared_objects: config.shared_objects.clone(),
             requirements: config.requirements.clone(),
         })
     }
 
-    pub fn with_endpoint_object(
-        mut self,
-        endpoint_object: sui::types::ObjectReference,
-    ) -> anyhow::Result<Self> {
-        let endpoint_object_id = *endpoint_object.object_id();
-        let endpoint_digest = self.endpoint_config_digest(endpoint_object_id)?;
-        self.endpoint_object_id = Some(endpoint_object_id);
-        self.endpoint_object_version = Some(endpoint_object.version());
-        self.endpoint_object_digest = Some(endpoint_object.digest().inner().to_vec());
-        self.endpoint_config_digest_hex = Some(hex::encode(&endpoint_digest));
-        self.endpoint_config_digest = Some(endpoint_digest);
-        Ok(self)
-    }
-
-    pub fn endpoint_object_id_or(
-        &self,
-        override_id: Option<sui::types::Address>,
-    ) -> anyhow::Result<sui::types::Address> {
-        override_id
-            .or(self.endpoint_object_id)
-            .ok_or_else(|| anyhow::anyhow!("TAP endpoint object ID is required"))
-    }
-
-    pub fn endpoint_config_digest_input(
-        &self,
-        endpoint_object_id: sui::types::Address,
-    ) -> TapConfigDigestInput {
+    pub fn endpoint_config_digest_input(&self) -> TapConfigDigestInput {
         TapConfigDigestInput {
-            endpoint_object_id: Some(endpoint_object_id),
             interface_revision: self.interface_revision,
             shared_objects: self.shared_objects.clone(),
             requirements: self.requirements.clone(),
         }
     }
 
-    pub fn endpoint_config_digest(
-        &self,
-        endpoint_object_id: sui::types::Address,
-    ) -> anyhow::Result<Vec<u8>> {
-        self.endpoint_config_digest_input(endpoint_object_id)
-            .digest()
+    pub fn endpoint_config_digest(&self) -> anyhow::Result<Vec<u8>> {
+        self.endpoint_config_digest_input().digest()
     }
 
-    pub fn endpoint_config_digest_hex(
-        &self,
-        endpoint_object_id: sui::types::Address,
-    ) -> anyhow::Result<String> {
-        self.endpoint_config_digest_input(endpoint_object_id)
-            .digest_hex()
-    }
-
-    pub fn endpoint_object_ref(&self) -> anyhow::Result<Option<sui::types::ObjectReference>> {
-        match (
-            self.endpoint_object_id,
-            self.endpoint_object_version,
-            self.endpoint_object_digest.as_ref(),
-        ) {
-            (None, None, None) => Ok(None),
-            (Some(id), Some(version), Some(digest)) => {
-                let digest = sui::types::Digest::from_bytes(digest.as_slice())?;
-                Ok(Some(sui::types::ObjectReference::new(id, version, digest)))
-            }
-            _ => anyhow::bail!("incomplete TAP endpoint object metadata in publish artifact"),
-        }
+    pub fn endpoint_config_digest_hex(&self) -> anyhow::Result<String> {
+        self.endpoint_config_digest_input().digest_hex()
     }
 }
 
@@ -2093,17 +1937,38 @@ pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<V
 }
 
 /// Resolve exactly one active endpoint for fresh execution.
-pub fn resolve_active_tap_endpoint(
-    records: &[TapEndpointRecord],
+pub fn resolve_active_tap_endpoint<'a>(
+    records: &'a [TapEndpointRecord],
+    skills: &[TapSkillRecord],
     agent_id: AgentId,
     skill_id: SkillId,
-) -> Result<&TapEndpointRecord, TapEndpointResolutionError> {
+) -> Result<&'a TapEndpointRecord, TapEndpointResolutionError> {
+    let skill_matches = skills
+        .iter()
+        .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id)
+        .collect::<Vec<_>>();
+
+    let skill = match skill_matches.as_slice() {
+        [] => return Err(TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id }),
+        [skill] if skill.active => *skill,
+        [_] => {
+            return Err(TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id })
+        }
+        _ => {
+            return Err(TapEndpointResolutionError::DuplicateActiveRevision {
+                agent_id,
+                skill_id,
+                count: skill_matches.len(),
+            })
+        }
+    };
+
     let active = records
         .iter()
         .filter(|record| {
             record.key.agent_id == agent_id
                 && record.key.skill_id == skill_id
-                && record.active_for_new_executions
+                && record.key.interface_revision == skill.active_interface_revision
         })
         .collect::<Vec<_>>();
 
@@ -2199,24 +2064,20 @@ mod tests {
         }
     }
 
-    fn endpoint(revision: u64, active: bool) -> TapEndpointRecord {
-        let object_ref =
-            sui::types::ObjectReference::new(addr("0x123"), 7, sui::types::Digest::from([1; 32]));
+    fn endpoint(revision: u64) -> TapEndpointRecord {
         TapEndpointRecord {
             key: TapEndpointKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
             },
-            endpoint_object: object_ref,
             shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
             config_digest: vec![9],
             requirements: requirements(),
-            active_for_new_executions: active,
         }
     }
 
-    fn skill(active: bool) -> TapSkillRecord {
+    fn skill(active: bool, active_interface_revision: u64) -> TapSkillRecord {
         TapSkillRecord {
             agent_id: addr("0xa"),
             skill_id: 11,
@@ -2231,6 +2092,7 @@ mod tests {
             },
             schedule_policy: TapSchedulePolicy::default(),
             capability_schema_commitment: vec![7],
+            active_interface_revision: InterfaceRevision(active_interface_revision),
             active,
         }
     }
@@ -2239,23 +2101,14 @@ mod tests {
         TapRegistry {
             id: addr("0xf"),
             agents: Vec::new(),
-            skills: vec![skill(true)],
+            skills: vec![skill(true, 2)],
             endpoints: vec![TapEndpointRevision {
                 agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(2),
-                endpoint_object_id: addr("0x123"),
-                endpoint_object_version: 7,
-                endpoint_object_digest: vec![1; 32],
                 shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
                 requirements: requirements(),
                 config_digest: vec![9],
-                active_for_new_executions: true,
-            }],
-            active_endpoints: vec![TapEndpointActivation {
-                agent_id: addr("0xa"),
-                skill_id: 11,
-                interface_revision: InterfaceRevision(2),
             }],
             default_executor: None,
         }
@@ -2264,7 +2117,6 @@ mod tests {
     #[test]
     fn config_digest_is_deterministic() {
         let input = TapConfigDigestInput {
-            endpoint_object_id: Some(addr("0x2")),
             interface_revision: InterfaceRevision(3),
             shared_objects: vec![TapSharedObjectRef::mutable(addr("0x4"))],
             requirements: requirements(),
@@ -2287,19 +2139,24 @@ mod tests {
 
     #[test]
     fn active_resolution_requires_exactly_one_active_revision() {
-        let active = endpoint(1, true);
-        let inactive = endpoint(2, false);
+        let active = endpoint(1);
+        let inactive = endpoint(2);
         let records = vec![active.clone(), inactive];
+        let skills = vec![skill(true, 1)];
 
-        let resolved =
-            resolve_active_tap_endpoint(&records, active.key.agent_id, active.key.skill_id)
-                .expect("one active endpoint");
+        let resolved = resolve_active_tap_endpoint(
+            &records,
+            &skills,
+            active.key.agent_id,
+            active.key.skill_id,
+        )
+        .expect("one active endpoint");
 
         assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
 
-        let duplicate = vec![endpoint(1, true), endpoint(2, true)];
+        let duplicate = vec![endpoint(1), endpoint(1)];
         assert!(matches!(
-            resolve_active_tap_endpoint(&duplicate, addr("0xa"), 11),
+            resolve_active_tap_endpoint(&duplicate, &skills, addr("0xa"), 11),
             Err(TapEndpointResolutionError::DuplicateActiveRevision { count: 2, .. })
         ));
     }
@@ -2335,7 +2192,6 @@ mod tests {
             requirements: requirements(),
             shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
 
         let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
@@ -2347,7 +2203,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_artifact_builds_endpoint_bound_digest_input() {
+    fn publish_artifact_builds_revision_digest_input() {
         let config = TapSkillConfig {
             name: "weather".to_string(),
             tap_package_name: "weather_tap".to_string(),
@@ -2356,102 +2212,22 @@ mod tests {
             requirements: requirements(),
             shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
         let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
             .expect("valid artifact");
-        let endpoint_object_id = addr("0x6");
 
-        let input = artifact.endpoint_config_digest_input(endpoint_object_id);
-        let endpoint_digest = artifact
-            .endpoint_config_digest(endpoint_object_id)
-            .expect("endpoint digest");
+        let input = artifact.endpoint_config_digest_input();
+        let endpoint_digest = artifact.endpoint_config_digest().expect("endpoint digest");
 
-        assert_eq!(input.endpoint_object_id, Some(endpoint_object_id));
+        assert_eq!(input.interface_revision, InterfaceRevision(1));
         assert_eq!(
             artifact
-                .endpoint_config_digest_hex(endpoint_object_id)
+                .endpoint_config_digest_hex()
                 .expect("endpoint digest hex")
                 .len(),
             64
         );
-        assert_ne!(endpoint_digest, artifact.config_digest);
-    }
-
-    #[test]
-    fn publish_artifact_carries_endpoint_object_metadata() {
-        let config = TapSkillConfig {
-            name: "weather".to_string(),
-            tap_package_name: "weather_tap".to_string(),
-            dag_path: PathBuf::from("skill.dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
-            interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
-        };
-        let endpoint_object =
-            sui::types::ObjectReference::new(addr("0x6"), 7, sui::types::Digest::from([8; 32]));
-        let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
-            .expect("valid artifact")
-            .with_endpoint_object(endpoint_object.clone())
-            .expect("endpoint metadata");
-
-        assert_eq!(artifact.endpoint_object_id, Some(addr("0x6")));
-        assert_eq!(artifact.endpoint_object_version, Some(7));
-        assert_eq!(artifact.endpoint_object_digest, Some(vec![8; 32]));
-        assert_eq!(
-            artifact.endpoint_config_digest,
-            Some(
-                artifact
-                    .endpoint_config_digest(addr("0x6"))
-                    .expect("endpoint digest")
-            )
-        );
-        assert_eq!(
-            artifact
-                .endpoint_object_ref()
-                .expect("endpoint ref")
-                .expect("present"),
-            endpoint_object
-        );
-        assert_eq!(
-            artifact
-                .endpoint_object_id_or(None)
-                .expect("artifact endpoint id"),
-            addr("0x6")
-        );
-        assert_eq!(
-            artifact
-                .endpoint_object_id_or(Some(addr("0x10")))
-                .expect("override endpoint id"),
-            addr("0x10")
-        );
-    }
-
-    #[test]
-    fn publish_artifact_rejects_incomplete_endpoint_metadata() {
-        let config = TapSkillConfig {
-            name: "weather".to_string(),
-            tap_package_name: "weather_tap".to_string(),
-            dag_path: PathBuf::from("skill.dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: requirements(),
-            shared_objects: vec![],
-            interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
-        };
-        let mut artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
-            .expect("valid artifact");
-        artifact.endpoint_object_id = Some(addr("0x6"));
-
-        assert!(artifact.endpoint_object_ref().is_err());
-        assert!(
-            TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
-                .expect("valid artifact")
-                .endpoint_object_id_or(None)
-                .is_err()
-        );
+        assert_eq!(endpoint_digest, artifact.config_digest);
     }
 
     #[test]
@@ -2689,7 +2465,6 @@ mod tests {
             "agent_id": "0x12",
             "skill_id": "19",
             "interface_revision": "1",
-            "endpoint_object_id": "0x14",
             "payer": "0x15",
             "payment_mode": "user_funded",
             "source_kind": "agent_vault",
@@ -2746,7 +2521,6 @@ mod tests {
             "agent_id": "0x12",
             "skill_id": "19",
             "interface_revision": "1",
-            "endpoint_object_id": "0x14",
             "payer": "0x15",
             "payment_mode": {"@variant": "user_funded"},
             "max_budget": "100",
@@ -2947,7 +2721,6 @@ mod tests {
                 "execution_id": "0xf1",
                 "payment_id": "0xf2",
                 "interface_revision": "9",
-                "endpoint_object_id": "0xf3",
                 "budget": "25",
                 "final_state": "refunded"
             }],

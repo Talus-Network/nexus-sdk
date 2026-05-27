@@ -89,7 +89,6 @@ pub struct TapExecutionSubmitMetadata {
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub endpoint_key: TapEndpointKey,
-    pub endpoint_object: sui::types::ObjectReference,
     pub payment_max_budget: u64,
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
@@ -770,7 +769,6 @@ impl WorkflowActions {
                 skill_id: default_executor.target.skill_id,
                 dag_id: dag.object_id,
                 endpoint_key: default_executor.endpoint.key,
-                endpoint_object: default_executor.endpoint.endpoint_object,
                 payment_max_budget: options.payment_max_budget,
                 payment_refund_mode: options.payment_refund_mode,
                 authorization_plan_commitment,
@@ -976,7 +974,6 @@ impl WorkflowActions {
                 skill_id,
                 dag_id,
                 endpoint_key: target.endpoint.key,
-                endpoint_object: target.endpoint.endpoint_object,
                 payment_max_budget: options.payment_max_budget,
                 payment_refund_mode: options.payment_refund_mode,
                 authorization_plan_commitment,
@@ -1168,7 +1165,6 @@ mod tests {
                 Storable,
                 TapAgentRecord,
                 TapDagBinding,
-                TapEndpointActivation,
                 TapEndpointRevision,
                 TapEndpointRevisionKey,
                 TapPaymentPolicy,
@@ -1213,13 +1209,13 @@ mod tests {
         let agent = registry.agents[0].clone();
         let skill_record = registry.skills[0].clone();
         let endpoint_record = registry
-            .active_endpoints
-            .iter()
-            .find_map(|active| {
+            .active_endpoint_record(skill_record.agent_id, skill_record.skill_id)
+            .ok()
+            .and_then(|active| {
                 registry.endpoints.iter().find(|endpoint| {
-                    endpoint.agent_id == active.agent_id
-                        && endpoint.skill_id == active.skill_id
-                        && endpoint.interface_revision == active.interface_revision
+                    endpoint.agent_id == active.key.agent_id
+                        && endpoint.skill_id == active.key.skill_id
+                        && endpoint.interface_revision == active.key.interface_revision
                 })
             })
             .or_else(|| registry.endpoints.first())
@@ -1236,6 +1232,7 @@ mod tests {
                         id: default_executor.agent_id,
                         next_skill_index: agent.next_skill_index,
                         owner: agent.owner,
+                        registry_id: Some(registry.id).into(),
                     },
                     skill_id: default_executor.skill_id,
                 });
@@ -1556,11 +1553,6 @@ mod tests {
                 next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
                 endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                active_endpoints: vec![TapEndpointActivation {
-                    agent_id: default_agent,
-                    skill_id: default_skill_id,
-                    interface_revision: InterfaceRevision(1),
-                }],
             }],
             skills: vec![TapSkillRecord {
                 agent_id: default_agent,
@@ -1573,26 +1565,18 @@ mod tests {
                 payment_policy: requirements.payment_policy.clone(),
                 schedule_policy: requirements.schedule_policy.clone(),
                 capability_schema_commitment: vec![],
+                active_interface_revision: InterfaceRevision(1),
                 active: true,
             }],
             endpoints: vec![TapEndpointRevision {
                 agent_id: default_agent,
                 skill_id: default_skill_id,
                 interface_revision: InterfaceRevision(1),
-                endpoint_object_id: sui::types::Address::generate(&mut rng),
-                endpoint_object_version: 1,
-                endpoint_object_digest: sui::types::Digest::generate(&mut rng).inner().to_vec(),
                 shared_objects: vec![TapSharedObjectRef::immutable(
                     sui::types::Address::generate(&mut rng),
                 )],
                 requirements: requirements.clone(),
                 config_digest: vec![9],
-                active_for_new_executions: true,
-            }],
-            active_endpoints: vec![TapEndpointActivation {
-                agent_id: default_agent,
-                skill_id: default_skill_id,
-                interface_revision: InterfaceRevision(1),
             }],
             default_executor: Some(DefaultDagExecutor {
                 agent_id: default_agent,
@@ -1765,7 +1749,6 @@ mod tests {
         let skill_id = 22;
         let agent_ref =
             sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
-        let endpoint_digest = sui::types::Digest::generate(&mut rng);
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![1],
             workflow_commitment: vec![2],
@@ -1787,11 +1770,6 @@ mod tests {
                 next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
                 endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                active_endpoints: vec![TapEndpointActivation {
-                    agent_id,
-                    skill_id,
-                    interface_revision: InterfaceRevision(1),
-                }],
             }],
             skills: vec![TapSkillRecord {
                 agent_id,
@@ -1804,26 +1782,18 @@ mod tests {
                 payment_policy: requirements.payment_policy.clone(),
                 schedule_policy: requirements.schedule_policy.clone(),
                 capability_schema_commitment: vec![],
+                active_interface_revision: InterfaceRevision(1),
                 active: true,
             }],
             endpoints: vec![TapEndpointRevision {
                 agent_id,
                 skill_id,
                 interface_revision: InterfaceRevision(1),
-                endpoint_object_id: sui::types::Address::generate(&mut rng),
-                endpoint_object_version: 7,
-                endpoint_object_digest: endpoint_digest.inner().to_vec(),
                 shared_objects: vec![TapSharedObjectRef::immutable(
                     sui::types::Address::generate(&mut rng),
                 )],
                 requirements: requirements.clone(),
                 config_digest: vec![9],
-                active_for_new_executions: true,
-            }],
-            active_endpoints: vec![TapEndpointActivation {
-                agent_id,
-                skill_id,
-                interface_revision: InterfaceRevision(1),
             }],
             default_executor: None,
         };
@@ -2407,7 +2377,6 @@ mod tests {
                 "tap_agent_id": { "vec": ["0xa"] },
                 "tap_skill_id": { "vec": ["11"] },
                 "tap_interface_revision": { "vec": ["7"] },
-                "tap_endpoint_object_id": { "vec": ["0xc"] },
                 "tap_payment_id": { "vec": [payment_id.to_string()] },
                 "tap_selected_dag_id": { "vec": ["0xe"] },
                 "tap_authorization_plan_commitment": { "vec": [] },
@@ -2427,7 +2396,6 @@ mod tests {
                 "agent_id": "0xa",
                 "skill_id": "11",
                 "interface_revision": "7",
-                "endpoint_object_id": "0xc",
                 "payer": "0x1",
                 "payment_mode": "user_funded",
                 "source_kind": "invoker",

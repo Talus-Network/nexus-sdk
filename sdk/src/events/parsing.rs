@@ -546,7 +546,6 @@ mod tests {
                 TapSharedObjectRef,
                 TapSkillRequirements,
                 TapVertexAuthorizationPlanEntry,
-                TypeName,
                 WorkflowFailureClass,
             },
         },
@@ -658,12 +657,9 @@ mod tests {
         walk_index: u64,
         next_vertex: RuntimeVertex,
         evaluations: sui::types::Address,
-        worksheet_from_type: TypeName,
-        worksheet_from_uid: sui::types::Address,
         tap_agent_id: MoveOptionBcs<AgentId>,
         tap_skill_id: MoveOptionBcs<SkillId>,
         tap_interface_revision: MoveOptionBcs<InterfaceRevision>,
-        tap_endpoint_object_id: MoveOptionBcs<sui::types::Address>,
         tap_payment_id: MoveOptionBcs<sui::types::Address>,
         tap_selected_dag_id: MoveOptionBcs<sui::types::Address>,
         tap_authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
@@ -1218,12 +1214,9 @@ mod tests {
                     walk_index: 1,
                     next_vertex: RuntimeVertex::plain("transfer"),
                     evaluations: sui::types::Address::from_static("0xd"),
-                    worksheet_from_type: TypeName::from("demo::tap::Witness"),
-                    worksheet_from_uid: sui::types::Address::from_static("0xe"),
                     tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
                     tap_skill_id: Some(2).into(),
                     tap_interface_revision: Some(InterfaceRevision(3)).into(),
-                    tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
                     tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
                     tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
                     tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
@@ -1455,7 +1448,9 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         dag_id: sui::types::Address::from_static("0x1a"),
-                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x1a")),
+                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static(
+                            "0x1a",
+                        )),
                         workflow_commitment: vec![1],
                         requirements_commitment: vec![2],
                         capability_schema_commitment: vec![5],
@@ -1480,30 +1475,26 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
-                        endpoint_object_id: sui::types::Address::from_static("0x1d"),
-                        endpoint_object_version: 4,
-                        endpoint_object_digest: vec![7; 32],
                         shared_objects: vec![TapSharedObjectRef::mutable(
                             sui::types::Address::from_static("0x1e"),
                         )],
                         requirements: TapSkillRequirements::default(),
                         config_digest: vec![8, 8],
-                        active_for_new_executions: true,
                     },
                 })
                 .expect("EndpointRevisionAnnouncedEvent sample serializes"),
             ),
             (
-                "EndpointRevisionActivatedEvent",
+                "SkillActiveRevisionUpdatedEvent",
                 bcs::to_bytes(&Wrapper {
-                    event: EndpointRevisionActivatedEvent {
+                    event: SkillActiveRevisionUpdatedEvent {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
-                        interface_revision: InterfaceRevision(9),
-                        active_for_new_executions: true,
+                        previous_revision: InterfaceRevision(8),
+                        active_interface_revision: InterfaceRevision(9),
                     },
                 })
-                .expect("EndpointRevisionActivatedEvent sample serializes"),
+                .expect("SkillActiveRevisionUpdatedEvent sample serializes"),
             ),
             (
                 "WorksheetResolvedEvent",
@@ -1512,9 +1503,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
-                        endpoint_object_id: sui::types::Address::from_static("0x1f"),
                         execution_id: sui::types::Address::from_static("0x20"),
-                        worksheet_id: sui::types::Address::from_static("0x21"),
                     },
                 })
                 .expect("WorksheetResolvedEvent sample serializes"),
@@ -1649,14 +1638,9 @@ mod tests {
                         walk_index: 1,
                         next_vertex: RuntimeVertex::plain("vertex"),
                         evaluations: sui::types::Address::from_static("0xd"),
-                        worksheet_from_type: TypeName::from(
-                            "d000000000000000000000000000000000000000000000000000000000000000::dag::LeaderRegistryWorkflowWitness",
-                        ),
-                        worksheet_from_uid: sui::types::Address::from_static("0xe"),
                         tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
                         tap_skill_id: Some(2).into(),
                         tap_interface_revision: Some(InterfaceRevision(3)).into(),
-                        tap_endpoint_object_id: Some(sui::types::Address::from_static("0xf")).into(),
                         tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
                         tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
                         tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
@@ -1678,15 +1662,9 @@ mod tests {
                             walk_index: 0,
                             next_vertex: RuntimeVertex::plain("dummy"),
                             evaluations: sui::types::Address::from_static("0x4"),
-                            worksheet_from_type: TypeName::from("legacy::compat::Witness"),
-                            worksheet_from_uid: sui::types::Address::from_static("0x5"),
-                            tap_agent_id: Some(sui::types::Address::from_static("0xa"))
-                                .into(),
-                            tap_skill_id: Some(11)
-                                .into(),
+                            tap_agent_id: Some(sui::types::Address::from_static("0xa")).into(),
+                            tap_skill_id: Some(11).into(),
                             tap_interface_revision: Some(InterfaceRevision(1)).into(),
-                            tap_endpoint_object_id: Some(sui::types::Address::from_static("0xc"))
-                                .into(),
                             tap_payment_id: Some(sui::types::Address::from_static("0xd")).into(),
                             tap_selected_dag_id: Some(sui::types::Address::from_static("0xe"))
                                 .into(),
@@ -1895,14 +1873,6 @@ mod tests {
                     0, 0, 0, 1, 1, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 4, 116, 111, 111, 108, 3, 114, 117,
                     110, 1, 5, 1, 2, 8, 8, 1,
-                ],
-            ),
-            (
-                "EndpointRevisionActivatedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 1,
                 ],
             ),
             (
@@ -2164,7 +2134,7 @@ mod tests {
                     | "SkillRegisteredEvent"
                     | "DefaultDagExecutorUpdatedEvent"
                     | "EndpointRevisionAnnouncedEvent"
-                    | "EndpointRevisionActivatedEvent"
+                    | "SkillActiveRevisionUpdatedEvent"
                     | "WorksheetResolvedEvent"
                     | "AgentSkillExecutionRequestedEvent"
                     | "AgentSkillPaymentCreatedEvent"
