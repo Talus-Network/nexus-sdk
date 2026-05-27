@@ -1,6 +1,10 @@
 use {
     super::*,
-    nexus_sdk::nexus::tap::{fetch_tap_execution_payment, payment_is_terminal, WaitForPaymentResult},
+    nexus_sdk::nexus::tap::{
+        fetch_tap_execution_payment,
+        payment_is_terminal,
+        WaitForPaymentResult,
+    },
     std::time::Duration,
 };
 

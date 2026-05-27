@@ -1,7 +1,4 @@
-use {
-    super::*,
-    nexus_sdk::nexus::tap::fetch_configured_default_tap_dag_executor,
-};
+use {super::*, nexus_sdk::nexus::tap::fetch_configured_default_tap_dag_executor};
 
 pub(crate) async fn show_default_target() -> AnyResult<(), NexusCliError> {
     command_title!("Reading standard TAP default DAG executor");

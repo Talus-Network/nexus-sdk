@@ -153,8 +153,7 @@ impl ToolActions {
         let gas_service_id = *nexus_objects.gas_service.object_id();
 
         let tool_id = derive_tool_id(tool_registry_id, fqn).map_err(NexusError::Parsing)?;
-        let tool_gas_id =
-            derive_tool_gas_id(gas_service_id, fqn).map_err(NexusError::Parsing)?;
+        let tool_gas_id = derive_tool_gas_id(gas_service_id, fqn).map_err(NexusError::Parsing)?;
 
         let tool_exists = crawler.get_object_metadata(tool_id).await.is_ok();
         let tool_gas_exists = crawler.get_object_metadata(tool_gas_id).await.is_ok();

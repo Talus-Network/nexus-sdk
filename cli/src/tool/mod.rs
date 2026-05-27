@@ -413,7 +413,9 @@ pub(crate) enum ToolCommand {
         //
     },
 
-    #[command(about = "Inspect a single on-chain tool by FQN, returning derived IDs and decoded Sui refs.")]
+    #[command(
+        about = "Inspect a single on-chain tool by FQN, returning derived IDs and decoded Sui refs."
+    )]
     InspectOnchain {
         #[arg(
             long = "tool-fqn",

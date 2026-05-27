@@ -214,9 +214,15 @@ pub(crate) enum TapCommand {
     Agent(AgentCommand),
     #[command(subcommand, about = "Inspect Talus agent payment vaults.")]
     Vault(VaultCommand),
-    #[command(subcommand, about = "Inspect standard TAP execution payments and history.")]
+    #[command(
+        subcommand,
+        about = "Inspect standard TAP execution payments and history."
+    )]
     Payments(PaymentsCommand),
-    #[command(subcommand, about = "Create and inspect standard TAP endpoint objects.")]
+    #[command(
+        subcommand,
+        about = "Create and inspect standard TAP endpoint objects."
+    )]
     Endpoint(EndpointCommand),
     #[command(subcommand, about = "Inspect the standard TAP registry.")]
     Registry(RegistryCommand),
@@ -414,7 +420,11 @@ pub(crate) enum EndpointCommand {
     },
     #[command(about = "Inspect a standard TAP endpoint object and its registry revisions.")]
     Inspect {
-        #[arg(long = "endpoint-id", help = "Endpoint object ID.", value_name = "OBJECT_ID")]
+        #[arg(
+            long = "endpoint-id",
+            help = "Endpoint object ID.",
+            value_name = "OBJECT_ID"
+        )]
         endpoint_id: sui::types::Address,
     },
 }
@@ -435,12 +445,20 @@ pub(crate) enum DefaultTargetCommand {
 pub(crate) enum PaymentsCommand {
     #[command(about = "Show a standard TAP execution payment by ID.")]
     Show {
-        #[arg(long = "payment-id", help = "Execution payment object ID.", value_name = "OBJECT_ID")]
+        #[arg(
+            long = "payment-id",
+            help = "Execution payment object ID.",
+            value_name = "OBJECT_ID"
+        )]
         payment_id: sui::types::Address,
     },
     #[command(about = "Wait for a standard TAP execution payment to settle.")]
     Wait {
-        #[arg(long = "payment-id", help = "Execution payment object ID.", value_name = "OBJECT_ID")]
+        #[arg(
+            long = "payment-id",
+            help = "Execution payment object ID.",
+            value_name = "OBJECT_ID"
+        )]
         payment_id: sui::types::Address,
         #[arg(
             long = "timeout-secs",

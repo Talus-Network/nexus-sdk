@@ -201,16 +201,11 @@ pub(crate) async fn register_onchain_tool(
         save_tool_owner_caps(fqn.clone(), over_tool_id).await?;
     }
 
-    let tool_id = nexus_sdk::types::derive_tool_id(
-        *nexus_objects.tool_registry.object_id(),
-        &fqn,
-    )
-    .map_err(NexusCliError::Any)?;
-    let tool_gas_id = nexus_sdk::types::derive_tool_gas_id(
-        *nexus_objects.gas_service.object_id(),
-        &fqn,
-    )
-    .map_err(NexusCliError::Any)?;
+    let tool_id = nexus_sdk::types::derive_tool_id(*nexus_objects.tool_registry.object_id(), &fqn)
+        .map_err(NexusCliError::Any)?;
+    let tool_gas_id =
+        nexus_sdk::types::derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &fqn)
+            .map_err(NexusCliError::Any)?;
 
     json_output(&json!({
         "digest": response.digest,

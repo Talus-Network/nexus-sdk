@@ -132,11 +132,7 @@ mod tests {
                 requirements: artifact.requirements.clone(),
             },
         };
-        let json = bind_result_json(
-            &artifact,
-            sui::types::Address::from_static("0x2"),
-            &result,
-        );
+        let json = bind_result_json(&artifact, sui::types::Address::from_static("0x2"), &result);
         assert_eq!(json["function"], "bind_agent_skill");
         assert_eq!(
             json["agent_id"],

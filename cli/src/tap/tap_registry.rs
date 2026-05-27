@@ -1,7 +1,4 @@
-use {
-    super::*,
-    nexus_sdk::nexus::tap::fetch_configured_tap_registry,
-};
+use {super::*, nexus_sdk::nexus::tap::fetch_configured_tap_registry};
 
 pub(crate) async fn show_registry() -> AnyResult<(), NexusCliError> {
     command_title!("Reading standard TAP registry");

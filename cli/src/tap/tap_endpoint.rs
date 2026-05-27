@@ -41,7 +41,12 @@ pub(crate) async fn inspect_endpoint(
     if let Some(active) = inspection.active_record.as_ref() {
         notify_success!(
             "Active revision {revision} for agent {agent_id} skill {skill_id}",
-            revision = active.key.interface_revision.0.to_string().truecolor(100, 100, 100),
+            revision = active
+                .key
+                .interface_revision
+                .0
+                .to_string()
+                .truecolor(100, 100, 100),
             agent_id = active.key.agent_id.to_string().truecolor(100, 100, 100),
             skill_id = active.key.skill_id.to_string().truecolor(100, 100, 100),
         );
@@ -114,10 +119,7 @@ mod tests {
             json["endpoint_object_digest_hex"].as_str().unwrap().len(),
             64
         );
-        assert_eq!(
-            json["package_id"],
-            serde_json::json!(package.to_string())
-        );
+        assert_eq!(json["package_id"], serde_json::json!(package.to_string()));
     }
 
     #[test]
