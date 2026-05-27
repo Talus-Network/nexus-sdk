@@ -26,7 +26,7 @@ Create a new Tool scaffolding in a folder called `<name>`. Which files are gener
 
 ---
 
-**`nexus tool validate off-chain --url <url>`**
+**`nexus tool validate offchain --url <URL>`**
 
 Validate an off-chain Nexus Tool on the provided URL. This command checks whether the URL hosts a valid Nexus Tool interface:
 
@@ -42,21 +42,19 @@ This command should also check that the URL is accessible by Leader nodes. For l
 
 ---
 
-**`nexus tool validate on-chain --ident <ident>`**
+**`nexus tool validate onchain --ident <IDENT>`**
 
-{% hint style="warning" %}
-The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.
-{% endhint %}
+Validate an on-chain Nexus Tool identified by `<IDENT>` (the Move module address used by the tool).
 
 ---
 
-**`nexus tool register offchain --url <url> --invocation-cost [mist] --collateral-coin [object_id] [--batch] [--no-save]`**
+**`nexus tool register offchain (--url <URL> | --from-meta <FILE|->) [--invocation-cost <MIST>] [--collateral-coin <OBJECT_ID>] [--batch] [--no-save]`**
 
-Command that makes a request to `GET <url>/meta` to fetch the Tool definition and then submits a TX to our Tool Registry. It also locks the collateral and sets the single invocation cost of the Tool which defaults to 0 MIST.
+Registers an off-chain Nexus Tool with the Tool Registry. Either `--url` (the live HTTP endpoint) or `--from-meta` (a path to a JSON metadata file as produced by the tool binary's `--meta` flag, or `-` for stdin) is required. The live-URL path makes a request to `GET <url>/meta` to fetch the Tool definition; the `--from-meta` path skips that HTTP fetch (useful when the tool isn't reachable from the CLI host). The command then submits a TX to the Tool Registry, locks the collateral coin, and sets the single invocation cost (defaults to `0` MIST).
 
 This returns 2 OwnerCap object IDs that can be used to manage the Tool and its Gas settlement methods.
 
-If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and register all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool.
+If the `--batch` flag is passed, the command accepts a URL of a webserver hosting multiple tools and registers all of them at once. `nexus-toolkit` automatically generates a `GET /tools` endpoint that returns a list of URLs of all tools registered on that server. The CLI will then iterate over the list and register each tool. `--batch` is incompatible with `--from-meta`.
 
 Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands. This happens unless the `--no-save` flag is passed, in which case the OwnerCaps are not saved.
 
@@ -70,17 +68,34 @@ Tool registration is currently restricted during the beta phase. To register you
 
 ---
 
-**`nexus tool register on-chain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --witness-id <OBJECT_ID>`**
+**`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--reuse-if-exists] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
 
-{% hint style="warning" %}
-The specific design for onchain tools is still in progress and as a result the implementation is not yet present. When running the command, it will panic.
+Registers an on-chain Nexus Tool that resolves to a Move package, module, and witness object on Sui. The CLI introspects the Move module's `execute` entry function to auto-generate the input schema and its `Output` enum for the output schema; both can be customized interactively when stdin is a TTY (skipped in `--json` mode). The tool's `Tool` and `ToolGas` object IDs are derived locally from the FQN and surfaced in the JSON response alongside the `OwnerCap<OverTool>` returned by the on-chain call.
+
+- `--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this for tools whose vertices must hold a `VertexAuthorizationCheckCap` at execution time (the standard TAP authorization-aware path).
+- `--reuse-if-exists` makes the command idempotent: if the derived `Tool` and `ToolGas` objects already exist on-chain for the given FQN, the registration transaction is skipped and the existing refs are decoded and returned with `reused: true`. The reuse path is useful for CI/CD pipelines and demo orchestration that may run multiple times against the same deployment.
+
+If both objects derived from the FQN exist *but their counterparts don't* (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
+
+The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
 
-**`nexus tool unregister --tool-fqn <fqn> --owner-cap [object_id]`**
+**`nexus tool inspect-onchain --tool-fqn <FQN>`**
 
-Command that sends a TX to our Tool Registry and unregisters a Tool with the provided `<fqn>`. This command requires confirmation as unregistering a Tool will render all DAGs using it unusable.
+Derives the `Tool` and `ToolGas` object IDs from the configured `ToolRegistry`/`GasService` and the supplied FQN, probes both objects on-chain, and emits a stable JSON summary so callers do not need to BCS-decode the `Tool` object themselves.
+
+The JSON includes `tool_id`, `tool_gas_id`, `exists` (true when both objects are present), and — when the tool is on-chain — the decoded Sui ref fields `package_address`, `module_name`, `witness_id`, the stored `description`, `input_schema`, `output_schema`, `workflow_authorization_cap_first`, plus `registered_at` and `unregistered_at` timestamps. When the tool does not exist yet, the derived IDs are still returned so the caller can pre-compute them.
+
+---
+
+**`nexus tool unregister --tool-fqn <FQN> [--owner-cap <OBJECT_ID>] [--yes]`**
+
+Command that sends a TX to the Tool Registry and unregisters a Tool with the provided `<FQN>`. By default the command prompts for confirmation as unregistering a Tool will render all DAGs using it unusable; pass `--yes` (or `-y`) to skip the confirmation prompt, which is useful for CI pipelines.
 
 If the OwnerCap object ID is not passed, the CLI will attempt to use the one saved in the configuration file.
 
@@ -147,19 +162,26 @@ Generates a new Ed25519 Tool message-signing keypair.
 
 ---
 
-**`nexus tool auth register-key --tool-fqn <fqn> --signing-key <key-or-path> [--owner-cap <object_id>] [--description <text>] ...gas`**
+**`nexus tool auth register-key --tool-fqn <FQN> --signing-key <KEY_OR_PATH> [--owner-cap <OBJECT_ID>] [--description <TEXT>] [--skip-if-active] ...gas`**
 
 Registers (or rotates) the Tool’s message-signing key in the on-chain Network Auth registry.
 
 - Requires an `OwnerCap<OverTool>` (the tool ownership cap) to prove Tool identity.
 - Requires a proof-of-possession signature so the chain can verify the registrant controls the private key.
 - Returns the registered `tool_kid` (key id) which must match the Tool runtime config.
+- `--skip-if-active` makes the command idempotent: if the supplied public key is already the active key for this tool, registration is skipped. Useful in CI to avoid re-registering an unchanged key.
 
 If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the CLI config for that Tool.
 
 ---
 
-**`nexus tool auth export-allowed-leaders (--all | --leader <address>...) --out <path>`**
+**`nexus tool auth list-keys --tool-fqn <FQN>`**
+
+Lists every message-signing key currently registered for the given tool in the on-chain Network Auth registry. Useful for confirming a `register-key` rotation landed and for auditing which keys can sign on the tool's behalf.
+
+---
+
+**`nexus tool auth export-allowed-leaders (--all | --leader <ADDRESS>...) --out <PATH>`**
 
 Exports a local allowlist file (JSON) of permitted Leader nodes and their active signing keys.
 
@@ -236,14 +258,14 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus dag execute --dag-id <id> --input-json <data> --entry-group [group] --remote [field1,field2,...] [--priority-fee-per-gas-unit <mist>] [--inspect]`**
+**`nexus dag execute --dag-id <OBJECT_ID> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--inspect] [--priority-fee-per-gas-unit <MIST>] [--payment-coin <OBJECT_ID>] [--payment-budget <MIST>]`**
 
-Execute a DAG with the provided `<id>`. This command also accepts an entry `<group>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry `<group>` defaults to a starndardized `_default_group` string.
+Execute a DAG with the provided `<OBJECT_ID>`. This command also accepts an entry `<NAME>` of vertices to be invoked. Find out more about entry groups in [[Package: Workflow]]. Entry group defaults to a standardized `_default_group` string.
 
-The input `<data>` is a JSON string with the following structure:
+The input `<DATA>` is a JSON string with the following structure:
 
-- The top-level object keys refer to the _entry vertex names_
-- Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
+- The top-level object keys refer to the *entry vertex names*
+- Each top-level value is an object and its keys refer to the *input port names* of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
@@ -254,21 +276,26 @@ Supported remote storage providers are:
 
 - Walrus
 
+Standard TAP execution payment is supplied via two optional flags:
+
+- `--payment-coin <OBJECT_ID>` — SUI coin to lock as the execution payment. When omitted, the execution is recorded with no TAP payment context.
+- `--payment-budget <MIST>` — optional cap on the payment budget. Defaults to the full balance of `--payment-coin` when omitted.
+
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
 ---
 
-**`nexus dag inspect-execution --dag-execution-id <id> --execution-digest <digest>`**
+**`nexus dag inspect-execution --dag-execution-id <OBJECT_ID> --execution-checkpoint <CHECKPOINT>`**
 
-Inspects a DAG execution process based on the provided `DAGExecution` object ID and the transaction digest from submitting the execution transaction.
+Inspects a DAG execution process based on the provided `DAGExecution` object ID and the Sui checkpoint at which the execution transaction was committed (returned by `nexus dag execute` / `nexus tap execute`). The command subscribes to the on-chain event stream starting at that checkpoint and emits each walk advance, end-state, terminal `_err_eval` record, and the final execution-finished event in human-readable form or as a JSON trace when `--json` is set.
 
 ---
 
-**`nexus dag execution-cost --dag-execution-id <id>`**
+**`nexus dag execution-cost --dag-execution-id <OBJECT_ID>`**
 
-Checks the cost of a DAG execution based on the provided `DAGExecution` object ID. This cost is broken down per transaction digest and includes the execution cost and the priority fee.
+Shows the standard TAP execution payment consumed by a DAG execution. Decodes `DAGExecution.standard_tap_context` to find the linked `TapExecutionPayment` object and emits its `payment_id`, `max_budget`, `locked_budget`, `consumed`, `outstanding_locks`, `accomplished`, and `refunded` fields as stable JSON. Pair with `nexus tap payments wait --payment-id <ID>` to drive settlement to a terminal state.
 
 ---
 
@@ -368,31 +395,15 @@ This command requires that a wallet is connected to the CLI and holds sufficient
 
 ### `nexus gas`
 
-Set of commands to manage Nexus gas budgets and tickets.
-
----
-
-**`nexus gas add-budget --coin <object_id>`**
-
-Upload the coin object to the Nexus gas service as budget in the "invoker address" scope. That means that if a DAG execution is started from the address that the coin was uploaded from, the coin can be used to pay for the gas.
+Set of commands to manage Nexus gas ticket extensions (expiry tickets and limited-invocations tickets) for off-chain tools.
 
 {% hint style="info" %}
-This command requires that a wallet is connected to the CLI...
+Standard TAP execution payments are managed through `nexus dag execute --payment-coin`, `nexus tap execute --payment-*` flags, `nexus dag execution-cost`, and `nexus tap payments`. The commands below are for the tool-side gas ticket extensions that off-chain tool owners can enable for their tools.
 {% endhint %}
 
 ---
 
-**`nexus gas balance`**
-
-Check the balance of the invoker's gas funds. This command reads all the funds that the invoker has uploaded as gas budget and prints them per usage scope.
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI...
-{% endhint %}
-
----
-
-**`nexus gas expiry enable --tool-fqn <fqn> --owner-cap [object_id] --cost-per-minute <mist>`**
+**`nexus gas expiry enable --tool-fqn <FQN> --cost-per-minute <MIST> [--owner-cap <OBJECT_ID>]`**
 
 The tool owners can enable the expiry gas extension for their tools specified by the FQN. This allows users to buy expiry gas tickets that can be used to pay for the tool usage for a limited amount of time.
 
@@ -472,17 +483,61 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-### `nexus network`
+### `nexus tap`
 
-Set of commands for managing Nexus networks.
+Commands for authoring, publishing, registering, executing, and inspecting standard TAP (Talus Agent Protocol) packages. The TAP surface covers the full lifecycle from scaffolding a new skill locally through publishing it on-chain, binding it to an agent, executing or scheduling it, and inspecting the resulting registry/endpoint/payment state.
+
+A typical lifecycle looks like:
+
+1. `tap scaffold` — generate a TAP package + DAG + skill config skeleton.
+1. `tap validate-skill` / `tap dry-run` — verify the local artifacts and compute a config digest.
+1. `tap publish-skill` — publish the Move package, publish the DAG, create+share a standard endpoint, and write a portable publish artifact.
+1. `tap create-agent` (or `tap bind` to do create+register in one PTB) — get an on-chain agent identity.
+1. `tap register-skill` and `tap announce` — bind the skill to the agent and announce subsequent endpoint revisions.
+1. `tap execute` / `tap schedule` — run the skill once or schedule recurring/queued executions.
+1. `tap registry show`, `tap endpoint inspect`, `tap payments show`/`wait`, `tap vault balance`, `tap payments list` — inspect on-chain state and drive settlement.
+
+All commands accept `--json` for stable machine-readable output.
+
+#### Authoring (local-only)
 
 ---
 
-**`nexus network create --addresses [addresses] --count-leader-caps [count-leader-caps]`**
+**`nexus tap scaffold --name <NAME> [--target <PATH>]`**
 
-Create a new Nexus network and assign `count-leader-caps` (default: 5) leader caps to the TX sender and the addresses listed in `addresses` (default: []).
+Generates a TAP package skeleton in `<target>/<name-kebab-cased>/`, containing a `tap/` Move package, a `dag.json` DAG, and a `skill.tap.json` skill config that points at both. The package name is snake-cased from the supplied `<name>`, and the module name matches the package name. The JSON output contains the resolved path to the generated directory. `--target` defaults to the current directory.
 
-The network object ID is returned.
+---
+
+**`nexus tap validate-skill --config <PATH> [--tap-package <PATH>]`**
+
+Statically validates a TAP skill config JSON and the local TAP package it references — package manifest, named-address aliases, module declarations, and the bundled DAG JSON. `--tap-package` overrides the `tap_package_path` field in the config so the same config can be validated against a relocated package. No network is required.
+
+---
+
+**`nexus tap dry-run --config <PATH>`**
+
+Runs `validate-skill` and computes a config digest against the zero package address (`0x0`), useful before publishing to verify the skill config compiles, the DAG validates, and the artifact will produce a stable digest. The JSON output reports `valid`, the skill name, interface revision, and the zero-package `config_digest_hex_with_zero_package`.
+
+#### Publishing (on-chain authoring)
+
+---
+
+**`nexus tap publish-skill --config <PATH> [--tap-package <PATH>] [--out <PATH>]`**
+
+Publishes a full TAP skill in one shot: publishes the TAP Move package, publishes the DAG, creates and shares a `StandardEndpoint` object for the package, and constructs a `TapPublishArtifact` carrying everything an operator needs to bind the skill to an agent. The JSON output includes the TAP `package_id`, the `dag_id`, the endpoint object ref, the per-step transaction digests and checkpoints, and the full `artifact`. When `--out` is supplied, the artifact is also written to disk as JSON for handoff to operators (e.g. to feed `register-skill` or `bind`).
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+#### Agent setup
+
+---
+
+**`nexus tap create-agent --operator <ADDRESS>`**
+
+Creates a standard Talus agent through the configured TAP registry and shares the agent object. The operator address is recorded as the agent's operational signer; the wallet that runs the command becomes the owner. JSON output includes the new `agent_id`, the operator address, and the transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -490,9 +545,188 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
+**`nexus tap bind --artifact <ARTIFACT_JSON> --operator <ADDRESS> [--endpoint-object-id <OBJECT_ID>]`**
+
+Composes `tap::create_agent` and `tap::register_skill` into a single PTB, returning the new agent and skill bound together with the artifact's endpoint metadata in one transaction. Use this when an agent has not been created yet and the operator wants the standard "create + register first skill" flow in one round-trip.
+
+The artifact JSON is the one produced by `nexus tap publish-skill` — it carries DAG id, TAP package id, interface revision, requirements, shared objects, and (if previously embedded) the endpoint object ref. `--endpoint-object-id` overrides the artifact's embedded endpoint when given; otherwise the embedded ref is used.
+
+The JSON output exposes the transaction digest and checkpoint, the new `agent_id` and `skill_id`, the agent object ref, the endpoint object ref, and both the hex-encoded `config_digest` and the structured `config_digest_input` used to derive it — enough evidence to record the binding in an external system without re-fetching it.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus tap agent save --name <NAME> --agent-id <OBJECT_ID>`**
+
+Saves a Talus agent object ID under a local alias in the CLI configuration. Commands that accept `--alias` (e.g. `tap vault balance`, `tap payments list`) use this mapping to resolve agent ids without re-typing them.
+
+---
+
+**`nexus tap agent list`**
+
+Lists locally saved Talus agent aliases.
+
+---
+
+**`nexus tap agent remove --name <NAME>`**
+
+Removes a locally saved Talus agent alias.
+
+#### Skill registration and endpoint revisions
+
+---
+
+**`nexus tap register-skill --artifact <PATH> --agent-id <OBJECT_ID> [--endpoint-object-id <OBJECT_ID>]`**
+
+Registers a TAP skill against an existing agent using the publish artifact. The artifact supplies the DAG id, TAP package id, interface revision, requirements, shared objects, and (when embedded) the endpoint object ref; `--endpoint-object-id` overrides the artifact's endpoint when given. JSON output includes the new `skill_id`, the `agent_id`, the DAG and TAP package ids, the endpoint object id, and the transaction digest/checkpoint.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus tap announce --artifact <PATH> --agent-id <OBJECT_ID> --skill-id <U64> [--endpoint-object-id <OBJECT_ID>] [--active-for-new-executions <BOOL>]`**
+
+Announces an endpoint revision for an existing skill. The artifact's interface revision and config-digest input are used to compute the on-chain `config_digest` that binds package, endpoint object, revision, shared objects, and skill requirements. `--active-for-new-executions` (default: `true`) controls whether this revision becomes active for new executions immediately, or remains pinned-but-inactive. JSON output includes the endpoint key (agent/skill/revision), the endpoint object ref, the hex-encoded `config_digest`, and the structured `config_digest_input`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+#### Endpoint operations
+
+---
+
+**`nexus tap endpoint create --package <ADDRESS>`**
+
+Creates and shares a standard `StandardEndpoint` object for the supplied TAP package. The endpoint object id, version, raw digest, and hex-encoded digest are returned alongside the transaction digest and checkpoint. Use the returned object id with `nexus tap bind` (or `register-skill`/`announce`) to bind an agent-skill revision to this endpoint.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus tap endpoint inspect --endpoint-id <OBJECT_ID>`**
+
+Reads the on-chain endpoint object metadata and cross-references the configured TAP registry to find any revisions bound to it. The JSON output contains the resolved object ref (id/version/digest), the originating `package_id` (when at least one revision exists), an `active_record` summary of the currently-active endpoint key plus requirements, and the full `revisions` list — useful for confirming endpoint announcements landed and which revision the leader will pick up next.
+
+The `active_record` and `package_id` fields are `null` for a freshly created endpoint that has no revision bound yet.
+
+#### Registry and default-target inspection
+
+---
+
+**`nexus tap registry show`**
+
+Reads the configured TAP registry and prints its full contents as JSON: registry id, the configured `default_executor`, all `agents`, `skills`, `endpoints` (every revision), and the `active_endpoints` activation table. This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
+
+---
+
+**`nexus tap default-target show`**
+
+Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing the default `agent_id` and `skill_id`, the resolved `dag_id`, the binding `tap_package_id`, the active `interface_revision`, the endpoint object ref, and the published skill `requirements`. Useful for scripts that want to drive the network's default agent without hard-coding ids.
+
+---
+
+**`nexus tap requirements --agent-id <OBJECT_ID> --skill-id <U64>`**
+
+Fetches the live skill requirements from the TAP registry for a given agent/skill pair: the active endpoint key (agent/skill/interface revision) and the registered requirements (input schema commitment, workflow commitment, metadata commitment, payment policy, schedule policy, vertex authorization schema). Use this before `tap execute` or `tap schedule` to confirm the active revision and verify the runtime inputs match the on-chain commitments.
+
+#### Vaults and payments
+
+---
+
+**`nexus tap vault balance [--alias <NAME> | --agent-id <OBJECT_ID>]`**
+
+Reads the standard Talus agent payment vault (a dynamic-object child of the agent object) and reports its current SUI balance. The agent can be supplied either as a saved alias or as an explicit object id; the two flags are mutually exclusive.
+
+---
+
+**`nexus tap payments show --payment-id <OBJECT_ID>`**
+
+Reads a standard `TapExecutionPayment` object and emits a flat JSON of its fields: payment/execution/agent/skill ids, interface revision, endpoint object id, payer, mode/source kind/source identity, budgets and consumed amount, refund mode, `accomplished`/`refunded` booleans, raw `final_state`, computed `terminal` flag (true once accomplished/refunded), and the list of currently-locked vertices. Replaces shell-side BCS decoding of payment object internals.
+
+---
+
+**`nexus tap payments wait --payment-id <OBJECT_ID> [--timeout-secs <SECS>] [--poll-secs <SECS>]`**
+
+Polls the same `TapExecutionPayment` object on a fixed interval until `accomplished`, `refunded`, or any non-`Pending` `final_state` is observed, or until the timeout elapses. Emits the same JSON shape as `payments show` plus `elapsed_ms` and `timed_out` fields. Defaults to a 120-second total timeout and a 2-second poll interval; both are configurable.
+
+Use this in CI pipelines or demos to drive payment settlement instead of hand-rolled retry loops over raw Sui object reads.
+
+---
+
+**`nexus tap payments list [--alias <NAME> | --agent-id <OBJECT_ID>] [--completed | --pending | --all]`**
+
+Lists wallet-owned `ExecutionPaymentReceipt` objects and, when an agent is supplied (by alias or id), the agent-vault payment-receipt history. Filter to completed-only, pending-only, or both. JSON output includes the owner, optional agent id, wallet receipts, vault receipts, and the unresolved/resolved execution-id lists.
+
+#### Execution and scheduling
+
+---
+
+**`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--payment-refund-mode <MODE>] [--authorization-plan-hash-hex <HEX>]`**
+
+Executes a standard TAP skill through its currently-active endpoint and DAG. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the standard TAP execution payment:
+
+- `--payment-source-hex` provides typed payment-source bytes (invoker-funded vs agent-vault-funded). Empty defaults to the invoker.
+- `--payment-max-budget` caps the standard TAP payment.
+- `--payment-refund-mode` chooses the refund behaviour byte.
+- `--authorization-plan-hash-hex` optionally supplies an authorization-plan commitment for cap-gated tools.
+
+JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active endpoint key/object, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+**`nexus tap schedule --agent-id <OBJECT_ID> --skill-id <U64> --long-term-gas-coin-id <OBJECT_ID> [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--first-after-ms <MS>]`**
+
+Schedules a standard TAP skill execution by attaching a durable, long-term gas coin to the configured TAP registry's scheduler. The `--recurrence-kind` (default `once`), `--min-interval-ms`, `--max-occurrences` (default `1`), and `--first-after-ms` parameters define the schedule shape; `--refill-policy-hex` and `--schedule-entries-commitment-hex` supply the on-chain policy commitments. JSON output includes the `scheduled_task_id`, agent and skill ids, and the transaction digest/checkpoint.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
+---
+
+### `nexus conf`
+
+Manage the Nexus CLI configuration stored at `~/.nexus/conf.toml`. The CLI reads the configured Sui RPC URL, the Sui private key, the Nexus deployment objects (package IDs and shared registry/service/gas-service/leader-registry refs), and optional data-storage settings from this file.
+
+---
+
+**`nexus conf get`**
+
+Print the current Nexus CLI configuration. JSON mode emits the full configuration as a JSON document; otherwise a human-readable summary is printed.
+
+---
+
+**`nexus conf set [--sui.pk <BASE64>] [--sui.rpc-url <URL>] [--nexus.objects <PATH>] [--data-storage.walrus-aggregator-url <URL>] [--data-storage.walrus-publisher-url <URL>] [--data-storage.walrus-save-for-epochs <EPOCHS>] [--data-storage.preferred-remote-storage <KIND>] [--data-storage.testnet]`**
+
+Update the Nexus CLI configuration. Each flag updates the corresponding setting in `~/.nexus/conf.toml`; only the flags supplied are modified.
+
+- `--sui.pk` sets the Sui private key as base64-encoded bytes (matches the `base64WithFlag` format from `sui keytool convert`).
+- `--sui.rpc-url` sets the Sui node RPC URL the CLI talks to.
+- `--nexus.objects <PATH>` loads the Nexus package ids and shared object refs from a TOML file (as produced by `publish.sh`). This replaces the `[nexus.*]` sections wholesale.
+- `--data-storage.walrus-aggregator-url` / `--data-storage.walrus-publisher-url` configure the Walrus endpoints used for remote DAG input storage.
+- `--data-storage.walrus-save-for-epochs` sets how many epochs uploaded data is preserved for.
+- `--data-storage.preferred-remote-storage` chooses the default remote storage backend (currently `walrus`).
+- `--data-storage.testnet` is a preset that fills in the data-storage block for Sui testnet defaults and overrides any conflicting flags.
+
+---
+
 ### `nexus completion`
 
-Provides completion for some well-known shells.
+**`nexus completion <SHELL>`**
+
+Prints shell completion scripts to stdout. Supported shells: `bash`, `elvish`, `fish`, `powershell`, `zsh`. Source the output into your shell's completion directory or `eval` it directly.
 
 <!-- List of References -->
 
