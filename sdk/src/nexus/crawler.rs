@@ -990,7 +990,17 @@ impl Crawler {
             bail!("Object BCS contents missing");
         };
 
-        bcs::from_bytes::<T>(bytes).map_err(|e| anyhow!("Could not parse object contents BCS: {e}"))
+        bcs::from_bytes::<T>(bytes).map_err(|e| {
+            anyhow!(
+                "Could not parse object contents BCS as `{ty}` (object id `{id}`, {len} bytes): {e}",
+                ty = std::any::type_name::<T>(),
+                id = object
+                    .object_id_opt()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<unknown>".into()),
+                len = bytes.len(),
+            )
+        })
     }
 }
 
