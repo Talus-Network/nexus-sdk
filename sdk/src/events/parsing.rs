@@ -490,7 +490,7 @@ fn parse_optional_u64_value(value: &serde_json::Value) -> anyhow::Result<Option<
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
     address == objects.primitives_pkg_id
         || address == objects.interface_pkg_id
-        || address == objects.registry_pkg_id()
+        || address == objects.registry_pkg_id
         || objects.is_scheduler_package(address)
         || objects.is_workflow_package(address)
 }

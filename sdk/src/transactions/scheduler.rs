@@ -1170,14 +1170,8 @@ pub fn execute_scheduled_occurrence(
 
     // `agent_registry: &TapRegistry`
     let agent_registry = tx.input(sui::tx::Input::shared(
-        *objects
-            .agent_registry()
-            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?
-            .object_id(),
-        objects
-            .agent_registry()
-            .expect("tap registry checked above")
-            .version(),
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
         false,
     ));
 
@@ -1335,14 +1329,8 @@ pub fn execute_registered_scheduled_occurrence(
 
     // `agent_registry: &TapRegistry`
     let agent_registry = tx.input(sui::tx::Input::shared(
-        *objects
-            .agent_registry()
-            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?
-            .object_id(),
-        objects
-            .agent_registry()
-            .expect("tap registry checked above")
-            .version(),
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
         false,
     ));
 
@@ -2154,11 +2142,7 @@ mod tests {
         assert_eq!(object_id, dag.object_id());
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
-        inspector.expect_shared_object(
-            &tap_call.arguments[1],
-            objects.agent_registry().expect("mock has tap registry"),
-            false,
-        );
+        inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[4], &task, true);
@@ -2253,11 +2237,7 @@ mod tests {
         );
         assert_eq!(tap_call.arguments.len(), 7);
         inspector.expect_shared_object(&tap_call.arguments[0], &dag, false);
-        inspector.expect_shared_object(
-            &tap_call.arguments[1],
-            objects.agent_registry().expect("mock has tap registry"),
-            false,
-        );
+        inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[4], &task, true);

@@ -38,7 +38,7 @@ pub fn create_tool_binding_and_register_key(
     // `proof: ProofOfIdentity`
     let proof_for_binding = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
@@ -59,7 +59,7 @@ pub fn create_tool_binding_and_register_key(
     // `binding: KeyBinding`
     let binding = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::CREATE_BINDING.module,
             registry::NetworkAuth::CREATE_BINDING.name,
             vec![],
@@ -70,7 +70,7 @@ pub fn create_tool_binding_and_register_key(
     // Need a fresh proof for key registration (the previous one was consumed by create_binding).
     let proof_for_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
@@ -87,7 +87,7 @@ pub fn create_tool_binding_and_register_key(
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
@@ -105,7 +105,7 @@ pub fn create_tool_binding_and_register_key(
     // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
     tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
@@ -113,10 +113,8 @@ pub fn create_tool_binding_and_register_key(
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    let key_binding_type = registry::into_type_tag(
-        objects.registry_pkg_id(),
-        registry::NetworkAuth::KEY_BINDING,
-    );
+    let key_binding_type =
+        registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -167,7 +165,7 @@ pub fn register_tool_key_on_existing_binding(
     // `proof: ProofOfIdentity`
     let proof = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
@@ -180,7 +178,7 @@ pub fn register_tool_key_on_existing_binding(
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
@@ -196,7 +194,7 @@ pub fn register_tool_key_on_existing_binding(
 
     tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
@@ -231,7 +229,7 @@ pub fn create_leader_binding_and_register_key(
     // `proof: ProofOfIdentity`
     let proof_for_binding = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
@@ -252,7 +250,7 @@ pub fn create_leader_binding_and_register_key(
     // `binding: KeyBinding`
     let binding = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::CREATE_BINDING.module,
             registry::NetworkAuth::CREATE_BINDING.name,
             vec![],
@@ -263,7 +261,7 @@ pub fn create_leader_binding_and_register_key(
     // Need a fresh proof for key registration (the previous one was consumed by create_binding).
     let proof_for_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
@@ -279,7 +277,7 @@ pub fn create_leader_binding_and_register_key(
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
@@ -297,7 +295,7 @@ pub fn create_leader_binding_and_register_key(
     // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
     tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
@@ -305,10 +303,8 @@ pub fn create_leader_binding_and_register_key(
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    let key_binding_type = registry::into_type_tag(
-        objects.registry_pkg_id(),
-        registry::NetworkAuth::KEY_BINDING,
-    );
+    let key_binding_type =
+        registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -351,7 +347,7 @@ pub fn register_leader_key_on_existing_binding(
     // `proof: ProofOfIdentity`
     let proof = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
@@ -364,7 +360,7 @@ pub fn register_leader_key_on_existing_binding(
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
@@ -380,7 +376,7 @@ pub fn register_leader_key_on_existing_binding(
 
     tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
@@ -468,15 +464,13 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
-        let binding_type = registry::into_type_tag(
-            objects.registry_pkg_id(),
-            registry::NetworkAuth::KEY_BINDING,
-        );
+        let binding_type =
+            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
 
         assert!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
                 registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
             ) >= 2
@@ -484,7 +478,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::CREATE_BINDING.module,
                 registry::NetworkAuth::CREATE_BINDING.name
             ),
@@ -493,7 +487,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
@@ -502,7 +496,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::REGISTER_KEY.module,
                 registry::NetworkAuth::REGISTER_KEY.name
             ),
@@ -541,14 +535,12 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let binding_type = registry::into_type_tag(
-            objects.registry_pkg_id(),
-            registry::NetworkAuth::KEY_BINDING,
-        );
+        let binding_type =
+            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
                 registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
             ),
@@ -557,7 +549,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
@@ -566,7 +558,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::REGISTER_KEY.module,
                 registry::NetworkAuth::REGISTER_KEY.name
             ),
@@ -602,15 +594,13 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
-        let binding_type = registry::into_type_tag(
-            objects.registry_pkg_id(),
-            registry::NetworkAuth::KEY_BINDING,
-        );
+        let binding_type =
+            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
 
         assert!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::PROVE_LEADER.module,
                 registry::NetworkAuth::PROVE_LEADER.name
             ) >= 2
@@ -618,7 +608,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::CREATE_BINDING.module,
                 registry::NetworkAuth::CREATE_BINDING.name
             ),
@@ -627,7 +617,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
@@ -636,7 +626,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::REGISTER_KEY.module,
                 registry::NetworkAuth::REGISTER_KEY.name
             ),
@@ -673,14 +663,12 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let binding_type = registry::into_type_tag(
-            objects.registry_pkg_id(),
-            registry::NetworkAuth::KEY_BINDING,
-        );
+        let binding_type =
+            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::PROVE_LEADER.module,
                 registry::NetworkAuth::PROVE_LEADER.name
             ),
@@ -689,7 +677,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
                 registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
@@ -698,7 +686,7 @@ mod tests {
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 registry::NetworkAuth::REGISTER_KEY.module,
                 registry::NetworkAuth::REGISTER_KEY.name
             ),

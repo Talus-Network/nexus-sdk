@@ -9,7 +9,6 @@ use {
             registry::AgentRegistry,
             tap::{self, TapStandard},
         },
-        nexus::tap as nexus_tap,
         sui,
         transactions::tap as tap_tx,
         types::{
@@ -66,16 +65,15 @@ fn nexus_objects() -> NexusObjects {
         tool_registry: object_ref("0x6", 1, 6),
         verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
-        agent_registry: Some(object_ref("0xc", 1, 12)),
-        default_tap_target: Some(DefaultDagExecutor {
+        agent_registry: object_ref("0xc", 1, 12),
+        default_tap_executor: DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,
-        }),
+        },
         gas_service: object_ref("0xd", 1, 13),
         leader_registry: object_ref("0xe", 1, 14),
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
-        registry_original_pkg_id: None,
     }
 }
 
@@ -268,45 +266,14 @@ fn registry_recovery_uses_agent_registry_active_revision_pointer() {
 #[test]
 fn nexus_objects_carries_agent_registry_metadata() {
     let objects = nexus_objects();
+    assert_eq!(*objects.agent_registry.object_id(), addr("0xc"));
     assert_eq!(
-        objects
-            .agent_registry()
-            .map(|registry| *registry.object_id()),
-        Some(addr("0xc"))
-    );
-    assert_eq!(
-        objects.default_tap_target(),
-        Some(DefaultDagExecutor {
+        objects.default_tap_executor,
+        DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,
-        })
+        }
     );
-}
-
-#[test]
-fn configured_registry_recovery_requires_agent_registry_metadata() {
-    let mut objects = nexus_objects();
-    objects.agent_registry = None;
-
-    let error = nexus_tap::configured_agent_registry_id(&objects)
-        .expect_err("configured recovery should reject missing registry metadata");
-
-    assert!(error
-        .to_string()
-        .contains("NexusObjects missing agent_registry object reference"));
-}
-
-#[test]
-fn configured_default_executor_requires_metadata() {
-    let mut objects = nexus_objects();
-    objects.default_tap_target = None;
-
-    let error = nexus_tap::configured_default_tap_dag_executor(&objects)
-        .expect_err("configured default DAG executor should require metadata");
-
-    assert!(error
-        .to_string()
-        .contains("NexusObjects missing default_tap_target metadata"));
 }
 
 fn request_walk_event() -> RequestWalkExecutionEvent {
@@ -795,7 +762,7 @@ fn agent_payment_vault_builders_target_tap_functions() {
         .expect("withdraw vault call");
 
     assert_eq!(deposit.package, objects.interface_pkg_id);
-    assert_eq!(withdraw.package, objects.registry_pkg_id());
+    assert_eq!(withdraw.package, objects.registry_pkg_id);
     assert_eq!(deposit.arguments, vec![agent, coin]);
     assert_eq!(withdraw.arguments.len(), 3);
 }

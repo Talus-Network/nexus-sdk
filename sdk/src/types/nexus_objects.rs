@@ -28,14 +28,8 @@ pub struct NexusObjects {
     pub tool_registry: sui::types::ObjectReference,
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
-    #[serde(
-        default,
-        alias = "tap_registry",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub agent_registry: Option<sui::types::ObjectReference>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_tap_target: Option<DefaultDagExecutor>,
+    pub agent_registry: sui::types::ObjectReference,
+    pub default_tap_executor: DefaultDagExecutor,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -54,31 +48,9 @@ pub struct NexusObjects {
     /// reference the original package address in their type tags.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduler_original_pkg_id: Option<sui::types::Address>,
-    /// Original (defining) package address for the registry package.
-    ///
-    /// After a Sui Move package upgrade, on-chain registry types still
-    /// reference the original package address in their type tags.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub registry_original_pkg_id: Option<sui::types::Address>,
 }
 
 impl NexusObjects {
-    /// Returns the registry package address, defaulting to the workflow
-    /// package for older deployments that predate the package split.
-    pub fn registry_pkg_id(&self) -> sui::types::Address {
-        self.registry_pkg_id
-    }
-
-    /// Returns the original (defining) registry package address.
-    ///
-    /// After a Sui package upgrade, on-chain registry types reference the
-    /// original package address. Falls back to `registry_pkg_id` when no
-    /// upgrade has occurred.
-    pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
-        self.registry_original_pkg_id
-            .unwrap_or(self.registry_pkg_id)
-    }
-
     /// Returns the original (defining) workflow package address.
     ///
     /// After a Sui package upgrade, on-chain types reference the original
@@ -98,17 +70,6 @@ impl NexusObjects {
     pub fn scheduler_type_origin_pkg_id(&self) -> sui::types::Address {
         self.scheduler_original_pkg_id
             .unwrap_or(self.scheduler_pkg_id)
-    }
-
-    /// Returns the shared standard TAP registry object reference when the
-    /// deployment metadata includes it.
-    pub fn agent_registry(&self) -> Option<&sui::types::ObjectReference> {
-        self.agent_registry.as_ref()
-    }
-
-    /// Returns the configured standard default TAP DAG executor when present.
-    pub fn default_tap_target(&self) -> Option<DefaultDagExecutor> {
-        self.default_tap_target
     }
 
     /// Returns true when the given address matches any known workflow
@@ -231,54 +192,6 @@ impl NexusObjects {
 
         Ok(())
     }
-
-    /// Resolve the original registry package address from the on-chain
-    /// `type_origin_table` and set `registry_original_pkg_id`.
-    ///
-    /// If no upgrade has occurred, `registry_original_pkg_id` remains `None`.
-    pub async fn resolve_registry_original_pkg_id(
-        &mut self,
-        client: &Arc<Mutex<sui::grpc::Client>>,
-    ) -> anyhow::Result<()> {
-        use sui::traits::FieldMaskUtil;
-
-        let field_mask = sui::grpc::FieldMask::from_paths(["package"]);
-
-        let request = sui::grpc::GetObjectRequest::default()
-            .with_object_id(self.registry_pkg_id)
-            .with_read_mask(field_mask);
-
-        let response = client
-            .lock()
-            .await
-            .ledger_client()
-            .get_object(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow::anyhow!("Failed to fetch registry package object: {e}"))?;
-
-        let object = response
-            .object
-            .ok_or_else(|| anyhow::anyhow!("Registry package object not found"))?;
-
-        let package = object
-            .package
-            .ok_or_else(|| anyhow::anyhow!("Object is not a package"))?;
-
-        let original = package.type_origins.iter().find_map(|origin| {
-            let pkg_id_str = origin.package_id.as_deref()?;
-            let addr = pkg_id_str.parse::<sui::types::Address>().ok()?;
-            if addr != self.registry_pkg_id {
-                Some(addr)
-            } else {
-                None
-            }
-        });
-
-        self.registry_original_pkg_id = original;
-
-        Ok(())
-    }
 }
 
 #[cfg(feature = "sui_idents")]
@@ -297,7 +210,7 @@ impl NexusObjects {
             return true;
         }
 
-        if *inner_tag.address() == self.registry_pkg_id() {
+        if *inner_tag.address() == self.registry_pkg_id {
             return true;
         }
 
@@ -365,7 +278,6 @@ mod tests {
             interface_pkg_id: sui::types::Address::generate(&mut rng),
             network_id: sui::types::Address::generate(&mut rng),
             registry_pkg_id: sui::types::Address::generate(&mut rng),
-            registry_original_pkg_id: None,
             tool_registry: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
@@ -381,8 +293,15 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            agent_registry: None,
-            default_tap_target: None,
+            agent_registry: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            default_tap_executor: DefaultDagExecutor {
+                agent_id: sui::types::Address::generate(&mut rng),
+                skill_id: 1,
+            },
             gas_service: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
@@ -447,7 +366,7 @@ mod tests {
         let registry_tap_event = wrap_event(
             &objects,
             sui::types::StructTag::new(
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 tap::STANDARD_TAP_MODULE,
                 tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
                 vec![],
@@ -545,13 +464,6 @@ mod tests {
         objects
     }
 
-    fn sample_objects_with_registry_upgrade() -> NexusObjects {
-        let mut objects = sample_objects();
-        let mut rng = rand::thread_rng();
-        objects.registry_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
-        objects
-    }
-
     #[test]
     fn workflow_type_origin_pkg_id_without_upgrade() {
         let objects = sample_objects();
@@ -571,28 +483,6 @@ mod tests {
         assert_ne!(
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id
-        );
-    }
-
-    #[test]
-    fn registry_type_origin_pkg_id_without_upgrade() {
-        let objects = sample_objects();
-        assert_eq!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id
-        );
-    }
-
-    #[test]
-    fn registry_type_origin_pkg_id_with_upgrade() {
-        let objects = sample_objects_with_registry_upgrade();
-        assert_eq!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_original_pkg_id.unwrap()
-        );
-        assert_ne!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id
         );
     }
 
@@ -709,27 +599,6 @@ mod tests {
         assert!(!json.contains("workflow_original_pkg_id"));
         let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, objects);
-    }
-
-    #[test]
-    fn serde_accepts_legacy_tap_registry_key_for_agent_registry() {
-        let mut objects = sample_objects();
-        let registry = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0x13"),
-            7,
-            sui::types::Digest::from([13; 32]),
-        );
-        objects.agent_registry = Some(registry.clone());
-        let mut json = serde_json::to_value(&objects).expect("serialize objects");
-        let value = json.as_object_mut().expect("objects json map");
-        value.remove("agent_registry");
-        value.insert(
-            "tap_registry".to_string(),
-            serde_json::to_value(&registry).expect("serialize registry"),
-        );
-
-        let deserialized: NexusObjects = serde_json::from_value(json).expect("deserialize alias");
-        assert_eq!(deserialized.agent_registry(), Some(&registry));
     }
 
     #[test]

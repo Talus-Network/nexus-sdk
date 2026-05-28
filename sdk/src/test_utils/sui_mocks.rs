@@ -1,4 +1,7 @@
-use crate::{sui, types::NexusObjects};
+use crate::{
+    sui,
+    types::{DefaultDagExecutor, NexusObjects},
+};
 
 /// Create a new [`sui::types::ObjectReference`] with random values.
 pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
@@ -43,13 +46,15 @@ pub fn mock_nexus_objects() -> NexusObjects {
         tool_registry: mock_sui_object_ref(),
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
-        agent_registry: Some(mock_sui_object_ref()),
-        default_tap_target: None,
+        agent_registry: mock_sui_object_ref(),
+        default_tap_executor: DefaultDagExecutor {
+            agent_id: sui::types::Address::generate(&mut rng),
+            skill_id: 1,
+        },
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
-        registry_original_pkg_id: None,
     }
 }
 

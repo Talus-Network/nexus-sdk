@@ -125,7 +125,7 @@ impl NetworkAuthActions {
         let objects = &self.client.nexus_objects;
 
         let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id(), *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
         let binding_object_id = codec.binding_object_id(&identity)?;
@@ -241,7 +241,7 @@ impl NetworkAuthActions {
     ) -> Result<Option<ToolKeyList>, NexusError> {
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id(), *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
         let binding_object_id = codec.binding_object_id(&identity)?;
@@ -296,7 +296,7 @@ impl NetworkAuthActions {
     ) -> Result<AllowedLeadersFileV1, NexusError> {
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id(), *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -433,7 +433,7 @@ impl NetworkAuthActions {
 
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id(), *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {

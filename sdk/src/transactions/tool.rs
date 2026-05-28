@@ -59,7 +59,7 @@ pub fn register_off_chain_for_self(
     // `nexus_workflow::tool_registry::register_off_chain_tool()`
     let result = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
             vec![],
@@ -129,8 +129,7 @@ pub fn register_off_chain_for_self(
     );
 
     // `Tool`
-    let tool_type =
-        workflow::into_type_tag(objects.registry_pkg_id(), workflow::ToolRegistry::TOOL);
+    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, workflow::ToolRegistry::TOOL);
 
     // `sui::transfer::public_share_object`
     tx.move_call(
@@ -256,7 +255,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     };
     let result = tx.move_call(
         sui::tx::Function::new(
-            objects.registry_pkg_id(),
+            objects.registry_pkg_id,
             register_ident.module,
             register_ident.name,
             vec![],
@@ -328,8 +327,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     );
 
     // `Tool`
-    let tool_type =
-        workflow::into_type_tag(objects.registry_pkg_id(), workflow::ToolRegistry::TOOL);
+    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, workflow::ToolRegistry::TOOL);
 
     // `sui::transfer::public_share_object`
     tx.move_call(
@@ -567,7 +565,7 @@ mod tests {
             panic!("Expected a command to be a MoveCall to register a tool");
         };
 
-        assert_eq!(call.package, objects.registry_pkg_id());
+        assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(
             call.module,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
@@ -621,7 +619,7 @@ mod tests {
             panic!("Expected a command to be a MoveCall to register an onchain tool");
         };
 
-        assert_eq!(call.package, objects.registry_pkg_id());
+        assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(
             call.module,
             workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module
@@ -651,7 +649,7 @@ mod tests {
             panic!("Expected shared Tool type argument");
         };
 
-        assert_eq!(*tool_type.address(), objects.registry_pkg_id());
+        assert_eq!(*tool_type.address(), objects.registry_pkg_id);
     }
 
     #[test]
