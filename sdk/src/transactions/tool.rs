@@ -164,7 +164,7 @@ pub fn register_on_chain_for_self(
     input_schema: &str,
     output_schema: &str,
     timeout: Duration,
-    witness_id: sui::types::Address,
+    tool_witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
 ) -> anyhow::Result<()> {
@@ -178,7 +178,7 @@ pub fn register_on_chain_for_self(
         input_schema,
         output_schema,
         timeout,
-        witness_id,
+        tool_witness_id,
         collateral_coin,
         address,
         false,
@@ -198,7 +198,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     input_schema: &str,
     output_schema: &str,
     timeout: Duration,
-    witness_id: sui::types::Address,
+    tool_witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
     workflow_authorization_cap_first: bool,
@@ -231,8 +231,8 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     // `timeout_ms: u64`
     let timeout_ms = tx.input(pure_arg(&(timeout.as_millis() as u64))?);
 
-    // `witness_id: ID`
-    let witness_id = sui_framework::Address::address_from_type(tx, witness_id)?;
+    // `tool_witness_id: ID`
+    let tool_witness_id = sui_framework::Address::address_from_type(tx, tool_witness_id)?;
 
     // `pay_with: Coin<SUI>`
     let pay_with = tx.input(sui::tx::Input::owned(
@@ -270,7 +270,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
             input_schema,
             output_schema,
             timeout_ms,
-            witness_id,
+            tool_witness_id,
             pay_with,
             clock,
         ],
@@ -589,7 +589,7 @@ mod tests {
         let output_schema = &json!({}).to_string();
         let fqn = fqn!("xyz.dummy.tool@1");
         let description = "a dummy onchain tool";
-        let witness_id = sui::types::Address::generate(&mut rng);
+        let tool_witness_id = sui::types::Address::generate(&mut rng);
         let collateral_coin = sui_mocks::mock_sui_object_ref();
         let address = sui::types::Address::generate(&mut rng);
 
@@ -604,7 +604,7 @@ mod tests {
             input_schema,
             output_schema,
             Duration::from_millis(5000),
-            witness_id,
+            tool_witness_id,
             &collateral_coin,
             address,
         )

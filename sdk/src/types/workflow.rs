@@ -128,6 +128,24 @@ impl OffchainRequestEvidenceV1 {
     }
 }
 
+/// Request-side metadata for active verifier submissions.
+///
+/// The active PTB derives execution, vertex, and leader identity from
+/// authenticated Move objects instead of accepting those IDs from the caller.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthenticatedOffchainRequestEvidenceV1 {
+    pub walk_index: u64,
+    pub tool_fqn: String,
+    pub request_hash: Vec<u8>,
+    pub request_signature: Vec<u8>,
+}
+
+impl AuthenticatedOffchainRequestEvidenceV1 {
+    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
+        bcs::to_bytes(self)
+    }
+}
+
 /// Response-side evidence for the same offchain call, including the normalized
 /// `_err_eval` reason hash when the submission reports evaluation failure.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +175,25 @@ pub struct OffchainVerifierEvidenceV1 {
 }
 
 impl OffchainVerifierEvidenceV1 {
+    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
+        bcs::to_bytes(self)
+    }
+}
+
+/// Active verifier input consumed by SDK submit builders.
+///
+/// Move constructs the full verifier request evidence from `DAGExecution`,
+/// `leader_cap`, and this request metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthenticatedOffchainVerifierEvidenceV1 {
+    pub submission_kind: VerificationSubmissionKind,
+    pub payload_or_reason_hash: Vec<u8>,
+    pub transport_proof: Vec<u8>,
+    pub request: AuthenticatedOffchainRequestEvidenceV1,
+    pub response: OffchainResponseEvidenceV1,
+}
+
+impl AuthenticatedOffchainVerifierEvidenceV1 {
     pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
         bcs::to_bytes(self)
     }
@@ -574,6 +611,31 @@ mod tests {
 
         let bytes = value.to_bcs_bytes().unwrap();
         let parsed: OffchainVerifierEvidenceV1 = bcs::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed, value);
+    }
+
+    #[test]
+    fn test_authenticated_offchain_verifier_evidence_v1_bcs_round_trip() {
+        let value = AuthenticatedOffchainVerifierEvidenceV1 {
+            submission_kind: VerificationSubmissionKind::Success,
+            payload_or_reason_hash: vec![1, 2, 3],
+            transport_proof: vec![4, 5, 6],
+            request: AuthenticatedOffchainRequestEvidenceV1 {
+                walk_index: 7,
+                tool_fqn: "example.tool@1".to_string(),
+                request_hash: vec![8, 9],
+                request_signature: vec![10, 11],
+            },
+            response: OffchainResponseEvidenceV1 {
+                status_code: 200,
+                response_hash: vec![12, 13],
+                response_signature: vec![14, 15],
+                normalized_err_eval_reason_hash: Some(vec![16, 17]),
+            },
+        };
+
+        let bytes = value.to_bcs_bytes().unwrap();
+        let parsed: AuthenticatedOffchainVerifierEvidenceV1 = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
 

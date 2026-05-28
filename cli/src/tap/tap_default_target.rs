@@ -27,11 +27,9 @@ pub(crate) fn default_target_result_json(
         "agent_id": record.target.agent_id,
         "skill_id": record.target.skill_id,
         "dag_id": record.skill.dag_id,
-        "tap_package_id": record.skill.tap_package_id,
         "interface_revision": record.endpoint.key.interface_revision,
-        "endpoint_object_id": record.endpoint.endpoint_object.object_id(),
-        "endpoint_object_version": record.endpoint.endpoint_object.version(),
-        "endpoint_object_digest_hex": hex::encode(record.endpoint.endpoint_object.digest().inner()),
+        "config_digest_hex": hex::encode(&record.endpoint.config_digest),
+        "shared_objects": record.endpoint.shared_objects,
         "requirements": record.endpoint.requirements,
     })
 }

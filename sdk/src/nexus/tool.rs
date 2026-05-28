@@ -189,11 +189,11 @@ impl ToolActions {
             ToolRef::Sui {
                 package_address,
                 module_name,
-                witness_id,
+                tool_witness_id,
             } => (
                 Some(*package_address),
                 Some(module_name.clone()),
-                Some(*witness_id),
+                Some(*tool_witness_id),
             ),
             ToolRef::Http { .. } => (None, None, None),
         };
@@ -558,7 +558,7 @@ mod tests {
             reference: ToolRef::Sui {
                 package_address,
                 module_name,
-                witness_id,
+                tool_witness_id: witness_id,
             },
             description: "demo".to_string(),
             input_schema: serde_json::json!({}),

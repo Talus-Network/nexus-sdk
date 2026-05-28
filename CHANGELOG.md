@@ -11,15 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
-- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, creates and shares a standard endpoint object, and writes a complete endpoint-bound artifact for operator handoff.
-- `tap endpoint create` standalone command that creates and shares a `StandardEndpoint` object for any TAP package, returning the endpoint object id/version/digest as stable JSON.
-- `tap endpoint inspect` command that resolves on-chain endpoint metadata and the matching registry revisions (active record plus full revision list) without BCS-walking the registry by hand.
-- `tap registry show` command that prints the full standard TAP registry contents (id, default executor, agents, skills, endpoint revisions, active endpoints) as stable JSON.
-- `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, package id, active interface revision, endpoint object ref, and skill requirements — into one JSON document.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
+- `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
+- `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, interface revision, config-digest hex, shared objects, and skill requirements — into one JSON document.
 - `tap payments show` command that reads a `TapExecutionPayment` object and emits a flat JSON of all payment fields plus a computed `terminal` flag.
 - `tap payments wait` command that polls a `TapExecutionPayment` until accomplished/refunded or until a configurable timeout, emitting `elapsed_ms`/`timed_out` alongside the payment state.
-- `tap bind` command that composes `tap::create_agent` and `tap::register_skill` into a single PTB and returns the new agent id, skill id, agent/endpoint object refs, config-digest evidence, and transaction metadata.
-- `tool inspect-onchain` command that derives `Tool` and `ToolGas` object IDs from an FQN, probes both on-chain, and decodes the `Tool` object's `package_address`, `module_name`, `witness_id`, schemas, `workflow_authorization_cap_first`, and registration timestamps into stable JSON.
+- `tap bind` command that composes `tap::create_agent` and `tap::register_skill` into a single PTB and returns the new agent id, skill id, agent object ref, config-digest evidence, and transaction metadata.
+- `tool inspect-onchain` command that derives `Tool` and `ToolGas` object IDs from an FQN, probes both on-chain, and decodes the `Tool` object's `package_address`, `module_name`, `tool_witness_id`, schemas, `workflow_authorization_cap_first`, and registration timestamps into stable JSON.
 - `tool register on-chain --workflow-authorization-cap-first` flag to route registration through the cap-gated `register_on_chain_tool_with_workflow_authorization_cap` entrypoint.
 - `tool register on-chain --reuse-if-exists` flag for idempotent registration: when the derived `Tool` and `ToolGas` already exist for the FQN, the existing refs are decoded and returned with `reused: true` and no transaction is submitted.
 - `tool register on-chain` JSON output now includes the locally-derived `tool_id` and `tool_gas_id`, the `reused` flag, the `workflow_authorization_cap_first` flag, and the transaction checkpoint, so callers do not need to derive these values themselves.
@@ -54,8 +52,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
 - Additional signed HTTP tests for response signing verification and multi-variant output handling.
 - SDK-owned standard TAP authorization-plan models and current-vertex grant resolution helpers for fixed-tool execution.
-- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint creation, and complete publish-artifact construction.
-- Standard TAP transaction helpers for endpoint creation and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
+- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint revision metadata construction, and complete publish-artifact construction.
+- Standard TAP transaction helpers for endpoint revision announcement, active skill-revision updates, and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
 - Compatibility-focused parser fixtures for current standard TAP event BCS layouts, including Move `Option<T>` event fields used by request, payment, authorization, and scheduled-execution events.
 - Standard Talus agent payment vault models, fetch helper, deposit/withdraw PTB builders, and typed payment source helpers for invoker-funded and agent-vault-funded settlement.
 - Agent-scoped workflow gas helpers for standard TAP funding.
@@ -93,7 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Runtime config hot reload now moves filesystem metadata checks and config parsing onto Tokio's blocking pool and reduces fallback polling frequency, while keeping notify-driven reloads as the fast path.
 - Standard fixed-tool schema generation hides TAP authorization-cap and workflow worksheet internal arguments from user-facing input schemas.
-- CLI and SDK object metadata now resolve default DAG execution through `tap_registry` and `default_tap_target` rather than a `default_tap` object.
+- CLI and SDK object metadata now resolve default DAG execution through `agent_registry` and `default_tap_target` rather than a `default_tap` object.
 - Legacy `TapV1` and `AnnounceInterfacePackageEvent` support is retained only as compatibility for historical data; active standard builders use standard TAP idents.
 - SDK parser sample coverage now uses generated current-layout standard TAP event fixtures instead of stale hard-coded witness-era bytes.
 - scheduler and peer TAP PTB tests now assert standard TAP calls by package/module/function and current BCS argument layout rather than brittle absolute command indexes.
@@ -105,7 +103,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Standard TAP SDK models and PTB builders now match the Move package split: general TAP identities, payments, endpoint, worksheet, authorization, and schedule types resolve through `nexus_interface::tap`, while registry storage records remain under `nexus_registry::tap`.
 - Active execution APIs now expose explicit agent DAG execution and default-agent DAG execution names (`execute_agent_dag`, `execute_default_agent_dag`, `AgentDagExecuteInput`, and `AgentDagExecuteOptions`), while "standard TAP" remains reserved for protocol/model surfaces.
 - TAP payment settlement builders now target execution-owned `DAGExecution` payment helpers, with separate agent-vault variants only when vault accounting needs the explicit non-default `Agent`.
-- Default DAG execution and scheduling builders now use mutable `tap_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
+- Default DAG execution and scheduling builders now use mutable `agent_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
 
 #### Fixed
 

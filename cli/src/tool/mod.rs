@@ -236,12 +236,12 @@ pub(crate) enum RegisterCommand {
         timeout: std::time::Duration,
 
         #[arg(
-            long = "witness-id",
+            long = "tool-witness-id",
             short = 'w',
-            help = "The witness object ID that proves the tool's identity.",
+            help = "The tool witness object ID used as the on-chain execution stamp locator.",
             value_name = "OBJECT_ID"
         )]
-        witness_id: sui::types::Address,
+        tool_witness_id: sui::types::Address,
 
         #[arg(
             long = "collateral-coin",
@@ -507,7 +507,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 tool_fqn,
                 description,
                 timeout,
-                witness_id,
+                tool_witness_id,
                 collateral_coin,
                 no_save,
                 workflow_authorization_cap_first,
@@ -520,7 +520,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     tool_fqn,
                     description,
                     timeout,
-                    witness_id,
+                    tool_witness_id,
                     collateral_coin,
                     no_save,
                     workflow_authorization_cap_first,

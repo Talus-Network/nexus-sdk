@@ -87,8 +87,6 @@ pub(crate) fn agent_execute_result_json(
             "skill_id": submit.skill_id,
             "dag_id": submit.dag_id,
             "endpoint_key": submit.endpoint_key,
-            "endpoint_object_id": submit.endpoint_object.object_id(),
-            "endpoint_object_version": submit.endpoint_object.version(),
             "payment_max_budget": submit.payment_max_budget,
             "payment_refund_mode": submit.payment_refund_mode,
             "authorization_plan_commitment": submit.authorization_plan_commitment,

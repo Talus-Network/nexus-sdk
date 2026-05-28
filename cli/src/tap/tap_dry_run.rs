@@ -2,9 +2,8 @@ use super::*;
 
 pub(crate) async fn dry_run_skill(config: PathBuf) -> AnyResult<(), NexusCliError> {
     let config = validate_skill(config, None).await?;
-    let package_id = sui::types::Address::ZERO;
     let digest = config
-        .digest_input(package_id)
+        .digest_input()
         .digest_hex()
         .map_err(NexusCliError::Any)?;
     json_output(&json!({

@@ -1,7 +1,7 @@
-//! Programmable transaction builders for `nexus_workflow::network_auth`.
+//! Programmable transaction builders for `nexus_registry::network_auth`.
 
 use crate::{
-    idents::{pure_arg, sui_framework, workflow},
+    idents::{pure_arg, registry, sui_framework},
     sui,
     types::NexusObjects,
 };
@@ -38,9 +38,9 @@ pub fn create_tool_binding_and_register_key(
     // `proof: ProofOfIdentity`
     let proof_for_binding = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
         vec![tool, owner_cap],
@@ -59,9 +59,9 @@ pub fn create_tool_binding_and_register_key(
     // `binding: KeyBinding`
     let binding = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::CREATE_BINDING.module,
-            workflow::NetworkAuth::CREATE_BINDING.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::CREATE_BINDING.module,
+            registry::NetworkAuth::CREATE_BINDING.name,
             vec![],
         ),
         vec![network_auth, proof_for_binding, description],
@@ -70,9 +70,9 @@ pub fn create_tool_binding_and_register_key(
     // Need a fresh proof for key registration (the previous one was consumed by create_binding).
     let proof_for_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
         vec![tool, owner_cap],
@@ -87,9 +87,9 @@ pub fn create_tool_binding_and_register_key(
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
         ),
         vec![binding, proof_for_key, public_key, signature],
@@ -102,19 +102,21 @@ pub fn create_tool_binding_and_register_key(
         false,
     ));
 
-    // `nexus_workflow::network_auth::register_key(binding, &proof, proof_of_key, clock)`
+    // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::REGISTER_KEY.module,
-            workflow::NetworkAuth::REGISTER_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::REGISTER_KEY.module,
+            registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
         ),
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    let key_binding_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+    let key_binding_type = registry::into_type_tag(
+        objects.registry_pkg_id(),
+        registry::NetworkAuth::KEY_BINDING,
+    );
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -165,9 +167,9 @@ pub fn register_tool_key_on_existing_binding(
     // `proof: ProofOfIdentity`
     let proof = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
+            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
             vec![],
         ),
         vec![tool, owner_cap],
@@ -178,9 +180,9 @@ pub fn register_tool_key_on_existing_binding(
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
         ),
         vec![binding, proof, public_key, signature],
@@ -194,9 +196,9 @@ pub fn register_tool_key_on_existing_binding(
 
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::REGISTER_KEY.module,
-            workflow::NetworkAuth::REGISTER_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::REGISTER_KEY.module,
+            registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
         ),
         vec![binding, proof, proof_of_key, clock],
@@ -229,9 +231,9 @@ pub fn create_leader_binding_and_register_key(
     // `proof: ProofOfIdentity`
     let proof_for_binding = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_LEADER.module,
-            workflow::NetworkAuth::PROVE_LEADER.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_LEADER.module,
+            registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
         ),
         vec![leader_cap],
@@ -250,9 +252,9 @@ pub fn create_leader_binding_and_register_key(
     // `binding: KeyBinding`
     let binding = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::CREATE_BINDING.module,
-            workflow::NetworkAuth::CREATE_BINDING.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::CREATE_BINDING.module,
+            registry::NetworkAuth::CREATE_BINDING.name,
             vec![],
         ),
         vec![network_auth, proof_for_binding, description],
@@ -261,9 +263,9 @@ pub fn create_leader_binding_and_register_key(
     // Need a fresh proof for key registration (the previous one was consumed by create_binding).
     let proof_for_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_LEADER.module,
-            workflow::NetworkAuth::PROVE_LEADER.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_LEADER.module,
+            registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
         ),
         vec![leader_cap],
@@ -277,9 +279,9 @@ pub fn create_leader_binding_and_register_key(
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
         ),
         vec![binding, proof_for_key, public_key, signature],
@@ -292,19 +294,21 @@ pub fn create_leader_binding_and_register_key(
         false,
     ));
 
-    // `nexus_workflow::network_auth::register_key(binding, &proof, proof_of_key, clock)`
+    // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::REGISTER_KEY.module,
-            workflow::NetworkAuth::REGISTER_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::REGISTER_KEY.module,
+            registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
         ),
         vec![binding, proof_for_key, proof_of_key, clock],
     );
 
-    let key_binding_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+    let key_binding_type = registry::into_type_tag(
+        objects.registry_pkg_id(),
+        registry::NetworkAuth::KEY_BINDING,
+    );
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -347,9 +351,9 @@ pub fn register_leader_key_on_existing_binding(
     // `proof: ProofOfIdentity`
     let proof = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::PROVE_LEADER.module,
-            workflow::NetworkAuth::PROVE_LEADER.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::PROVE_LEADER.module,
+            registry::NetworkAuth::PROVE_LEADER.name,
             vec![],
         ),
         vec![leader_cap],
@@ -360,9 +364,9 @@ pub fn register_leader_key_on_existing_binding(
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            workflow::NetworkAuth::NEW_PROOF_OF_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
             vec![],
         ),
         vec![binding, proof, public_key, signature],
@@ -376,9 +380,9 @@ pub fn register_leader_key_on_existing_binding(
 
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::NetworkAuth::REGISTER_KEY.module,
-            workflow::NetworkAuth::REGISTER_KEY.name,
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::REGISTER_KEY.module,
+            registry::NetworkAuth::REGISTER_KEY.name,
             vec![],
         ),
         vec![binding, proof, proof_of_key, clock],
@@ -389,10 +393,7 @@ pub fn register_leader_key_on_existing_binding(
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{idents::workflow, test_utils::sui_mocks},
-    };
+    use {super::*, crate::test_utils::sui_mocks};
 
     fn count_move_calls(
         commands: &[sui::types::Command],
@@ -467,41 +468,43 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
-        let binding_type =
-            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+        let binding_type = registry::into_type_tag(
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::KEY_BINDING,
+        );
 
         assert!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-                workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
+                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
             ) >= 2
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::CREATE_BINDING.module,
-                workflow::NetworkAuth::CREATE_BINDING.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::CREATE_BINDING.module,
+                registry::NetworkAuth::CREATE_BINDING.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::REGISTER_KEY.module,
-                workflow::NetworkAuth::REGISTER_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::REGISTER_KEY.module,
+                registry::NetworkAuth::REGISTER_KEY.name
             ),
             1
         );
@@ -538,32 +541,34 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let binding_type =
-            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+        let binding_type = registry::into_type_tag(
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::KEY_BINDING,
+        );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-                workflow::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
+                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::REGISTER_KEY.module,
-                workflow::NetworkAuth::REGISTER_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::REGISTER_KEY.module,
+                registry::NetworkAuth::REGISTER_KEY.name
             ),
             1
         );
@@ -597,41 +602,43 @@ mod tests {
         else {
             panic!("Expected a ProgrammableTransaction");
         };
-        let binding_type =
-            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+        let binding_type = registry::into_type_tag(
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::KEY_BINDING,
+        );
 
         assert!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::PROVE_LEADER.module,
-                workflow::NetworkAuth::PROVE_LEADER.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::PROVE_LEADER.module,
+                registry::NetworkAuth::PROVE_LEADER.name
             ) >= 2
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::CREATE_BINDING.module,
-                workflow::NetworkAuth::CREATE_BINDING.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::CREATE_BINDING.module,
+                registry::NetworkAuth::CREATE_BINDING.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::REGISTER_KEY.module,
-                workflow::NetworkAuth::REGISTER_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::REGISTER_KEY.module,
+                registry::NetworkAuth::REGISTER_KEY.name
             ),
             1
         );
@@ -666,32 +673,34 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
-        let binding_type =
-            workflow::into_type_tag(objects.workflow_pkg_id, workflow::NetworkAuth::KEY_BINDING);
+        let binding_type = registry::into_type_tag(
+            objects.registry_pkg_id(),
+            registry::NetworkAuth::KEY_BINDING,
+        );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::PROVE_LEADER.module,
-                workflow::NetworkAuth::PROVE_LEADER.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::PROVE_LEADER.module,
+                registry::NetworkAuth::PROVE_LEADER.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                workflow::NetworkAuth::NEW_PROOF_OF_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
+                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
             ),
             1
         );
         assert_eq!(
             count_move_calls(
                 &commands,
-                objects.workflow_pkg_id,
-                workflow::NetworkAuth::REGISTER_KEY.module,
-                workflow::NetworkAuth::REGISTER_KEY.name
+                objects.registry_pkg_id(),
+                registry::NetworkAuth::REGISTER_KEY.module,
+                registry::NetworkAuth::REGISTER_KEY.name
             ),
             1
         );

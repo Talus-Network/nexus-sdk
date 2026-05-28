@@ -1,11 +1,11 @@
-use {super::*, nexus_sdk::nexus::tap::fetch_configured_tap_registry};
+use {super::*, nexus_sdk::nexus::tap::fetch_configured_agent_registry};
 
 pub(crate) async fn show_registry() -> AnyResult<(), NexusCliError> {
     command_title!("Reading standard TAP registry");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
-    let registry = fetch_configured_tap_registry(nexus_client.crawler(), nexus_objects)
+    let registry = fetch_configured_agent_registry(nexus_client.crawler(), nexus_objects)
         .await
         .map_err(NexusCliError::Any)?
         .data;
@@ -31,6 +31,5 @@ pub(crate) fn registry_show_result_json(
         "agents": registry.agents,
         "skills": registry.skills,
         "endpoints": registry.endpoints,
-        "active_endpoints": registry.active_endpoints,
     })
 }

@@ -47,6 +47,8 @@ pub use {
     tool_meta::ToolMeta,
     type_name::TypeName,
     workflow::{
+        AuthenticatedOffchainRequestEvidenceV1,
+        AuthenticatedOffchainVerifierEvidenceV1,
         ExecutionTerminalRecord,
         ExternalVerifierRuntimeCallV1,
         ExternalVerifierSubmitEvidenceV1,

@@ -3,7 +3,7 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::{sui_framework, workflow},
+        idents::{scheduler, sui_framework, workflow},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, DynamicMap, Response},
@@ -14,6 +14,7 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{
             deserialize_sui_u64,
+            AgentExecutionConfig,
             DagExecutionConfig,
             DataStorage,
             MoveFields,
@@ -28,6 +29,21 @@ use {
     anyhow::{anyhow, bail},
     std::collections::HashMap,
 };
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ScheduledAgentExecutionConfig {
+    Default(DagExecutionConfig),
+    Registered(AgentExecutionConfig),
+}
+
+impl ScheduledAgentExecutionConfig {
+    pub fn dag(&self) -> sui::types::Address {
+        match self {
+            Self::Default(config) => config.dag,
+            Self::Registered(config) => config.dag,
+        }
+    }
+}
 
 /// High-level interface for scheduler operations.
 #[derive(Clone)]
@@ -235,10 +251,8 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let task_type = crate::idents::workflow::into_type_tag(
-            objects.workflow_pkg_id,
-            crate::idents::workflow::Scheduler::TASK,
-        );
+        let task_type =
+            scheduler::into_type_tag(objects.scheduler_pkg_id, scheduler::Scheduler::TASK);
 
         tx.move_call(
             sui::tx::Function::new(
@@ -669,6 +683,19 @@ pub async fn fetch_begin_default_agent_execution_config(
     extract_begin_default_agent_execution_config(configs, objects)
 }
 
+pub async fn fetch_scheduled_agent_execution_config(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    configured_automaton_id: &sui::types::Address,
+) -> anyhow::Result<ScheduledAgentExecutionConfig> {
+    let parent: DynamicMap<TransitionConfigKey<u64, PolicySymbol>, serde_json::Value> =
+        DynamicMap::new(*configured_automaton_id, 0);
+
+    let configs = crawler.get_dynamic_fields(&parent).await?;
+
+    extract_scheduled_agent_execution_config(configs, objects)
+}
+
 fn extract_begin_default_agent_execution_config(
     configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
     objects: &NexusObjects,
@@ -693,6 +720,40 @@ fn extract_begin_default_agent_execution_config(
 
     let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
     Ok(config)
+}
+
+fn extract_scheduled_agent_execution_config(
+    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
+    objects: &NexusObjects,
+) -> anyhow::Result<ScheduledAgentExecutionConfig> {
+    let configs = configs.into_iter().collect::<Vec<_>>();
+    let default = extract_begin_default_agent_execution_config(configs.iter().cloned(), objects);
+    if let Ok(config) = default {
+        return Ok(ScheduledAgentExecutionConfig::Default(config));
+    }
+
+    let expected_config =
+        workflow::Dag::AGENT_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
+    let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS
+        .qualified_name(objects.workflow_type_origin_pkg_id());
+
+    let mut candidates = configs.into_iter().filter(|(key, _)| {
+        key.config.matches_qualified_name(&expected_config)
+            && key.transition.state.is_none()
+            && key
+                .transition
+                .symbol
+                .matches_qualified_name(&expected_symbol)
+    });
+
+    let Some((_key, value)) = candidates.next() else {
+        bail!(
+            "Missing execution policy config for BeginDefaultAgentExecutionWitness or BeginAgentExecutionWitness"
+        );
+    };
+
+    let MoveFields(config): MoveFields<AgentExecutionConfig> = serde_json::from_value(value)?;
+    Ok(ScheduledAgentExecutionConfig::Registered(config))
 }
 
 fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
@@ -904,14 +965,14 @@ mod tests {
         serde_json::to_value(task).expect("serialize task")
     }
 
-    fn generator_symbol(workflow_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
+    fn generator_symbol(scheduler_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
         PolicySymbol::Witness(TypeName::new(&format!(
-            "{workflow_pkg_id}::scheduler::{name}"
+            "{scheduler_pkg_id}::scheduler::{name}"
         )))
     }
 
-    fn queue_generator_symbol(workflow_pkg_id: sui::types::Address) -> PolicySymbol {
-        generator_symbol(workflow_pkg_id, "QueueGeneratorWitness")
+    fn queue_generator_symbol(scheduler_pkg_id: sui::types::Address) -> PolicySymbol {
+        generator_symbol(scheduler_pkg_id, "QueueGeneratorWitness")
     }
 
     fn scheduler_config(
@@ -964,7 +1025,7 @@ mod tests {
 
     fn event_bcs(
         primitives_pkg: sui::types::Address,
-        workflow_pkg: sui::types::Address,
+        event_pkg: sui::types::Address,
         kind: NexusEventKind,
     ) -> sui::types::Event {
         #[derive(Serialize)]
@@ -973,7 +1034,7 @@ mod tests {
         }
 
         let event_type = sui::types::StructTag::new(
-            workflow_pkg,
+            event_pkg,
             sui::types::Identifier::from_static("scheduler"),
             sui::types::Identifier::new(kind.name()).unwrap(),
             vec![],
@@ -1027,8 +1088,8 @@ mod tests {
     #[test]
     fn active_scheduler_start_ms_reads_wrapped_queue_state() {
         let objects = sui_mocks::mock_nexus_objects();
-        let expected = workflow::Scheduler::QUEUE_GENERATOR_STATE
-            .qualified_name(objects.workflow_type_origin_pkg_id());
+        let expected = scheduler::Scheduler::QUEUE_GENERATOR_STATE
+            .qualified_name(objects.scheduler_type_origin_pkg_id());
 
         let active = active_scheduler_start_ms(
             vec![scheduler_config(
@@ -1050,8 +1111,8 @@ mod tests {
     #[test]
     fn active_scheduler_start_ms_reads_plain_periodic_state() {
         let objects = sui_mocks::mock_nexus_objects();
-        let expected = workflow::Scheduler::PERIODIC_GENERATOR_STATE
-            .qualified_name(objects.workflow_type_origin_pkg_id());
+        let expected = scheduler::Scheduler::PERIODIC_GENERATOR_STATE
+            .qualified_name(objects.scheduler_type_origin_pkg_id());
 
         let active = active_scheduler_start_ms(
             vec![scheduler_config(
@@ -1073,8 +1134,8 @@ mod tests {
     #[test]
     fn active_scheduler_start_ms_errors_when_config_is_missing() {
         let objects = sui_mocks::mock_nexus_objects();
-        let expected = workflow::Scheduler::QUEUE_GENERATOR_STATE
-            .qualified_name(objects.workflow_type_origin_pkg_id());
+        let expected = scheduler::Scheduler::QUEUE_GENERATOR_STATE
+            .qualified_name(objects.scheduler_type_origin_pkg_id());
 
         let err = active_scheduler_start_ms(vec![], &expected, GeneratorKind::Queue, |symbol| {
             objects.scheduler_matches_queue_generator(symbol)
@@ -1105,7 +1166,7 @@ mod tests {
 
         let events = vec![event_bcs(
             nexus_objects.primitives_pkg_id,
-            nexus_objects.workflow_pkg_id,
+            nexus_objects.scheduler_pkg_id,
             NexusEventKind::TaskCreated(TaskCreatedEvent {
                 task: task_id,
                 owner,
@@ -1172,7 +1233,7 @@ mod tests {
 
         let creation_events = vec![event_bcs(
             nexus_objects.primitives_pkg_id,
-            nexus_objects.workflow_pkg_id,
+            nexus_objects.scheduler_pkg_id,
             NexusEventKind::TaskCreated(TaskCreatedEvent {
                 task: task_id,
                 owner,
@@ -1203,7 +1264,7 @@ mod tests {
         );
 
         // Scheduled occurrence event
-        let queue_generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let queue_generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event =
             NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
                 request: OccurrenceScheduledEvent {
@@ -1226,7 +1287,7 @@ mod tests {
             vec![],
             vec![event_bcs(
                 nexus_objects.primitives_pkg_id,
-                nexus_objects.workflow_pkg_id,
+                nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
         );
@@ -1412,7 +1473,7 @@ mod tests {
             task_object_json,
         );
 
-        let generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
             task: task_id,
             generator: generator.clone(),
@@ -1428,7 +1489,7 @@ mod tests {
             vec![],
             vec![event_bcs(
                 nexus_objects.primitives_pkg_id,
-                nexus_objects.workflow_pkg_id,
+                nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
         );
@@ -1484,7 +1545,7 @@ mod tests {
             task_object_json,
         );
 
-        let generator = queue_generator_symbol(nexus_objects.workflow_pkg_id);
+        let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
             task: task_id,
             generator: generator.clone(),
@@ -1500,7 +1561,7 @@ mod tests {
             vec![],
             vec![event_bcs(
                 nexus_objects.primitives_pkg_id,
-                nexus_objects.workflow_pkg_id,
+                nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
         );

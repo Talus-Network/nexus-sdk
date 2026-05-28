@@ -35,6 +35,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
 
     NexusObjects {
         workflow_pkg_id: sui::types::Address::generate(&mut rng),
+        scheduler_pkg_id: sui::types::Address::generate(&mut rng),
         primitives_pkg_id: sui::types::Address::generate(&mut rng),
         interface_pkg_id: sui::types::Address::generate(&mut rng),
         network_id: sui::types::Address::generate(&mut rng),
@@ -42,11 +43,12 @@ pub fn mock_nexus_objects() -> NexusObjects {
         tool_registry: mock_sui_object_ref(),
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
-        tap_registry: Some(mock_sui_object_ref()),
+        agent_registry: Some(mock_sui_object_ref()),
         default_tap_target: None,
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         workflow_original_pkg_id: None,
+        scheduler_original_pkg_id: None,
         registry_original_pkg_id: None,
     }
 }
@@ -307,6 +309,33 @@ pub mod grpc {
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
     ) {
+        mock_execute_transaction_and_wait_for_checkpoint_matching(
+            tx_service,
+            sub_service,
+            ledger_service,
+            digest,
+            gas_coin_ref,
+            objects,
+            changed_objects,
+            events,
+            |_| {},
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_execute_transaction_and_wait_for_checkpoint_matching<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        digest: sui::types::Digest,
+        gas_coin_ref: sui::types::ObjectReference,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
         let mut changed_objects_with_coin = vec![sui::types::ChangedObject {
             object_id: sui::types::Address::from_static("0x1"),
             input_state: sui::types::ObjectIn::NotExist,
@@ -341,7 +370,8 @@ pub mod grpc {
         tx_service
             .expect_execute_transaction()
             .times(1)
-            .returning(move |_request| {
+            .returning(move |request| {
+                assert_request(request.get_ref());
                 let mut response = sui::grpc::ExecuteTransactionResponse::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
