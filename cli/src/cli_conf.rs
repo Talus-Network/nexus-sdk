@@ -13,7 +13,6 @@ pub(crate) struct CliConf {
     pub(crate) nexus: Option<NexusObjects>,
     #[serde(default)]
     pub(crate) tools: HashMap<ToolFqn, ToolOwnerCaps>,
-    #[serde(default, alias = "tap_agents")]
     pub(crate) agents: HashMap<String, sui::types::Address>,
     #[serde(default)]
     pub(crate) secrets: SecretsConf,

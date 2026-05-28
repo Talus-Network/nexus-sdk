@@ -2456,14 +2456,8 @@ fn execute_agent_dag_internal(
     ));
 
     let agent_registry = tx.input(sui::tx::Input::shared(
-        *objects
-            .agent_registry()
-            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?
-            .object_id(),
-        objects
-            .agent_registry()
-            .expect("tap registry checked above")
-            .version(),
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
         false,
     ));
 
@@ -4301,13 +4295,9 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert!(shared_inputs.iter().any(|(id, mutable)| {
-            id == nexus_objects
-                .agent_registry()
-                .expect("tap registry configured")
-                .object_id()
-                && !*mutable
-        }));
+        assert!(shared_inputs
+            .iter()
+            .any(|(id, mutable)| { id == nexus_objects.agent_registry.object_id() && !*mutable }));
     }
 
     #[test]

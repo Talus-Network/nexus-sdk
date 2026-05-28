@@ -110,19 +110,18 @@ fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &TapRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
-    if let Some(configured) = objects.default_tap_target() {
-        if let Ok(target) = resolve_active_tap_skill_execution_target(
-            registry,
-            configured.agent_id,
-            configured.skill_id,
-        ) {
-            if target.skill.dag_binding == TapDagBinding::RuntimeSelected {
-                return Ok(DefaultDagExecutorRecord {
-                    target: configured,
-                    skill: target.skill,
-                    endpoint: target.endpoint,
-                });
-            }
+    let configured = objects.default_tap_executor;
+    if let Ok(target) = resolve_active_tap_skill_execution_target(
+        registry,
+        configured.agent_id,
+        configured.skill_id,
+    ) {
+        if target.skill.dag_binding == TapDagBinding::RuntimeSelected {
+            return Ok(DefaultDagExecutorRecord {
+                target: configured,
+                skill: target.skill,
+                endpoint: target.endpoint,
+            });
         }
     }
 
@@ -1257,17 +1256,16 @@ mod tests {
         ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
         state_service_mock: &mut sui_mocks::grpc::MockStateService,
         nexus_objects: &crate::types::NexusObjects,
-        registry_ref: sui::types::ObjectReference,
         registry: &TapRegistry,
     ) {
         let mock = registry_object_mock(registry);
         sui_mocks::grpc::mock_get_object_bcs_for(
             ledger_service_mock,
-            registry_ref,
+            nexus_objects.agent_registry.clone(),
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
             sui::types::StructTag::new(
-                nexus_objects.registry_pkg_id(),
+                nexus_objects.registry_pkg_id,
                 crate::idents::tap::STANDARD_TAP_MODULE,
                 sui::types::Identifier::from_static("AgentRegistry"),
                 vec![],
@@ -1527,10 +1525,10 @@ mod tests {
             1,
             sui::types::Digest::generate(&mut rng),
         );
-        nexus_objects.default_tap_target = Some(DefaultDagExecutor {
+        nexus_objects.default_tap_executor = DefaultDagExecutor {
             agent_id: default_agent,
             skill_id: default_skill_id,
-        });
+        };
 
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![1],
@@ -1541,10 +1539,7 @@ mod tests {
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
         };
         let agent_registry = TapRegistry {
-            id: *nexus_objects
-                .agent_registry()
-                .expect("tap registry ref")
-                .object_id(),
+            id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
                 agent_id: default_agent,
                 owner: sui::types::Address::generate(&mut rng),
@@ -1662,10 +1657,6 @@ mod tests {
             &mut ledger_service_mock,
             &mut state_service_mock,
             &nexus_objects,
-            nexus_objects
-                .agent_registry()
-                .expect("tap registry ref")
-                .clone(),
             &agent_registry,
         );
         sui_mocks::grpc::mock_get_object_metadata(
@@ -1758,10 +1749,7 @@ mod tests {
             vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
         };
         let agent_registry = TapRegistry {
-            id: *nexus_objects
-                .agent_registry()
-                .expect("tap registry ref")
-                .object_id(),
+            id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
                 agent_id,
                 owner: sui::types::Address::generate(&mut rng),
@@ -1835,10 +1823,6 @@ mod tests {
             &mut ledger_service_mock,
             &mut state_service_mock,
             &nexus_objects,
-            nexus_objects
-                .agent_registry()
-                .expect("tap registry ref")
-                .clone(),
             &agent_registry,
         );
         sui_mocks::grpc::mock_get_object_json(

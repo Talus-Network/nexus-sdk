@@ -20,7 +20,7 @@ fn agent_registry_call(
     ident: crate::idents::ModuleAndNameIdent,
     args: Vec<sui::types::Argument>,
 ) -> sui::types::Argument {
-    tap_call_with_package(tx, objects.registry_pkg_id(), ident, args)
+    tap_call_with_package(tx, objects.registry_pkg_id, ident, args)
 }
 
 fn tap_interface_call(
@@ -49,9 +49,7 @@ pub fn agent_registry_arg(
     objects: &NexusObjects,
     mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
-    let registry = objects
-        .agent_registry()
-        .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))?;
+    let registry = &objects.agent_registry;
 
     Ok(tx.input(sui::tx::Input::shared(
         *registry.object_id(),
@@ -991,7 +989,7 @@ mod tests {
         assert_eq!(call.package, objects.interface_pkg_id);
         assert_eq!(call.module, TapStandard::AGENT_ID_FROM_ADDRESS.module);
         assert_eq!(call.function, TapStandard::AGENT_ID_FROM_ADDRESS.name);
-        assert_eq!(worksheet_call.package, objects.registry_pkg_id());
+        assert_eq!(worksheet_call.package, objects.registry_pkg_id);
         assert_eq!(
             worksheet_call.module,
             AgentRegistry::WORKFLOW_WORKSHEET_FOR_IDS.module
@@ -1014,7 +1012,7 @@ mod tests {
             TxInspector::new(sui_mocks::mock_finish_transaction(immutable_tx));
         immutable_inspector.expect_shared_object(
             &immutable_registry,
-            objects.agent_registry().expect("mock has agent registry"),
+            &objects.agent_registry,
             false,
         );
 
@@ -1022,11 +1020,7 @@ mod tests {
         let mutable_registry =
             agent_registry_arg(&mut mutable_tx, &objects, true).expect("mutable registry");
         let mutable_inspector = TxInspector::new(sui_mocks::mock_finish_transaction(mutable_tx));
-        mutable_inspector.expect_shared_object(
-            &mutable_registry,
-            objects.agent_registry().expect("mock has agent registry"),
-            true,
-        );
+        mutable_inspector.expect_shared_object(&mutable_registry, &objects.agent_registry, true);
     }
 
     #[test]
@@ -1065,7 +1059,7 @@ mod tests {
         let schedule_call = calls
             .iter()
             .find(|call| {
-                call.package == objects.registry_pkg_id()
+                call.package == objects.registry_pkg_id
                     && call.module == AgentRegistry::SCHEDULE_SKILL_EXECUTION.module
                     && call.function == AgentRegistry::SCHEDULE_SKILL_EXECUTION.name
             })
@@ -1161,14 +1155,14 @@ mod tests {
                 matches!(
                     command,
                     sui::types::Command::MoveCall(call)
-                        if call.package == objects.registry_pkg_id()
+                        if call.package == objects.registry_pkg_id
                             && call.module == AgentRegistry::REGISTER_SKILL.module
                             && call.function == AgentRegistry::REGISTER_SKILL.name
                 )
             })
             .expect("register_skill call");
         let call = inspector.move_call(register_call_idx);
-        assert_eq!(call.package, objects.registry_pkg_id());
+        assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(call.module, AgentRegistry::REGISTER_SKILL.module);
         assert_eq!(call.function, AgentRegistry::REGISTER_SKILL.name);
         assert_eq!(call.arguments.len(), 11);
@@ -1215,9 +1209,7 @@ mod tests {
                 sui::types::Command::MoveCall(call) if call.package == objects.interface_pkg_id => {
                     Some(call.function.clone())
                 }
-                sui::types::Command::MoveCall(call)
-                    if call.package == objects.registry_pkg_id() =>
-                {
+                sui::types::Command::MoveCall(call) if call.package == objects.registry_pkg_id => {
                     Some(call.function.clone())
                 }
                 _ => None,
@@ -1240,10 +1232,9 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry");
-        let agent_registry = objects.agent_registry().expect("mock has tap registry");
         let immutable_registry = tx.input(sui::tx::Input::shared(
-            *agent_registry.object_id(),
-            agent_registry.version(),
+            *objects.agent_registry.object_id(),
+            objects.agent_registry.version(),
             false,
         ));
         let agent = tx.input(sui::tx::Input::shared(
@@ -1392,10 +1383,9 @@ mod tests {
     fn default_address_funded_schedule_accepts_immutable_registry() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let agent_registry = objects.agent_registry().expect("mock has tap registry");
         let registry = tx.input(sui::tx::Input::shared(
-            *agent_registry.object_id(),
-            agent_registry.version(),
+            *objects.agent_registry.object_id(),
+            objects.agent_registry.version(),
             false,
         ));
         let prepayment_coin = tx.input(pure_arg(&8_u64).unwrap());
@@ -1426,17 +1416,13 @@ mod tests {
                 _ => None,
             })
             .find(|call| {
-                call.package == objects.registry_pkg_id()
+                call.package == objects.registry_pkg_id
                     && call.function
                         == AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name
             })
             .expect("default address funded schedule call");
         assert_eq!(schedule_call.arguments.len(), 11);
-        inspector.expect_shared_object(
-            &schedule_call.arguments[0],
-            objects.agent_registry().expect("mock has tap registry"),
-            false,
-        );
+        inspector.expect_shared_object(&schedule_call.arguments[0], &objects.agent_registry, false);
     }
 
     #[test]
@@ -1501,7 +1487,7 @@ mod tests {
         let schedule_call = calls
             .iter()
             .find(|call| {
-                call.package == objects.registry_pkg_id()
+                call.package == objects.registry_pkg_id
                     && call.function
                         == AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS.name
             })
@@ -1568,7 +1554,7 @@ mod tests {
         let schedule_call = calls
             .iter()
             .find(|call| {
-                call.package == objects.registry_pkg_id()
+                call.package == objects.registry_pkg_id
                     && call.function
                         == AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT_WITH_GRANTS.name
             })

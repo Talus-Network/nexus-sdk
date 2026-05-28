@@ -883,14 +883,9 @@ impl TapActions {
         let refund_recipient = params.refund_recipient.unwrap_or(address);
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let agent_registry = nexus_objects.agent_registry().ok_or_else(|| {
-            NexusError::TransactionBuilding(anyhow::anyhow!(
-                "NexusObjects missing agent_registry object reference"
-            ))
-        })?;
         let registry = tx.input(sui::tx::Input::shared(
-            *agent_registry.object_id(),
-            agent_registry.version(),
+            *nexus_objects.agent_registry.object_id(),
+            nexus_objects.agent_registry.version(),
             false,
         ));
         let scheduler_task = tx.input(sui::tx::Input::shared(
@@ -1334,30 +1329,12 @@ pub async fn fetch_active_tap_endpoint(
     Ok(registry_response_with_data(registry, record))
 }
 
-/// Return the configured TAP registry object ID, failing clearly for
-/// deployments created before the standard registry was added to metadata.
-pub fn configured_agent_registry_id(objects: &NexusObjects) -> anyhow::Result<sui::types::Address> {
-    objects
-        .agent_registry()
-        .map(|registry| *registry.object_id())
-        .ok_or_else(|| anyhow::anyhow!("NexusObjects missing agent_registry object reference"))
-}
-
-/// Return the configured standard default TAP DAG executor from deployment metadata.
-pub fn configured_default_tap_dag_executor(
-    objects: &NexusObjects,
-) -> anyhow::Result<DefaultDagExecutor> {
-    objects
-        .default_tap_target()
-        .ok_or_else(|| anyhow::anyhow!("NexusObjects missing default_tap_target metadata"))
-}
-
 /// Fetch the shared TAP registry named by `NexusObjects`.
 pub async fn fetch_configured_agent_registry(
     crawler: &Crawler,
     objects: &NexusObjects,
 ) -> anyhow::Result<Response<TapRegistry>> {
-    fetch_agent_registry(crawler, configured_agent_registry_id(objects)?).await
+    fetch_agent_registry(crawler, *objects.agent_registry.object_id()).await
 }
 
 /// Resolve a fresh execution endpoint through the configured TAP registry.
@@ -1369,7 +1346,7 @@ pub async fn fetch_configured_active_tap_endpoint(
 ) -> anyhow::Result<Response<TapEndpointRecord>> {
     fetch_active_tap_endpoint(
         crawler,
-        configured_agent_registry_id(objects)?,
+        *objects.agent_registry.object_id(),
         agent_id,
         skill_id,
     )
@@ -1809,7 +1786,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
             sui::types::StructTag::new(
-                nexus_objects.registry_pkg_id(),
+                nexus_objects.registry_pkg_id,
                 crate::idents::tap::STANDARD_TAP_MODULE,
                 sui::types::Identifier::from_static("AgentRegistry"),
                 vec![],
@@ -1980,15 +1957,15 @@ mod tests {
     #[test]
     fn configured_default_executor_reads_nexus_objects_metadata() {
         let objects = NexusObjects {
-            default_tap_target: Some(DefaultDagExecutor {
+            default_tap_executor: DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-            }),
+            },
             ..crate::test_utils::sui_mocks::mock_nexus_objects()
         };
 
         assert_eq!(
-            configured_default_tap_dag_executor(&objects).expect("configured default DAG executor"),
+            objects.default_tap_executor,
             DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
@@ -2001,7 +1978,7 @@ mod tests {
         let registry = registry();
         let registry_ref = sui_mocks::object_ref_for_id(registry.id);
         let nexus_objects = NexusObjects {
-            agent_registry: Some(registry_ref.clone()),
+            agent_registry: registry_ref.clone(),
             ..sui_mocks::mock_nexus_objects()
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -2040,7 +2017,7 @@ mod tests {
         let registry = registry();
         let registry_ref = sui_mocks::object_ref_for_id(registry.id);
         let nexus_objects = NexusObjects {
-            agent_registry: Some(registry_ref.clone()),
+            agent_registry: registry_ref.clone(),
             ..sui_mocks::mock_nexus_objects()
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -2234,7 +2211,7 @@ mod tests {
             sui::types::Owner::Shared(agent_ref.version()),
             None,
         );
-        let expected_registry_pkg_id = nexus_objects.registry_pkg_id();
+        let expected_registry_pkg_id = nexus_objects.registry_pkg_id;
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
@@ -2341,7 +2318,7 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.registry_pkg_id(),
+                nexus_objects.registry_pkg_id,
                 "tap",
                 "EndpointRevisionAnnouncedEvent",
                 bcs::to_bytes(&Wrapper {
@@ -2668,7 +2645,7 @@ mod tests {
             None,
         );
         let expected_interface_pkg_id = nexus_objects.interface_pkg_id;
-        let expected_registry_pkg_id = nexus_objects.registry_pkg_id();
+        let expected_registry_pkg_id = nexus_objects.registry_pkg_id;
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
@@ -2858,7 +2835,7 @@ mod tests {
         let registry = registry();
         let registry_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = NexusObjects {
-            agent_registry: Some(registry_ref.clone()),
+            agent_registry: registry_ref.clone(),
             ..sui_mocks::mock_nexus_objects()
         };
 
