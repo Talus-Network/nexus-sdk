@@ -17,6 +17,21 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
                 "unlocked_balance": vault.data.available_balance.saturating_sub(vault.data.locked_amount)
             }))
         }
+        VaultCommand::Deposit {
+            alias,
+            agent_id,
+            amount,
+            gas,
+        } => {
+            deposit_agent_vault(
+                alias,
+                agent_id,
+                amount,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }
 

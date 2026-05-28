@@ -89,7 +89,6 @@ mod tests {
             },
             shared_objects: vec![],
             interface_revision: InterfaceRevision(1),
-            active_for_new_executions: true,
         };
         TapPublishArtifact::from_config(
             &config,

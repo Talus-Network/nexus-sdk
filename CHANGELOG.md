@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tool register on-chain --workflow-authorization-cap-first` flag to route registration through the cap-gated `register_on_chain_tool_with_workflow_authorization_cap` entrypoint.
 - `tool register on-chain --reuse-if-exists` flag for idempotent registration: when the derived `Tool` and `ToolGas` already exist for the FQN, the existing refs are decoded and returned with `reused: true` and no transaction is submitted.
 - `tool register on-chain` JSON output now includes the locally-derived `tool_id` and `tool_gas_id`, the `reused` flag, the `workflow_authorization_cap_first` flag, and the transaction checkpoint, so callers do not need to derive these values themselves.
+- `tap vault deposit` command that funds an agent's payment vault by splitting MIST from the signer's gas coin, taking the agent via `--agent-id` (or local `--alias`) and `--amount`.
+- `tap schedule-address-funded` command that creates an address-funded scheduled TAP task tied to an existing scheduler task, attaches the `TapScheduledTaskLink`, and shares the resulting `ScheduledSkillTask` in one transaction.
+- `tap schedule-from-vault` command that creates an agent-vault-funded scheduled TAP task tied to an existing scheduler task and attaches the `TapScheduledTaskLink` in one transaction.
+- `tap schedule-default-address-funded` command that creates an address-funded scheduled TAP task for the registry-owned default DAG executor and attaches the `TapScheduledTaskLink` in one transaction.
 
 #### Changed
 
@@ -37,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `TapActions::wait_for_payment_settled` poll helper with `WaitForPaymentResult` (final payment state, `terminal`, `elapsed_ms`, `timed_out`) and a `payment_is_terminal` free function that recognizes `accomplished`/`refunded`/non-`Pending` `TapExecutionPaymentFinalState`.
 - `ToolActions::inspect_on_chain_tool` that derives `Tool`/`ToolGas` ids from an FQN, probes both on-chain, and decodes the on-chain `Tool` into an `OnChainToolInspection` exposing `package_address`/`module_name`/`witness_id` plus the full `Tool` record. Mixed-existence states (one present, the other missing) surface as a clear `NexusError::Configuration`.
 - `ToolActions::register_on_chain_or_reuse` idempotent helper backed by `RegisterOnChainToolParams`/`RegisterOnChainToolResult`, routing through `register_on_chain_for_self_with_workflow_authorization_cap`, extracting `OwnerCap<OverTool>` and `OwnerCap<OverGas>` from the response by struct type and generic parameter, and returning `reused: true` with decoded refs when the tool already exists.
+- `TapActions::deposit_agent_payment_vault` high-level helper that fetches the agent object reference, splits the deposit coin from gas, and submits the `tap::deposit_agent_payment_vault` call. `DepositAgentVaultParams` and `DepositAgentVaultResult` expose `agent_id` and `amount` for callers.
 - `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
 - SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
 - `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.

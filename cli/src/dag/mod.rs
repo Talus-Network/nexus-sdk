@@ -115,7 +115,7 @@ pub(crate) enum DagCommand {
     },
 
     #[command(
-        about = "Inspect a Nexus DAG execution process based on the provided object ID and execution digest."
+        about = "Inspect a Nexus DAG execution process based on the provided object ID and execution checkpoint."
     )]
     InspectExecution {
         /// The object ID of the Nexus DAGExecution object.

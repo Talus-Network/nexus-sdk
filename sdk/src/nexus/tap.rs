@@ -237,6 +237,22 @@ pub struct WaitForPaymentResult {
     pub timed_out: bool,
 }
 
+/// Parameters for [`TapActions::deposit_agent_payment_vault`].
+#[derive(Clone, Debug)]
+pub struct DepositAgentVaultParams {
+    pub agent_id: AgentId,
+    pub amount: u64,
+}
+
+/// Result returned by [`TapActions::deposit_agent_payment_vault`].
+#[derive(Clone, Debug)]
+pub struct DepositAgentVaultResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub agent_id: AgentId,
+    pub amount: u64,
+}
+
 /// Whether a [`TapExecutionPayment`] has reached an irrecoverable final state.
 pub fn payment_is_terminal(payment: &TapExecutionPayment) -> bool {
     if payment.accomplished || payment.refunded {
@@ -546,6 +562,51 @@ impl TapActions {
             },
             config_digest,
             config_digest_input,
+        })
+    }
+
+    /// Deposit `amount` MIST into the agent's payment vault, splitting from
+    /// the transaction gas coin. The vault is shared so any address can
+    /// deposit; withdrawal stays gated on the agent owner or operator.
+    pub async fn deposit_agent_payment_vault(
+        &self,
+        params: DepositAgentVaultParams,
+    ) -> Result<DepositAgentVaultResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let agent_object = self
+            .client
+            .crawler()
+            .get_object_metadata(params.agent_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let agent = tx.input(sui::tx::Input::shared(
+            *agent_object.object_id(),
+            agent_object.version(),
+            true,
+        ));
+        let amount_input =
+            crate::idents::pure_arg(&params.amount).map_err(NexusError::TransactionBuilding)?;
+        let amount_arg = tx.input(amount_input);
+        let deposit_coin = tx
+            .split_coins(tx.gas(), vec![amount_arg])
+            .nested(0)
+            .ok_or_else(|| {
+                NexusError::TransactionBuilding(anyhow::anyhow!(
+                    "failed to split agent vault deposit coin"
+                ))
+            })?;
+        tap_tx::deposit_agent_payment_vault(&mut tx, nexus_objects, agent, deposit_coin);
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(DepositAgentVaultResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            agent_id: params.agent_id,
+            amount: params.amount,
         })
     }
 
@@ -2501,6 +2562,80 @@ mod tests {
         assert_eq!(result.scheduled_task_id, scheduled_task_id);
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
+        assert_eq!(result.tx_digest, digest);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_deposit_agent_payment_vault_calls_tap_deposit() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            7,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        let expected_interface_pkg_id = nexus_objects.interface_pkg_id;
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![],
+            move |request| {
+                let transaction = request.transaction.as_ref().expect("submitted transaction");
+                let transaction = sui::types::Transaction::try_from(transaction)
+                    .expect("submitted transaction decodes");
+                let sui::types::TransactionKind::ProgrammableTransaction(
+                    sui::types::ProgrammableTransaction { commands, .. },
+                ) = &transaction.kind
+                else {
+                    panic!("expected programmable transaction");
+                };
+                assert!(commands.iter().any(|command| matches!(
+                    command,
+                    sui::types::Command::MoveCall(call)
+                        if call.package == expected_interface_pkg_id
+                            && call.function
+                                == crate::idents::tap::TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name
+                )));
+            },
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .deposit_agent_payment_vault(DepositAgentVaultParams {
+                agent_id: *agent_ref.object_id(),
+                amount: 1500,
+            })
+            .await
+            .expect("vault deposit succeeds");
+
+        assert_eq!(result.agent_id, *agent_ref.object_id());
+        assert_eq!(result.amount, 1500);
         assert_eq!(result.tx_digest, digest);
     }
 

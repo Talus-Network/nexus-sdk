@@ -14,8 +14,10 @@ mod tap_registry;
 mod tap_requirements;
 mod tap_scaffold;
 mod tap_schedule;
+mod tap_schedule_address_funded;
 mod tap_validate_skill;
 mod tap_vault;
+mod tap_vault_deposit;
 
 use {
     crate::{
@@ -84,8 +86,14 @@ use {
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
     tap_schedule::schedule_skill_execution,
+    tap_schedule_address_funded::{
+        schedule_address_funded,
+        schedule_default_address_funded,
+        schedule_from_vault,
+    },
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
+    tap_vault_deposit::deposit_agent_vault,
     tokio::{
         fs::{create_dir_all, File},
         io::AsyncWriteExt,
@@ -303,6 +311,206 @@ pub(crate) enum TapCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+    #[command(
+        about = "Schedule a standard TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
+    )]
+    ScheduleAddressFunded {
+        #[arg(
+            long = "scheduler-task-id",
+            help = "Scheduler task object ID to attach the scheduled TAP task to.",
+            value_name = "OBJECT_ID"
+        )]
+        scheduler_task_id: sui::types::Address,
+        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
+        agent_id: sui::types::Address,
+        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
+        skill_id: u64,
+        #[arg(
+            long = "prepay-amount",
+            help = "MIST to prepay into the scheduled task.",
+            value_name = "AMOUNT"
+        )]
+        prepay_amount: u64,
+        #[arg(
+            long = "refund-recipient",
+            help = "Address that receives unspent prepayment. Defaults to the signer.",
+            value_name = "ADDRESS"
+        )]
+        refund_recipient: Option<sui::types::Address>,
+        #[arg(
+            long = "occurrence-budget",
+            help = "Per-occurrence budget in MIST.",
+            value_name = "AMOUNT"
+        )]
+        occurrence_budget: u64,
+        #[arg(
+            long = "refund-mode",
+            help = "Standard TAP payment refund mode byte.",
+            default_value_t = 0u8,
+            value_name = "MODE"
+        )]
+        refund_mode: u8,
+        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
+        recurrence_kind: String,
+        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
+        min_interval_ms: u64,
+        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
+        max_occurrences: u64,
+        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
+        allow_recursive: bool,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Refill policy bytes as hex.",
+            value_name = "HEX"
+        )]
+        refill_policy_hex: String,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Schedule entries hash bytes as hex.",
+            value_name = "HEX"
+        )]
+        schedule_entries_commitment_hex: String,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "First scheduled time offset in milliseconds."
+        )]
+        first_after_ms: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(
+        about = "Schedule a standard TAP skill, prepaid from the agent's vault, and attach it to an existing scheduler task."
+    )]
+    ScheduleFromVault {
+        #[arg(
+            long = "scheduler-task-id",
+            help = "Scheduler task object ID to attach the scheduled TAP task to.",
+            value_name = "OBJECT_ID"
+        )]
+        scheduler_task_id: sui::types::Address,
+        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
+        agent_id: sui::types::Address,
+        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
+        skill_id: u64,
+        #[arg(
+            long = "prepay-amount",
+            help = "MIST drawn from the agent vault per occurrence prepayment.",
+            value_name = "AMOUNT"
+        )]
+        prepay_amount: u64,
+        #[arg(
+            long = "occurrence-budget",
+            help = "Per-occurrence budget in MIST.",
+            value_name = "AMOUNT"
+        )]
+        occurrence_budget: u64,
+        #[arg(
+            long = "refund-mode",
+            help = "Standard TAP payment refund mode byte.",
+            default_value_t = 0u8,
+            value_name = "MODE"
+        )]
+        refund_mode: u8,
+        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
+        recurrence_kind: String,
+        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
+        min_interval_ms: u64,
+        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
+        max_occurrences: u64,
+        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
+        allow_recursive: bool,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Refill policy bytes as hex.",
+            value_name = "HEX"
+        )]
+        refill_policy_hex: String,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Schedule entries hash bytes as hex.",
+            value_name = "HEX"
+        )]
+        schedule_entries_commitment_hex: String,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "First scheduled time offset in milliseconds."
+        )]
+        first_after_ms: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(
+        about = "Schedule the default DAG executor's TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
+    )]
+    ScheduleDefaultAddressFunded {
+        #[arg(
+            long = "scheduler-task-id",
+            help = "Scheduler task object ID to attach the scheduled TAP task to.",
+            value_name = "OBJECT_ID"
+        )]
+        scheduler_task_id: sui::types::Address,
+        #[arg(
+            long = "prepay-amount",
+            help = "MIST to prepay into the scheduled task.",
+            value_name = "AMOUNT"
+        )]
+        prepay_amount: u64,
+        #[arg(
+            long = "refund-recipient",
+            help = "Address that receives unspent prepayment. Defaults to the signer.",
+            value_name = "ADDRESS"
+        )]
+        refund_recipient: Option<sui::types::Address>,
+        #[arg(
+            long = "occurrence-budget",
+            help = "Per-occurrence budget in MIST.",
+            value_name = "AMOUNT"
+        )]
+        occurrence_budget: u64,
+        #[arg(
+            long = "refund-mode",
+            help = "Standard TAP payment refund mode byte.",
+            default_value_t = 0u8,
+            value_name = "MODE"
+        )]
+        refund_mode: u8,
+        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
+        recurrence_kind: String,
+        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
+        min_interval_ms: u64,
+        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
+        max_occurrences: u64,
+        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
+        allow_recursive: bool,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Refill policy bytes as hex.",
+            value_name = "HEX"
+        )]
+        refill_policy_hex: String,
+        #[arg(
+            long,
+            default_value = "",
+            help = "Schedule entries hash bytes as hex.",
+            value_name = "HEX"
+        )]
+        schedule_entries_commitment_hex: String,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "First scheduled time offset in milliseconds."
+        )]
+        first_after_ms: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
     #[command(about = "Schedule a standard TAP skill execution.")]
     Schedule {
         #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
@@ -375,6 +583,22 @@ pub(crate) enum VaultCommand {
         alias: Option<String>,
         #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
         agent_id: Option<sui::types::Address>,
+    },
+    #[command(about = "Deposit MIST into a Talus agent payment vault.")]
+    Deposit {
+        #[arg(
+            long,
+            help = "Local agent alias.",
+            value_name = "NAME",
+            conflicts_with = "agent_id"
+        )]
+        alias: Option<String>,
+        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
+        agent_id: Option<sui::types::Address>,
+        #[arg(long, help = "Amount in MIST to deposit.", value_name = "AMOUNT")]
+        amount: u64,
+        #[command(flatten)]
+        gas: GasArgs,
     },
 }
 
@@ -565,6 +789,111 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 min_interval_ms,
                 max_occurrences,
                 allow_recursive,
+                first_after_ms,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+        TapCommand::ScheduleAddressFunded {
+            scheduler_task_id,
+            agent_id,
+            skill_id,
+            prepay_amount,
+            refund_recipient,
+            occurrence_budget,
+            refund_mode,
+            recurrence_kind,
+            min_interval_ms,
+            max_occurrences,
+            allow_recursive,
+            refill_policy_hex,
+            schedule_entries_commitment_hex,
+            first_after_ms,
+            gas,
+        } => {
+            schedule_address_funded(
+                scheduler_task_id,
+                agent_id,
+                skill_id,
+                prepay_amount,
+                refund_recipient,
+                occurrence_budget,
+                refund_mode,
+                recurrence_kind,
+                min_interval_ms,
+                max_occurrences,
+                allow_recursive,
+                refill_policy_hex,
+                schedule_entries_commitment_hex,
+                first_after_ms,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+        TapCommand::ScheduleFromVault {
+            scheduler_task_id,
+            agent_id,
+            skill_id,
+            prepay_amount,
+            occurrence_budget,
+            refund_mode,
+            recurrence_kind,
+            min_interval_ms,
+            max_occurrences,
+            allow_recursive,
+            refill_policy_hex,
+            schedule_entries_commitment_hex,
+            first_after_ms,
+            gas,
+        } => {
+            schedule_from_vault(
+                scheduler_task_id,
+                agent_id,
+                skill_id,
+                prepay_amount,
+                occurrence_budget,
+                refund_mode,
+                recurrence_kind,
+                min_interval_ms,
+                max_occurrences,
+                allow_recursive,
+                refill_policy_hex,
+                schedule_entries_commitment_hex,
+                first_after_ms,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+        TapCommand::ScheduleDefaultAddressFunded {
+            scheduler_task_id,
+            prepay_amount,
+            refund_recipient,
+            occurrence_budget,
+            refund_mode,
+            recurrence_kind,
+            min_interval_ms,
+            max_occurrences,
+            allow_recursive,
+            refill_policy_hex,
+            schedule_entries_commitment_hex,
+            first_after_ms,
+            gas,
+        } => {
+            schedule_default_address_funded(
+                scheduler_task_id,
+                prepay_amount,
+                refund_recipient,
+                occurrence_budget,
+                refund_mode,
+                recurrence_kind,
+                min_interval_ms,
+                max_occurrences,
+                allow_recursive,
+                refill_policy_hex,
+                schedule_entries_commitment_hex,
                 first_after_ms,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
@@ -848,6 +1177,84 @@ mod tests {
         .await
         .expect_err("schedule dispatch reaches missing RPC");
         assert!(schedule_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let vault_deposit_error = handle(TapCommand::Vault(VaultCommand::Deposit {
+            alias: None,
+            agent_id: Some(sui::types::Address::from_static("0xa")),
+            amount: 1000,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("vault deposit dispatch reaches missing RPC");
+        assert!(vault_deposit_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let schedule_address_funded_error = handle(TapCommand::ScheduleAddressFunded {
+            scheduler_task_id: sui::types::Address::from_static("0x66"),
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            prepay_amount: 100,
+            refund_recipient: None,
+            occurrence_budget: 100,
+            refund_mode: 0,
+            recurrence_kind: "once".to_string(),
+            min_interval_ms: 0,
+            max_occurrences: 1,
+            allow_recursive: false,
+            refill_policy_hex: String::new(),
+            schedule_entries_commitment_hex: String::new(),
+            first_after_ms: 0,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("schedule-address-funded dispatch reaches missing RPC");
+        assert!(schedule_address_funded_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let schedule_from_vault_error = handle(TapCommand::ScheduleFromVault {
+            scheduler_task_id: sui::types::Address::from_static("0x66"),
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            prepay_amount: 100,
+            occurrence_budget: 100,
+            refund_mode: 0,
+            recurrence_kind: "once".to_string(),
+            min_interval_ms: 0,
+            max_occurrences: 1,
+            allow_recursive: false,
+            refill_policy_hex: String::new(),
+            schedule_entries_commitment_hex: String::new(),
+            first_after_ms: 0,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("schedule-from-vault dispatch reaches missing RPC");
+        assert!(schedule_from_vault_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let schedule_default_error = handle(TapCommand::ScheduleDefaultAddressFunded {
+            scheduler_task_id: sui::types::Address::from_static("0x66"),
+            prepay_amount: 100,
+            refund_recipient: None,
+            occurrence_budget: 100,
+            refund_mode: 0,
+            recurrence_kind: "once".to_string(),
+            min_interval_ms: 0,
+            max_occurrences: 1,
+            allow_recursive: false,
+            refill_policy_hex: String::new(),
+            schedule_entries_commitment_hex: String::new(),
+            first_after_ms: 0,
+            gas: gas_args(),
+        })
+        .await
+        .expect_err("schedule-default-address-funded dispatch reaches missing RPC");
+        assert!(schedule_default_error
             .to_string()
             .contains("Sui RPC URL is not configured"));
     }
