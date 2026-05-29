@@ -108,6 +108,32 @@ pub struct AgentDagExecuteInput {
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
+    /// Cap-gated vertex bindings. For each entry the SDK mints a
+    /// `WorkflowVertexAuthorizationGrant` inside the execute PTB and calls
+    /// `bind_target.package::bind_target.module::bind_target.function(
+    /// state_object, vertex_bytes, grant_id)` so the tap_package can lock state
+    /// to the freshly-minted grant. The skill must already be registered
+    /// cap-gated (the named tool's `workflow_authorization_cap_first` flag).
+    pub grant_binds: Vec<VertexGrantBind>,
+}
+
+/// One per cap-gated vertex: mint a grant and call a tap-package Move function
+/// to record the grant id in shared state. The Move function must have signature
+/// `fn(state: &mut TutorialState, vertex_bytes: vector<u8>, grant_id: address)`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VertexGrantBind {
+    pub vertex: String,
+    pub state_object: sui::types::ObjectReference,
+    pub bind_target: MoveCallTarget,
+}
+
+/// Triple identifying a Move entry function. Used by [`VertexGrantBind`] to
+/// describe the state-bind hook.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MoveCallTarget {
+    pub package: sui::types::Address,
+    pub module: sui::types::Identifier,
+    pub function: sui::types::Identifier,
 }
 
 fn tap_authorization_grant_ref_type(objects: &NexusObjects) -> sui::types::TypeTag {
@@ -2547,6 +2573,41 @@ fn execute_agent_dag_internal(
     crate::transactions::gas::snapshot_dag_tool_costs(tx, objects, gas_service, execution, dag);
     lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
 
+    if !agent_execution.grant_binds.is_empty() {
+        let agent_arg = agent.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cap-gated grant binding is only supported on agent-owned skills; the default executor flow has no Agent argument to mint a grant against",
+            )
+        })?;
+        for bind in &agent_execution.grant_binds {
+            let grant_id = create_vertex_authorization_grant(
+                tx,
+                objects,
+                dag,
+                execution,
+                tool_registry,
+                agent_arg,
+                agent_execution.skill_id,
+                &RuntimeVertex::plain(&bind.vertex),
+            )?;
+            let state_arg = tx.input(sui::tx::Input::shared(
+                *bind.state_object.object_id(),
+                bind.state_object.version(),
+                true,
+            ));
+            let vertex_bytes = tx.input(pure_arg(&bind.vertex.as_bytes().to_vec())?);
+            tx.move_call(
+                sui::tx::Function::new(
+                    bind.bind_target.package,
+                    bind.bind_target.module.clone(),
+                    bind.bind_target.function.clone(),
+                    vec![],
+                ),
+                vec![state_arg, vertex_bytes, grant_id],
+            );
+        }
+    }
+
     let leader_registry = tx.input(sui::tx::Input::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
@@ -4015,6 +4076,7 @@ mod tests {
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
+            grant_binds: Vec::new(),
         };
 
         execute_agent_dag(
@@ -4161,6 +4223,7 @@ mod tests {
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: vec![entry.clone()],
+            grant_binds: Vec::new(),
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -4236,6 +4299,7 @@ mod tests {
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
+            grant_binds: Vec::new(),
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -4330,6 +4394,7 @@ mod tests {
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
+            grant_binds: Vec::new(),
         };
         execute_agent_dag(
             &mut tx,

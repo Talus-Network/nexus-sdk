@@ -79,6 +79,13 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
     };
+    pub const REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: AGENT_REGISTRY_MODULE,
+            name: sui::types::Identifier::from_static(
+                "register_skill_with_vertex_authorization_schema",
+            ),
+        };
     pub const SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: AGENT_REGISTRY_MODULE,

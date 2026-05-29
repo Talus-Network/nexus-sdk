@@ -308,6 +308,17 @@ pub(crate) enum TapCommand {
             value_name = "HEX"
         )]
         authorization_plan_commitment_hex: Option<String>,
+        #[arg(
+            long = "grant-bind",
+            help = "Cap-gated vertex grant binding. Repeat once per cap-gated vertex. \
+                    Format: VERTEX:STATE_OBJECT_ID:PACKAGE::MODULE::FUNCTION \
+                    (e.g. transfer_vertex:0xaa..:0xbb..::tutorial_transfer::bind_pending_grant). \
+                    The execute PTB mints a WorkflowVertexAuthorizationGrant for VERTEX \
+                    and calls PACKAGE::MODULE::FUNCTION(state, vertex_bytes, grant_id) so the \
+                    tap_package can lock state to that grant before the leader dispatches the walk.",
+            value_name = "VERTEX:STATE:PKG::MOD::FN"
+        )]
+        grant_bind: Vec<String>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -748,6 +759,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             payment_max_budget,
             payment_refund_mode,
             authorization_plan_commitment_hex,
+            grant_bind,
             gas,
         } => {
             execute_agent_dag_skill(
@@ -761,6 +773,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 payment_max_budget,
                 payment_refund_mode,
                 authorization_plan_commitment_hex,
+                grant_bind,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -1153,6 +1166,7 @@ mod tests {
             payment_max_budget: 0,
             payment_refund_mode: 0,
             authorization_plan_commitment_hex: None,
+            grant_bind: Vec::new(),
             gas: gas_args(),
         })
         .await

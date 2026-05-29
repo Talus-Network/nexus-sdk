@@ -427,26 +427,54 @@ impl TapActions {
             true,
         ));
 
-        tap_tx::register_skill(
-            &mut tx,
-            nexus_objects,
-            registry,
-            agent,
-            artifact.dag_id,
-            artifact.requirements.workflow_commitment.clone(),
-            artifact.requirements.input_schema_commitment.clone(),
-            artifact.requirements.metadata_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
-            artifact.requirements.schedule_policy.clone(),
-            artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            artifact.shared_objects.clone(),
-            config_digest,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
+        if artifact
+            .requirements
+            .vertex_authorization_schema
+            .is_default()
+        {
+            tap_tx::register_skill(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                artifact.shared_objects.clone(),
+                config_digest,
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        } else {
+            tap_tx::register_skill_with_vertex_authorization_schema(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                &artifact.requirements.vertex_authorization_schema,
+                artifact.shared_objects.clone(),
+                config_digest,
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        }
 
         let response = self.submit_tap_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
@@ -998,26 +1026,54 @@ impl TapActions {
         let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
             .map_err(NexusError::TransactionBuilding)?;
 
-        tap_tx::register_skill(
-            &mut tx,
-            nexus_objects,
-            registry,
-            agent,
-            artifact.dag_id,
-            artifact.requirements.workflow_commitment.clone(),
-            artifact.requirements.input_schema_commitment.clone(),
-            artifact.requirements.metadata_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
-            artifact.requirements.schedule_policy.clone(),
-            artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            artifact.shared_objects.clone(),
-            config_digest.clone(),
-        )
-        .map_err(NexusError::TransactionBuilding)?;
+        if artifact
+            .requirements
+            .vertex_authorization_schema
+            .is_default()
+        {
+            tap_tx::register_skill(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                artifact.shared_objects.clone(),
+                config_digest.clone(),
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        } else {
+            tap_tx::register_skill_with_vertex_authorization_schema(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                &artifact.requirements.vertex_authorization_schema,
+                artifact.shared_objects.clone(),
+                config_digest.clone(),
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        }
 
         tx.move_call(
             sui::tx::Function::new(

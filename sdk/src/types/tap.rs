@@ -669,6 +669,18 @@ pub struct TapVertexAuthorizationSchema {
     pub requires_payment: bool,
 }
 
+impl TapVertexAuthorizationSchema {
+    /// True when the schema carries no fixed tools and does not require payment.
+    /// In that case, the chain's `register_skill` reconstructs the requirements
+    /// digest with this same default schema, so callers can use the simpler
+    /// register entrypoint. When this returns false, callers must route through
+    /// `register_skill_with_vertex_authorization_schema` so the chain sees the
+    /// real schema during digest validation.
+    pub fn is_default(&self) -> bool {
+        self.fixed_tools.is_empty() && !self.requires_payment
+    }
+}
+
 /// User-facing skill requirements fetched before dry-run or execution.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSkillRequirements {
@@ -1668,7 +1680,20 @@ impl TapPublishArtifact {
         tap_package_id: sui::types::Address,
     ) -> anyhow::Result<Self> {
         config.validate()?;
-        let digest_input = config.digest_input();
+        // Substitute the `0x0` sentinel in `fixed_tools.package_id` with the
+        // just-published `tap_package_id` so authors can declare self-referential
+        // on-chain tools without a chicken-and-egg with the package address.
+        let mut requirements = config.requirements.clone();
+        for tool in &mut requirements.vertex_authorization_schema.fixed_tools {
+            if tool.package_id == sui::types::Address::ZERO {
+                tool.package_id = tap_package_id;
+            }
+        }
+        let digest_input = TapConfigDigestInput {
+            interface_revision: config.interface_revision,
+            shared_objects: config.shared_objects.clone(),
+            requirements: requirements.clone(),
+        };
         let config_digest = digest_input.digest()?;
         let config_digest_hex = hex::encode(&config_digest);
 
@@ -1680,7 +1705,7 @@ impl TapPublishArtifact {
             config_digest,
             config_digest_hex,
             shared_objects: config.shared_objects.clone(),
-            requirements: config.requirements.clone(),
+            requirements,
         })
     }
 

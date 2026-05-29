@@ -6,11 +6,13 @@ use crate::{
         InterfaceRevision,
         NexusObjects,
         SkillId,
+        TapAuthorizedTool,
         TapPaymentPolicy,
         TapSchedulePolicy,
         TapScheduledAuthorizationGrantTemplate,
         TapScheduledOccurrenceFinalState,
         TapSharedObjectRef,
+        TapVertexAuthorizationSchema,
     },
 };
 
@@ -163,6 +165,116 @@ pub fn register_skill(
         tx,
         objects,
         AgentRegistry::REGISTER_SKILL,
+        args,
+    ))
+}
+
+/// Build a `tap::TapAuthorizedTool` Move value from a typed entry.
+pub fn authorized_tool_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool: &TapAuthorizedTool,
+) -> anyhow::Result<sui::types::Argument> {
+    let package_id = tx.input(pure_arg(&tool.package_id)?);
+    let module_name = move_std::Ascii::ascii_string_from_str(tx, tool.module.as_str())?;
+    let function_name = move_std::Ascii::ascii_string_from_str(tx, tool.function.as_str())?;
+    let operation_commitment = tx.input(pure_arg(&tool.operation_commitment)?);
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::AUTHORIZED_TOOL,
+        vec![package_id, module_name, function_name, operation_commitment],
+    ))
+}
+
+/// Build a `tap::TapVertexAuthorizationSchema` Move value with each `TapAuthorizedTool`
+/// individually constructed and pushed into the on-chain `vector`.
+pub fn vertex_authorization_schema_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    schema: &TapVertexAuthorizationSchema,
+) -> anyhow::Result<sui::types::Argument> {
+    let schema_commitment = tx.input(pure_arg(&schema.schema_commitment)?);
+    let authorized_tool_type =
+        crate::idents::tap::tap_authorized_tool_type(objects.interface_pkg_id);
+    let fixed_tools = tx.move_call(
+        sui::tx::Function::new(
+            move_std::PACKAGE_ID,
+            move_std::Vector::EMPTY.module,
+            move_std::Vector::EMPTY.name,
+            vec![authorized_tool_type.clone()],
+        ),
+        vec![],
+    );
+    // `vector::push_back` mutates by reference and returns nothing — keep the
+    // original `fixed_tools` Argument and drop the move-call result.
+    for tool in &schema.fixed_tools {
+        let tool_arg = authorized_tool_arg(tx, objects, tool)?;
+        tx.move_call(
+            sui::tx::Function::new(
+                move_std::PACKAGE_ID,
+                move_std::Vector::PUSH_BACK.module,
+                move_std::Vector::PUSH_BACK.name,
+                vec![authorized_tool_type.clone()],
+            ),
+            vec![fixed_tools, tool_arg],
+        );
+    }
+    let requires_payment = tx.input(pure_arg(&schema.requires_payment)?);
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::VERTEX_AUTHORIZATION_SCHEMA,
+        vec![schema_commitment, fixed_tools, requires_payment],
+    ))
+}
+
+/// Variant of `register_skill` that passes the full `TapVertexAuthorizationSchema`.
+/// Required when the skill is cap-gated (non-empty `fixed_tools` or
+/// `requires_payment = true`); the chain reconstructs the requirements digest with
+/// the schema baked in, so the simpler `register_skill` would fail the config
+/// digest assertion.
+#[allow(clippy::too_many_arguments)]
+pub fn register_skill_with_vertex_authorization_schema(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    dag_id: sui::types::Address,
+    workflow_commitment: Vec<u8>,
+    requirements_commitment: Vec<u8>,
+    metadata_commitment: Vec<u8>,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+    capability_schema_commitment: Vec<u8>,
+    vertex_authorization_schema: &TapVertexAuthorizationSchema,
+    shared_objects: Vec<TapSharedObjectRef>,
+    config_digest: Vec<u8>,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let shared_objects = shared_object_refs_arg(tx, objects, &shared_objects)?;
+    let vertex_authorization_schema =
+        vertex_authorization_schema_arg(tx, objects, vertex_authorization_schema)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&dag_id)?),
+        tx.input(pure_arg(&workflow_commitment)?),
+        tx.input(pure_arg(&requirements_commitment)?),
+        tx.input(pure_arg(&metadata_commitment)?),
+        payment_policy,
+        schedule_policy,
+        tx.input(pure_arg(&capability_schema_commitment)?),
+        vertex_authorization_schema,
+        shared_objects,
+        tx.input(pure_arg(&config_digest)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA,
         args,
     ))
 }

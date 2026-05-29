@@ -23,6 +23,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("announce_endpoint_revision"),
     };
+    pub const AUTHORIZED_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("authorized_tool"),
+    };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: STANDARD_TAP_MODULE,
@@ -193,6 +197,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("trigger_scheduled_skill_execution"),
     };
+    pub const VERTEX_AUTHORIZATION_SCHEMA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("vertex_authorization_schema"),
+    };
     /// Withdraw unlocked SUI from a standard TAP `AgentPaymentVault`.
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -237,6 +245,15 @@ pub fn scheduled_authorization_grant_template_type(
         package_id,
         STANDARD_TAP_MODULE,
         sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
+        vec![],
+    )))
+}
+
+pub fn tap_authorized_tool_type(package_id: sui::types::Address) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        package_id,
+        STANDARD_TAP_MODULE,
+        sui::types::Identifier::from_static("TapAuthorizedTool"),
         vec![],
     )))
 }
