@@ -34,7 +34,6 @@ use {
             TapEndpointKey,
             TapEndpointRecord,
             TapEndpointResolutionError,
-            TapEndpointRevision,
             TapExecutionPayment,
             TapExecutionPaymentFinalState,
             TapExecutionPaymentHistoryFieldKey,

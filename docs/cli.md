@@ -75,7 +75,7 @@ Registers an on-chain Nexus Tool that resolves to a Move package, module, and wi
 - `--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this for tools whose vertices must hold a `VertexAuthorizationCheckCap` at execution time (the standard TAP authorization-aware path).
 - `--reuse-if-exists` makes the command idempotent: if the derived `Tool` and `ToolGas` objects already exist on-chain for the given FQN, the registration transaction is skipped and the existing refs are decoded and returned with `reused: true`. The reuse path is useful for CI/CD pipelines and demo orchestration that may run multiple times against the same deployment.
 
-If both objects derived from the FQN exist *but their counterparts don't* (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
+If both objects derived from the FQN exist _but their counterparts don't_ (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
 
 The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest.
 
@@ -264,8 +264,8 @@ Execute a DAG with the provided `<OBJECT_ID>`. This command also accepts an entr
 
 The input `<DATA>` is a JSON string with the following structure:
 
-- The top-level object keys refer to the *entry vertex names*
-- Each top-level value is an object and its keys refer to the *input port names* of each vertex (this object can be empty if the vertex has no input ports)
+- The top-level object keys refer to the _entry vertex names_
+- Each top-level value is an object and its keys refer to the _input port names_ of each vertex (this object can be empty if the vertex has no input ports)
 - Values of the second-level object are the data that should be passed to each input port
 
 The `--inspect` argument automatically triggers `nexus dag inspect-execution` upon submitting the execution transaction.
