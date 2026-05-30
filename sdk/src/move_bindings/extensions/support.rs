@@ -104,10 +104,10 @@ mod tests {
     #[test]
     fn id_and_uid_helpers_return_addresses_and_display_id() {
         let id = id("0x123");
-        let uid = UID { id: id.clone() };
+        let uid = UID { id };
 
         assert_eq!(format!("{id}"), id.bytes.to_string());
-        assert_eq!(sui::types::Address::from(id.clone()), id.bytes);
+        assert_eq!(sui::types::Address::from(id), id.bytes);
         assert_eq!(sui::types::Address::from(uid), id.bytes);
     }
 

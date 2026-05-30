@@ -3,7 +3,6 @@
 use {
     anyhow::{anyhow, bail, Context, Result},
     std::{
-        collections::BTreeMap,
         env,
         fs,
         path::{Path, PathBuf},
@@ -28,6 +27,7 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
+const TALUS_PACKAGE: (&str, &str) = ("talus", "0xa6");
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
@@ -42,7 +42,18 @@ async fn main() -> Result<()> {
 }
 
 async fn regenerate(inputs: Inputs) -> Result<()> {
-    let package_ids = packages_from_objects_file(&inputs.objects_file)?;
+    let source_root = inputs.source_root.as_deref().or_else(|| {
+        inputs
+            .objects_file
+            .is_dir()
+            .then_some(inputs.objects_file.as_path())
+    });
+    let objects_file = if inputs.objects_file.is_dir() {
+        inputs.objects_file.join("bin/target/objects.localnet.toml")
+    } else {
+        inputs.objects_file.clone()
+    };
+    let package_ids = packages_from_objects_file(&objects_file)?;
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
     fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
 
@@ -54,7 +65,7 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
         let mut package = fetch_package(&mut client, package_id)
             .await
             .with_context(|| format!("fetch {name} ({package_id})"))?;
-        apply_source_names(&mut package, &name, inputs.source_root.as_deref())?;
+        apply_source_names(&mut package, &name, source_root)?;
         packages.push((name, package));
     }
 
@@ -95,16 +106,18 @@ fn canonicalize_sdk_ir(packages: &mut [(String, NormalizedPackage)]) {
     let mut replacements = Vec::new();
     for (name, package) in packages.iter_mut() {
         package.version = CANONICAL_PACKAGE_VERSION;
-        let Some((_, canonical_id)) = NEXUS_PACKAGES
+        let canonical_id = NEXUS_PACKAGES
             .iter()
             .find(|(package_name, _)| package_name == name)
-        else {
+            .map(|(_, canonical_id)| *canonical_id)
+            .or_else(|| (name == TALUS_PACKAGE.0).then_some(TALUS_PACKAGE.1));
+        let Some(canonical_id) = canonical_id else {
             continue;
         };
 
-        replacements.push((package.storage_id.clone(), (*canonical_id).to_string()));
+        replacements.push((package.storage_id.clone(), canonical_id.to_string()));
         if let Some(original_id) = &package.original_id {
-            replacements.push((original_id.clone(), (*canonical_id).to_string()));
+            replacements.push((original_id.clone(), canonical_id.to_string()));
         }
     }
 
@@ -159,30 +172,23 @@ fn packages_from_objects_file(path: &Path) -> Result<Vec<(String, Address)>> {
 }
 
 fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, Address)>> {
-    let mut ids = BTreeMap::new();
-    for line in text.lines() {
-        let line = line.split('#').next().unwrap_or("").trim();
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        let Some(package) = key.strip_suffix("_pkg_id") else {
-            continue;
-        };
-        let value = value.trim();
-        let Some(value) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) else {
-            bail!("{source}: {key} must be a TOML string");
-        };
-        ids.insert(package.to_string(), value.to_string());
-    }
+    let parsed: toml::Value = toml::from_str(text).with_context(|| format!("parse {source}"))?;
 
     let mut packages = Vec::new();
     for (package, _) in NEXUS_PACKAGES {
-        let id = ids
-            .get(*package)
-            .ok_or_else(|| anyhow!("{source} is missing {package}_pkg_id"))?;
+        let key = format!("{package}_pkg_id");
+        let id = parsed
+            .get(&key)
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| anyhow!("{source} is missing {key}"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
+    let talus_id = parsed
+        .get("us_token")
+        .and_then(|value| value.get("package_id"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| anyhow!("{source} is missing us_token.package_id"))?;
+    packages.push((TALUS_PACKAGE.0.to_string(), parse_address(talus_id)?));
     Ok(packages)
 }
 
@@ -203,6 +209,7 @@ fn write_package_ir(out_dir: &Path, name: &str, package: &NormalizedPackage) -> 
 mod tests {
     use {
         super::*,
+        std::collections::BTreeMap,
         sui_move_codegen::ir::{
             Datatype,
             DatatypeKind,
@@ -223,6 +230,8 @@ mod tests {
             r#"registry_pkg_id = "0x13""#,
             r#"workflow_pkg_id = "0x14""#,
             r#"scheduler_pkg_id = "0x15""#,
+            r#"[us_token]"#,
+            r#"package_id = "0x16""#,
         ]
         .join("\n");
         let packages = packages_from_objects_toml(&objects, "objects.localnet.toml")
@@ -236,8 +245,26 @@ mod tests {
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
+                ("talus".to_string(), Address::from_str("0x16").unwrap()),
             ]
         );
+    }
+
+    #[test]
+    fn rejects_objects_without_talus_package() {
+        let objects = [
+            r#"primitives_pkg_id = "0x11""#,
+            r#"interface_pkg_id = "0x12""#,
+            r#"registry_pkg_id = "0x13""#,
+            r#"workflow_pkg_id = "0x14""#,
+            r#"scheduler_pkg_id = "0x15""#,
+        ]
+        .join("\n");
+
+        let error = packages_from_objects_toml(&objects, "objects.toml")
+            .expect_err("Talus package metadata is required");
+
+        assert!(error.to_string().contains("us_token.package_id"));
     }
 
     #[test]
@@ -388,13 +415,16 @@ mod tests {
         let mut first = vec![
             ("primitives".to_string(), package("0x11", "0x10", "0x20")),
             ("interface".to_string(), package("0x21", "0x20", "0x10")),
+            ("talus".to_string(), package("0x31", "0x30", "0x10")),
         ];
         let mut second = vec![
             ("primitives".to_string(), package("0x111", "0x110", "0x220")),
             ("interface".to_string(), package("0x221", "0x220", "0x110")),
+            ("talus".to_string(), package("0x331", "0x330", "0x110")),
         ];
         second[0].1.version = 7;
         second[1].1.version = 9;
+        second[2].1.version = 11;
 
         canonicalize_sdk_ir(&mut first);
         canonicalize_sdk_ir(&mut second);
@@ -402,6 +432,8 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first[0].1.storage_id, "0xa1");
         assert_eq!(first[0].1.original_id.as_deref(), Some("0xa1"));
+        assert_eq!(first[2].1.storage_id, "0xa6");
+        assert_eq!(first[2].1.original_id.as_deref(), Some("0xa6"));
         assert_eq!(
             first[0].1.modules["m"].functions[0].parameters[0].ty,
             TypeRef::Datatype {

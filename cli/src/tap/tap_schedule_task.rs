@@ -92,7 +92,7 @@ pub(crate) async fn schedule_tap_task(
     let (dag_id, runtime_selected_dag) = resolve_scheduled_tap_dag_selection(
         agent_id,
         skill_id,
-        target.data.skill.dag_binding().clone(),
+        *target.data.skill.dag_binding(),
         selected_dag,
     )?;
 

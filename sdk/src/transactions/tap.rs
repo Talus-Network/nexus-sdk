@@ -133,7 +133,7 @@ pub(crate) fn register_skill_ptb(
             dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.payment_policy,
             artifact.requirements.schedule_policy.clone(),
             artifact.requirements.fixed_tools.clone(),
         )?;
@@ -197,7 +197,7 @@ pub(crate) fn update_skill_from_artifact_ptb(
             registry_for_policies,
             agent_for_policies,
             skill_id,
-            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.payment_policy,
             artifact.requirements.schedule_policy.clone(),
         )?;
         Ok(())
@@ -241,7 +241,7 @@ pub(crate) fn bind_agent_skill_ptb(
             dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.payment_policy,
             artifact.requirements.schedule_policy.clone(),
             artifact.requirements.fixed_tools.clone(),
         )?;
@@ -647,7 +647,7 @@ fn scheduled_vertex_authorization_template_arg(
 ) -> anyhow::Result<sui::types::Argument> {
     let skill_id = tx.arg(&template.skill_id)?;
     let vertex = tx.ascii_string(&template.vertex)?;
-    let recipient_id = tx.object_id(template.recipient_id.clone().into())?;
+    let recipient_id = tx.object_id(template.recipient_id.into())?;
     tx.call_target(
         authorization_binding::agent_vertex_authorization_template_target,
         vec![skill_id, vertex, recipient_id],

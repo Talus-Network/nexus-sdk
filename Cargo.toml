@@ -18,6 +18,9 @@ categories = [
 ]
 
 [workspace.dependencies]
+# starlark_map 0.13.0 derives Allocative for hashbrown 0.14 raw table types;
+# allocative 0.3.6 switched its hashbrown impls to 0.16, which breaks that derive.
+allocative = "=0.3.4"
 anyhow = "1.0.97"
 argon2 = "0.5"
 base64 = "0.21"
@@ -66,7 +69,7 @@ strum = "0.27"
 strum_macros = "0.27"
 tempfile = "3.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.52", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
 tokio-stream = "0.1.17"
 tokio-retry = "0.3.2"
 tokio-util = "0.7.18"

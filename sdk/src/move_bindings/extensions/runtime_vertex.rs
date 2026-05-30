@@ -8,7 +8,7 @@
 
 use crate::move_bindings::{
     interface::graph::{RuntimeVertex, Vertex},
-    move_std::{ascii::String as MoveString, type_name::TypeName},
+    move_std::type_name::TypeName,
 };
 
 impl RuntimeVertex {
@@ -66,16 +66,14 @@ fn vertex_from_str(vertex: &str) -> Vertex {
 
 impl From<TypeName> for Vertex {
     fn from(value: TypeName) -> Self {
-        Self {
-            name: MoveString::from(value.name),
-        }
+        Self { name: value.name }
     }
 }
 
 impl From<&TypeName> for Vertex {
     fn from(value: &TypeName) -> Self {
         Self {
-            name: MoveString::from(value.name.clone()),
+            name: value.name.clone(),
         }
     }
 }

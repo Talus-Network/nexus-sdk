@@ -1,5 +1,6 @@
 mod dag;
 mod nexus_objects;
+mod priority_fee;
 mod secret;
 mod secret_value;
 mod tap;
@@ -9,7 +10,8 @@ mod workflow_models;
 
 pub use {
     dag::*,
-    nexus_objects::NexusObjects,
+    nexus_objects::{NexusObjects, UsTokenConfig},
+    priority_fee::{PriorityFeeSuiDrainQuote, PriorityFeeWithdrawalQuote},
     secret::Secret,
     secret_value::SecretValue,
     tap::*,

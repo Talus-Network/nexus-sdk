@@ -34,26 +34,33 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                 sui::types::Address::from_static("0x2"),
                 sui::types::Address::from_static("0x2"),
                 || {
-                    primitives::with_packages(
-                        objects.primitives_pkg_id,
-                        objects.primitives_pkg_id,
+                    talus::with_packages(
+                        objects.us_token.package_id,
+                        objects.us_token.package_id,
                         || {
-                            interface::with_packages(
-                                objects.interface_pkg_id,
-                                objects.interface_pkg_id,
+                            primitives::with_packages(
+                                objects.primitives_pkg_id,
+                                objects.primitives_pkg_id,
                                 || {
-                                    registry::with_packages(
-                                        objects.registry_pkg_id,
-                                        objects.registry_pkg_id,
+                                    interface::with_packages(
+                                        objects.interface_pkg_id,
+                                        objects.interface_pkg_id,
                                         || {
-                                            workflow::with_packages(
-                                                objects.workflow_pkg_id,
-                                                objects.workflow_type_origin_pkg_id(),
+                                            registry::with_packages(
+                                                objects.registry_pkg_id,
+                                                objects.registry_pkg_id,
                                                 || {
-                                                    scheduler::with_packages(
-                                                        objects.scheduler_pkg_id,
-                                                        objects.scheduler_type_origin_pkg_id(),
-                                                        f,
+                                                    workflow::with_packages(
+                                                        objects.workflow_pkg_id,
+                                                        objects.workflow_type_origin_pkg_id(),
+                                                        || {
+                                                            scheduler::with_packages(
+                                                                objects.scheduler_pkg_id,
+                                                                objects
+                                                                    .scheduler_type_origin_pkg_id(),
+                                                                f,
+                                                            )
+                                                        },
                                                     )
                                                 },
                                             )
@@ -299,6 +306,17 @@ pub mod sui_framework {
     include!(concat!(env!("OUT_DIR"), "/sui_framework_types.rs"));
 }
 
+pub mod talus {
+    #![allow(
+        clippy::all,
+        dead_code,
+        non_camel_case_types,
+        private_interfaces,
+        unused_imports
+    )]
+    include!(concat!(env!("OUT_DIR"), "/talus_types.rs"));
+}
+
 pub mod workflow {
     #![allow(
         clippy::all,
@@ -313,13 +331,19 @@ pub mod workflow {
 #[cfg(test)]
 mod tests {
     use {
-        super::{derive_walk_execution_event_task_id, interface::graph::RuntimeVertex, registry},
+        super::{
+            derive_walk_execution_event_task_id,
+            interface::graph::RuntimeVertex,
+            registry,
+            sui_move::MoveType,
+        },
         crate::sui,
     };
 
     #[test]
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;
+        let _ = super::talus::us::US::type_tag_static;
     }
 
     #[test]

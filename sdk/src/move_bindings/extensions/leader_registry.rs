@@ -54,7 +54,7 @@ impl LeaderRegistry {
         Self {
             id: crate::move_bindings::sui_framework::object::UID::new(id),
             unbonding_duration_ms: 0,
-            min_stake_mist: 0,
+            min_stake_us: 0,
             max_transaction_budget: 10_000_000_000,
             leaders: MoveVecSet { contents: vec![] },
             records: MoveTable::new(sui::types::Address::ZERO, 0),
@@ -147,7 +147,7 @@ mod tests {
         let original = LeaderRegistry {
             id: crate::move_bindings::sui_framework::object::UID::new(registry_id),
             unbonding_duration_ms: 5_000,
-            min_stake_mist: 1_000_000,
+            min_stake_us: 1_000_000,
             max_transaction_budget: 7_500_000_000,
             leaders: MoveVecSet {
                 contents: vec![

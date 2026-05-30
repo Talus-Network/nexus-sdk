@@ -824,7 +824,7 @@ pub(crate) fn extract_task_id(
         .events
         .iter()
         .find_map(|event| match &event.data {
-            NexusEventKind::ScheduledSkillExecutionCreated(e) => Some(e.task.clone().into()),
+            NexusEventKind::ScheduledSkillExecutionCreated(e) => Some(e.task.into()),
             _ => None,
         })
         .ok_or_else(|| {

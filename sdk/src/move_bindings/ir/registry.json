@@ -3618,9 +3618,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -3845,7 +3845,7 @@
                   "ty": "U64"
                 },
                 {
-                  "name": "min_stake_mist",
+                  "name": "min_stake_us",
                   "position": 2,
                   "ty": "U64"
                 },
@@ -5078,7 +5078,7 @@
         },
         {
           "name": "assert_leader_cap_matches_registry",
-          "visibility": "Private",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -6065,7 +6065,7 @@
           ]
         },
         {
-          "name": "min_stake_mist",
+          "name": "min_stake_us",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -6557,9 +6557,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -7057,9 +7057,9 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "sui",
-                        "name": "SUI"
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "US"
                       },
                       "type_arguments": []
                     }
@@ -7122,9 +7122,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -9689,13 +9689,8 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "accrued",
+                  "name": "share",
                   "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "withdrawn",
-                  "position": 1,
                   "ty": "U64"
                 }
               ]
@@ -9745,12 +9740,16 @@
                 {
                   "name": "leader_cap_id",
                   "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "charged_amount",
-                  "position": 2,
-                  "ty": "U64"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               ]
             }
@@ -9760,10 +9759,10 @@
           "type_name": {
             "address": "0xa3",
             "module": "priority_fee_vault",
-            "name": "PriorityFeeDepositedEvent"
+            "name": "PriorityFeeDepositEvent"
           },
           "module": "priority_fee_vault",
-          "name": "PriorityFeeDepositedEvent",
+          "name": "PriorityFeeDepositEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -9789,11 +9788,69 @@
                 {
                   "name": "leader_cap_id",
                   "position": 1,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
                   "name": "amount",
                   "position": 2,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "priority_fee_vault",
+            "name": "PriorityFeeSwapEvent"
+          },
+          "module": "priority_fee_vault",
+          "name": "PriorityFeeSwapEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "vault",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "us_in",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "us_refunded",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "sui_out",
+                  "position": 3,
                   "ty": "U64"
                 }
               ]
@@ -9830,7 +9887,7 @@
                   }
                 },
                 {
-                  "name": "balance",
+                  "name": "sui_balance",
                   "position": 1,
                   "ty": {
                     "Datatype": {
@@ -9855,8 +9912,43 @@
                   }
                 },
                 {
-                  "name": "leader_accounts",
+                  "name": "us_balance",
                   "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "balance",
+                        "name": "Balance"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "exchange_rate",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "total_share",
+                  "position": 4,
+                  "ty": "U64"
+                },
+                {
+                  "name": "leader_accounts",
+                  "position": 5,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -9865,7 +9957,16 @@
                         "name": "VecMap"
                       },
                       "type_arguments": [
-                        "Address",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        },
                         {
                           "Datatype": {
                             "type_name": {
@@ -9877,6 +9978,93 @@
                           }
                         }
                       ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "priority_fee_vault",
+            "name": "PriorityFeeVaultConfiguredEvent"
+          },
+          "module": "priority_fee_vault",
+          "name": "PriorityFeeVaultConfiguredEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "vault",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "exchange_rate",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "priority_fee_vault",
+            "name": "PriorityFeeVaultOwnerCap"
+          },
+          "module": "priority_fee_vault",
+          "name": "PriorityFeeVaultOwnerCap",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "vault",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
                     }
                   }
                 }
@@ -9917,11 +10105,30 @@
                 {
                   "name": "leader_cap_id",
                   "position": 1,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
-                  "name": "amount",
+                  "name": "share_to_withdraw",
                   "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "us_out",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "us_refunded",
+                  "position": 4,
                   "ty": "U64"
                 }
               ]
@@ -9956,10 +10163,68 @@
             },
             {
               "name": "leader_cap_id",
-              "ty": "Address"
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "amount",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "configure",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVaultOwnerCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "exchange_rate",
               "ty": "U64"
             }
           ],
@@ -10067,7 +10332,16 @@
             },
             {
               "name": "leader_cap_id",
-              "ty": "Address"
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "amount",
@@ -10101,6 +10375,35 @@
           "return_types": []
         },
         {
+          "name": "exchange_rate",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "leader_account",
           "visibility": "Public",
           "is_entry": false,
@@ -10126,12 +10429,19 @@
             },
             {
               "name": "leader_cap_id",
-              "ty": "Address"
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             }
           ],
           "return_types": [
-            "U64",
-            "U64",
             "U64"
           ]
         },
@@ -10170,6 +10480,16 @@
                 },
                 "type_arguments": []
               }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa3",
+                  "module": "priority_fee_vault",
+                  "name": "PriorityFeeVaultOwnerCap"
+                },
+                "type_arguments": []
+              }
             }
           ]
         },
@@ -10205,11 +10525,16 @@
             },
             {
               "name": "leader_cap_id",
-              "ty": "Address"
-            },
-            {
-              "name": "charged_amount",
-              "ty": "U64"
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             }
           ],
           "return_types": [
@@ -10223,6 +10548,39 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "quote_swap_us_for_sui",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "us_in",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -10248,8 +10606,37 @@
           "return_types": []
         },
         {
-          "name": "withdraw",
-          "visibility": "Private",
+          "name": "sui_balance",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "swap_us_for_sui",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -10272,20 +10659,31 @@
               }
             },
             {
-              "name": "leader_cap_id",
+              "name": "input",
               "ty": {
                 "Datatype": {
                   "type_name": {
                     "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
+                    "module": "coin",
+                    "name": "Coin"
                   },
-                  "type_arguments": []
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa6",
+                          "module": "us",
+                          "name": "US"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
                 }
               }
             },
             {
-              "name": "amount",
+              "name": "min_sui_out",
               "ty": "U64"
             },
             {
@@ -10328,7 +10726,86 @@
                   }
                 ]
               }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "coin",
+                  "name": "Coin"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "US"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
             }
+          ]
+        },
+        {
+          "name": "total_share",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "us_balance",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -10403,7 +10880,7 @@
               }
             },
             {
-              "name": "amount",
+              "name": "share_to_withdraw",
               "ty": "U64"
             },
             {
@@ -10437,9 +10914,9 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "sui",
-                        "name": "SUI"
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "US"
                       },
                       "type_arguments": []
                     }
@@ -11035,9 +11512,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -11443,8 +11920,8 @@
                   }
                 },
                 {
-                  "name": "mist_collateral_to_lock",
-                  "position": 7,
+                  "name": "us_collateral_to_lock",
+                  "position": 5,
                   "ty": "U64"
                 },
                 {
@@ -11912,9 +12389,9 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "sui",
-                        "name": "SUI"
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "US"
                       },
                       "type_arguments": []
                     }
@@ -12736,9 +13213,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -12925,9 +13402,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -13118,9 +13595,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -13307,9 +13784,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -13476,9 +13953,9 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
+                          "address": "0xa6",
+                          "module": "us",
+                          "name": "US"
                         },
                         "type_arguments": []
                       }
@@ -13649,9 +14126,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
                             },
                             "type_arguments": []
                           }
@@ -13811,7 +14288,114 @@
           "return_types": []
         },
         {
-          "name": "set_mist_collateral_to_lock",
+          "name": "set_off_chain_supported_verifier_methods",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "tool_registry",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "methods",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x1",
+                      "module": "ascii",
+                      "name": "String"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "set_us_collateral_to_lock",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -13864,7 +14448,7 @@
               }
             },
             {
-              "name": "new_mist_collateral_to_lock",
+              "name": "new_us_collateral_to_lock",
               "ty": "U64"
             }
           ],
@@ -14076,9 +14660,9 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "sui",
-                        "name": "SUI"
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "US"
                       },
                       "type_arguments": []
                     }

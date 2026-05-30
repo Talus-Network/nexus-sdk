@@ -87,9 +87,9 @@ impl KeyBinding {
         Self {
             id: crate::move_bindings::sui_framework::object::UID::new(id),
             identity,
-            description: MoveOption::from_option(description).into(),
+            description: MoveOption::from_option(description),
             next_key_id,
-            active_key_id: MoveOption::from_option(active_key_id).into(),
+            active_key_id: MoveOption::from_option(active_key_id),
             keys,
         }
     }
@@ -111,7 +111,7 @@ impl KeyRecord {
             scheme,
             public_key,
             added_at_ms,
-            revoked_at_ms: MoveOption::from_option(revoked_at_ms).into(),
+            revoked_at_ms: MoveOption::from_option(revoked_at_ms),
         }
     }
 }

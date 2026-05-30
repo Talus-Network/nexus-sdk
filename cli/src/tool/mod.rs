@@ -168,7 +168,7 @@ pub(crate) enum RegisterCommand {
         #[arg(
             long = "collateral-coin",
             short = 'c',
-            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            help = "The US collateral coin object ID. First owned Coin<US> object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
         collateral_coin: Option<sui::types::Address>,
@@ -248,7 +248,7 @@ pub(crate) enum RegisterCommand {
         #[arg(
             long = "collateral-coin",
             short = 'c',
-            help = "The collateral coin object ID. Second coin object is chosen if not present.",
+            help = "The US collateral coin object ID. First owned Coin<US> object is chosen if not present.",
             value_name = "OBJECT_ID"
         )]
         collateral_coin: Option<sui::types::Address>,

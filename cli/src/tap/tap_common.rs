@@ -43,8 +43,7 @@ pub(crate) fn schedule_policy_from_cli(
             min_interval_ms,
             max_occurrences: nexus_sdk::move_bindings::move_std::option::Option::from_option(
                 (max_occurrences != 0).then_some(max_occurrences),
-            )
-            .into(),
+            ),
         },
         other => {
             return Err(NexusCliError::Any(anyhow!(
@@ -169,7 +168,7 @@ mod tests {
                 recurrence: SkillRecurrenceKind::Recursive {
                     min_interval_ms: 50,
                     max_occurrences:
-                        nexus_sdk::move_bindings::move_std::option::Option::from_option(None).into(),
+                        nexus_sdk::move_bindings::move_std::option::Option::from_option(None),
                 },
                 allow_recursive: true,
             }

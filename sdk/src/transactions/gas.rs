@@ -1,6 +1,9 @@
 use {
     crate::{
-        move_bindings::workflow::{gas as gas_binding, gas_extension as gas_extension_binding},
+        move_bindings::{
+            registry::priority_fee_vault as priority_fee_vault_binding,
+            workflow::{gas as gas_binding, gas_extension as gas_extension_binding},
+        },
         move_boundary,
         sui,
         types::NexusObjects,
@@ -138,7 +141,75 @@ pub fn abort_expired_execution_with_tool_gas_ptb(
     })
 }
 
-/// Build a PTB to enable the limited invocations gas extension for a tool.
+/// PTB template to configure the `$US` priority fee vault exchange rate.
+pub fn configure_priority_fee_vault(
+    objects: &NexusObjects,
+    exchange_rate: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let owner_cap = tx.owned_object(&objects.priority_fee_vault_owner_cap)?;
+        let exchange_rate = tx.arg(&exchange_rate)?;
+
+        tx.call_target(
+            priority_fee_vault_binding::configure_target,
+            vec![priority_fee_vault, owner_cap, exchange_rate],
+        )?;
+        Ok(())
+    })
+}
+
+/// PTB template to swap an owned `Coin<US>` for vault SUI.
+pub fn swap_us_for_sui(
+    objects: &NexusObjects,
+    us_coin: &sui::types::ObjectReference,
+    min_sui_out: u64,
+    recipient: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let us_coin = tx.owned_object(us_coin)?;
+        let min_sui_out = tx.arg(&min_sui_out)?;
+        let result = tx.call_target(
+            priority_fee_vault_binding::swap_us_for_sui_target,
+            vec![priority_fee_vault, us_coin, min_sui_out],
+        )?;
+        let sui_out = tx.nested_result(result, 0)?;
+        let us_refund = tx.nested_result(result, 1)?;
+        let recipient = tx.arg(&recipient)?;
+        tx.transfer_objects(vec![sui_out, us_refund], recipient)?;
+        Ok(())
+    })
+}
+
+/// PTB template to withdraw a leader's priority-fee share from the registry vault.
+pub fn withdraw_priority_fee(
+    objects: &NexusObjects,
+    leader_cap: &sui::types::ObjectReference,
+    share_to_withdraw: u64,
+    recipient: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_cap = tx.owned_object(leader_cap)?;
+        let share_to_withdraw = tx.arg(&share_to_withdraw)?;
+        let us_out = tx.call_target(
+            priority_fee_vault_binding::withdraw_priority_fee_target,
+            vec![
+                priority_fee_vault,
+                leader_registry,
+                leader_cap,
+                share_to_withdraw,
+            ],
+        )?;
+        let recipient = tx.arg(&recipient)?;
+        tx.transfer_objects(vec![us_out], recipient)?;
+        Ok(())
+    })
+}
+
+/// PTB template to refund payment settlement for a vertex.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn enable_limited_invocations_ptb(
     objects: &NexusObjects,
@@ -202,7 +273,11 @@ pub(crate) fn buy_limited_invocations_gas_ticket_ptb(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::DefaultDagExecutorTarget, sui::types::Command};
+    use {
+        super::*,
+        crate::types::{DefaultDagExecutorTarget, UsTokenConfig},
+        sui::types::{Argument, Command, Input, MoveCall},
+    };
 
     fn addr(value: &'static str) -> sui::types::Address {
         sui::types::Address::from_static(value)
@@ -235,36 +310,126 @@ mod tests {
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
+            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+            us_token: UsTokenConfig::new(addr("0x12")),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
     }
 
+    fn move_call(command: &Command) -> &MoveCall {
+        let Command::MoveCall(call) = command else {
+            panic!("expected MoveCall command, got {command:?}");
+        };
+        call
+    }
+
+    fn input_for_argument<'a>(ptb: &'a ProgrammableTransaction, argument: &Argument) -> &'a Input {
+        let Argument::Input(index) = argument else {
+            panic!("expected input argument, got {argument:?}");
+        };
+        &ptb.inputs[*index as usize]
+    }
+
+    fn assert_shared(
+        ptb: &ProgrammableTransaction,
+        argument: &Argument,
+        expected: &sui::types::ObjectReference,
+        mutable: bool,
+    ) {
+        let Input::Shared(shared) = input_for_argument(ptb, argument) else {
+            panic!("expected shared object input");
+        };
+        assert_eq!(shared.object_id(), *expected.object_id());
+        assert_eq!(shared.version(), expected.version());
+        assert_eq!(shared.mutability().is_mutable(), mutable);
+    }
+
+    fn assert_owned(
+        ptb: &ProgrammableTransaction,
+        argument: &Argument,
+        expected: &sui::types::ObjectReference,
+    ) {
+        let Input::ImmutableOrOwned(actual) = input_for_argument(ptb, argument) else {
+            panic!("expected owned object input");
+        };
+        assert_eq!(actual, expected);
+    }
+
     #[test]
-    fn abort_expired_execution_with_tool_gas_uses_current_move_signature() {
+    fn abort_expired_execution_with_tool_gas_uses_generated_target() {
         let objects = nexus_objects();
-        let ptb = abort_expired_execution_with_tool_gas_ptb(
-            &objects,
-            &object_ref("0x20", 2, 20),
-            &object_ref("0x21", 3, 21),
-            &object_ref("0x22", 4, 22),
-        )
-        .expect("ptb should build");
+        let tool_gas = object_ref("0x20", 2, 20);
+        let dag = object_ref("0x21", 3, 21);
+        let execution = object_ref("0x22", 4, 22);
+        let ptb = abort_expired_execution_with_tool_gas_ptb(&objects, &tool_gas, &dag, &execution)
+            .unwrap();
 
-        let call = ptb
-            .commands
-            .iter()
-            .find_map(|command| match command {
-                Command::MoveCall(call)
-                    if call.module.as_str() == "gas_extension"
-                        && call.function.as_str() == "abort_expired_execution_with_tool_gas" =>
-                {
-                    Some(call)
-                }
-                _ => None,
-            })
-            .expect("abort move call should exist");
+        let call = move_call(ptb.commands.last().unwrap());
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.module.as_str(), "gas_extension");
+        assert_eq!(
+            call.function.as_str(),
+            "abort_expired_execution_with_tool_gas"
+        );
+        assert_shared(&ptb, &call.arguments[0], &tool_gas, true);
+        assert_shared(&ptb, &call.arguments[1], &dag, false);
+        assert_shared(&ptb, &call.arguments[2], &execution, true);
+    }
 
+    #[test]
+    fn configure_priority_fee_vault_uses_generated_registry_target() {
+        let objects = nexus_objects();
+        let ptb = configure_priority_fee_vault(&objects, 77).unwrap();
+
+        let call = move_call(&ptb.commands[0]);
+        assert_eq!(call.package, objects.registry_pkg_id);
+        assert_eq!(call.module.as_str(), "priority_fee_vault");
+        assert_eq!(call.function.as_str(), "configure");
+        assert_eq!(call.arguments.len(), 3);
+        assert_shared(&ptb, &call.arguments[0], &objects.priority_fee_vault, true);
+        assert_owned(
+            &ptb,
+            &call.arguments[1],
+            &objects.priority_fee_vault_owner_cap,
+        );
+        assert_eq!(
+            input_for_argument(&ptb, &call.arguments[2]),
+            &Input::Pure(77u64.to_le_bytes().to_vec())
+        );
+    }
+
+    #[test]
+    fn swap_us_for_sui_uses_generated_target_and_transfers_both_results() {
+        let objects = nexus_objects();
+        let us_coin = object_ref("0x20", 2, 20);
+        let recipient = addr("0x99");
+        let ptb = swap_us_for_sui(&objects, &us_coin, 42, recipient).unwrap();
+
+        let call = move_call(&ptb.commands[0]);
+        assert_eq!(call.package, objects.registry_pkg_id);
+        assert_eq!(call.module.as_str(), "priority_fee_vault");
+        assert_eq!(call.function.as_str(), "swap_us_for_sui");
+        assert_eq!(call.arguments.len(), 3);
+        assert_shared(&ptb, &call.arguments[0], &objects.priority_fee_vault, true);
+        assert_owned(&ptb, &call.arguments[1], &us_coin);
+        assert!(matches!(&ptb.commands[1], Command::TransferObjects(_)));
+    }
+
+    #[test]
+    fn withdraw_priority_fee_uses_generated_target_and_transfers_us() {
+        let objects = nexus_objects();
+        let leader_cap = object_ref("0x20", 2, 20);
+        let ptb = withdraw_priority_fee(&objects, &leader_cap, 55, addr("0x99")).unwrap();
+
+        let call = move_call(&ptb.commands[0]);
+        assert_eq!(call.package, objects.registry_pkg_id);
+        assert_eq!(call.module.as_str(), "priority_fee_vault");
+        assert_eq!(call.function.as_str(), "withdraw_priority_fee");
         assert_eq!(call.arguments.len(), 4);
+        assert_shared(&ptb, &call.arguments[0], &objects.priority_fee_vault, true);
+        assert_shared(&ptb, &call.arguments[1], &objects.leader_registry, false);
+        assert_owned(&ptb, &call.arguments[2], &leader_cap);
+        assert!(matches!(&ptb.commands[1], Command::TransferObjects(_)));
     }
 }

@@ -58,6 +58,7 @@ binding_codegen = [
     "tokio/full",
     "sui-move-codegen",
     "sui-sdk-types",
+    "toml",
 ]
 
 # Walrus client feature enables the use of the `walrus` module, providing
@@ -136,6 +137,7 @@ full = [
 
 [dependencies]
 anyhow.workspace = true
+allocative.workspace = true
 chrono.workspace = true
 serde.workspace = true
 
@@ -359,6 +361,10 @@ optional = true
 git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
 branch = "feat/add-sui-support"
 features = ["sui", "redis", "postgres"]
+optional = true
+
+[dependencies.toml]
+workspace = true
 optional = true
 
 # === Dev deps ===

@@ -29,10 +29,10 @@ fn proof_for_offchain_tool(
     tool: Argument,
     owner_cap: Argument,
 ) -> anyhow::Result<Argument> {
-    Ok(tx.call_target(
+    tx.call_target(
         network_auth_binding::prove_offchain_tool_target,
         vec![tool, owner_cap],
-    )?)
+    )
 }
 
 fn proof_for_leader(
