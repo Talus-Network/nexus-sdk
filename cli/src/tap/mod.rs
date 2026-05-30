@@ -292,7 +292,7 @@ pub(crate) enum TapCommand {
         remote: Vec<String>,
         #[arg(
             long = "priority-fee-excess-quote",
-            help = "Optional priority fee excess quote for the DAG execution.",
+            help = "Optional priority fee excess percentage quote for the DAG execution.",
             value_name = "AMOUNT"
         )]
         priority_fee_excess_quote: Option<u64>,

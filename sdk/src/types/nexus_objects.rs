@@ -18,6 +18,53 @@ use {
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsTokenConfig {
+    pub package_id: sui::types::Address,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_treasury: Option<sui::types::Address>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<sui::types::Address>,
+}
+
+impl Default for UsTokenConfig {
+    fn default() -> Self {
+        Self::new(sui::types::Address::ZERO)
+    }
+}
+
+impl UsTokenConfig {
+    pub fn new(package_id: sui::types::Address) -> Self {
+        Self {
+            package_id,
+            protected_treasury: None,
+            metadata: None,
+        }
+    }
+
+    pub fn type_tag(&self) -> sui::types::TypeTag {
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            self.package_id,
+            sui::types::Identifier::from_static("us"),
+            sui::types::Identifier::from_static("US"),
+            vec![],
+        )))
+    }
+
+    pub fn coin_type_tag(&self) -> sui::types::StructTag {
+        sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("coin"),
+            sui::types::Identifier::from_static("Coin"),
+            vec![self.type_tag()],
+        )
+    }
+
+    pub fn qualified_type(&self) -> String {
+        format!("{}::us::US", self.package_id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
     pub workflow_pkg_id: sui::types::Address,
     pub scheduler_pkg_id: sui::types::Address,
@@ -33,6 +80,10 @@ pub struct NexusObjects {
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
     pub priority_fee_vault: sui::types::ObjectReference,
+    #[serde(default = "default_object_reference")]
+    pub priority_fee_vault_owner_cap: sui::types::ObjectReference,
+    #[serde(default)]
+    pub us_token: UsTokenConfig,
 
     /// Original (defining) package address for the workflow package.
     ///
@@ -49,6 +100,10 @@ pub struct NexusObjects {
     /// reference the original package address in their type tags.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduler_original_pkg_id: Option<sui::types::Address>,
+}
+
+fn default_object_reference() -> sui::types::ObjectReference {
+    sui::types::ObjectReference::new(sui::types::Address::ZERO, 1, sui::types::Digest::ZERO)
 }
 
 impl NexusObjects {
@@ -318,6 +373,12 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
+            priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

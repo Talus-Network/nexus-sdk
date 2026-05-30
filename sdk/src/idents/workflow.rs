@@ -1135,6 +1135,20 @@ impl Gas {
 pub struct PriorityFeeVault;
 
 impl PriorityFeeVault {
+    /// Configure the priority fee vault exchange rate and embedded TAP agent.
+    ///
+    /// `nexus_workflow::priority_fee_vault::configure`
+    pub const CONFIGURE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRIORITY_FEE_VAULT_MODULE,
+        name: sui::types::Identifier::from_static("configure"),
+    };
+    /// Publicly swap `$US` for SUI held by the priority fee vault.
+    ///
+    /// `nexus_workflow::priority_fee_vault::swap_us_for_sui`
+    pub const SWAP_US_FOR_SUI: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRIORITY_FEE_VAULT_MODULE,
+        name: sui::types::Identifier::from_static("swap_us_for_sui"),
+    };
     /// Withdraw a verified leader's claimable priority fees.
     ///
     /// `nexus_workflow::priority_fee_vault::withdraw_priority_fee`

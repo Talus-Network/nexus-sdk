@@ -90,10 +90,10 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
-        /// Priority fee excess quote for the DAG execution.
+        /// Priority fee excess percentage quote for the DAG execution.
         #[arg(
             long = "priority-fee-excess-quote",
-            help = "Optional priority fee excess quote to pass to the DAG execution.",
+            help = "Optional priority fee excess percentage quote to pass to the DAG execution.",
             value_name = "AMOUNT"
         )]
         priority_fee_excess_quote: Option<u64>,
