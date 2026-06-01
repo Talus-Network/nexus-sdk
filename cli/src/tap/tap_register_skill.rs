@@ -3,20 +3,16 @@ use {super::*, nexus_sdk::types::AgentId};
 pub(crate) async fn register_skill(
     artifact: PathBuf,
     agent_id: AgentId,
-    endpoint_object_id: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let artifact = read_artifact(artifact).await?;
-    let resolved_endpoint_object_id = artifact
-        .endpoint_object_id_or(endpoint_object_id)
-        .map_err(NexusCliError::Any)?;
     command_title!("Registering TAP skill for agent '{}'", agent_id);
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let result = nexus_client
         .tap()
-        .register_skill(agent_id, &artifact, endpoint_object_id)
+        .register_skill(agent_id, &artifact)
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -24,11 +20,7 @@ pub(crate) async fn register_skill(
         "Registered TAP skill {skill_id}",
         skill_id = result.skill_id.to_string().truecolor(100, 100, 100)
     );
-    json_output(&register_skill_result_json(
-        &artifact,
-        resolved_endpoint_object_id,
-        &result,
-    ))
+    json_output(&register_skill_result_json(&artifact, &result))
 }
 
 #[cfg(test)]
@@ -52,7 +44,6 @@ mod tests {
             },
             shared_objects: Vec::new(),
             interface_revision: nexus_sdk::types::InterfaceRevision(1),
-            active_for_new_executions: true,
         };
 
         TapPublishArtifact::from_config(
@@ -64,7 +55,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_requires_endpoint_metadata_before_rpc_client() {
+    async fn register_reads_artifact_before_rpc_client() {
         let tempdir = tempfile::tempdir().expect("tempdir");
         let artifact_path = tempdir.path().join("artifact.json");
         tokio::fs::write(
@@ -78,16 +69,13 @@ mod tests {
             artifact_path,
             sui::types::Address::from_static("0xa"),
             None,
-            None,
             DEFAULT_GAS_BUDGET,
         )
         .await
-        .expect_err("endpoint metadata is required");
+        .expect_err("missing RPC is reached after artifact load");
 
         assert!(
-            error
-                .to_string()
-                .contains("TAP endpoint object ID is required"),
+            error.to_string().contains("Sui RPC URL is not configured"),
             "unexpected error: {error}"
         );
     }

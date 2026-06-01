@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
-- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, creates and shares a standard endpoint object, and writes a complete endpoint-bound artifact for operator handoff.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
 
 #### Changed
 
@@ -38,8 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
 - Additional signed HTTP tests for response signing verification and multi-variant output handling.
 - SDK-owned standard TAP authorization-plan models and current-vertex grant resolution helpers for fixed-tool execution.
-- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint creation, and complete publish-artifact construction.
-- Standard TAP transaction helpers for endpoint creation and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
+- High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint revision metadata construction, and complete publish-artifact construction.
+- Standard TAP transaction helpers for endpoint revision announcement, active skill-revision updates, and SDK-owned authorization-cap fixed-tool submit and dry-run PTB sequencing.
 - Compatibility-focused parser fixtures for current standard TAP event BCS layouts, including Move `Option<T>` event fields used by request, payment, authorization, and scheduled-execution events.
 - Standard Talus agent payment vault models, fetch helper, deposit/withdraw PTB builders, and typed payment source helpers for invoker-funded and agent-vault-funded settlement.
 - Agent-scoped workflow gas helpers for standard TAP funding.
@@ -77,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Runtime config hot reload now moves filesystem metadata checks and config parsing onto Tokio's blocking pool and reduces fallback polling frequency, while keeping notify-driven reloads as the fast path.
 - Standard fixed-tool schema generation hides TAP authorization-cap and workflow worksheet internal arguments from user-facing input schemas.
-- CLI and SDK object metadata now resolve default DAG execution through `tap_registry` and `default_tap_target` rather than a `default_tap` object.
+- CLI and SDK object metadata now resolve default DAG execution through `agent_registry` and `default_tap_target` rather than a `default_tap` object.
 - Legacy `TapV1` and `AnnounceInterfacePackageEvent` support is retained only as compatibility for historical data; active standard builders use standard TAP idents.
 - SDK parser sample coverage now uses generated current-layout standard TAP event fixtures instead of stale hard-coded witness-era bytes.
 - scheduler and peer TAP PTB tests now assert standard TAP calls by package/module/function and current BCS argument layout rather than brittle absolute command indexes.
@@ -89,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Standard TAP SDK models and PTB builders now match the Move package split: general TAP identities, payments, endpoint, worksheet, authorization, and schedule types resolve through `nexus_interface::tap`, while registry storage records remain under `nexus_registry::tap`.
 - Active execution APIs now expose explicit agent DAG execution and default-agent DAG execution names (`execute_agent_dag`, `execute_default_agent_dag`, `AgentDagExecuteInput`, and `AgentDagExecuteOptions`), while "standard TAP" remains reserved for protocol/model surfaces.
 - TAP payment settlement builders now target execution-owned `DAGExecution` payment helpers, with separate agent-vault variants only when vault accounting needs the explicit non-default `Agent`.
-- Default DAG execution and scheduling builders now use mutable `tap_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
+- Default DAG execution and scheduling builders now use mutable `agent_registry` inputs and the configured `default_tap_target` identity without fetching or passing a separate default `Agent` object.
 
 #### Fixed
 

@@ -1,11 +1,11 @@
-//! Tool-focused helpers for `nexus_workflow::network_auth`.
+//! Tool-focused helpers for `nexus_registry::network_auth`.
 //!
 //! This module is designed for tool operators and other off-chain clients that need to:
 //! - register/rotate a ToolId message-signing key on-chain, and
 //! - export a tool-side allowlist of permitted Leaders (public keys) for the signed HTTP runtime.
 //!
 //! # Background: what is registered on-chain?
-//! `nexus_workflow::network_auth` binds an off-chain identity (Leader address or Tool FQN) to an
+//! `nexus_registry::network_auth` binds an off-chain identity (Leader address or Tool FQN) to an
 //! Ed25519 public key used for signed HTTP.
 //!
 //! Registration requires a proof-of-possession (PoP) signature:
@@ -20,7 +20,7 @@
 
 use {
     crate::{
-        idents::workflow,
+        idents::registry,
         nexus::{
             client::NexusClient,
             crawler::{Crawler, Response},
@@ -45,7 +45,7 @@ use {
     tokio::sync::Mutex,
 };
 
-const POP_DOMAIN_V1: &[u8] = b"nexus_workflow.network_auth.pop_v1";
+const POP_DOMAIN_V1: &[u8] = b"nexus_registry.network_auth.pop_v1";
 const KEY_SCHEME_ED25519: u8 = 0;
 
 /// Result returned after registering a ToolId message-signing key.
@@ -125,7 +125,7 @@ impl NetworkAuthActions {
         let objects = &self.client.nexus_objects;
 
         let codec =
-            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
         let binding_object_id = codec.binding_object_id(&identity)?;
@@ -241,7 +241,7 @@ impl NetworkAuthActions {
     ) -> Result<Option<ToolKeyList>, NexusError> {
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
         let binding_object_id = codec.binding_object_id(&identity)?;
@@ -296,7 +296,7 @@ impl NetworkAuthActions {
     ) -> Result<AllowedLeadersFileV1, NexusError> {
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -433,7 +433,7 @@ impl NetworkAuthActions {
 
         let objects = &self.client.nexus_objects;
         let codec =
-            NetworkAuthCodec::new(objects.workflow_pkg_id, *objects.network_auth.object_id());
+            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -553,19 +553,19 @@ impl NetworkAuthActions {
 #[derive(Clone)]
 pub struct NetworkAuthReader {
     crawler: Crawler,
-    workflow_pkg_id: sui::types::Address,
+    registry_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
 }
 
 impl NetworkAuthReader {
     pub fn new(
         crawler: Crawler,
-        workflow_pkg_id: sui::types::Address,
+        registry_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Self {
         Self {
             crawler,
-            workflow_pkg_id,
+            registry_pkg_id,
             network_auth_object_id,
         }
     }
@@ -573,12 +573,12 @@ impl NetworkAuthReader {
     /// Construct a reader by creating a Sui gRPC client for `rpc_url`.
     pub fn from_rpc_url(
         rpc_url: &str,
-        workflow_pkg_id: sui::types::Address,
+        registry_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Result<Self, NexusError> {
         let client = sui::grpc::Client::new(rpc_url).map_err(|e| NexusError::Rpc(e.into()))?;
         let crawler = Crawler::new(Arc::new(Mutex::new(client)));
-        Ok(Self::new(crawler, workflow_pkg_id, network_auth_object_id))
+        Ok(Self::new(crawler, registry_pkg_id, network_auth_object_id))
     }
 
     /// Derive the deterministic `KeyBinding` object id for `identity`.
@@ -586,7 +586,7 @@ impl NetworkAuthReader {
         &self,
         identity: &IdentityKey,
     ) -> Result<sui::types::Address, NexusError> {
-        NetworkAuthCodec::new(self.workflow_pkg_id, self.network_auth_object_id)
+        NetworkAuthCodec::new(self.registry_pkg_id, self.network_auth_object_id)
             .binding_object_id(identity)
     }
 
@@ -661,7 +661,7 @@ impl NetworkAuthReader {
             )));
         }
 
-        let codec = NetworkAuthCodec::new(self.workflow_pkg_id, self.network_auth_object_id);
+        let codec = NetworkAuthCodec::new(self.registry_pkg_id, self.network_auth_object_id);
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -870,24 +870,24 @@ impl AllowedLeadersFileSyncerV1 {
 
 /// Internal helper that knows how to compute binding ids and PoP bytes.
 struct NetworkAuthCodec {
-    workflow_pkg_id: sui::types::Address,
+    registry_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
 }
 
 impl NetworkAuthCodec {
     fn new(
-        workflow_pkg_id: sui::types::Address,
+        registry_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Self {
         Self {
-            workflow_pkg_id,
+            registry_pkg_id,
             network_auth_object_id,
         }
     }
 
     fn binding_object_id(&self, identity: &IdentityKey) -> Result<sui::types::Address, NexusError> {
         let key_type =
-            workflow::into_type_tag(self.workflow_pkg_id, workflow::NetworkAuth::IDENTITY_KEY);
+            registry::into_type_tag(self.registry_pkg_id, registry::NetworkAuth::IDENTITY_KEY);
         let key_bcs = bcs::to_bytes(identity).map_err(|e| {
             NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode IdentityKey: {e}"))
         })?;
@@ -948,9 +948,9 @@ mod tests {
     #[test]
     fn binding_object_id_is_deterministic_and_distinct() {
         let mut rng = rand::thread_rng();
-        let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+        let registry_pkg_id = sui::types::Address::generate(&mut rng);
         let network_auth_object_id = sui::types::Address::generate(&mut rng);
-        let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+        let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
 
         let leader = IdentityKey::leader(sui::types::Address::generate(&mut rng));
         let tool = IdentityKey::tool_fqn("xyz.demo.tool@1");
@@ -964,11 +964,36 @@ mod tests {
     }
 
     #[test]
+    fn binding_object_id_matches_move_derived_object_snapshot() {
+        let registry_pkg_id = "0x1b7beaf7c749f48e8746b2ee2803eaad6303bd353ad967c3e23db50317919beb"
+            .parse()
+            .unwrap();
+        let network_auth_object_id =
+            "0x47fc1741e0f9d0c3a8f573f82fc5c632bc3f3068c325bff24ecb76e4d685b696"
+                .parse()
+                .unwrap();
+        let leader_cap_id = "0x1b7b4eeb8a11033f52b9394b6e284abd6dc33a2a22ff18f678b65d7a909b6eb7"
+            .parse()
+            .unwrap();
+        let expected_binding_id =
+            "0xcd2e634ec159ea299824d23a437992dba70c2a2239cfb7cd16a8ee767b17c040"
+                .parse()
+                .unwrap();
+
+        let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
+        let actual = codec
+            .binding_object_id(&IdentityKey::leader(leader_cap_id))
+            .unwrap();
+
+        assert_eq!(actual, expected_binding_id);
+    }
+
+    #[test]
     fn pop_message_v1_matches_expected_layout() {
         let mut rng = rand::thread_rng();
-        let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+        let registry_pkg_id = sui::types::Address::generate(&mut rng);
         let network_auth_object_id = sui::types::Address::generate(&mut rng);
-        let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+        let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
 
         let identity = IdentityKey::tool_fqn("xyz.demo.tool@1");
         let key_id = 7u64;
@@ -1044,13 +1069,13 @@ mod tests {
         }
 
         async fn build_reader(
-            workflow_pkg_id: sui::types::Address,
+            registry_pkg_id: sui::types::Address,
             network_auth_object_id: sui::types::Address,
             leader_cap_id: sui::types::Address,
             active_kid: u64,
             record: KeyRecord,
         ) -> NetworkAuthReader {
-            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
             let identity = IdentityKey::leader(leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
@@ -1118,19 +1143,19 @@ mod tests {
                 ..Default::default()
             });
 
-            NetworkAuthReader::from_rpc_url(&rpc_url, workflow_pkg_id, network_auth_object_id)
+            NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
                 .unwrap()
         }
 
         async fn build_reader_and_syncer(
             out_path: PathBuf,
-            workflow_pkg_id: sui::types::Address,
+            registry_pkg_id: sui::types::Address,
             network_auth_object_id: sui::types::Address,
             leader_cap_id: sui::types::Address,
             active_kid: u64,
             record: KeyRecord,
         ) -> AllowedLeadersFileSyncerV1 {
-            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
             let identity = IdentityKey::leader(leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
@@ -1212,7 +1237,7 @@ mod tests {
             });
 
             let reader =
-                NetworkAuthReader::from_rpc_url(&rpc_url, workflow_pkg_id, network_auth_object_id)
+                NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
                     .unwrap();
             AllowedLeadersFileSyncerV1::new(reader, out_path)
         }
@@ -1220,13 +1245,13 @@ mod tests {
         #[tokio::test]
         async fn reader_try_get_active_key_binding_returns_validated_active_key() {
             let mut rng = rand::thread_rng();
-            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
             let leader_cap_id = sui::types::Address::generate(&mut rng);
             let active_kid = 5u64;
             let public_key = [7u8; 32];
             let reader = build_reader(
-                workflow_pkg_id,
+                registry_pkg_id,
                 network_auth_object_id,
                 leader_cap_id,
                 active_kid,
@@ -1262,11 +1287,11 @@ mod tests {
         #[tokio::test]
         async fn actions_export_and_write_allowlists() {
             let mut rng = rand::thread_rng();
-            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
             let leader_cap_id = sui::types::Address::generate(&mut rng);
 
-            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
             let identity = IdentityKey::leader(leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
@@ -1379,7 +1404,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             );
-            nexus_objects.workflow_pkg_id = workflow_pkg_id;
+            nexus_objects.registry_pkg_id = registry_pkg_id;
 
             let gas_coin = sui_mocks::mock_sui_object_ref();
             let client = NexusClient::builder()
@@ -1447,7 +1472,7 @@ mod tests {
         #[tokio::test]
         async fn syncer_writes_allowlist_when_missing() {
             let mut rng = rand::thread_rng();
-            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
             let leader_cap_id = sui::types::Address::generate(&mut rng);
 
@@ -1464,7 +1489,7 @@ mod tests {
 
             let syncer = build_reader_and_syncer(
                 out_path.clone(),
-                workflow_pkg_id,
+                registry_pkg_id,
                 network_auth_object_id,
                 leader_cap_id,
                 active_kid,
@@ -1493,7 +1518,7 @@ mod tests {
         #[tokio::test]
         async fn syncer_returns_unchanged_when_file_matches() {
             let mut rng = rand::thread_rng();
-            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
             let leader_cap_id = sui::types::Address::generate(&mut rng);
 
@@ -1524,7 +1549,7 @@ mod tests {
 
             let syncer = build_reader_and_syncer(
                 out_path.clone(),
-                workflow_pkg_id,
+                registry_pkg_id,
                 network_auth_object_id,
                 leader_cap_id,
                 active_kid,
@@ -1546,13 +1571,13 @@ mod tests {
         #[tokio::test]
         async fn list_tool_keys_returns_sorted_entries() {
             let mut rng = rand::thread_rng();
-            let workflow_pkg_id = sui::types::Address::generate(&mut rng);
+            let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
 
             let tool_fqn_str = "xyz.demo.tool@1";
             let tool_fqn: crate::ToolFqn = tool_fqn_str.parse().unwrap();
 
-            let codec = NetworkAuthCodec::new(workflow_pkg_id, network_auth_object_id);
+            let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
             let identity = IdentityKey::tool_fqn(tool_fqn_str);
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
@@ -1681,7 +1706,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             );
-            nexus_objects.workflow_pkg_id = workflow_pkg_id;
+            nexus_objects.registry_pkg_id = registry_pkg_id;
 
             let gas_coin = sui_mocks::mock_sui_object_ref();
             let client = NexusClient::builder()

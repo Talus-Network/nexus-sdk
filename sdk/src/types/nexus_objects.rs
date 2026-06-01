@@ -6,8 +6,10 @@ use super::DefaultDagExecutor;
 use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
+#[cfg(all(test, feature = "sui_idents"))]
+use crate::idents::workflow;
 #[cfg(feature = "sui_idents")]
-use crate::idents::{tap, workflow, ModuleAndNameIdent};
+use crate::idents::{scheduler, tap, ModuleAndNameIdent};
 use {
     crate::sui,
     serde::{Deserialize, Serialize},
@@ -18,6 +20,7 @@ use {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
     pub workflow_pkg_id: sui::types::Address,
+    pub scheduler_pkg_id: sui::types::Address,
     pub primitives_pkg_id: sui::types::Address,
     pub interface_pkg_id: sui::types::Address,
     pub network_id: sui::types::Address,
@@ -25,10 +28,8 @@ pub struct NexusObjects {
     pub tool_registry: sui::types::ObjectReference,
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tap_registry: Option<sui::types::ObjectReference>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_tap_target: Option<DefaultDagExecutor>,
+    pub agent_registry: sui::types::ObjectReference,
+    pub default_tap_executor: DefaultDagExecutor,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -41,31 +42,15 @@ pub struct NexusObjects {
     /// When `None`, falls back to `workflow_pkg_id` (no upgrade has occurred).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_original_pkg_id: Option<sui::types::Address>,
-    /// Original (defining) package address for the registry package.
+    /// Original (defining) package address for the scheduler package.
     ///
-    /// After a Sui Move package upgrade, on-chain registry types still
+    /// After a Sui Move package upgrade, scheduler object/event types still
     /// reference the original package address in their type tags.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub registry_original_pkg_id: Option<sui::types::Address>,
+    pub scheduler_original_pkg_id: Option<sui::types::Address>,
 }
 
 impl NexusObjects {
-    /// Returns the registry package address, defaulting to the workflow
-    /// package for older deployments that predate the package split.
-    pub fn registry_pkg_id(&self) -> sui::types::Address {
-        self.registry_pkg_id
-    }
-
-    /// Returns the original (defining) registry package address.
-    ///
-    /// After a Sui package upgrade, on-chain registry types reference the
-    /// original package address. Falls back to `registry_pkg_id` when no
-    /// upgrade has occurred.
-    pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
-        self.registry_original_pkg_id
-            .unwrap_or(self.registry_pkg_id)
-    }
-
     /// Returns the original (defining) workflow package address.
     ///
     /// After a Sui package upgrade, on-chain types reference the original
@@ -77,15 +62,14 @@ impl NexusObjects {
             .unwrap_or(self.workflow_pkg_id)
     }
 
-    /// Returns the shared standard TAP registry object reference when the
-    /// deployment metadata includes it.
-    pub fn tap_registry(&self) -> Option<&sui::types::ObjectReference> {
-        self.tap_registry.as_ref()
-    }
-
-    /// Returns the configured standard default TAP DAG executor when present.
-    pub fn default_tap_target(&self) -> Option<DefaultDagExecutor> {
-        self.default_tap_target
+    /// Returns the original (defining) scheduler package address.
+    ///
+    /// After a Sui package upgrade, scheduler types reference the original
+    /// package address. Falls back to `scheduler_pkg_id` when no upgrade has
+    /// occurred.
+    pub fn scheduler_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.scheduler_original_pkg_id
+            .unwrap_or(self.scheduler_pkg_id)
     }
 
     /// Returns true when the given address matches any known workflow
@@ -94,6 +78,15 @@ impl NexusObjects {
         address == self.workflow_pkg_id
             || self
                 .workflow_original_pkg_id
+                .is_some_and(|orig| address == orig)
+    }
+
+    /// Returns true when the given address matches any known scheduler package
+    /// address (current or original).
+    pub fn is_scheduler_package(&self, address: sui::types::Address) -> bool {
+        address == self.scheduler_pkg_id
+            || self
+                .scheduler_original_pkg_id
                 .is_some_and(|orig| address == orig)
     }
 
@@ -152,11 +145,11 @@ impl NexusObjects {
         Ok(())
     }
 
-    /// Resolve the original registry package address from the on-chain
-    /// `type_origin_table` and set `registry_original_pkg_id`.
+    /// Resolve the original scheduler package address from the on-chain
+    /// `type_origin_table` and set `scheduler_original_pkg_id`.
     ///
-    /// If no upgrade has occurred, `registry_original_pkg_id` remains `None`.
-    pub async fn resolve_registry_original_pkg_id(
+    /// If no upgrade has occurred, `scheduler_original_pkg_id` remains `None`.
+    pub async fn resolve_scheduler_original_pkg_id(
         &mut self,
         client: &Arc<Mutex<sui::grpc::Client>>,
     ) -> anyhow::Result<()> {
@@ -165,7 +158,7 @@ impl NexusObjects {
         let field_mask = sui::grpc::FieldMask::from_paths(["package"]);
 
         let request = sui::grpc::GetObjectRequest::default()
-            .with_object_id(self.registry_pkg_id)
+            .with_object_id(self.scheduler_pkg_id)
             .with_read_mask(field_mask);
 
         let response = client
@@ -175,11 +168,11 @@ impl NexusObjects {
             .get_object(request)
             .await
             .map(|r| r.into_inner())
-            .map_err(|e| anyhow::anyhow!("Failed to fetch registry package object: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("Failed to fetch scheduler package object: {e}"))?;
 
         let object = response
             .object
-            .ok_or_else(|| anyhow::anyhow!("Registry package object not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Scheduler package object not found"))?;
 
         let package = object
             .package
@@ -188,14 +181,14 @@ impl NexusObjects {
         let original = package.type_origins.iter().find_map(|origin| {
             let pkg_id_str = origin.package_id.as_deref()?;
             let addr = pkg_id_str.parse::<sui::types::Address>().ok()?;
-            if addr != self.registry_pkg_id {
+            if addr != self.scheduler_pkg_id {
                 Some(addr)
             } else {
                 None
             }
         });
 
-        self.registry_original_pkg_id = original;
+        self.scheduler_original_pkg_id = original;
 
         Ok(())
     }
@@ -213,7 +206,11 @@ impl NexusObjects {
             return true;
         }
 
-        if *inner_tag.address() == self.registry_pkg_id() {
+        if self.is_scheduler_package(*inner_tag.address()) {
+            return true;
+        }
+
+        if *inner_tag.address() == self.registry_pkg_id {
             return true;
         }
 
@@ -228,39 +225,39 @@ impl NexusObjects {
 
     /// Fully-qualified Move type name for the queue generator witness.
     pub fn scheduler_queue_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol(&workflow::Scheduler::QUEUE_GENERATOR_WITNESS)
+        self.sched_generator_symbol(&scheduler::Scheduler::QUEUE_GENERATOR_WITNESS)
     }
 
     /// Fully-qualified Move type name for the periodic generator witness.
     pub fn scheduler_periodic_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol(&workflow::Scheduler::PERIODIC_GENERATOR_WITNESS)
+        self.sched_generator_symbol(&scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS)
     }
 
     /// Returns true when the provided policy symbol references the queue generator witness.
     pub fn scheduler_matches_queue_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches(symbol, &workflow::Scheduler::QUEUE_GENERATOR_WITNESS)
+        self.generator_matches(symbol, &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS)
     }
 
     /// Returns true when the provided policy symbol references the periodic generator witness.
     pub fn scheduler_matches_periodic_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches(symbol, &workflow::Scheduler::PERIODIC_GENERATOR_WITNESS)
+        self.generator_matches(symbol, &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS)
     }
 
     fn sched_generator_symbol(&self, ident: &ModuleAndNameIdent) -> PolicySymbol {
         PolicySymbol::Witness(TypeName::new(
-            &ident.qualified_name(self.workflow_type_origin_pkg_id()),
+            &ident.qualified_name(self.scheduler_type_origin_pkg_id()),
         ))
     }
 
     fn generator_matches(&self, symbol: &PolicySymbol, ident: &ModuleAndNameIdent) -> bool {
         // Match against both original and current package addresses since
         // on-chain type names could reference either after an upgrade.
-        let original = ident.qualified_name(self.workflow_type_origin_pkg_id());
+        let original = ident.qualified_name(self.scheduler_type_origin_pkg_id());
         if symbol.matches_qualified_name(&original) {
             return true;
         }
-        if self.workflow_original_pkg_id.is_some() {
-            let current = ident.qualified_name(self.workflow_pkg_id);
+        if self.scheduler_original_pkg_id.is_some() {
+            let current = ident.qualified_name(self.scheduler_pkg_id);
             return symbol.matches_qualified_name(&current);
         }
         false
@@ -276,11 +273,11 @@ mod tests {
 
         NexusObjects {
             workflow_pkg_id: sui::types::Address::generate(&mut rng),
+            scheduler_pkg_id: sui::types::Address::generate(&mut rng),
             primitives_pkg_id: sui::types::Address::generate(&mut rng),
             interface_pkg_id: sui::types::Address::generate(&mut rng),
             network_id: sui::types::Address::generate(&mut rng),
             registry_pkg_id: sui::types::Address::generate(&mut rng),
-            registry_original_pkg_id: None,
             tool_registry: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
@@ -296,8 +293,15 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            tap_registry: None,
-            default_tap_target: None,
+            agent_registry: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            default_tap_executor: DefaultDagExecutor {
+                agent_id: sui::types::Address::generate(&mut rng),
+                skill_id: 1,
+            },
             gas_service: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
@@ -309,6 +313,7 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             ),
             workflow_original_pkg_id: None,
+            scheduler_original_pkg_id: None,
         }
     }
 
@@ -330,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_workflow_interface_and_tap_registry_events() {
+    fn matches_workflow_interface_and_agent_registry_events() {
         let objects = sample_objects();
         let rng = &mut rand::thread_rng();
 
@@ -338,8 +343,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.workflow_pkg_id,
-                workflow::Scheduler::TASK.module,
-                workflow::Scheduler::TASK.name,
+                workflow::Dag::DAG.module,
+                workflow::Dag::DAG.name,
                 vec![],
             ),
         );
@@ -361,7 +366,7 @@ mod tests {
         let registry_tap_event = wrap_event(
             &objects,
             sui::types::StructTag::new(
-                objects.registry_pkg_id(),
+                objects.registry_pkg_id,
                 tap::STANDARD_TAP_MODULE,
                 tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
                 vec![],
@@ -416,6 +421,23 @@ mod tests {
     }
 
     #[test]
+    fn matches_scheduler_events() {
+        let objects = sample_objects();
+
+        let scheduler_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::TASK.module,
+                scheduler::Scheduler::TASK.name,
+                vec![],
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&scheduler_event));
+    }
+
+    #[test]
     fn generator_helpers_match_symbols() {
         let objects = sample_objects();
 
@@ -435,10 +457,10 @@ mod tests {
         objects
     }
 
-    fn sample_objects_with_registry_upgrade() -> NexusObjects {
+    fn sample_objects_with_scheduler_upgrade() -> NexusObjects {
         let mut objects = sample_objects();
         let mut rng = rand::thread_rng();
-        objects.registry_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects.scheduler_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
         objects
     }
 
@@ -465,24 +487,24 @@ mod tests {
     }
 
     #[test]
-    fn registry_type_origin_pkg_id_without_upgrade() {
+    fn scheduler_type_origin_pkg_id_without_upgrade() {
         let objects = sample_objects();
         assert_eq!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id
+            objects.scheduler_type_origin_pkg_id(),
+            objects.scheduler_pkg_id
         );
     }
 
     #[test]
-    fn registry_type_origin_pkg_id_with_upgrade() {
-        let objects = sample_objects_with_registry_upgrade();
+    fn scheduler_type_origin_pkg_id_with_upgrade() {
+        let objects = sample_objects_with_scheduler_upgrade();
         assert_eq!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_original_pkg_id.unwrap()
+            objects.scheduler_type_origin_pkg_id(),
+            objects.scheduler_original_pkg_id.unwrap()
         );
         assert_ne!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id
+            objects.scheduler_type_origin_pkg_id(),
+            objects.scheduler_pkg_id
         );
     }
 
@@ -508,6 +530,14 @@ mod tests {
     }
 
     #[test]
+    fn is_scheduler_package_matches_current_and_original_after_upgrade() {
+        let objects = sample_objects_with_scheduler_upgrade();
+        let original = objects.scheduler_original_pkg_id.unwrap();
+        assert!(objects.is_scheduler_package(objects.scheduler_pkg_id));
+        assert!(objects.is_scheduler_package(original));
+    }
+
+    #[test]
     fn event_from_original_pkg_matches_after_upgrade() {
         let objects = sample_objects_with_upgrade();
         let original = objects.workflow_original_pkg_id.unwrap();
@@ -517,8 +547,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 original,
-                workflow::Scheduler::TASK.module,
-                workflow::Scheduler::TASK.name,
+                workflow::Dag::DAG.module,
+                workflow::Dag::DAG.name,
                 vec![],
             ),
         );
@@ -529,8 +559,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.workflow_pkg_id,
-                workflow::Scheduler::TASK.module,
-                workflow::Scheduler::TASK.name,
+                workflow::Dag::DAG.module,
+                workflow::Dag::DAG.name,
                 vec![],
             ),
         );
@@ -539,7 +569,7 @@ mod tests {
 
     #[test]
     fn generator_helpers_match_after_upgrade() {
-        let objects = sample_objects_with_upgrade();
+        let objects = sample_objects_with_scheduler_upgrade();
 
         // Symbols generated with the original package address should match.
         let queue = objects.scheduler_queue_generator_symbol();
@@ -551,13 +581,13 @@ mod tests {
 
         // Symbols using the current (upgraded) package should also match.
         let current_queue = PolicySymbol::Witness(TypeName::new(
-            &workflow::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.workflow_pkg_id),
+            &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.scheduler_pkg_id),
         ));
         assert!(objects.scheduler_matches_queue_generator(&current_queue));
 
         let current_periodic = PolicySymbol::Witness(TypeName::new(
-            &workflow::Scheduler::PERIODIC_GENERATOR_WITNESS
-                .qualified_name(objects.workflow_pkg_id),
+            &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS
+                .qualified_name(objects.scheduler_pkg_id),
         ));
         assert!(objects.scheduler_matches_periodic_generator(&current_periodic));
     }
@@ -573,9 +603,9 @@ mod tests {
 
     #[test]
     fn serde_round_trip_with_upgrade() {
-        let objects = sample_objects_with_upgrade();
+        let objects = sample_objects_with_scheduler_upgrade();
         let json = serde_json::to_string(&objects).unwrap();
-        assert!(json.contains("workflow_original_pkg_id"));
+        assert!(json.contains("scheduler_original_pkg_id"));
         let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, objects);
     }

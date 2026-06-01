@@ -129,8 +129,7 @@ public fun init_for_test(): {witness} {{
     }}
   }},
   "shared_objects": [],
-  "interface_revision": 1,
-  "active_for_new_executions": true
+  "interface_revision": 1
 }}
 "#
             ),

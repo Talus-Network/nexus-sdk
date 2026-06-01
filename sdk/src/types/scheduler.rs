@@ -3,6 +3,8 @@
 use {
     super::{
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
+        tap::{AgentId, SkillId, TapVertexAuthorizationPlanEntry},
+        MoveOption,
         TypeName,
     },
     crate::{
@@ -31,7 +33,53 @@ pub struct DagExecutionConfig {
     pub priority_fee_per_gas_unit: u64,
 }
 
-/// Representation of `nexus_workflow::scheduler::Task`.
+/// Representation of `nexus_workflow::dag::AgentExecutionConfig`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AgentExecutionConfig {
+    pub dag: sui::types::Address,
+    pub network: sui::types::Address,
+    pub entry_group: SchedulerEntryGroup,
+    pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
+    pub invoker: sui::types::Address,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub priority_fee_per_gas_unit: u64,
+    pub agent_id: AgentId,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub skill_id: SkillId,
+    pub selected_dag_id: sui::types::Address,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_move_option_bytes",
+        serialize_with = "serialize_option_bytes_as_move_option"
+    )]
+    pub authorization_plan_commitment: Option<Vec<u8>>,
+    pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
+}
+
+fn deserialize_move_option_bytes<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    MoveOption::<Vec<u8>>::deserialize(deserializer).map(|value| value.0)
+}
+
+fn serialize_option_bytes_as_move_option<S>(
+    value: &Option<Vec<u8>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    MoveOption::from(value.clone()).serialize(serializer)
+}
+
+/// Representation of `nexus_scheduler::scheduler::Task`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Task {
     pub id: sui::types::Address,
@@ -412,6 +460,52 @@ mod tests {
         assert_eq!(parsed.entry_group, expected.entry_group);
         assert_eq!(parsed.inputs, expected.inputs);
         assert_eq!(parsed.invoker, expected.invoker);
+    }
+
+    #[test]
+    fn agent_execution_config_deserializes_from_json() {
+        let mut rng = rand::thread_rng();
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let network_id = sui::types::Address::generate(&mut rng);
+        let invoker = sui::types::Address::generate(&mut rng);
+        let agent_id = sui::types::Address::generate(&mut rng);
+
+        let expected = AgentExecutionConfig {
+            dag: dag_id,
+            network: network_id,
+            priority_fee_per_gas_unit: 1000,
+            entry_group: SchedulerEntryGroup {
+                name: "delayed".to_string(),
+            },
+            inputs: Map::default(),
+            invoker,
+            agent_id,
+            skill_id: 2,
+            selected_dag_id: dag_id,
+            authorization_plan_commitment: Some(vec![1, 2, 3]),
+            authorization_plan: Vec::new(),
+        };
+
+        let parsed: AgentExecutionConfig =
+            serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
+
+        assert_eq!(parsed.dag, expected.dag);
+        assert_eq!(parsed.network, expected.network);
+        assert_eq!(
+            parsed.priority_fee_per_gas_unit,
+            expected.priority_fee_per_gas_unit
+        );
+        assert_eq!(parsed.entry_group, expected.entry_group);
+        assert_eq!(parsed.inputs, expected.inputs);
+        assert_eq!(parsed.invoker, expected.invoker);
+        assert_eq!(parsed.agent_id, expected.agent_id);
+        assert_eq!(parsed.skill_id, expected.skill_id);
+        assert_eq!(parsed.selected_dag_id, expected.selected_dag_id);
+        assert_eq!(
+            parsed.authorization_plan_commitment,
+            expected.authorization_plan_commitment
+        );
+        assert_eq!(parsed.authorization_plan, expected.authorization_plan);
     }
 
     #[test]
