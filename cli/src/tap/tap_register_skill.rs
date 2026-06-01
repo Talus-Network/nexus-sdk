@@ -25,7 +25,44 @@ pub(crate) async fn register_skill(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, std::ffi::OsString};
+
+    struct EnvGuard {
+        home: Option<OsString>,
+        rpc: Option<OsString>,
+        pk: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn without_sui_credentials(path: &std::path::Path) -> Self {
+            let guard = Self {
+                home: std::env::var_os("HOME"),
+                rpc: std::env::var_os("SUI_RPC_URL"),
+                pk: std::env::var_os("SUI_PK"),
+            };
+            std::env::set_var("HOME", path);
+            std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_PK");
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.home.take() {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            match self.rpc.take() {
+                Some(value) => std::env::set_var("SUI_RPC_URL", value),
+                None => std::env::remove_var("SUI_RPC_URL"),
+            }
+            match self.pk.take() {
+                Some(value) => std::env::set_var("SUI_PK", value),
+                None => std::env::remove_var("SUI_PK"),
+            }
+        }
+    }
 
     fn artifact_without_endpoint() -> TapPublishArtifact {
         let config = TapSkillConfig {
@@ -55,7 +92,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial]
     async fn register_reads_artifact_before_rpc_client() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::without_sui_credentials(temp_home.path());
         let tempdir = tempfile::tempdir().expect("tempdir");
         let artifact_path = tempdir.path().join("artifact.json");
         tokio::fs::write(

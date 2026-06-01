@@ -6,7 +6,7 @@ it when a pattern is unclear.
 
 ## Workspace layout
 
-```
+```text
 nexus-sdk/                  cargo workspace root
 ├── sdk/                    `nexus-sdk` crate — Rust SDK
 │   └── src/
@@ -166,33 +166,31 @@ Adjacent repos under `/home/kouks/Code/talus/`:
      boundary, plus a JSON-shape unit test for each new `*_result_json`.
 1. **Update documentation**:
    - `docs/cli.md` — add a command block in the existing `### nexus <group>`
-     section. Follow the established `**\`nexus … [--flag <VALUE>]\`**` header
-     style and the `{% hint style="info" %}…{% endhint %}` callouts.
+     section. Follow the established `**\`nexus … [--flag <VALUE>]\`\*\*`header
+style and the`{% hint style="info" %}…{% endhint %}` callouts.
    - `CHANGELOG.md` — append bullets to `## [Unreleased]` under the matching
      `### nexus-cli` / `### nexus-sdk` / `### nexus-toolkit` / `### docs`
      sections; `#### Added`, `#### Changed`, `#### Fixed`, `#### Removed`
      are the allowed verbs.
-1. **Verify** (in this order):
+1. **Verify** with the `just pre-commit` recipes (in this order) — they
+   wrap the underlying cargo commands with the right toolchain selection
+   and the same flags CI enforces:
+
    ```bash
-   cargo +stable check --all-features --package nexus-sdk
-   cargo +stable check --package nexus-cli
-   cargo +stable test --all-features --package nexus-sdk
-   cargo +stable test --package nexus-cli
-   cargo +"$(cat .nightly-version)" fmt --all --check
+   just pre-commit cargo-check          # cargo check --locked --workspace --bins --examples
+   just pre-commit cargo-nextest-run    # cargo nextest run --locked --fail-fast … (needs docker)
+   just pre-commit cargo-clippy         # cargo clippy --locked --all-targets --all-features
+   just pre-commit cargo-nightly-fmt    # cargo +<nightly> fmt --all --check
    ```
+
    The fmt step is **required**: `rustfmt.toml` uses several unstable
    options (`imports_granularity`, `group_imports`, `reorder_impl_items`,
-   …) that the stable rustfmt rejects. The pinned nightly lives in
-   `.nightly-version` (currently `nightly-2025-01-06`); install it with
+   …) that the stable rustfmt rejects. `cargo-nightly-fmt` resolves the
+   pinned nightly from `.nightly-version` (currently `nightly-2025-01-06`)
+   automatically; install it with
    `rustup toolchain install "$(cat .nightly-version)" --component rustfmt`
-   if you don't have it yet.
-1. **Run the equivalent `just` recipes** when in doubt — they wrap the
-   above with the right toolchain selection:
-   ```bash
-   just sdk check && just sdk test && just sdk fmt-check
-   just cli check && just cli test && just cli fmt-check
-   just pre-commit cargo-nightly-fmt
-   ```
+   if you don't have it yet. `cargo-nextest-run` requires a running
+   container runtime (docker/podman) because some tests use testcontainers.
 
 ## Definition of done
 
@@ -201,8 +199,8 @@ A change is "done" only when **all** of the following pass:
 - `cargo +stable check` and `cargo +stable test` for every touched
   crate (`-p nexus-sdk -p nexus-cli` at minimum).
 - `cargo +nightly fmt --all --check` (use the pinned `.nightly-version`).
-- New public SDK items have rustdoc that explains the *why*, not only the
-  *what*; non-obvious branches (timeouts, idempotency, error mapping) get
+- New public SDK items have rustdoc that explains the _why_, not only the
+  _what_; non-obvious branches (timeouts, idempotency, error mapping) get
   a one-liner.
 - New CLI subcommands are listed in `docs/cli.md` with the same flag
   ordering and naming as `--help`, and have a corresponding bullet in
