@@ -30,7 +30,7 @@ pub struct OnChainToolInspection {
     pub tool: Option<Tool>,
     pub package_address: Option<sui::types::Address>,
     pub module_name: Option<sui::types::Identifier>,
-    pub witness_id: Option<sui::types::Address>,
+    pub tool_witness_id: Option<sui::types::Address>,
 }
 
 /// Inputs for [`ToolActions::register_on_chain_or_reuse`].
@@ -43,7 +43,7 @@ pub struct RegisterOnChainToolParams {
     pub input_schema: String,
     pub output_schema: String,
     pub timeout: Duration,
-    pub witness_id: sui::types::Address,
+    pub tool_witness_id: sui::types::Address,
     pub collateral_coin: sui::types::ObjectReference,
     pub workflow_authorization_cap_first: bool,
 }
@@ -58,7 +58,7 @@ pub struct RegisterOnChainToolResult {
     pub tool_gas_id: sui::types::Address,
     pub package_address: sui::types::Address,
     pub module_name: sui::types::Identifier,
-    pub witness_id: sui::types::Address,
+    pub tool_witness_id: sui::types::Address,
     pub owner_cap_over_tool: Option<sui::types::Address>,
     pub owner_cap_over_gas: Option<sui::types::Address>,
     pub workflow_authorization_cap_first: bool,
@@ -138,7 +138,7 @@ impl ToolActions {
     /// Derive the Tool and ToolGas object IDs for `fqn` and probe the Tool
     /// object. Returns `exists: false` when neither object is present yet.
     /// When the Tool exists, its `ToolRef::Sui` fields are decoded into
-    /// `package_address`, `module_name`, and `witness_id` for direct use.
+    /// `package_address`, `module_name`, and `tool_witness_id` for direct use.
     ///
     /// Returns [`NexusError::Configuration`] when only one of Tool/ToolGas
     /// exists — that combination indicates corrupt registry state and
@@ -175,7 +175,7 @@ impl ToolActions {
                 tool: None,
                 package_address: None,
                 module_name: None,
-                witness_id: None,
+                tool_witness_id: None,
             });
         }
 
@@ -185,7 +185,7 @@ impl ToolActions {
             .map_err(NexusError::Rpc)?
             .data;
 
-        let (package_address, module_name, witness_id) = match &tool.reference {
+        let (package_address, module_name, tool_witness_id) = match &tool.reference {
             ToolRef::Sui {
                 package_address,
                 module_name,
@@ -206,7 +206,7 @@ impl ToolActions {
             tool: Some(tool),
             package_address,
             module_name,
-            witness_id,
+            tool_witness_id,
         })
     }
 
@@ -232,7 +232,7 @@ impl ToolActions {
                     params.fqn
                 ))
             })?;
-            let witness_id = inspection.witness_id.ok_or_else(|| {
+            let tool_witness_id = inspection.tool_witness_id.ok_or_else(|| {
                 NexusError::Parsing(anyhow::anyhow!(
                     "On-chain tool '{}' exists but does not have a witness id; cannot reuse",
                     params.fqn
@@ -244,7 +244,7 @@ impl ToolActions {
                 tool_gas_id: inspection.tool_gas_id,
                 package_address,
                 module_name,
-                witness_id,
+                tool_witness_id,
                 owner_cap_over_tool: None,
                 owner_cap_over_gas: None,
                 workflow_authorization_cap_first: inspection
@@ -271,7 +271,7 @@ impl ToolActions {
             &params.input_schema,
             &params.output_schema,
             params.timeout,
-            params.witness_id,
+            params.tool_witness_id,
             &params.collateral_coin,
             address,
             params.workflow_authorization_cap_first,
@@ -308,7 +308,7 @@ impl ToolActions {
             tool_gas_id: inspection.tool_gas_id,
             package_address: params.package_address,
             module_name: params.module,
-            witness_id: params.witness_id,
+            tool_witness_id: params.tool_witness_id,
             owner_cap_over_tool: Some(owner_cap_over_tool),
             owner_cap_over_gas,
             workflow_authorization_cap_first: params.workflow_authorization_cap_first,
@@ -549,7 +549,7 @@ mod tests {
         fqn: crate::ToolFqn,
         package_address: sui::types::Address,
         module_name: sui::types::Identifier,
-        witness_id: sui::types::Address,
+        tool_witness_id: sui::types::Address,
         workflow_authorization_cap_first: bool,
     ) -> Tool {
         Tool {
@@ -558,7 +558,7 @@ mod tests {
             reference: ToolRef::Sui {
                 package_address,
                 module_name,
-                tool_witness_id: witness_id,
+                tool_witness_id,
             },
             description: "demo".to_string(),
             input_schema: serde_json::json!({}),
@@ -605,7 +605,7 @@ mod tests {
         assert!(inspection.tool.is_none());
         assert!(inspection.package_address.is_none());
         assert!(inspection.module_name.is_none());
-        assert!(inspection.witness_id.is_none());
+        assert!(inspection.tool_witness_id.is_none());
     }
 
     #[tokio::test]
@@ -657,7 +657,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let fixture = InspectionFixture::new();
         let package_address = sui::types::Address::generate(&mut rng);
-        let witness_id = sui::types::Address::generate(&mut rng);
+        let tool_witness_id = sui::types::Address::generate(&mut rng);
         let module_name = sui::types::Identifier::from_static("demo_onchain_vertex");
 
         let tool_ref = sui::types::ObjectReference::new(
@@ -675,7 +675,7 @@ mod tests {
             fixture.fqn.clone(),
             package_address,
             module_name.clone(),
-            witness_id,
+            tool_witness_id,
             true,
         );
         let tool_json = serde_json::to_value(&tool).expect("Tool serializes to JSON");
@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
         assert_eq!(inspection.package_address, Some(package_address));
         assert_eq!(inspection.module_name.as_ref(), Some(&module_name));
-        assert_eq!(inspection.witness_id, Some(witness_id));
+        assert_eq!(inspection.tool_witness_id, Some(tool_witness_id));
         let decoded = inspection.tool.expect("Tool decoded");
         assert!(decoded.workflow_authorization_cap_first);
     }
@@ -728,7 +728,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let fixture = InspectionFixture::new();
         let package_address = sui::types::Address::generate(&mut rng);
-        let witness_id = sui::types::Address::generate(&mut rng);
+        let tool_witness_id = sui::types::Address::generate(&mut rng);
         let module_name = sui::types::Identifier::from_static("demo_onchain_vertex");
         let collateral_coin = sui_mocks::mock_sui_object_ref();
 
@@ -747,7 +747,7 @@ mod tests {
             fixture.fqn.clone(),
             package_address,
             module_name.clone(),
-            witness_id,
+            tool_witness_id,
             true,
         );
         let tool_json = serde_json::to_value(&tool).expect("Tool serializes to JSON");
@@ -787,7 +787,7 @@ mod tests {
             input_schema: String::new(),
             output_schema: String::new(),
             timeout: Duration::from_secs(5),
-            witness_id: sui::types::Address::generate(&mut rng),
+            tool_witness_id: sui::types::Address::generate(&mut rng),
             collateral_coin,
             workflow_authorization_cap_first: false,
         };
@@ -806,7 +806,7 @@ mod tests {
         // Decoded refs come from the on-chain Tool, NOT from params.
         assert_eq!(result.package_address, package_address);
         assert_eq!(result.module_name, module_name);
-        assert_eq!(result.witness_id, witness_id);
+        assert_eq!(result.tool_witness_id, tool_witness_id);
         // The stored `workflow_authorization_cap_first` from the on-chain Tool
         // is preferred over the params value.
         assert!(result.workflow_authorization_cap_first);
@@ -924,7 +924,7 @@ mod tests {
         // HTTP-variant tools have no on-chain package/module/witness to decode.
         assert!(inspection.package_address.is_none());
         assert!(inspection.module_name.is_none());
-        assert!(inspection.witness_id.is_none());
+        assert!(inspection.tool_witness_id.is_none());
         // But the Tool itself must still come back so the caller can read other fields.
         let decoded = inspection.tool.expect("Tool decoded");
         assert!(matches!(decoded.reference, ToolRef::Http { .. }));
@@ -997,7 +997,7 @@ mod tests {
             input_schema: String::new(),
             output_schema: String::new(),
             timeout: Duration::from_secs(5),
-            witness_id: sui::types::Address::generate(&mut rng),
+            tool_witness_id: sui::types::Address::generate(&mut rng),
             collateral_coin,
             workflow_authorization_cap_first: true,
         };
@@ -1024,7 +1024,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let fixture = InspectionFixture::new();
         let package_address = sui::types::Address::generate(&mut rng);
-        let witness_id = sui::types::Address::generate(&mut rng);
+        let tool_witness_id = sui::types::Address::generate(&mut rng);
         let module_name = sui::types::Identifier::from_static("demo_onchain_vertex");
         let collateral_coin = sui_mocks::mock_sui_object_ref();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
@@ -1081,7 +1081,7 @@ mod tests {
             input_schema: "{}".to_string(),
             output_schema: "{}".to_string(),
             timeout: Duration::from_secs(5),
-            witness_id,
+            tool_witness_id,
             collateral_coin,
             workflow_authorization_cap_first: true,
         };
@@ -1099,7 +1099,7 @@ mod tests {
         assert_eq!(result.owner_cap_over_gas, Some(over_gas_id));
         assert_eq!(result.package_address, package_address);
         assert_eq!(result.module_name, module_name);
-        assert_eq!(result.witness_id, witness_id);
+        assert_eq!(result.tool_witness_id, tool_witness_id);
         assert_eq!(result.tool_id, fixture.tool_id);
         assert_eq!(result.tool_gas_id, fixture.tool_gas_id);
         assert!(result.workflow_authorization_cap_first);

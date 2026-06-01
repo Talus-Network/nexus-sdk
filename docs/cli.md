@@ -77,7 +77,7 @@ Registers an on-chain Nexus Tool that resolves to a Move package, module, and wi
 
 If both objects derived from the FQN exist _but their counterparts don't_ (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
 
-The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest.
+The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `tool_witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest. The fresh-registration and `--reuse-if-exists` branches emit the same key names.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -89,7 +89,7 @@ This command requires that a wallet is connected to the CLI...
 
 Derives the `Tool` and `ToolGas` object IDs from the configured `ToolRegistry`/`GasService` and the supplied FQN, probes both objects on-chain, and emits a stable JSON summary so callers do not need to BCS-decode the `Tool` object themselves.
 
-The JSON includes `tool_id`, `tool_gas_id`, `exists` (true when both objects are present), and — when the tool is on-chain — the decoded Sui ref fields `package_address`, `module_name`, `witness_id`, the stored `description`, `input_schema`, `output_schema`, `workflow_authorization_cap_first`, plus `registered_at` and `unregistered_at` timestamps. When the tool does not exist yet, the derived IDs are still returned so the caller can pre-compute them.
+The JSON includes `tool_id`, `tool_gas_id`, `exists` (true when both objects are present), and — when the tool is on-chain — the decoded Sui ref fields `package_address`, `module_name`, `tool_witness_id`, the stored `description`, `input_schema`, `output_schema`, `workflow_authorization_cap_first`, plus `registered_at` and `unregistered_at` timestamps. When the tool does not exist yet, the derived IDs are still returned so the caller can pre-compute them.
 
 ---
 
@@ -603,13 +603,13 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap registry show`**
 
-Reads the configured TAP registry and prints its full contents as JSON: registry id, the configured `default_executor`, all `agents`, `skills`, `endpoints` (every revision), and the `active_endpoints` activation table. This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
+Reads the configured TAP registry and prints its full contents as JSON: a `standard_tap` flag, the registry `id`, the configured `default_executor`, all `agents`, `skills`, and `endpoints` (every revision). This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
 
 ---
 
 **`nexus tap default-target show`**
 
-Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing the default `agent_id` and `skill_id`, the resolved `dag_id`, the binding `tap_package_id`, the active `interface_revision`, the endpoint object ref, and the published skill `requirements`. Useful for scripts that want to drive the network's default agent without hard-coding ids.
+Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the resolved `dag_id`, the active `interface_revision`, the `config_digest_hex`, the endpoint `shared_objects`, and the published skill `requirements`. Useful for scripts that want to drive the network's default agent without hard-coding ids.
 
 ---
 
