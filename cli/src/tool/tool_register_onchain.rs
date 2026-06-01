@@ -97,7 +97,27 @@ pub(crate) async fn register_onchain_tool(
                 "Reusing already-registered on-chain tool '{fqn}'",
                 fqn = fqn.to_string().truecolor(100, 100, 100)
             );
-            json_output(&register_onchain_result_json(&result, None, None, None))?;
+
+            // Populate description/schemas from the on-chain Tool record we
+            // already fetched, so the reuse branch emits the same string-typed
+            // keys as the fresh-registration branch instead of nulls. The Tool
+            // stores schemas as JSON values; stringify them to match the fresh
+            // path, which emits the generated schema strings.
+            let description = preview.tool.as_ref().map(|tool| tool.description.clone());
+            let input_schema = preview
+                .tool
+                .as_ref()
+                .map(|tool| tool.input_schema.to_string());
+            let output_schema = preview
+                .tool
+                .as_ref()
+                .map(|tool| tool.output_schema.to_string());
+            json_output(&register_onchain_result_json(
+                &result,
+                input_schema.as_deref(),
+                output_schema.as_deref(),
+                description.as_deref(),
+            ))?;
             return Ok(());
         }
     }
@@ -1414,6 +1434,43 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Could not find the OwnerCap<OverTool> object ID"));
+    }
+
+    #[test]
+    fn reuse_path_json_emits_string_typed_description_and_schemas() {
+        let mut rng = rand::thread_rng();
+        let result = RegisterOnChainToolResult {
+            fqn: "com.example.testtool@1".parse().unwrap(),
+            tool_id: sui::types::Address::generate(&mut rng),
+            tool_gas_id: sui::types::Address::generate(&mut rng),
+            package_address: sui::types::Address::generate(&mut rng),
+            module_name: sui::types::Identifier::from_static("counter"),
+            tool_witness_id: sui::types::Address::generate(&mut rng),
+            owner_cap_over_tool: Some(sui::types::Address::generate(&mut rng)),
+            owner_cap_over_gas: Some(sui::types::Address::generate(&mut rng)),
+            workflow_authorization_cap_first: true,
+            reused: true,
+            tx_digest: None,
+            tx_checkpoint: None,
+        };
+
+        let json = register_onchain_result_json(
+            &result,
+            Some(r#"{"0":{"type":"u64"}}"#),
+            Some(r#"{"ok":{}}"#),
+            Some("a counter tool"),
+        );
+
+        // The reuse branch must emit these keys as strings (mirroring the
+        // fresh-registration branch), never null, so scripts can rely on them.
+        assert!(json["description"].is_string());
+        assert!(json["input_schema"].is_string());
+        assert!(json["output_schema"].is_string());
+        assert_eq!(json["description"], "a counter tool");
+        assert_eq!(json["input_schema"], r#"{"0":{"type":"u64"}}"#);
+        assert_eq!(json["output_schema"], r#"{"ok":{}}"#);
+        assert_eq!(json["reused"], true);
+        assert_eq!(json["already_registered"], true);
     }
 
     #[tokio::test]
