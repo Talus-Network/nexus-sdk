@@ -1093,12 +1093,23 @@ impl TapActions {
     /// Poll a [`TapExecutionPayment`] until it reaches a terminal state
     /// (accomplished, refunded, or a non-pending [`TapExecutionPaymentFinalState`])
     /// or `timeout` elapses.
+    ///
+    /// `poll_interval` must be non-zero: a zero interval would turn the loop
+    /// into a busy-wait that hammers the RPC endpoint and pins a CPU, so it is
+    /// rejected up front with [`NexusError::Configuration`] rather than trusted
+    /// to the caller.
     pub async fn wait_for_payment_settled(
         &self,
         payment_id: sui::types::Address,
         timeout: Duration,
         poll_interval: Duration,
     ) -> Result<WaitForPaymentResult, NexusError> {
+        if poll_interval.is_zero() {
+            return Err(NexusError::Configuration(
+                "poll_interval must be greater than zero".to_string(),
+            ));
+        }
+
         let crawler = self.client.crawler();
         let started_at = Instant::now();
 
@@ -2920,5 +2931,34 @@ mod tests {
             false,
             Some(TapExecutionPaymentFinalState::Pending)
         )));
+    }
+
+    #[tokio::test]
+    async fn wait_for_payment_settled_rejects_zero_poll_interval() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        // A zero poll interval would busy-loop the poller; it must be rejected
+        // before any RPC traffic is generated.
+        let error = client
+            .tap()
+            .wait_for_payment_settled(
+                sui::types::Address::from_static("0xa"),
+                Duration::from_secs(5),
+                Duration::ZERO,
+            )
+            .await
+            .expect_err("zero poll interval must be rejected");
+
+        assert!(
+            matches!(&error, NexusError::Configuration(msg) if msg.contains("poll_interval")),
+            "unexpected error: {error:?}"
+        );
     }
 }
