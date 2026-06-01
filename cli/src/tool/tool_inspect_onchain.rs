@@ -27,7 +27,7 @@ pub(crate) fn inspect_on_chain_tool_result_json(
         "exists": inspection.exists,
         "package_address": inspection.package_address,
         "module_name": inspection.module_name.as_ref().map(|m| m.as_str()),
-        "witness_id": inspection.witness_id,
+        "tool_witness_id": inspection.tool_witness_id,
         "description": tool_meta.map(|t| t.description.clone()),
         "input_schema": tool_meta.map(|t| t.input_schema.clone()),
         "output_schema": tool_meta.map(|t| t.output_schema.clone()),
@@ -51,7 +51,7 @@ mod tests {
             tool: None,
             package_address: None,
             module_name: None,
-            witness_id: None,
+            tool_witness_id: None,
         };
 
         let json = inspect_on_chain_tool_result_json(&inspection);

@@ -987,8 +987,12 @@ impl TapActions {
         })
     }
 
-    /// Read endpoint object metadata plus the live registry revision/record
-    /// keyed to it, so callers do not need to walk raw Sui object internals.
+    /// Read the on-chain metadata of an endpoint object and return its object
+    /// ref, so callers do not need to walk raw Sui object internals. In the
+    /// current TAP model endpoint revisions live on the agent registry keyed by
+    /// (agent_id, skill_id, interface_revision) without a back-reference to the
+    /// standalone object, so use `nexus tap registry show` to inspect revisions
+    /// and active endpoints. See [`EndpointInspection`].
     pub async fn inspect_endpoint(
         &self,
         endpoint_object_id: sui::types::Address,

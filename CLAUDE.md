@@ -172,9 +172,7 @@ style and the`{% hint style="info" %}…{% endhint %}` callouts.
      `### nexus-cli` / `### nexus-sdk` / `### nexus-toolkit` / `### docs`
      sections; `#### Added`, `#### Changed`, `#### Fixed`, `#### Removed`
      are the allowed verbs.
-1. **Verify** with the `just pre-commit` recipes (in this order) — they
-   wrap the underlying cargo commands with the right toolchain selection
-   and the same flags CI enforces:
+1. **Verify** (in this order):
 
    ```bash
    just pre-commit cargo-check          # cargo check --locked --workspace --bins --examples
@@ -189,8 +187,16 @@ style and the`{% hint style="info" %}…{% endhint %}` callouts.
    pinned nightly from `.nightly-version` (currently `nightly-2025-01-06`)
    automatically; install it with
    `rustup toolchain install "$(cat .nightly-version)" --component rustfmt`
-   if you don't have it yet. `cargo-nextest-run` requires a running
-   container runtime (docker/podman) because some tests use testcontainers.
+   if you don't have it yet.
+
+1. **Run the equivalent `just` recipes** when in doubt — they wrap the
+   above with the right toolchain selection:
+
+   ```bash
+   just sdk check && just sdk test && just sdk fmt-check
+   just cli check && just cli test && just cli fmt-check
+   just pre-commit cargo-nightly-fmt
+   ```
 
 ## Definition of done
 
