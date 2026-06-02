@@ -104,6 +104,17 @@ pub(crate) enum TaskCommand {
             value_name = "KIND"
         )]
         generator: TaskGeneratorArg,
+        /// Scope the task to a registered Talus agent skill. When set, the
+        /// task is built with the agent-bound execution policy
+        /// (`BeginAgentExecutionWitness`) so the workflow dispatches walks
+        /// against `(agent, skill)` instead of the default DAG-execution
+        /// policy. Must be paired with `--skill-id`.
+        #[arg(long = "agent-id", value_name = "OBJECT_ID")]
+        agent_id: Option<sui::types::Address>,
+        /// Agent-local skill index for the agent-bound execution policy.
+        /// Must be paired with `--agent-id`.
+        #[arg(long = "skill-id", value_name = "U64")]
+        skill_id: Option<u64>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -168,6 +179,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             schedule_deadline,
             schedule_priority_fee_per_gas_unit,
             generator,
+            agent_id,
+            skill_id,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -190,6 +203,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 schedule_deadline_offset_ms,
                 schedule_priority_fee_per_gas_unit,
                 generator.into(),
+                agent_id,
+                skill_id,
                 gas,
             )
             .await

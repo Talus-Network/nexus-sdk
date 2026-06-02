@@ -317,7 +317,7 @@ Manage scheduler tasks, occurrences, and periodic schedules.
 
 ---
 
-**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-priority-fee-per-gas-unit <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-priority-fee-per-gas-unit <mist>] [--generator queue|periodic]`**
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-priority-fee-per-gas-unit <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-priority-fee-per-gas-unit <mist>] [--generator queue|periodic] [--agent-id <id> --skill-id <u64>]`**
 
 Creates a new scheduler task tied to the specified DAG. Key options:
 
@@ -328,6 +328,7 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
 - `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-priority-fee-per-gas-unit` sets the priority fee for that initial occurrence.
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`BeginAgentExecutionWitness`) instead of the default DAG-execution policy, so the task can be paired with `tap schedule-from-vault`, `tap schedule-address-funded`, or `tap schedule-default-address-funded` to fund and trigger occurrences.
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
 

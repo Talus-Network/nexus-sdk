@@ -15,12 +15,14 @@ use {
         types::{
             deserialize_sui_u64,
             AgentExecutionConfig,
+            AgentId,
             DagExecutionConfig,
             DataStorage,
             MoveFields,
             MoveOption,
             NexusObjects,
             PolicySymbol,
+            SkillId,
             TapScheduledTaskLink,
             Task,
             TransitionConfigKey,
@@ -76,6 +78,13 @@ pub struct CreateTaskParams {
     pub execution_priority_fee_per_gas_unit: u64,
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
+    /// When both `agent_id` and `skill_id` are supplied, the task is built
+    /// with the agent-bound execution policy (`BeginAgentExecutionWitness`)
+    /// so the workflow dispatches walks against `(agent, skill)` rather
+    /// than the default DAG-execution policy. Either both must be set or
+    /// neither; supplying just one is rejected with `NexusError::Configuration`.
+    pub agent_id: Option<AgentId>,
+    pub skill_id: Option<SkillId>,
 }
 
 /// Result returned after creating a scheduler task.
@@ -219,7 +228,18 @@ impl SchedulerActions {
             execution_priority_fee_per_gas_unit,
             initial_schedule: initial_schedule_request,
             generator,
+            agent_id,
+            skill_id,
         } = params;
+        let agent_binding = match (agent_id, skill_id) {
+            (Some(agent_id), Some(skill_id)) => Some((agent_id, skill_id)),
+            (None, None) => None,
+            _ => {
+                return Err(NexusError::Configuration(
+                    "Scheduler task agent_id and skill_id must both be set or both be unset".into(),
+                ));
+            }
+        };
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
@@ -232,15 +252,31 @@ impl SchedulerActions {
             scheduler_tx::new_constraints_policy(&mut tx, objects, generator.into())
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let execution_arg = scheduler_tx::new_execution_policy(
-            &mut tx,
-            objects,
-            dag_id,
-            execution_priority_fee_per_gas_unit,
-            entry_group.as_str(),
-            &input_data,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
+        let execution_arg = if let Some((agent_id, skill_id)) = agent_binding {
+            scheduler_tx::new_agent_execution_policy(
+                &mut tx,
+                objects,
+                dag_id,
+                execution_priority_fee_per_gas_unit,
+                entry_group.as_str(),
+                &input_data,
+                agent_id,
+                skill_id,
+                None,
+                &[],
+            )
+            .map_err(NexusError::TransactionBuilding)?
+        } else {
+            scheduler_tx::new_execution_policy(
+                &mut tx,
+                objects,
+                dag_id,
+                execution_priority_fee_per_gas_unit,
+                entry_group.as_str(),
+                &input_data,
+            )
+            .map_err(NexusError::TransactionBuilding)?
+        };
 
         let task = scheduler_tx::new_task(
             &mut tx,
@@ -1200,6 +1236,8 @@ mod tests {
             execution_priority_fee_per_gas_unit: 1,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
+            agent_id: None,
+            skill_id: None,
         };
 
         let result = nexus_client
@@ -1312,6 +1350,8 @@ mod tests {
             execution_priority_fee_per_gas_unit: 5,
             initial_schedule: Some(initial_schedule),
             generator: GeneratorKind::Queue,
+            agent_id: None,
+            skill_id: None,
         };
 
         let result = nexus_client
@@ -1328,6 +1368,65 @@ mod tests {
             Some(NexusEventKind::RequestScheduledOccurrence(env))
                 if env.request.task == task_id && env.priority == 10 && env.start_ms == 200
         ));
+    }
+
+    #[tokio::test]
+    async fn create_task_rejects_half_agent_binding_before_rpc() {
+        // Half-supplied agent binding (agent_id without skill_id, or vice
+        // versa) must be caught locally before any gRPC round-trip. The
+        // client itself probes `reference_gas_price` at construction time —
+        // we mock that, but expect no other RPC traffic. The test passes
+        // only when `create_task` errors out before the first PTB build.
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+        let execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
+
+        let mut rng = rand::thread_rng();
+        let dag_id = sui::types::Address::generate(&mut rng);
+
+        let agent_only = CreateTaskParams {
+            dag_id,
+            entry_group: "entry".into(),
+            input_data: HashMap::new(),
+            metadata: vec![],
+            execution_priority_fee_per_gas_unit: 0,
+            initial_schedule: None,
+            generator: GeneratorKind::Queue,
+            agent_id: Some(sui::types::Address::generate(&mut rng)),
+            skill_id: None,
+        };
+        let result = nexus_client.scheduler().create_task(agent_only).await;
+        let Err(err) = result else {
+            panic!("agent-only binding must error");
+        };
+        assert!(matches!(err, NexusError::Configuration(_)));
+        assert!(err.to_string().contains("agent_id and skill_id must both"));
+
+        let skill_only = CreateTaskParams {
+            dag_id,
+            entry_group: "entry".into(),
+            input_data: HashMap::new(),
+            metadata: vec![],
+            execution_priority_fee_per_gas_unit: 0,
+            initial_schedule: None,
+            generator: GeneratorKind::Queue,
+            agent_id: None,
+            skill_id: Some(0),
+        };
+        let result = nexus_client.scheduler().create_task(skill_only).await;
+        let Err(err) = result else {
+            panic!("skill-only binding must error");
+        };
+        assert!(matches!(err, NexusError::Configuration(_)));
     }
 
     #[tokio::test]

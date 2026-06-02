@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap schedule-address-funded` command that creates an address-funded scheduled TAP task tied to an existing scheduler task, attaches the `TapScheduledTaskLink`, and shares the resulting `ScheduledSkillTask` in one transaction.
 - `tap schedule-from-vault` command that creates an agent-vault-funded scheduled TAP task tied to an existing scheduler task and attaches the `TapScheduledTaskLink` in one transaction.
 - `tap schedule-default-address-funded` command that creates an address-funded scheduled TAP task for the registry-owned default DAG executor and attaches the `TapScheduledTaskLink` in one transaction.
+- `scheduler task create --agent-id <OBJECT_ID> --skill-id <U64>` flag pair that scopes the created task to a registered TAP agent skill so the workflow dispatches walks under `BeginAgentExecutionWitness` (agent-bound) instead of the default `BeginExecutionWitness` policy. The flags must be supplied together; one without the other is rejected before any RPC is made.
 
 #### Changed
 
@@ -33,6 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it. It also defers the `--reuse-if-exists` success message until the reuse call returns successfully.
 - Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
+
+#### Fixed
+
+- `tool register onchain` now correctly disambiguates `OwnerCap<OverTool>` vs `OwnerCap<OverGas>` in the post-registration response. `OverTool` is defined in the registry package (`nexus_registry::tool_registry::OverTool`) while `OverGas` lives in the workflow package (`nexus_workflow::gas::OverGas`), so the inner type's address differs per cap; the previous filter rejected the `OverTool` cap by comparing both inners against `workflow_pkg_id` and surfaced a misleading "Could not find the OwnerCap<OverTool> object ID in the transaction response" error after a successful registration.
 
 ### `nexus-sdk`
 
@@ -71,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Durable scheduled TAP models, events, fetch helpers, and transaction builders for address-funded and agent-vault-funded scheduled prepayment, scheduled occurrence payment conversion, scheduled occurrence completion, and scheduler-task link attachment.
 - SDK-level `fetch_task_tap_scheduled_task_link` and `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain scheduled task state without local-only BCS parsing.
 - Default-DAG-executor address-funded scheduling action and PTB builder that omit `agent_id`/`skill_id` arguments and resolve the registry-owned default executor through `TapRegistry`.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 
 #### Changed
 

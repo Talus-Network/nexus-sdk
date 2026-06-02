@@ -363,20 +363,22 @@ fn extract_owner_caps(
             continue;
         }
 
-        // Disambiguate by the generic type param.
+        // Disambiguate by the generic type param. OverTool is defined in the
+        // registry package (`nexus_registry::tool_registry::OverTool`) while
+        // OverGas is defined in the workflow package
+        // (`nexus_workflow::gas::OverGas`), so the inner type's address comes
+        // from a different package depending on which cap we are looking at.
         let Some(sui::types::TypeTag::Struct(inner)) = object_type.type_params().first() else {
             continue;
         };
 
-        if *inner.address() != nexus_objects.workflow_pkg_id {
-            continue;
-        }
-
-        if *inner.module() == workflow_idents::ToolRegistry::OVER_TOOL.module
+        if *inner.address() == nexus_objects.registry_pkg_id
+            && *inner.module() == workflow_idents::ToolRegistry::OVER_TOOL.module
             && *inner.name() == workflow_idents::ToolRegistry::OVER_TOOL.name
         {
             over_tool = Some(obj.object_id());
-        } else if *inner.module() == workflow_idents::Gas::OVER_GAS.module
+        } else if *inner.address() == nexus_objects.workflow_pkg_id
+            && *inner.module() == workflow_idents::Gas::OVER_GAS.module
             && *inner.name() == workflow_idents::Gas::OVER_GAS.name
         {
             over_gas = Some(obj.object_id());
@@ -1318,16 +1320,12 @@ mod tests {
     fn cloneable_owner_cap(
         rng: &mut rand::rngs::ThreadRng,
         nexus_objects: &NexusObjects,
+        inner_pkg_id: sui::types::Address,
         inner_module: sui::types::Identifier,
         inner_name: sui::types::Identifier,
         owner_cap_id: sui::types::Address,
     ) -> sui::types::Object {
-        let inner = sui::types::StructTag::new(
-            nexus_objects.workflow_pkg_id,
-            inner_module,
-            inner_name,
-            vec![],
-        );
+        let inner = sui::types::StructTag::new(inner_pkg_id, inner_module, inner_name, vec![]);
         let cap_tag = sui::types::StructTag::new(
             nexus_objects.primitives_pkg_id,
             primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
@@ -1357,6 +1355,7 @@ mod tests {
         let objects = vec![cloneable_owner_cap(
             &mut rng,
             &nexus_objects,
+            nexus_objects.registry_pkg_id,
             workflow_idents::ToolRegistry::OVER_TOOL.module,
             workflow_idents::ToolRegistry::OVER_TOOL.name,
             owner_cap_id,
@@ -1379,6 +1378,7 @@ mod tests {
         let objects = vec![cloneable_owner_cap(
             &mut rng,
             &nexus_objects,
+            nexus_objects.workflow_pkg_id,
             workflow_idents::Gas::OVER_GAS.module,
             workflow_idents::Gas::OVER_GAS.name,
             over_gas_id,
@@ -1405,6 +1405,7 @@ mod tests {
             cloneable_owner_cap(
                 &mut rng,
                 &nexus_objects,
+                nexus_objects.workflow_pkg_id,
                 workflow_idents::Gas::OVER_GAS.module,
                 workflow_idents::Gas::OVER_GAS.name,
                 over_gas_id,
@@ -1412,6 +1413,7 @@ mod tests {
             cloneable_owner_cap(
                 &mut rng,
                 &nexus_objects,
+                nexus_objects.registry_pkg_id,
                 workflow_idents::ToolRegistry::OVER_TOOL.module,
                 workflow_idents::ToolRegistry::OVER_TOOL.name,
                 over_tool_id,

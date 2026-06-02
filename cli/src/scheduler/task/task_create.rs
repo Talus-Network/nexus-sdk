@@ -31,8 +31,15 @@ pub(crate) async fn create_task(
     schedule_deadline_offset_ms: Option<u64>,
     schedule_priority_fee_per_gas_unit: u64,
     generator: GeneratorKind,
+    agent_id: Option<sui::types::Address>,
+    skill_id: Option<u64>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
+    if agent_id.is_some() != skill_id.is_some() {
+        return Err(NexusCliError::Any(anyhow!(
+            "--agent-id and --skill-id must be provided together (or both omitted) to scope the task to a registered TAP agent skill"
+        )));
+    }
     command_title!(
         "Creating scheduler task for DAG '{dag_id}'",
         dag_id = dag_id
@@ -108,6 +115,8 @@ pub(crate) async fn create_task(
             execution_priority_fee_per_gas_unit,
             initial_schedule,
             generator,
+            agent_id,
+            skill_id,
         })
         .await
         .map_err(NexusCliError::Nexus)?;
