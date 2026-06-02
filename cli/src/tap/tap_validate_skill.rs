@@ -172,15 +172,11 @@ pub(crate) fn validate_tap_package_sources(
 
 pub(crate) async fn validate_skill(
     config_path: PathBuf,
-    tap_package_override: Option<PathBuf>,
 ) -> AnyResult<TapSkillConfig, NexusCliError> {
     command_title!("Validating TAP skill config '{}'", config_path.display());
 
     let handle = loading!("Validating TAP skill config...");
-    let mut config = read_skill_config(&config_path).await?;
-    if let Some(path) = tap_package_override {
-        config.tap_package_path = path;
-    }
+    let config = read_skill_config(&config_path).await?;
 
     config
         .validate()

@@ -510,9 +510,9 @@ Generates a TAP package skeleton in `<target>/<name-kebab-cased>/`, containing a
 
 ---
 
-**`nexus tap validate-skill --config <PATH> [--tap-package <PATH>]`**
+**`nexus tap validate-skill --config <PATH>`**
 
-Statically validates a TAP skill config JSON and the local TAP package it references — package manifest, named-address aliases, module declarations, and the bundled DAG JSON. `--tap-package` overrides the `tap_package_path` field in the config so the same config can be validated against a relocated package. No network is required.
+Statically validates a TAP skill config JSON and the local TAP package it references — package manifest, named-address aliases, module declarations, and the bundled DAG JSON. The TAP package is resolved from the config's `tap_package_path` (interpreted relative to the config file's directory). No network is required.
 
 ---
 
@@ -524,7 +524,7 @@ Runs `validate-skill` and computes a config digest against the zero package addr
 
 ---
 
-**`nexus tap publish-skill --config <PATH> [--tap-package <PATH>] [--out <PATH>]`**
+**`nexus tap publish-skill --config <PATH> [--out <PATH>]`**
 
 Publishes a full TAP skill in one shot: publishes the TAP Move package, publishes the DAG, creates and shares a `StandardEndpoint` object for the package, and constructs a `TapPublishArtifact` carrying everything an operator needs to bind the skill to an agent. The JSON output includes the TAP `package_id`, the `dag_id`, the endpoint object ref, the per-step transaction digests and checkpoints, and the full `artifact`. When `--out` is supplied, the artifact is also written to disk as JSON for handoff to operators (e.g. to feed `register-skill` or `bind`).
 

@@ -51,9 +51,10 @@ name = "{package_name}"
 edition = "2024.beta"
 
 [dependencies]
-nexus_interface = {{ local = "../../nexus/sui/interface" }}
-nexus_workflow = {{ local = "../../nexus/sui/workflow" }}
 nexus_primitives = {{ local = "../../nexus/sui/primitives" }}
+nexus_interface  = {{ local = "../../nexus/sui/interface" }}
+nexus_registry   = {{ local = "../../nexus/sui/registry" }}
+nexus_workflow   = {{ local = "../../nexus/sui/workflow" }}
 
 [addresses]
 {package_name} = "0x0"
@@ -153,5 +154,36 @@ mod tests {
         assert!(files
             .iter()
             .any(|(_, contents)| contents.contains("module weather_skill::weather_skill;")));
+    }
+
+    #[test]
+    fn scaffolded_move_toml_declares_all_four_nexus_dependencies() {
+        // The TAP development guide compiles the scaffolded package against
+        // the four published Nexus packages: primitives, interface, registry,
+        // workflow. A missing entry surfaces as a downstream Move compile
+        // error on the first `validate-skill` once the author replaces the
+        // stub Move source, so pin the full set up front.
+        let files = scaffold_files(
+            "tutorial transfer",
+            "tutorial_transfer",
+            "tutorial_transfer",
+        );
+        let move_toml = files
+            .iter()
+            .find_map(|(path, contents)| {
+                (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
+            })
+            .expect("Move.toml present");
+        for dep in [
+            "nexus_primitives",
+            "nexus_interface",
+            "nexus_registry",
+            "nexus_workflow",
+        ] {
+            assert!(
+                move_toml.contains(dep),
+                "scaffolded Move.toml missing {dep} dependency"
+            );
+        }
     }
 }

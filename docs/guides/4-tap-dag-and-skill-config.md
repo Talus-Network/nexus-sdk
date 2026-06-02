@@ -101,7 +101,7 @@ Field by field:
 Run the local dry-run to confirm the DAG, the on-chain tool reference, and the skill requirements all line up:
 
 ```bash
-nexus tap dry-run --config tutorial-transfer/skill.tap.json
+nexus tap dry-run --config skill.tap.json
 ```
 
 You should see the validation summary again — no chain calls happen yet. If the DAG references an unknown FQN or the entry ports don't match the registered tool's schema, the dry-run is where you'll catch it.

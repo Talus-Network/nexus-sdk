@@ -3,11 +3,10 @@ use super::*;
 pub(crate) async fn publish_skill(
     config_path: PathBuf,
     out: Option<PathBuf>,
-    tap_package_override: Option<PathBuf>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let config = validate_skill(config_path.clone(), tap_package_override).await?;
+    let config = validate_skill(config_path.clone()).await?;
     let dag_path = resolve_relative(&config_path, config.dag_path.clone());
     let tap_package_path = resolve_relative(&config_path, config.tap_package_path.clone());
     let dag_text = tokio::fs::read_to_string(&dag_path)
@@ -102,7 +101,6 @@ mod tests {
 
         let error = publish_skill(
             tempdir.path().join("weather-skill/skill.tap.json"),
-            None,
             None,
             None,
             DEFAULT_GAS_BUDGET,

@@ -8,9 +8,10 @@ Pick a working directory and run:
 
 ```bash
 nexus tap scaffold --name "tutorial transfer" --target .
+cd tutorial-transfer
 ```
 
-The command writes four files under `tutorial-transfer/`:
+The scaffold writes four files under `tutorial-transfer/`:
 
 ```text
 tutorial-transfer/
@@ -26,7 +27,7 @@ Each generated file is a stub. The scaffolded `tutorial_transfer.move` is a sing
 
 ## 2. Point Move.toml at the published Nexus dependencies
 
-The scaffold's `tap/Move.toml` declares relative-path dependencies on `nexus_primitives`, `nexus_interface`, `nexus_registry`, and `nexus_workflow` under `../../nexus/sui/`. Update those paths so they resolve to the published Sui Move sources for your target network (their published addresses are recorded in the same `objects.testnet.toml` you pointed `nexus conf set --nexus.objects` at).
+The scaffold's `tap/Move.toml` declares relative-path dependencies on `nexus_primitives`, `nexus_interface`, `nexus_registry`, and `nexus_workflow` under `../../nexus/sui/`. Replace it with the working version below, updating each `local = "..."` path so it resolves to the published Sui Move sources for your target network (their published addresses are recorded in the same `objects.testnet.toml` you pointed `nexus conf set --nexus.objects` at).
 
 A working `tap/Move.toml` on testnet (substitute your own paths and chain id):
 
@@ -173,12 +174,10 @@ Key things to notice:
 Run the local validator before going anywhere near the chain:
 
 ```bash
-nexus tap validate-skill \
-    --config tutorial-transfer/skill.tap.json \
-    --tap-package tutorial-transfer/tap
+nexus tap validate-skill --config skill.tap.json
 ```
 
-You should see:
+The validator resolves `tap_package_path` and `dag_path` relative to `--config`, so you do not need to point at the Move package separately. You should see:
 
 ```text
 [✓] Validating TAP skill config...

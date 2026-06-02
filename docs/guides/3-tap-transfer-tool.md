@@ -118,9 +118,7 @@ If you skipped page 2's `bind_pending_grant` setter or this page's `extract_auth
 Re-run the validator to confirm both modules still compile:
 
 ```bash
-nexus tap validate-skill \
-    --config tutorial-transfer/skill.tap.json \
-    --tap-package tutorial-transfer/tap
+nexus tap validate-skill --config skill.tap.json
 ```
 
 You should still see `[✓] Validating TAP skill config...` — but now both modules are present and the package gates withdrawal correctly.

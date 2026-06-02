@@ -132,12 +132,6 @@ pub(crate) enum TapCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         config: PathBuf,
-        #[arg(
-            long,
-            help = "Override TAP package path from the config.",
-            value_parser = ValueParser::from(expand_tilde)
-        )]
-        tap_package: Option<PathBuf>,
     },
     #[command(about = "Publish a TAP package, DAG, and publish artifact.")]
     PublishSkill {
@@ -148,12 +142,6 @@ pub(crate) enum TapCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         config: PathBuf,
-        #[arg(
-            long,
-            help = "Override TAP package path from the config.",
-            value_parser = ValueParser::from(expand_tilde)
-        )]
-        tap_package: Option<PathBuf>,
         #[arg(
             long,
             help = "Write the publish artifact JSON to this path.",
@@ -692,24 +680,9 @@ pub(crate) enum PaymentsCommand {
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
     match command {
         TapCommand::Scaffold { name, target } => scaffold_tap_skill(name, target).await,
-        TapCommand::ValidateSkill {
-            config,
-            tap_package,
-        } => validate_skill(config, tap_package).await.map(|_| ()),
-        TapCommand::PublishSkill {
-            config,
-            tap_package,
-            out,
-            gas,
-        } => {
-            publish_skill(
-                config,
-                out,
-                tap_package,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
+        TapCommand::ValidateSkill { config } => validate_skill(config).await.map(|_| ()),
+        TapCommand::PublishSkill { config, out, gas } => {
+            publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
         TapCommand::CreateAgent { operator, gas } => {
             create_agent(operator, gas.sui_gas_coin, gas.sui_gas_budget).await
@@ -1011,7 +984,7 @@ mod tests {
         tap_package_id: sui::types::Address,
         out: Option<PathBuf>,
     ) -> AnyResult<(), NexusCliError> {
-        let config = validate_skill(config_path, None).await?;
+        let config = validate_skill(config_path).await?;
         command_title!("Creating TAP publish artifact");
 
         let artifact = TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
@@ -1052,14 +1025,12 @@ mod tests {
 
         handle(TapCommand::ValidateSkill {
             config: config.clone(),
-            tap_package: None,
         })
         .await
         .expect("validate dispatch succeeds");
 
         let publish_error = handle(TapCommand::PublishSkill {
             config: config.clone(),
-            tap_package: None,
             out: None,
             gas: gas_args(),
         })
@@ -1287,7 +1258,7 @@ mod tests {
         assert!(root.join("skill.tap.json").exists());
 
         let config_path = root.join("skill.tap.json");
-        let config = validate_skill(config_path.clone(), None)
+        let config = validate_skill(config_path.clone())
             .await
             .expect("generated config validates");
         assert_eq!(config.name, "weather skill");
@@ -1397,7 +1368,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_matches!(validate_skill(config_path, None).await, Err(_));
+        assert_matches!(validate_skill(config_path).await, Err(_));
     }
 
     #[tokio::test]
@@ -1415,7 +1386,7 @@ mod tests {
         .await
         .unwrap();
 
-        let error = validate_skill(root.join("skill.tap.json"), None)
+        let error = validate_skill(root.join("skill.tap.json"))
             .await
             .expect_err("invalid DAG must fail validation");
         assert!(
@@ -1452,7 +1423,7 @@ weather_skill = "0x0"
         .await
         .unwrap();
 
-        let error = validate_skill(root.join("skill.tap.json"), None)
+        let error = validate_skill(root.join("skill.tap.json"))
             .await
             .expect_err("package name mismatch must fail validation");
         assert!(
@@ -1487,7 +1458,7 @@ other_alias = "0x0"
         .await
         .unwrap();
 
-        let error = validate_skill(root.join("skill.tap.json"), None)
+        let error = validate_skill(root.join("skill.tap.json"))
             .await
             .expect_err("missing address alias must fail validation");
         assert!(
@@ -1516,7 +1487,7 @@ public struct WeatherSkill has drop {}
         .await
         .unwrap();
 
-        let error = validate_skill(root.join("skill.tap.json"), None)
+        let error = validate_skill(root.join("skill.tap.json"))
             .await
             .expect_err("missing package module declaration must fail validation");
         assert!(

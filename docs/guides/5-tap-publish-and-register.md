@@ -12,8 +12,8 @@ Each step records what the next one needs. Capture the IDs as you go.
 
 ```bash
 nexus tap publish-skill \
-    --config tutorial-transfer/skill.tap.json \
-    --out tutorial-transfer/artifact.json \
+    --config skill.tap.json \
+    --out artifact.json \
     --sui-gas-budget 500000000 \
     --json
 ```
@@ -43,8 +43,8 @@ The JSON output gives you the two IDs you'll keep referring to:
 Capture them as shell variables for the rest of the page:
 
 ```bash
-PKG=$(jq -r '.tap_package_id' tutorial-transfer/artifact.json)
-DAG=$(jq -r '.dag_id'         tutorial-transfer/artifact.json)
+PKG=$(jq -r '.tap_package_id' artifact.json)
+DAG=$(jq -r '.dag_id'         artifact.json)
 ```
 
 ## 2. Find the freshly-published TutorialState id
@@ -103,7 +103,7 @@ The JSON output includes the derived `tool_id`, `tool_gas_id`, decoded schemas, 
 
 ```bash
 nexus tap bind \
-    --artifact tutorial-transfer/artifact.json \
+    --artifact artifact.json \
     --operator "$(sui client active-address)" \
     --sui-gas-budget 500000000 \
     --json
@@ -122,24 +122,26 @@ Output:
 }
 ```
 
-Capture the agent id:
+`tap bind` always creates a _new_ agent every time it's called. Capture the agent id from the first invocation by piping the JSON to a file so a second `tap bind` does not silently provision a second agent on top of the first:
 
 ```bash
-AGENT=$(nexus tap bind \
-    --artifact tutorial-transfer/artifact.json \
+nexus tap bind \
+    --artifact artifact.json \
     --operator "$(sui client active-address)" \
     --sui-gas-budget 500000000 \
-    --json | jq -r '.agent_id')
+    --json > bind.json
+
+AGENT=$(jq -r '.agent_id' bind.json)
 ```
 
-> **Re-running the guide?** `tap bind` always creates a _new_ agent. If you already have one, use `nexus tap register-skill --agent-id <existing> --artifact tutorial-transfer/artifact.json` instead. That command auto-detects the cap-gated schema and routes through the same PTB.
+> **Re-running the guide?** If you already have an agent, use `nexus tap register-skill --agent-id <existing> --artifact artifact.json` instead of `tap bind`. That command auto-detects the cap-gated schema and routes through the same PTB.
 
 ## 5. Confirm in the registry
 
 ```bash
-nexus tap registry show --json | jq '{
-    agents: [.agents[] | select(.agent_id == env.AGENT)],
-    skills: [.skills[] | select(.agent_id == env.AGENT)]
+nexus tap registry show --json | jq --arg agent "$AGENT" '{
+    agents: [.agents[] | select(.agent_id == $agent)],
+    skills: [.skills[] | select(.agent_id == $agent)]
 }'
 ```
 
