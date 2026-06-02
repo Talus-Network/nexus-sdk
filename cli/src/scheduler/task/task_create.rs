@@ -186,3 +186,77 @@ fn describe_generator(symbol: &PolicySymbol) -> String {
         PolicySymbol::Uid(uid) => uid.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::prelude::GasArgs};
+
+    fn gas_args() -> GasArgs {
+        GasArgs {
+            sui_gas_coin: None,
+            sui_gas_budget: 100_000_000,
+        }
+    }
+
+    /// Half-supplied `(--agent-id, --skill-id)` must be caught locally before
+    /// any RPC traffic so the user sees a clear error instead of a confusing
+    /// chain-side failure. The CLI validates the pair up-front; the SDK
+    /// validates again as a defense-in-depth layer. We exercise only the CLI
+    /// guard here (no Nexus client is constructed) — a regression that drops
+    /// the early-return would surface as a missing-RPC error instead.
+    #[tokio::test]
+    async fn create_task_rejects_agent_id_without_skill_id() {
+        let dag_id = sui::types::Address::from_static("0xd");
+        let err = create_task(
+            dag_id,
+            "entry".to_string(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            0,
+            None,
+            None,
+            None,
+            0,
+            GeneratorKind::Queue,
+            Some(sui::types::Address::from_static("0xa")),
+            None,
+            gas_args(),
+        )
+        .await
+        .expect_err("agent-only must error before any RPC");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--agent-id") && msg.contains("--skill-id"),
+            "expected agent/skill validation error, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_task_rejects_skill_id_without_agent_id() {
+        let dag_id = sui::types::Address::from_static("0xd");
+        let err = create_task(
+            dag_id,
+            "entry".to_string(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            0,
+            None,
+            None,
+            None,
+            0,
+            GeneratorKind::Queue,
+            None,
+            Some(7),
+            gas_args(),
+        )
+        .await
+        .expect_err("skill-only must error before any RPC");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--agent-id") && msg.contains("--skill-id"),
+            "expected agent/skill validation error, got: {msg}"
+        );
+    }
+}

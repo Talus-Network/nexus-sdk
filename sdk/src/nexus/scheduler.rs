@@ -1371,6 +1371,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_task_agent_bound_branch_builds_through_agent_execution_policy() {
+        // Happy path for the agent-bound branch of `create_task`. When both
+        // `agent_id` and `skill_id` are supplied, the PTB must route through
+        // `transactions::scheduler::new_agent_execution_policy` (which embeds
+        // a `BeginAgentExecutionWitness` symbol) rather than the default
+        // DAG-bound `new_execution_policy`. The mock server is configured to
+        // accept exactly one `execute_transaction` round-trip with a forged
+        // `TaskCreatedEvent`; if the SDK builds an invalid PTB or fails to
+        // call `new_agent_execution_policy`, finish/sign fails before the
+        // mock is hit and the test errors out instead of returning the
+        // expected `task_id`.
+        let mut rng = rand::thread_rng();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let owner = sui::types::Address::generate(&mut rng);
+        let task_id = sui::types::Address::generate(&mut rng);
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let agent_id = sui::types::Address::generate(&mut rng);
+
+        let events = vec![event_bcs(
+            nexus_objects.primitives_pkg_id,
+            nexus_objects.scheduler_pkg_id,
+            NexusEventKind::TaskCreated(TaskCreatedEvent {
+                task: task_id,
+                owner,
+            }),
+        )];
+
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut execution_service_mock,
+            &mut subscription_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            events,
+        );
+
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects.clone(),
+        )
+        .await;
+
+        let params = CreateTaskParams {
+            dag_id,
+            entry_group: "entry".into(),
+            input_data: sample_input_data(),
+            metadata: vec![],
+            execution_priority_fee_per_gas_unit: 7,
+            initial_schedule: None,
+            generator: GeneratorKind::Queue,
+            agent_id: Some(agent_id),
+            skill_id: Some(3),
+        };
+
+        let result = nexus_client
+            .scheduler()
+            .create_task(params)
+            .await
+            .expect("agent-bound task created");
+
+        assert_eq!(result.task_id, task_id);
+        assert_eq!(result.tx_digest, digest);
+        assert!(result.initial_schedule.is_none());
+    }
+
+    #[tokio::test]
     async fn create_task_rejects_half_agent_binding_before_rpc() {
         // Half-supplied agent binding (agent_id without skill_id, or vice
         // versa) must be caught locally before any gRPC round-trip. The

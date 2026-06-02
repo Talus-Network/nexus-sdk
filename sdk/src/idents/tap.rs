@@ -340,6 +340,10 @@ mod tests {
                 execution_payment_receipt_type(package),
                 sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
             ),
+            (
+                tap_authorized_tool_type(package),
+                sui::types::Identifier::from_static("TapAuthorizedTool"),
+            ),
         ] {
             let sui::types::TypeTag::Struct(tag) = tag else {
                 panic!("expected struct type tag");
@@ -349,5 +353,31 @@ mod tests {
             assert_eq!(*tag.name(), expected_name);
             assert!(tag.type_params().is_empty());
         }
+    }
+
+    #[test]
+    fn standard_tap_idents_added_for_cap_gated_skills() {
+        // Idents introduced for cap-gated skill registration and grant
+        // composition. A regression that renames one of these on chain would
+        // silently break either skill registration with a non-default
+        // `TapVertexAuthorizationSchema` or scheduled-skill grant minting; the
+        // assertion pins both the module and the Move function/struct name.
+        assert_eq!(TapStandard::AUTHORIZED_TOOL.module, STANDARD_TAP_MODULE);
+        assert_eq!(
+            TapStandard::AUTHORIZED_TOOL.name,
+            sui::types::Identifier::from_static("authorized_tool")
+        );
+        assert_eq!(
+            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.module,
+            STANDARD_TAP_MODULE
+        );
+        assert_eq!(
+            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name,
+            sui::types::Identifier::from_static("vertex_authorization_schema")
+        );
+        assert_eq!(
+            TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
+            sui::types::Identifier::from_static("trigger_scheduled_skill_execution")
+        );
     }
 }
