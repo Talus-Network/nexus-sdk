@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- `tap publish-skill --out`, `tap scaffold`, and `tool new` now write generated files with `tokio::fs::write` instead of `File::create` + `write_all`. A dropped `tokio::fs::File` does not flush its internal buffer, so under load a reader (or the next command in a pipeline) could observe a truncated or empty artifact/scaffold file — surfacing as an intermittent `EOF while parsing a value` failure (e.g. the flaky `publish_artifact_flow_writes_revision_metadata` test).
 - `tool register onchain` now correctly disambiguates `OwnerCap<OverTool>` vs `OwnerCap<OverGas>` in the post-registration response. `OverTool` is defined in the registry package (`nexus_registry::tool_registry::OverTool`) while `OverGas` lives in the workflow package (`nexus_workflow::gas::OverGas`), so the inner type's address differs per cap; the previous filter rejected the `OverTool` cap by comparing both inners against `workflow_pkg_id` and surfaced a misleading "Could not find the OwnerCap<OverTool> object ID in the transaction response" error after a successful registration.
 
 ### `nexus-sdk`

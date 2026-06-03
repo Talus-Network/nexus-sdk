@@ -949,6 +949,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_json_mode() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -980,6 +981,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_empty_schema() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -998,6 +1000,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_variant_and_field_descriptions_json_mode() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -1129,6 +1132,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_with_mock_input() {
         // Ensure JSON_MODE is off for this test.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1170,6 +1174,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_keep_defaults() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1209,6 +1214,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_with_mock_input() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1263,6 +1269,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_keep_defaults() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1476,6 +1483,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial(json_mode)]
     async fn test_generate_and_customize_schemas_integration() {
         use crate::test_utils;
 
