@@ -38,8 +38,13 @@ pub(crate) async fn publish_skill(
         if let Some(parent) = out.parent() {
             create_dir_all(parent).await.map_err(NexusCliError::Io)?;
         }
-        let mut file = File::create(&out).await.map_err(NexusCliError::Io)?;
-        file.write_all(artifact_json.as_bytes())
+        // `tokio::fs::write` opens, writes the full buffer, and closes (flushing
+        // to the OS) before it returns. The previous `File::create` +
+        // `write_all` left the data in `tokio::fs::File`'s internal buffer:
+        // dropping the file does not flush it, so a reader racing the drop
+        // could observe a truncated/empty file (see the flaky
+        // `publish_artifact_flow_writes_revision_metadata` test).
+        tokio::fs::write(&out, artifact_json.as_bytes())
             .await
             .map_err(NexusCliError::Io)?;
         notify_success!("Wrote TAP publish artifact to {}", out.display());

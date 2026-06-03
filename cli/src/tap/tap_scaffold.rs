@@ -24,8 +24,10 @@ pub(crate) async fn scaffold_tap_skill(
             create_dir_all(parent).await.map_err(NexusCliError::Io)?;
         }
 
-        let mut file = File::create(path).await.map_err(NexusCliError::Io)?;
-        file.write_all(contents.as_bytes())
+        // Use `tokio::fs::write` so each file is flushed and closed before we
+        // move on — a dropped `tokio::fs::File` does not flush its buffer, so a
+        // subsequent reader (e.g. `validate-skill`) could see a partial file.
+        tokio::fs::write(path, contents.as_bytes())
             .await
             .map_err(NexusCliError::Io)?;
     }

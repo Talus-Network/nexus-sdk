@@ -95,6 +95,8 @@ nexus tap execute \
 
 Repeat `--grant-bind` once per cap-gated vertex if your skill has more than one.
 
+> **`--grant-bind` is semi-custom — it is not fully general.** The flag bakes in one binding shape: a single shared state object passed as the first argument and a fixed `(&mut <YourState>, vector<u8>, address)` bind-function signature. That is exactly the pattern this tutorial uses, and it covers the common cap-gated TAP case. But if your design needs a different bind signature, extra arguments, a different state-wiring strategy, or more than one bind call per vertex, the CLI flag cannot express it. In that case, drive the execute PTB from the SDK (`nexus_sdk::transactions::dag::VertexGrantBind`) where you control the full transaction shape.
+
 The output gives you `execution_id` and `tx_checkpoint`:
 
 ```json

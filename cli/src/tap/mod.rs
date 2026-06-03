@@ -94,10 +94,7 @@ use {
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
     tap_vault_deposit::deposit_agent_vault,
-    tokio::{
-        fs::{create_dir_all, File},
-        io::AsyncWriteExt,
-    },
+    tokio::fs::create_dir_all,
 };
 #[cfg(test)]
 use {
@@ -303,7 +300,12 @@ pub(crate) enum TapCommand {
                     (e.g. transfer_vertex:0xaa..:0xbb..::tutorial_transfer::bind_pending_grant). \
                     The execute PTB mints a WorkflowVertexAuthorizationGrant for VERTEX \
                     and calls PACKAGE::MODULE::FUNCTION(state, vertex_bytes, grant_id) so the \
-                    tap_package can lock state to that grant before the leader dispatches the walk.",
+                    tap_package can lock state to that grant before the leader dispatches the walk. \
+                    NOTE: this flag encodes one semi-custom binding shape — a single shared state \
+                    object passed as the first argument and a (state, vertex_bytes, grant_id) bind \
+                    signature. Designs that need a different bind signature, extra arguments, or a \
+                    different grant-wiring strategy are not expressible here; reach for the SDK \
+                    (nexus_sdk::transactions::dag::VertexGrantBind) to build the execute PTB directly.",
             value_name = "VERTEX:STATE:PKG::MOD::FN"
         )]
         grant_bind: Vec<String>,
@@ -996,8 +998,7 @@ mod tests {
             if let Some(parent) = out.parent() {
                 create_dir_all(parent).await.map_err(NexusCliError::Io)?;
             }
-            let mut file = File::create(&out).await.map_err(NexusCliError::Io)?;
-            file.write_all(artifact_json.as_bytes())
+            tokio::fs::write(&out, artifact_json.as_bytes())
                 .await
                 .map_err(NexusCliError::Io)?;
             notify_success!("Wrote TAP publish artifact to {}", out.display());

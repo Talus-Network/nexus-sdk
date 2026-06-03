@@ -35,9 +35,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it. It also defers the `--reuse-if-exists` success message until the reuse call returns successfully.
 - Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
 - `tap scaffold` now writes a `tap/Move.toml` that declares all four published Nexus dependencies (`nexus_primitives`, `nexus_interface`, `nexus_registry`, `nexus_workflow`). The previous scaffold omitted `nexus_registry`, forcing authors to add it by hand before the package would compile against the TAP development guide's recommended template.
-
-#### Changed
-
 - `tap validate-skill` and `tap publish-skill` no longer accept `--tap-package`. The flag was a redundant override of `tap_package_path` from the skill config; relying on it from a parent directory produced confusing double-prefixed paths (`tutorial-transfer/tutorial-transfer/tap/Move.toml does not exist`). Both commands now resolve the TAP package strictly from the config's `tap_package_path` (resolved relative to the config file's directory).
 
 #### Fixed
@@ -145,19 +142,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Six-page **TAP development** guide series under `docs/guides/` walking a fresh **cap-gated** skill end-to-end: scaffold and write the TAP package state with a `bind_pending_grant` hook, write the cap-consuming on-chain transfer vertex tool, wire the DAG plus a `fixed_tools` + `requires_payment: true` `skill.tap.json`, publish + register the on-chain tool with `--workflow-authorization-cap-first` + bind the agent, and execute via `nexus tap execute --grant-bind` so the SDK mints the `WorkflowVertexAuthorizationGrant` and locks it into the tap package's state in a single PTB before the leader dispatches the walk. Verified end-to-end against a docker workbench localnet.
+- `nexus tap execute --grant-bind` documentation (in `docs/cli.md`, the TAP development guide, and the flag's `--help` text) now flags the parameter as semi-custom: it encodes a single shared-state, fixed `(state, vertex_bytes, grant_id)` bind signature, and designs that need a different shape should drive the execute PTB from the SDK (`transactions::dag::VertexGrantBind`) instead.
 - Comprehensive DAG construction guide sections for `post_failure_action`, `leader_verifier`, and `tool_verifier` configuration at both DAG and vertex levels
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
 - Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
-
-### Code
-
-#### Changed
-
-- Enhanced field documentation in `json_dag.rs` with detailed comments for all structs (`Dag`, `Vertex`, `Edge`, `FromPort`, `ToPort`, `EntryGroup`, `DefaultValue`, `Data`)
-
-#### Fixed
-
-- Uncommented and restored `test_fetch_devnet_objects` test with proper ignore and rstest attributes
 
 ## [`1.0.0`] - 2026-04-23
 

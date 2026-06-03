@@ -2,10 +2,7 @@ use {
     crate::{command_title, display::json_output, loading, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
-    tokio::{
-        fs::{create_dir_all, File},
-        io::AsyncWriteExt,
-    },
+    tokio::fs::create_dir_all,
 };
 
 /// Available templates for tool generation.
@@ -147,16 +144,10 @@ pub(crate) async fn create_new_tool(
             }
         };
 
-        let mut file = match File::create(path).await {
-            Ok(file) => file,
-            Err(e) => {
-                writing_file.error();
-
-                return Err(NexusCliError::Io(e));
-            }
-        };
-
-        if let Err(e) = file.write_all(content.as_bytes()).await {
+        // `tokio::fs::write` flushes and closes the file before returning; a
+        // dropped `tokio::fs::File` does not flush its buffer, which can leave a
+        // scaffolded file empty for a reader racing the drop.
+        if let Err(e) = tokio::fs::write(path, content.as_bytes()).await {
             writing_file.error();
 
             return Err(NexusCliError::Io(e));
