@@ -58,6 +58,8 @@ If the `--batch` flag is passed, the command accepts a URL of a webserver hostin
 
 Upon successful registration, both OwnerCap object IDs are saved to the CLI configuration file and automatically used for subsequent commands. This happens unless the `--no-save` flag is passed, in which case the OwnerCaps are not saved.
 
+The JSON output for each registered tool includes the transaction `digest`, `tool_fqn`, the derived `tool_id` and `tool_gas_id`, `owner_cap_over_tool_id` and `owner_cap_over_gas_id`, and the fully-decoded post-registration `Tool` record under the `tool` field — the same shape `nexus tool inspect` and `nexus tool register onchain` emit. In `--batch` mode each tool's result is one entry in the top-level JSON array.
+
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
@@ -68,16 +70,15 @@ Tool registration is currently restricted during the beta phase. To register you
 
 ---
 
-**`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--reuse-if-exists] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
+**`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
 
 Registers an on-chain Nexus Tool that resolves to a Move package, module, and witness object on Sui. The CLI introspects the Move module's `execute` entry function to auto-generate the input schema and its `Output` enum for the output schema; both can be customized interactively when stdin is a TTY (skipped in `--json` mode). The tool's `Tool` and `ToolGas` object IDs are derived locally from the FQN and surfaced in the JSON response alongside the `OwnerCap<OverTool>` returned by the on-chain call.
 
-- `--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this for tools whose vertices must hold a `VertexAuthorizationCheckCap` at execution time (the standard TAP authorization-aware path).
-- `--reuse-if-exists` makes the command idempotent: if the derived `Tool` and `ToolGas` objects already exist on-chain for the given FQN, the registration transaction is skipped and the existing refs are decoded and returned with `reused: true`. The reuse path is useful for CI/CD pipelines and demo orchestration that may run multiple times against the same deployment.
+Registration is partially idempotent — the Move-side `register_on_chain_tool` aborts with `EFqnAlreadyExists` when the FQN is already claimed, but the CLI surfaces that abort by changing the output to notify the user about the fact that the tool is already registered.
 
-If both objects derived from the FQN exist _but their counterparts don't_ (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
+`--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this when the workflow executor must mint a `WorkflowVertexAuthorizationGrant` before each call so the runtime can derive a `VertexAuthorizationCheckCap` and hand it to the tool's `execute` function — without the grant, the cap can't be minted and the vertex (i.e. the tool itself) can't run.
 
-The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `tool_witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest. The fresh-registration and `--reuse-if-exists` branches emit the same key names.
+The JSON output includes the transaction `digest` + `tx_checkpoint`, the locally-derived `tool_id` and `tool_gas_id`, the `owner_cap_over_tool_id` and `owner_cap_over_gas_id` returned by the on-chain call, and the fully-decoded post-registration `Tool` record under the `tool` field — the same shape `nexus tool inspect` emits, so scripts only need to learn one Tool contract.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -85,11 +86,11 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tool inspect-onchain --tool-fqn <FQN>`**
+**`nexus tool inspect --tool-fqn <FQN>`**
 
-Derives the `Tool` and `ToolGas` object IDs from the configured `ToolRegistry`/`GasService` and the supplied FQN, probes both objects on-chain, and emits a stable JSON summary so callers do not need to BCS-decode the `Tool` object themselves.
+Derives the `Tool` and `ToolGas` object IDs from the configured `ToolRegistry`/`GasService` and the supplied FQN, probes both objects on-chain, and emits a stable JSON summary so callers do not need to BCS-decode the `Tool` object themselves. Works for both HTTP and Sui tools — the variant lives inside the decoded `Tool` record.
 
-The JSON includes `tool_id`, `tool_gas_id`, `exists` (true when both objects are present), and — when the tool is on-chain — the decoded Sui ref fields `package_address`, `module_name`, `tool_witness_id`, the stored `description`, `input_schema`, `output_schema`, `workflow_authorization_cap_first`, plus `registered_at` and `unregistered_at` timestamps. When the tool does not exist yet, the derived IDs are still returned so the caller can pre-compute them.
+The JSON includes `tool_id`, `tool_gas_id`, `exists` (true when both objects are present), and the fully-decoded on-chain `Tool` record under the `tool` field (or `null` when `exists` is false). When the tool is HTTP, `tool.ref` is the `Http { url }` variant; when it is on-chain Sui, `tool.ref` is the `Sui { package_address, module_name, tool_witness_id }` variant. The stored `description`, `input_schema`, `output_schema`, `workflow_authorization_cap_first`, `registered_at_ms`, and `unregistered_at_ms` all live under `tool` too. When the tool does not exist yet, the derived IDs are still returned so the caller can pre-compute them.
 
 ---
 
@@ -655,6 +656,18 @@ Use this in CI pipelines or demos to drive payment settlement instead of hand-ro
 **`nexus tap payments list [--alias <NAME> | --agent-id <OBJECT_ID>] [--completed | --pending | --all]`**
 
 Lists wallet-owned `ExecutionPaymentReceipt` objects and, when an agent is supplied (by alias or id), the agent-vault payment-receipt history. Filter to completed-only, pending-only, or both. JSON output includes the owner, optional agent id, wallet receipts, vault receipts, and the unresolved/resolved execution-id lists.
+
+---
+
+**`nexus tap payments resolve --execution-id <OBJECT_ID>`**
+
+Calls `nexus_workflow::dag::accomplish_tap_execution_payment` against a shared `DAGExecution` object so the standard TAP payment moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`). The SDK fetches the execution's current object ref, builds a single move-call PTB, and submits it.
+
+JSON output includes a fixed `function: "accomplish_tap_execution_payment"` marker, the resolved `execution_id`, and the transaction `digest`/`tx_checkpoint`. Pair with `nexus tap payments show` or `nexus tap payments wait` to confirm the linked `TapExecutionPayment` flipped to `accomplished: true`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
 
 #### Execution and scheduling
 

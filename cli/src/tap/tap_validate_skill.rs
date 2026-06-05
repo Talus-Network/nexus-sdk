@@ -214,12 +214,7 @@ pub(crate) async fn validate_skill(
     }
 
     handle.success();
-    json_output(&json!({
-        "valid": true,
-        "skill_name": config.name,
-        "tap_package_name": config.tap_package_name,
-        "interface_revision": config.interface_revision,
-    }))?;
+    json_output(&validate_skill_result_json(&config))?;
 
     Ok(config)
 }

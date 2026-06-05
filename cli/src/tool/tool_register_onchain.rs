@@ -10,10 +10,7 @@ use {
     },
     nexus_sdk::{
         idents::{primitives, workflow as workflow_idents},
-        nexus::{
-            error::NexusError,
-            tool::{RegisterOnChainToolParams, RegisterOnChainToolResult},
-        },
+        nexus::error::NexusError,
         sui,
         transactions::tool,
     },
@@ -40,7 +37,6 @@ pub(crate) async fn register_onchain_tool(
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
     workflow_authorization_cap_first: bool,
-    reuse_if_exists: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -64,63 +60,6 @@ pub(crate) async fn register_onchain_tool(
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
-
-    if reuse_if_exists {
-        let preview = nexus_client
-            .tool()
-            .inspect_on_chain_tool(&fqn)
-            .await
-            .map_err(NexusCliError::Nexus)?;
-        if preview.exists {
-            let result = nexus_client
-                .tool()
-                .register_on_chain_or_reuse(RegisterOnChainToolParams {
-                    package_address: package,
-                    module: module.clone(),
-                    fqn: fqn.clone(),
-                    description: description.clone(),
-                    input_schema: String::new(),
-                    output_schema: String::new(),
-                    timeout,
-                    tool_witness_id,
-                    collateral_coin: sui::types::ObjectReference::new(
-                        sui::types::Address::ZERO,
-                        0,
-                        sui::types::Digest::from([0u8; 32]),
-                    ),
-                    workflow_authorization_cap_first,
-                })
-                .await
-                .map_err(NexusCliError::Nexus)?;
-
-            notify_success!(
-                "Reusing already-registered on-chain tool '{fqn}'",
-                fqn = fqn.to_string().truecolor(100, 100, 100)
-            );
-
-            // Populate description/schemas from the on-chain Tool record we
-            // already fetched, so the reuse branch emits the same string-typed
-            // keys as the fresh-registration branch instead of nulls. The Tool
-            // stores schemas as JSON values; stringify them to match the fresh
-            // path, which emits the generated schema strings.
-            let description = preview.tool.as_ref().map(|tool| tool.description.clone());
-            let input_schema = preview
-                .tool
-                .as_ref()
-                .map(|tool| tool.input_schema.to_string());
-            let output_schema = preview
-                .tool
-                .as_ref()
-                .map(|tool| tool.output_schema.to_string());
-            json_output(&register_onchain_result_json(
-                &result,
-                input_schema.as_deref(),
-                output_schema.as_deref(),
-                description.as_deref(),
-            ))?;
-            return Ok(());
-        }
-    }
 
     let collateral_coin = fetch_coin(client.clone(), address, collateral_coin, 1).await?;
 
@@ -222,59 +161,27 @@ pub(crate) async fn register_onchain_tool(
         save_tool_owner_caps(fqn.clone(), over_tool_id, over_gas_id).await?;
     }
 
-    let tool_id = nexus_sdk::types::derive_tool_id(*nexus_objects.tool_registry.object_id(), &fqn)
-        .map_err(NexusCliError::Any)?;
-    let tool_gas_id =
-        nexus_sdk::types::derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &fqn)
-            .map_err(NexusCliError::Any)?;
+    // Re-fetch the freshly-registered Tool object so the JSON output carries
+    // the same shape `nexus tool inspect` emits. This costs one extra RPC
+    // round-trip but means scripted consumers only need to learn one Tool
+    // contract.
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(&fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     json_output(&json!({
         "digest": response.digest,
         "tx_checkpoint": response.checkpoint,
-        "tool_fqn": fqn,
-        "tool_id": tool_id,
-        "tool_gas_id": tool_gas_id,
-        "package_address": package,
-        "module_name": module,
-        "tool_witness_id": tool_witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
+        "tool_id": inspection.tool_id,
+        "tool_gas_id": inspection.tool_gas_id,
         "owner_cap_over_tool_id": over_tool_id,
         "owner_cap_over_gas_id": over_gas_id,
-        "workflow_authorization_cap_first": workflow_authorization_cap_first,
-        "reused": false,
-        "already_registered": false,
+        "tool": inspection.tool,
     }))?;
 
     Ok(())
-}
-
-/// JSON output for the reuse-path. Mirrors the live registration JSON shape.
-pub(crate) fn register_onchain_result_json(
-    result: &RegisterOnChainToolResult,
-    input_schema: Option<&str>,
-    output_schema: Option<&str>,
-    description: Option<&str>,
-) -> serde_json::Value {
-    json!({
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "tool_fqn": result.fqn,
-        "tool_id": result.tool_id,
-        "tool_gas_id": result.tool_gas_id,
-        "package_address": result.package_address,
-        "module_name": result.module_name.as_str(),
-        "tool_witness_id": result.tool_witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
-        "owner_cap_over_tool_id": result.owner_cap_over_tool,
-        "owner_cap_over_gas_id": result.owner_cap_over_gas,
-        "workflow_authorization_cap_first": result.workflow_authorization_cap_first,
-        "reused": result.reused,
-        "already_registered": result.reused,
-    })
 }
 
 /// Generate input and output schemas and allow user customization.
@@ -334,16 +241,6 @@ async fn generate_and_customize_schemas(
 
 /// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
 /// transaction response.
-///
-/// The registration PTB always creates both caps — `OverGas` is derived from
-/// `OverTool` via `workflow::gas::deescalate` and transferred alongside it —
-/// so both are surfaced here. `OverGas` is what later lets the owner manage the
-/// tool's gas state (`tool set-invocation-cost`, `gas tickets …`), so dropping
-/// it would strand those flows. The two caps share the same outer
-/// `CloneableOwnerCap` struct and differ only by their generic type parameter,
-/// so we match on that inner type param to tell them apart — otherwise an
-/// `OverGas` cap could be misidentified as `OverTool`. `OverTool` is required;
-/// `OverGas` is returned when present.
 fn extract_owner_caps(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
@@ -1443,43 +1340,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Could not find the OwnerCap<OverTool> object ID"));
-    }
-
-    #[test]
-    fn reuse_path_json_emits_string_typed_description_and_schemas() {
-        let mut rng = rand::thread_rng();
-        let result = RegisterOnChainToolResult {
-            fqn: "com.example.testtool@1".parse().unwrap(),
-            tool_id: sui::types::Address::generate(&mut rng),
-            tool_gas_id: sui::types::Address::generate(&mut rng),
-            package_address: sui::types::Address::generate(&mut rng),
-            module_name: sui::types::Identifier::from_static("counter"),
-            tool_witness_id: sui::types::Address::generate(&mut rng),
-            owner_cap_over_tool: Some(sui::types::Address::generate(&mut rng)),
-            owner_cap_over_gas: Some(sui::types::Address::generate(&mut rng)),
-            workflow_authorization_cap_first: true,
-            reused: true,
-            tx_digest: None,
-            tx_checkpoint: None,
-        };
-
-        let json = register_onchain_result_json(
-            &result,
-            Some(r#"{"0":{"type":"u64"}}"#),
-            Some(r#"{"ok":{}}"#),
-            Some("a counter tool"),
-        );
-
-        // The reuse branch must emit these keys as strings (mirroring the
-        // fresh-registration branch), never null, so scripts can rely on them.
-        assert!(json["description"].is_string());
-        assert!(json["input_schema"].is_string());
-        assert!(json["output_schema"].is_string());
-        assert_eq!(json["description"], "a counter tool");
-        assert_eq!(json["input_schema"], r#"{"0":{"type":"u64"}}"#);
-        assert_eq!(json["output_schema"], r#"{"ok":{}}"#);
-        assert_eq!(json["reused"], true);
-        assert_eq!(json["already_registered"], true);
     }
 
     #[tokio::test]

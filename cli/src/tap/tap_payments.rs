@@ -1,10 +1,6 @@
 use {
     super::*,
-    nexus_sdk::nexus::tap::{
-        fetch_tap_execution_payment,
-        payment_is_terminal,
-        WaitForPaymentResult,
-    },
+    nexus_sdk::nexus::tap::{fetch_tap_execution_payment, AccomplishExecutionPaymentParams},
     std::time::Duration,
 };
 
@@ -24,48 +20,9 @@ pub(crate) async fn handle_payments_command(
             completed,
             pending,
             all: _,
-        } => {
-            let conf = CliConf::load().await.unwrap_or_default();
-            let agent_id = if alias.is_some() || agent_id.is_some() {
-                Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
-            } else {
-                None
-            };
-            let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-            let owner = nexus_client.signer().get_active_address();
-            let history = fetch_execution_payment_history(
-                nexus_client.crawler(),
-                &nexus_client.get_nexus_objects(),
-                owner,
-                agent_id,
-            )
-            .await
-            .map_err(NexusCliError::Any)?;
-            let include = |receipt: &&TapExecutionPaymentReceipt| {
-                (!completed && !pending)
-                    || (completed && receipt.resolved)
-                    || (pending && !receipt.resolved)
-            };
-            let wallet_receipts = history
-                .wallet_receipts
-                .iter()
-                .filter(include)
-                .cloned()
-                .collect::<Vec<_>>();
-            let vault_receipts = history
-                .vault_receipts
-                .iter()
-                .filter(include)
-                .cloned()
-                .collect::<Vec<_>>();
-            json_output(&json!({
-                "owner": owner,
-                "agent_id": agent_id,
-                "wallet_receipts": wallet_receipts,
-                "vault_receipts": vault_receipts,
-                "unresolved_execution_ids": history.unresolved_execution_ids,
-                "resolved_execution_ids": history.resolved_execution_ids
-            }))
+        } => list_payments(alias, agent_id, completed, pending).await,
+        PaymentsCommand::Resolve { execution_id, gas } => {
+            resolve_payment(execution_id, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
     }
 }
@@ -109,94 +66,82 @@ async fn wait_payment(
     json_output(&payment_wait_result_json(&result))
 }
 
-pub(crate) fn payment_show_result_json(
-    payment: &nexus_sdk::types::TapExecutionPayment,
-) -> serde_json::Value {
-    json!({
-        "standard_tap": true,
-        "payment_id": payment.id,
-        "execution_id": payment.execution_id,
-        "agent_id": payment.agent_id,
-        "skill_id": payment.skill_id,
-        "interface_revision": payment.interface_revision,
-        "payer": payment.payer,
-        "payment_mode": payment.payment_mode,
-        "source_kind": payment.source_kind,
-        "source_identity": payment.source_identity,
-        "max_budget": payment.max_budget,
-        "locked_budget": payment.locked_budget,
-        "consumed": payment.consumed,
-        "refund_mode": payment.refund_mode,
-        "accomplished": payment.accomplished,
-        "refunded": payment.refunded,
-        "final_state": payment.final_state,
-        "terminal": payment_is_terminal(payment),
-        "locked_vertices": payment.locked_vertices,
-    })
-}
-
-pub(crate) fn payment_wait_result_json(result: &WaitForPaymentResult) -> serde_json::Value {
-    let mut base = payment_show_result_json(&result.payment);
-    let object = base.as_object_mut().expect("payment show returns object");
-    object.insert("elapsed_ms".to_string(), json!(result.elapsed_ms));
-    object.insert("timed_out".to_string(), json!(result.timed_out));
-    object.insert("terminal".to_string(), json!(result.terminal));
-    base
-}
-
-#[cfg(test)]
-mod json_shape_tests {
-    use {
-        super::*,
-        nexus_sdk::types::{InterfaceRevision, TapExecutionPayment, TapPaymentMode},
+/// Fetch the local-wallet execution payment receipts and, optionally, the
+/// receipts owned by an agent's vault. The `--completed` / `--pending` flags
+/// post-filter the receipts before emission so scripted consumers do not
+/// have to drop fields client-side.
+async fn list_payments(
+    alias: Option<String>,
+    agent_id: Option<sui::types::Address>,
+    completed: bool,
+    pending: bool,
+) -> AnyResult<(), NexusCliError> {
+    let conf = CliConf::load().await.unwrap_or_default();
+    let agent_id = if alias.is_some() || agent_id.is_some() {
+        Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
+    } else {
+        None
     };
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let owner = nexus_client.signer().get_active_address();
+    let history = fetch_execution_payment_history(
+        nexus_client.crawler(),
+        &nexus_client.get_nexus_objects(),
+        owner,
+        agent_id,
+    )
+    .await
+    .map_err(NexusCliError::Any)?;
+    let include = |receipt: &&TapExecutionPaymentReceipt| {
+        (!completed && !pending)
+            || (completed && receipt.resolved)
+            || (pending && !receipt.resolved)
+    };
+    let wallet_receipts = history
+        .wallet_receipts
+        .iter()
+        .filter(include)
+        .cloned()
+        .collect::<Vec<_>>();
+    let vault_receipts = history
+        .vault_receipts
+        .iter()
+        .filter(include)
+        .cloned()
+        .collect::<Vec<_>>();
+    json_output(&payments_list_result_json(
+        owner,
+        agent_id,
+        &wallet_receipts,
+        &vault_receipts,
+        &history.unresolved_execution_ids,
+        &history.resolved_execution_ids,
+    ))
+}
 
-    fn fixture_payment(accomplished: bool, refunded: bool) -> TapExecutionPayment {
-        TapExecutionPayment {
-            id: sui::types::Address::from_static("0xaa"),
-            execution_id: sui::types::Address::from_static("0xbb"),
-            agent_id: sui::types::Address::from_static("0xcc"),
-            skill_id: 11,
-            interface_revision: InterfaceRevision(2),
-            payer: sui::types::Address::from_static("0xee"),
-            payment_mode: TapPaymentMode::UserFunded,
-            source_kind: None,
-            source_identity: None,
-            max_budget: 1_000,
-            locked_budget: 0,
-            consumed: 0,
-            refund_mode: 0,
-            payment_source_hash: vec![],
-            accomplished,
-            refunded,
-            final_state: None,
-            locked_vertices: vec![],
-        }
-    }
+/// Wrap the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment`
+/// PTB. The shared `DAGExecution` object is the only argument; the SDK
+/// fetches its current ref and submits a single move-call transaction.
+async fn resolve_payment(
+    execution_id: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Resolving standard TAP execution payment for DAGExecution '{execution_id}'");
 
-    #[test]
-    fn payment_show_result_json_includes_terminal_flag() {
-        let json = payment_show_result_json(&fixture_payment(true, false));
-        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
-        assert_eq!(json["accomplished"], serde_json::Value::Bool(true));
-        assert_eq!(json["refunded"], serde_json::Value::Bool(false));
-        assert_eq!(json["terminal"], serde_json::Value::Bool(true));
-        assert_eq!(json["skill_id"], serde_json::json!(11));
-    }
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let result = nexus_client
+        .tap()
+        .accomplish_execution_payment(AccomplishExecutionPaymentParams { execution_id })
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
-    #[test]
-    fn payment_wait_result_json_adds_elapsed_and_timeout_flags() {
-        let wait = WaitForPaymentResult {
-            payment: fixture_payment(false, false),
-            terminal: false,
-            elapsed_ms: 1234,
-            timed_out: true,
-        };
-        let json = payment_wait_result_json(&wait);
-        assert_eq!(json["elapsed_ms"], serde_json::json!(1234));
-        assert_eq!(json["timed_out"], serde_json::Value::Bool(true));
-        assert_eq!(json["terminal"], serde_json::Value::Bool(false));
-    }
+    notify_success!(
+        "Resolved execution payment (digest {digest})",
+        digest = result.tx_digest.to_string().truecolor(100, 100, 100),
+    );
+
+    json_output(&payment_resolve_result_json(&result))
 }
 
 #[cfg(test)]

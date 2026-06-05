@@ -244,13 +244,23 @@ async fn register_one_tool(
         over_gas: Some(*over_gas_id),
     };
 
+    // Re-fetch the freshly-registered Tool object so the JSON output carries
+    // the same shape `nexus tool inspect` emits. Consumers only need to
+    // learn one Tool contract.
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(&meta.fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
     Ok((
         json!({
             "digest": response.digest,
-            "tool_fqn": meta.fqn,
+            "tool_id": inspection.tool_id,
+            "tool_gas_id": inspection.tool_gas_id,
             "owner_cap_over_tool_id": over_tool_id,
             "owner_cap_over_gas_id": over_gas_id,
-            "already_registered": false,
+            "tool": inspection.tool,
         }),
         Some((meta.fqn, caps)),
     ))

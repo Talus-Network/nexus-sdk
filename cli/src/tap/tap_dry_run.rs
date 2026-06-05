@@ -6,14 +6,7 @@ pub(crate) async fn dry_run_skill(config: PathBuf) -> AnyResult<(), NexusCliErro
         .digest_input()
         .digest_hex()
         .map_err(NexusCliError::Any)?;
-    json_output(&json!({
-        "dry_run": true,
-        "valid": true,
-        "skill_name": config.name,
-        "interface_revision": config.interface_revision,
-        "config_digest_hex_with_zero_package": digest,
-        "next_step": "publish TAP plus DAG, then create-agent and register-skill"
-    }))
+    json_output(&dry_run_result_json(&config, digest))
 }
 
 #[cfg(test)]

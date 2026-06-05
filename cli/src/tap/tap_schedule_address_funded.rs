@@ -1,7 +1,6 @@
 use {
     super::*,
     nexus_sdk::{
-        idents::registry::AgentRegistry,
         nexus::tap::{
             ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams,
             ScheduleSkillExecutionAddressFundedParams,
@@ -93,18 +92,12 @@ pub(crate) async fn schedule_address_funded(
         digest = result.tx_digest.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
-    }))
+    json_output(&schedule_address_funded_result_json(
+        scheduler_task_id,
+        prepay_amount,
+        occurrence_budget,
+        &result,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -172,18 +165,12 @@ pub(crate) async fn schedule_from_vault(
         digest = result.tx_digest.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
-    }))
+    json_output(&schedule_from_vault_result_json(
+        scheduler_task_id,
+        prepay_amount,
+        occurrence_budget,
+        &result,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -249,16 +236,10 @@ pub(crate) async fn schedule_default_address_funded(
         digest = result.tx_digest.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
-    }))
+    json_output(&schedule_default_address_funded_result_json(
+        scheduler_task_id,
+        prepay_amount,
+        occurrence_budget,
+        &result,
+    ))
 }

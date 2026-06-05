@@ -1,6 +1,6 @@
 mod tool_auth;
 mod tool_claim_collateral;
-mod tool_inspect_onchain;
+mod tool_inspect;
 mod tool_list;
 mod tool_new;
 mod tool_register_offchain;
@@ -14,7 +14,7 @@ use {
     crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
-    tool_inspect_onchain::inspect_onchain,
+    tool_inspect::inspect_tool,
     tool_list::*,
     tool_new::*,
     tool_register_offchain::register_off_chain_tool,
@@ -263,12 +263,6 @@ pub(crate) enum RegisterCommand {
         )]
         workflow_authorization_cap_first: bool,
 
-        #[arg(
-            long = "reuse-if-exists",
-            help = "If the Tool and ToolGas objects already exist for this FQN, decode them and skip registration."
-        )]
-        reuse_if_exists: bool,
-
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -414,9 +408,9 @@ pub(crate) enum ToolCommand {
     },
 
     #[command(
-        about = "Inspect a single on-chain tool by FQN, returning derived IDs and decoded Sui refs."
+        about = "Inspect a registered tool by FQN. Returns the derived Tool/ToolGas IDs and the full on-chain `Tool` record (HTTP or Sui variant) when it exists."
     )]
-    InspectOnchain {
+    Inspect {
         #[arg(
             long = "tool-fqn",
             short = 't',
@@ -511,7 +505,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 collateral_coin,
                 no_save,
                 workflow_authorization_cap_first,
-                reuse_if_exists,
                 gas,
             } => {
                 register_onchain_tool(
@@ -524,7 +517,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     collateral_coin,
                     no_save,
                     workflow_authorization_cap_first,
-                    reuse_if_exists,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
                 )
@@ -576,8 +568,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
 
-        // == `$ nexus tool inspect-onchain` ==
-        ToolCommand::InspectOnchain { tool_fqn } => inspect_onchain(tool_fqn).await,
+        // == `$ nexus tool inspect` ==
+        ToolCommand::Inspect { tool_fqn } => inspect_tool(tool_fqn).await,
 
         // == `$ nexus tool auth` ==
         ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,
