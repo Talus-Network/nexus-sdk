@@ -161,27 +161,24 @@ pub(crate) async fn register_onchain_tool(
         save_tool_owner_caps(fqn.clone(), over_tool_id, over_gas_id).await?;
     }
 
-    let tool_id = nexus_sdk::types::derive_tool_id(*nexus_objects.tool_registry.object_id(), &fqn)
-        .map_err(NexusCliError::Any)?;
-    let tool_gas_id =
-        nexus_sdk::types::derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &fqn)
-            .map_err(NexusCliError::Any)?;
+    // Re-fetch the freshly-registered Tool object so the JSON output carries
+    // the same shape `nexus tool inspect` emits. This costs one extra RPC
+    // round-trip but means scripted consumers only need to learn one Tool
+    // contract.
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(&fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     json_output(&json!({
         "digest": response.digest,
         "tx_checkpoint": response.checkpoint,
-        "tool_fqn": fqn,
-        "tool_id": tool_id,
-        "tool_gas_id": tool_gas_id,
-        "package_address": package,
-        "module_name": module,
-        "tool_witness_id": tool_witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
+        "tool_id": inspection.tool_id,
+        "tool_gas_id": inspection.tool_gas_id,
         "owner_cap_over_tool_id": over_tool_id,
         "owner_cap_over_gas_id": over_gas_id,
-        "workflow_authorization_cap_first": workflow_authorization_cap_first,
+        "tool": inspection.tool,
     }))?;
 
     Ok(())

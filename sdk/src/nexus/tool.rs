@@ -7,7 +7,7 @@ use {
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::tool,
-        types::{derive_tool_gas_id, derive_tool_id, Tool, ToolRef},
+        types::{derive_tool_gas_id, derive_tool_id, Tool},
         ToolFqn,
     },
     std::time::Duration,
@@ -17,19 +17,17 @@ pub struct UpdateToolTimeoutResult {
     pub tx_digest: sui::types::Digest,
 }
 
-/// Result of [`ToolActions::inspect_on_chain_tool`]. When `exists == false`,
-/// `tool` and the decoded Sui-tool fields are `None`, but `tool_id` and
-/// `tool_gas_id` are still populated from local derivation.
+/// Result of [`ToolActions::inspect_tool`]. When `exists == false`, `tool` is
+/// `None`, but `tool_id` and `tool_gas_id` are still populated from local
+/// derivation so callers can pre-compute them. When `exists == true`, `tool`
+/// carries the full on-chain `Tool` record (HTTP- or Sui-variant).
 #[derive(Clone, Debug)]
-pub struct OnChainToolInspection {
+pub struct ToolInspection {
     pub fqn: ToolFqn,
     pub tool_id: sui::types::Address,
     pub tool_gas_id: sui::types::Address,
     pub exists: bool,
     pub tool: Option<Tool>,
-    pub package_address: Option<sui::types::Address>,
-    pub module_name: Option<sui::types::Identifier>,
-    pub tool_witness_id: Option<sui::types::Address>,
 }
 
 pub struct ToolActions {
@@ -101,17 +99,15 @@ impl ToolActions {
     }
 
     /// Derive the Tool and ToolGas object IDs for `fqn` and probe the Tool
-    /// object. Returns `exists: false` when neither object is present yet.
-    /// When the Tool exists, its `ToolRef::Sui` fields are decoded into
-    /// `package_address`, `module_name`, and `tool_witness_id` for direct use.
+    /// object. Returns `exists: false` when neither object is present yet,
+    /// and the full on-chain `Tool` record when both exist. The same shape
+    /// works for HTTP and Sui tools — discriminating between them is the
+    /// caller's job via [`Tool::reference`].
     ///
     /// Returns [`NexusError::Configuration`] when only one of Tool/ToolGas
     /// exists — that combination indicates corrupt registry state and
     /// requires operator intervention (e.g. a localnet reset).
-    pub async fn inspect_on_chain_tool(
-        &self,
-        fqn: &ToolFqn,
-    ) -> Result<OnChainToolInspection, NexusError> {
+    pub async fn inspect_tool(&self, fqn: &ToolFqn) -> Result<ToolInspection, NexusError> {
         let crawler = self.client.crawler();
         let nexus_objects = &self.client.nexus_objects;
         let tool_registry_id = *nexus_objects.tool_registry.object_id();
@@ -125,22 +121,19 @@ impl ToolActions {
 
         if tool_exists ^ tool_gas_exists {
             return Err(NexusError::Configuration(format!(
-                "On-chain tool '{fqn}' has inconsistent state: Tool exists={tool_exists}, \
+                "Tool '{fqn}' has inconsistent state: Tool exists={tool_exists}, \
                  ToolGas exists={tool_gas_exists}. Reset the deployment or recreate the missing \
                  object before retrying."
             )));
         }
 
         if !tool_exists {
-            return Ok(OnChainToolInspection {
+            return Ok(ToolInspection {
                 fqn: fqn.clone(),
                 tool_id,
                 tool_gas_id,
                 exists: false,
                 tool: None,
-                package_address: None,
-                module_name: None,
-                tool_witness_id: None,
             });
         }
 
@@ -150,28 +143,12 @@ impl ToolActions {
             .map_err(NexusError::Rpc)?
             .data;
 
-        let (package_address, module_name, tool_witness_id) = match &tool.reference {
-            ToolRef::Sui {
-                package_address,
-                module_name,
-                tool_witness_id,
-            } => (
-                Some(*package_address),
-                Some(module_name.clone()),
-                Some(*tool_witness_id),
-            ),
-            ToolRef::Http { .. } => (None, None, None),
-        };
-
-        Ok(OnChainToolInspection {
+        Ok(ToolInspection {
             fqn: fqn.clone(),
             tool_id,
             tool_gas_id,
             exists: true,
             tool: Some(tool),
-            package_address,
-            module_name,
-            tool_witness_id,
         })
     }
 }
@@ -184,6 +161,7 @@ mod tests {
             fqn,
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
+            types::ToolRef,
         },
         tonic::Status,
     };
@@ -250,7 +228,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_on_chain_tool_reports_missing_when_neither_object_exists() {
+    async fn inspect_tool_reports_missing_when_neither_object_exists() {
         let fixture = InspectionFixture::new();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -265,7 +243,7 @@ mod tests {
 
         let inspection = client
             .tool()
-            .inspect_on_chain_tool(&fixture.fqn)
+            .inspect_tool(&fixture.fqn)
             .await
             .expect("inspect succeeds when both objects missing");
 
@@ -273,13 +251,10 @@ mod tests {
         assert_eq!(inspection.tool_id, fixture.tool_id);
         assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
         assert!(inspection.tool.is_none());
-        assert!(inspection.package_address.is_none());
-        assert!(inspection.module_name.is_none());
-        assert!(inspection.tool_witness_id.is_none());
     }
 
     #[tokio::test]
-    async fn inspect_on_chain_tool_rejects_inconsistent_state() {
+    async fn inspect_tool_rejects_inconsistent_state() {
         let fixture = InspectionFixture::new();
         let tool_ref = sui::types::ObjectReference::new(
             fixture.tool_id,
@@ -307,7 +282,7 @@ mod tests {
 
         let error = client
             .tool()
-            .inspect_on_chain_tool(&fixture.fqn)
+            .inspect_tool(&fixture.fqn)
             .await
             .expect_err("inconsistent state should error");
 
@@ -323,7 +298,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_on_chain_tool_decodes_existing_sui_tool() {
+    async fn inspect_tool_decodes_existing_sui_tool() {
         let mut rng = rand::thread_rng();
         let fixture = InspectionFixture::new();
         let package_address = sui::types::Address::generate(&mut rng);
@@ -379,22 +354,31 @@ mod tests {
 
         let inspection = client
             .tool()
-            .inspect_on_chain_tool(&fixture.fqn)
+            .inspect_tool(&fixture.fqn)
             .await
             .expect("inspect succeeds when Tool present");
 
         assert!(inspection.exists);
         assert_eq!(inspection.tool_id, fixture.tool_id);
         assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
-        assert_eq!(inspection.package_address, Some(package_address));
-        assert_eq!(inspection.module_name.as_ref(), Some(&module_name));
-        assert_eq!(inspection.tool_witness_id, Some(tool_witness_id));
         let decoded = inspection.tool.expect("Tool decoded");
         assert!(decoded.workflow_authorization_cap_first);
+        match decoded.reference {
+            ToolRef::Sui {
+                package_address: p,
+                module_name: m,
+                tool_witness_id: w,
+            } => {
+                assert_eq!(p, package_address);
+                assert_eq!(m, module_name);
+                assert_eq!(w, tool_witness_id);
+            }
+            ToolRef::Http { .. } => panic!("expected Sui-variant tool"),
+        }
     }
 
     #[tokio::test]
-    async fn inspect_on_chain_tool_rejects_inconsistent_state_when_only_tool_gas_present() {
+    async fn inspect_tool_rejects_inconsistent_state_when_only_tool_gas_present() {
         let fixture = InspectionFixture::new();
         let tool_gas_ref = sui::types::ObjectReference::new(
             fixture.tool_gas_id,
@@ -422,7 +406,7 @@ mod tests {
 
         let error = client
             .tool()
-            .inspect_on_chain_tool(&fixture.fqn)
+            .inspect_tool(&fixture.fqn)
             .await
             .expect_err("inconsistent state should error");
 
@@ -439,7 +423,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_on_chain_tool_returns_none_decoded_fields_for_http_tool() {
+    async fn inspect_tool_decodes_existing_http_tool() {
         let fixture = InspectionFixture::new();
 
         let tool_ref = sui::types::ObjectReference::new(
@@ -497,17 +481,14 @@ mod tests {
 
         let inspection = client
             .tool()
-            .inspect_on_chain_tool(&fixture.fqn)
+            .inspect_tool(&fixture.fqn)
             .await
             .expect("inspect succeeds for HTTP tool");
 
         assert!(inspection.exists);
-        // HTTP-variant tools have no on-chain package/module/witness to decode.
-        assert!(inspection.package_address.is_none());
-        assert!(inspection.module_name.is_none());
-        assert!(inspection.tool_witness_id.is_none());
-        // But the Tool itself must still come back so the caller can read other fields.
         let decoded = inspection.tool.expect("Tool decoded");
+        // HTTP-variant tools surface their URL via Tool.reference rather
+        // than via the (now-removed) flattened decoded fields.
         assert!(matches!(decoded.reference, ToolRef::Http { .. }));
     }
 
