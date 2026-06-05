@@ -10,6 +10,7 @@ use {
     },
     nexus_sdk::{
         idents::{primitives, workflow as workflow_idents},
+        nexus::error::NexusError,
         sui,
         transactions::tool,
     },
@@ -108,17 +109,32 @@ pub(crate) async fn register_onchain_tool(
 
     let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
 
-    // Sign and submit the TX. Move-side aborts (e.g. `EFqnAlreadyExists`
-    // when the FQN was previously registered) surface as a regular
-    // `NexusError` rather than being silently swallowed: registration is
-    // intentionally non-idempotent, and the caller is expected to read the
-    // tool back with `nexus tool inspect-onchain` before re-registering.
+    // Sign and submit the TX.
     let response = match signer.execute_tx(tx, signature, &mut gas_coin).await {
         Ok(response) => {
             gas_config.release_gas_coin(gas_coin).await;
 
             response
         }
+        // If the tool is already registered, we don't want to fail the
+        // command.
+        Err(NexusError::Wallet(e)) if e.to_string().contains("register_on_chain_tool_") => {
+            gas_config.release_gas_coin(gas_coin).await;
+
+            notify_error!(
+                "Tool '{fqn}' is already registered.",
+                fqn = fqn.to_string().truecolor(100, 100, 100)
+            );
+
+            json_output(&json!({
+                "tool_fqn": fqn,
+                "already_registered": true,
+            }))?;
+
+            return Err(NexusCliError::Any(e));
+        }
+        // Any other error fails the tool registration but continues the
+        // loop.
         Err(e) => {
             gas_config.release_gas_coin(gas_coin).await;
 
@@ -228,16 +244,6 @@ async fn generate_and_customize_schemas(
 
 /// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
 /// transaction response.
-///
-/// The registration PTB always creates both caps — `OverGas` is derived from
-/// `OverTool` via `workflow::gas::deescalate` and transferred alongside it —
-/// so both are surfaced here. `OverGas` is what later lets the owner manage the
-/// tool's gas state (`tool set-invocation-cost`, `gas tickets …`), so dropping
-/// it would strand those flows. The two caps share the same outer
-/// `CloneableOwnerCap` struct and differ only by their generic type parameter,
-/// so we match on that inner type param to tell them apart — otherwise an
-/// `OverGas` cap could be misidentified as `OverTool`. `OverTool` is required;
-/// `OverGas` is returned when present.
 fn extract_owner_caps(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
