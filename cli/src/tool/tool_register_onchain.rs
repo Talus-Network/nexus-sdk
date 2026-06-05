@@ -8,7 +8,12 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{idents::primitives, nexus::error::NexusError, sui, transactions::tool},
+    nexus_sdk::{
+        idents::{primitives, workflow as workflow_idents},
+        nexus::error::NexusError,
+        sui,
+        transactions::tool,
+    },
     serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
     std::{
@@ -31,6 +36,7 @@ pub(crate) async fn register_onchain_tool(
     tool_witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
+    workflow_authorization_cap_first: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -65,7 +71,7 @@ pub(crate) async fn register_onchain_tool(
 
     let mut tx = sui::tx::TransactionBuilder::new();
 
-    if let Err(e) = tool::register_on_chain_for_self(
+    if let Err(e) = tool::register_on_chain_for_self_with_workflow_authorization_cap(
         &mut tx,
         nexus_objects,
         package,
@@ -78,6 +84,7 @@ pub(crate) async fn register_onchain_tool(
         tool_witness_id,
         &collateral_coin,
         address,
+        workflow_authorization_cap_first,
     ) {
         tx_handle.error();
 
@@ -141,8 +148,8 @@ pub(crate) async fn register_onchain_tool(
         }
     };
 
-    // Extract the OwnerCap<OverTool> object ID.
-    let over_tool_id = extract_over_tool_owner_cap(&response.objects, nexus_objects)?;
+    // Extract the OwnerCap<OverTool> and OwnerCap<OverGas> object IDs.
+    let (over_tool_id, over_gas_id) = extract_owner_caps(&response.objects, nexus_objects)?;
 
     notify_success!(
         "Transaction digest: {digest}",
@@ -151,21 +158,27 @@ pub(crate) async fn register_onchain_tool(
 
     // Save the owner caps to the CLI conf.
     if !no_save {
-        save_tool_owner_caps(fqn.clone(), over_tool_id).await?;
+        save_tool_owner_caps(fqn.clone(), over_tool_id, over_gas_id).await?;
     }
+
+    // Re-fetch the freshly-registered Tool object so the JSON output carries
+    // the same shape `nexus tool inspect` emits. This costs one extra RPC
+    // round-trip but means scripted consumers only need to learn one Tool
+    // contract.
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(&fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     json_output(&json!({
         "digest": response.digest,
-        "tool_fqn": fqn,
-        "package_address": package,
-        "module_name": module,
-        "tool_witness_id": tool_witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
+        "tx_checkpoint": response.checkpoint,
+        "tool_id": inspection.tool_id,
+        "tool_gas_id": inspection.tool_gas_id,
         "owner_cap_over_tool_id": over_tool_id,
-        "owner_cap_over_gas_id": null,
-        "already_registered": false,
+        "owner_cap_over_gas_id": over_gas_id,
+        "tool": inspection.tool,
     }))?;
 
     Ok(())
@@ -226,26 +239,46 @@ async fn generate_and_customize_schemas(
     Ok((input_schema, output_schema))
 }
 
-/// Extract the OwnerCap<OverTool> object ID from the transaction response.
-fn extract_over_tool_owner_cap(
+/// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
+/// transaction response.
+fn extract_owner_caps(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
-) -> AnyResult<sui::types::Address, NexusCliError> {
-    // Find `CloneableOwnerCap<OverTool>` object ID
-    let over_tool = objects.iter().find_map(|obj| {
+) -> AnyResult<(sui::types::Address, Option<sui::types::Address>), NexusCliError> {
+    let mut over_tool = None;
+    let mut over_gas = None;
+
+    for obj in objects {
         let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
-            return None;
+            continue;
         };
 
-        if *object_type.address() == nexus_objects.primitives_pkg_id
-            && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
-            && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
+        if *object_type.address() != nexus_objects.primitives_pkg_id
+            || *object_type.module() != primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
+            || *object_type.name() != primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
         {
-            Some(obj.object_id())
-        } else {
-            None
+            continue;
         }
-    });
+
+        // Disambiguate by the generic type param.
+        let Some(sui::types::TypeTag::Struct(inner)) = object_type.type_params().first() else {
+            continue;
+        };
+
+        if *inner.address() != nexus_objects.workflow_pkg_id {
+            continue;
+        }
+
+        if *inner.module() == workflow_idents::ToolRegistry::OVER_TOOL.module
+            && *inner.name() == workflow_idents::ToolRegistry::OVER_TOOL.name
+        {
+            over_tool = Some(obj.object_id());
+        } else if *inner.module() == workflow_idents::Gas::OVER_GAS.module
+            && *inner.name() == workflow_idents::Gas::OVER_GAS.name
+        {
+            over_gas = Some(obj.object_id());
+        }
+    }
 
     let Some(over_tool_id) = over_tool else {
         return Err(NexusCliError::Any(anyhow!(
@@ -258,26 +291,34 @@ fn extract_over_tool_owner_cap(
         id = over_tool_id.to_string().truecolor(100, 100, 100)
     );
 
-    notify_success!("Onchain tools use a different gas model. No OverGas cap was created.");
+    match over_gas {
+        Some(over_gas_id) => notify_success!(
+            "OwnerCap<OverGas> object ID: {id}",
+            id = over_gas_id.to_string().truecolor(100, 100, 100)
+        ),
+        None => {
+            notify_success!("No OwnerCap<OverGas> was returned by the registration transaction.")
+        }
+    }
 
-    Ok(over_tool_id)
+    Ok((over_tool_id, over_gas))
 }
 
 /// Save the tool owner caps to the CLI configuration.
 async fn save_tool_owner_caps(
     fqn: ToolFqn,
     over_tool_id: sui::types::Address,
+    over_gas_id: Option<sui::types::Address>,
 ) -> AnyResult<(), NexusCliError> {
-    let save_handle = loading!("Saving the owner cap to the CLI configuration...");
+    let save_handle = loading!("Saving the owner caps to the CLI configuration...");
 
     let mut conf = CliConf::load().await.unwrap_or_default();
 
-    // For onchain tools, we only have OverTool cap, no OverGas cap.
     conf.tools.insert(
         fqn,
         ToolOwnerCaps {
             over_tool: over_tool_id,
-            over_gas: None,
+            over_gas: over_gas_id,
         },
     );
 
@@ -1167,47 +1208,124 @@ mod tests {
         JSON_MODE.store(false, Ordering::Relaxed);
     }
 
-    #[test]
-    fn test_extract_over_tool_owner_cap_success() {
-        let mut rng = rand::thread_rng();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+    /// Build a `CloneableOwnerCap<INNER>` Sui object carrying `owner_cap_id` as
+    /// its on-chain id, where `INNER` is identified by `(module, name)` under
+    /// the workflow package. Mirrors the post-publish object set so the cap
+    /// extractor can be exercised against both `OverTool` and `OverGas`.
+    fn cloneable_owner_cap(
+        rng: &mut rand::rngs::ThreadRng,
+        nexus_objects: &NexusObjects,
+        inner_module: sui::types::Identifier,
+        inner_name: sui::types::Identifier,
+        owner_cap_id: sui::types::Address,
+    ) -> sui::types::Object {
+        let inner = sui::types::StructTag::new(
+            nexus_objects.workflow_pkg_id,
+            inner_module,
+            inner_name,
+            vec![],
+        );
+        let cap_tag = sui::types::StructTag::new(
+            nexus_objects.primitives_pkg_id,
+            primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
+            primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
 
-        // Create a mock object vector with an OwnerCap<OverTool>.
-        let owner_cap_id = sui::types::Address::generate(&mut rng);
-        let owner_address = sui::types::Address::generate(&mut rng);
-
-        let objects = vec![sui::types::Object::new(
+        sui::types::Object::new(
             sui::types::ObjectData::Struct(
-                sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.primitives_pkg_id,
-                        sui::types::Identifier::from_static("owner_cap"),
-                        sui::types::Identifier::from_static("CloneableOwnerCap"),
-                        vec![],
-                    ),
-                    true,
-                    0,
-                    owner_cap_id.to_bcs().unwrap(),
-                )
-                .unwrap(),
+                sui::types::MoveStruct::new(cap_tag, true, 0, owner_cap_id.to_bcs().unwrap())
+                    .unwrap(),
             ),
-            sui::types::Owner::Address(owner_address),
-            sui::types::Digest::generate(&mut rng),
+            sui::types::Owner::Address(sui::types::Address::generate(&mut *rng)),
+            sui::types::Digest::generate(&mut *rng),
             1000,
-        )];
-
-        // Extract the owner cap.
-        let result = extract_over_tool_owner_cap(&objects, &nexus_objects);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), owner_cap_id);
+        )
     }
 
     #[test]
-    fn test_extract_over_tool_owner_cap_not_found() {
+    fn test_extract_owner_caps_over_tool_only() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Create a mock object vector with only an OwnerCap<OverTool>.
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+
+        let objects = vec![cloneable_owner_cap(
+            &mut rng,
+            &nexus_objects,
+            workflow_idents::ToolRegistry::OVER_TOOL.module,
+            workflow_idents::ToolRegistry::OVER_TOOL.name,
+            owner_cap_id,
+        )];
+
+        // OverTool is found; OverGas is absent.
+        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        assert_eq!(over_tool, owner_cap_id);
+        assert_eq!(over_gas, None);
+    }
+
+    #[test]
+    fn test_extract_owner_caps_does_not_treat_over_gas_as_over_tool() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // An OverGas cap shares the outer CloneableOwnerCap struct and must not
+        // be misidentified as the OverTool cap.
+        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let objects = vec![cloneable_owner_cap(
+            &mut rng,
+            &nexus_objects,
+            workflow_idents::Gas::OVER_GAS.module,
+            workflow_idents::Gas::OVER_GAS.name,
+            over_gas_id,
+        )];
+
+        let result = extract_owner_caps(&objects, &nexus_objects);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Could not find the OwnerCap<OverTool> object ID"));
+    }
+
+    #[test]
+    fn test_extract_owner_caps_returns_both_caps() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Both caps present, as the workflow-authorization registration path
+        // returns; the extractor must return each id under its own type param.
+        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let over_tool_id = sui::types::Address::generate(&mut rng);
+        let objects = vec![
+            cloneable_owner_cap(
+                &mut rng,
+                &nexus_objects,
+                workflow_idents::Gas::OVER_GAS.module,
+                workflow_idents::Gas::OVER_GAS.name,
+                over_gas_id,
+            ),
+            cloneable_owner_cap(
+                &mut rng,
+                &nexus_objects,
+                workflow_idents::ToolRegistry::OVER_TOOL.module,
+                workflow_idents::ToolRegistry::OVER_TOOL.name,
+                over_tool_id,
+            ),
+        ];
+
+        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        assert_eq!(over_tool, over_tool_id);
+        assert_eq!(over_gas, Some(over_gas_id));
+    }
+
+    #[test]
+    fn test_extract_owner_caps_not_found() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         // Should fail because no owner cap is found.
-        let result = extract_over_tool_owner_cap(&[], &nexus_objects);
+        let result = extract_owner_caps(&[], &nexus_objects);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1315,19 +1433,23 @@ mod tests {
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let over_tool_id = sui::types::Address::generate(&mut rng);
+        let over_gas_id = sui::types::Address::generate(&mut rng);
 
-        // Call save_tool_owner_caps.
-        let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;
+        // Call save_tool_owner_caps with both caps (as the on-chain
+        // registration path now yields).
+        let result = save_tool_owner_caps(fqn.clone(), over_tool_id, Some(over_gas_id)).await;
 
         // Should succeed.
         assert!(result.is_ok());
 
+        // Both caps must be persisted so later gas-management commands
+        // (`tool set-invocation-cost`, `gas tickets …`) can resolve OverGas.
         let conf = CliConf::load().await.expect("saved CLI config should load");
         assert_eq!(
             conf.tools.get(&fqn),
             Some(&ToolOwnerCaps {
                 over_tool: over_tool_id,
-                over_gas: None,
+                over_gas: Some(over_gas_id),
             })
         );
     }

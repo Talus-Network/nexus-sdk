@@ -12,17 +12,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
+- `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
+- `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, interface revision, config-digest hex, shared objects, and skill requirements — into one JSON document.
+- `tap payments show` command that reads a `TapExecutionPayment` object and emits a flat JSON of all payment fields plus a computed `terminal` flag.
+- `tap payments wait` command that polls a `TapExecutionPayment` until accomplished/refunded or until a configurable timeout, emitting `elapsed_ms`/`timed_out` alongside the payment state.
+- `tap payments resolve --execution-id <OBJECT_ID> [--alias <NAME> | --agent-id <OBJECT_ID>]` command that wraps the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment` (invoker-funded) and `accomplish_tap_execution_payment_from_agent_vault` (vault-funded) PTBs depending on whether an agent is supplied. Backed by `TapActions::accomplish_execution_payment` and `AccomplishExecutionPaymentParams`/`AccomplishExecutionPaymentResult` (now carrying `agent_id: Option<sui::types::Address>`) on the SDK side.
+- `tap bind` command that composes `tap::create_agent` and `tap::register_skill` into a single PTB and returns the new agent id, skill id, agent object ref, config-digest evidence, and transaction metadata.
+- `tool inspect` command that derives `Tool` and `ToolGas` object IDs from an FQN, probes both on-chain, and emits the full decoded `Tool` record (HTTP- or Sui-variant) under a stable `tool` JSON field, so callers do not have to BCS-decode it themselves. `tool register on-chain` and `tool register off-chain` JSON outputs now emit the same `tool` field after re-fetching the freshly-registered object — scripted consumers only need to learn one Tool contract.
+- `tool register on-chain --workflow-authorization-cap-first` flag to route registration through the cap-gated `register_on_chain_tool_with_workflow_authorization_cap` entrypoint.
+- `tool register on-chain` JSON output now includes the locally-derived `tool_id` and `tool_gas_id`, the `workflow_authorization_cap_first` flag, and the transaction checkpoint, so callers do not need to derive these values themselves.
+- `tap vault deposit` command that funds an agent's payment vault by splitting MIST from the signer's gas coin, taking the agent via `--agent-id` (or local `--alias`) and `--amount`.
+- `tap schedule-address-funded` command that creates an address-funded scheduled TAP task tied to an existing scheduler task, attaches the `TapScheduledTaskLink`, and shares the resulting `ScheduledSkillTask` in one transaction.
+- `tap schedule-from-vault` command that creates an agent-vault-funded scheduled TAP task tied to an existing scheduler task and attaches the `TapScheduledTaskLink` in one transaction.
+- `tap schedule-default-address-funded` command that creates an address-funded scheduled TAP task for the registry-owned default DAG executor and attaches the `TapScheduledTaskLink` in one transaction.
 
 #### Changed
 
 - DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
 - On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
+- `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it.
 - Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
 
 ### `nexus-sdk`
 
 #### Added
 
+- `TapActions::inspect_endpoint` reading an endpoint object's on-chain metadata and returning an `EndpointInspection` carrying its object ref. In the current TAP model endpoint revisions live on the agent registry keyed by `(agent_id, skill_id, interface_revision)`, so use `tap registry show` to inspect revisions and active endpoints.
+- `TapActions::bind_agent_skill` composed PTB that runs `tap::create_agent` and `tap::register_skill` in a single transaction, with `BindAgentSkillParams` capturing operator and artifact, and `BindAgentSkillResult` capturing the transaction digest/checkpoint, agent/skill ids, agent object ref, and the derived config-digest plus its `TapConfigDigestInput`.
+- `TapActions::wait_for_payment_settled` poll helper with `WaitForPaymentResult` (final payment state, `terminal`, `elapsed_ms`, `timed_out`) and a `payment_is_terminal` free function that recognizes `accomplished`/`refunded`/non-`Pending` `TapExecutionPaymentFinalState`. A zero `poll_interval` is rejected with `NexusError::Configuration` to avoid busy-looping the poller.
+- `ToolActions::inspect_tool` that derives `Tool`/`ToolGas` ids from an FQN, probes both on-chain, and decodes the on-chain `Tool` into a `ToolInspection` carrying the full `Tool` record (HTTP- or Sui-variant). Mixed-existence states (one present, the other missing) surface as a clear `NexusError::Configuration`.
+- `TapActions::deposit_agent_payment_vault` high-level helper that fetches the agent object reference, splits the deposit coin from gas, and submits the `tap::deposit_agent_payment_vault` call. `DepositAgentVaultParams` and `DepositAgentVaultResult` expose `agent_id` and `amount` for callers.
 - `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
 - SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
 - `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.

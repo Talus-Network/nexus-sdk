@@ -9,13 +9,22 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
             let vault = fetch_tap_agent_payment_vault_for_agent(nexus_client.crawler(), agent_id)
                 .await
                 .map_err(NexusCliError::Any)?;
-            json_output(&json!({
-                "agent_id": agent_id,
-                "vault_id": vault.object_id,
-                "available_balance": vault.data.available_balance,
-                "locked_amount": vault.data.locked_amount,
-                "unlocked_balance": vault.data.available_balance.saturating_sub(vault.data.locked_amount)
-            }))
+            json_output(&vault_balance_result_json(agent_id, &vault))
+        }
+        VaultCommand::Deposit {
+            alias,
+            agent_id,
+            amount,
+            gas,
+        } => {
+            deposit_agent_vault(
+                alias,
+                agent_id,
+                amount,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
         }
     }
 }

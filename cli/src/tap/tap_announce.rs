@@ -17,7 +17,7 @@ pub(crate) async fn announce_endpoint_revision(
         .await
         .map_err(NexusCliError::Nexus)?;
 
-    json_output(&announce_result_json(&artifact, &result).map_err(NexusCliError::Any)?)
+    json_output(&announce_result_json(&artifact, &result))
 }
 
 #[cfg(test)]

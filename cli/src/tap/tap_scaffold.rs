@@ -32,7 +32,7 @@ pub(crate) async fn scaffold_tap_skill(
 
     handle.success();
     notify_success!("Created TAP skill scaffold at {}", root.display());
-    json_output(&json!({ "path": root }))?;
+    json_output(&scaffold_result_json(&root))?;
 
     Ok(())
 }
