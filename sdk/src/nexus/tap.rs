@@ -13,7 +13,7 @@ use {
             signer::ExecutedTransaction,
         },
         sui,
-        transactions::{scheduler as scheduler_tx, tap as tap_tx},
+        transactions::{dag as dag_tx, scheduler as scheduler_tx, tap as tap_tx},
         types::{
             resolve_active_tap_endpoint,
             resolve_active_tap_skill_execution_target,
@@ -250,6 +250,21 @@ pub struct DepositAgentVaultResult {
     pub tx_checkpoint: u64,
     pub agent_id: AgentId,
     pub amount: u64,
+}
+
+/// Parameters for [`TapActions::accomplish_execution_payment`].
+#[derive(Clone, Debug)]
+pub struct AccomplishExecutionPaymentParams {
+    /// The shared `DAGExecution` object whose TAP payment should be settled.
+    pub execution_id: sui::types::Address,
+}
+
+/// Result returned by [`TapActions::accomplish_execution_payment`].
+#[derive(Clone, Debug)]
+pub struct AccomplishExecutionPaymentResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub execution_id: sui::types::Address,
 }
 
 /// Whether a [`TapExecutionPayment`] has reached an irrecoverable final state.
@@ -606,6 +621,41 @@ impl TapActions {
             tx_checkpoint: response.checkpoint,
             agent_id: params.agent_id,
             amount: params.amount,
+        })
+    }
+
+    /// Wraps the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment`
+    /// PTB so the holder of the `DAGExecution` can settle its TAP payment
+    /// directly — useful when the off-chain leader has not (yet) emitted the
+    /// settlement transaction itself but the execution has reached a state
+    /// that satisfies `assert_execution_can_accomplish_tap_payment`. Returns
+    /// the transaction digest, checkpoint, and the resolved execution id.
+    pub async fn accomplish_execution_payment(
+        &self,
+        params: AccomplishExecutionPaymentParams,
+    ) -> Result<AccomplishExecutionPaymentResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let execution_ref = self
+            .client
+            .crawler()
+            .get_object_metadata(params.execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let execution = tx.input(sui::tx::Input::shared(
+            *execution_ref.object_id(),
+            execution_ref.version(),
+            true,
+        ));
+        dag_tx::accomplish_tap_execution_payment(&mut tx, &self.client.nexus_objects, execution);
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(AccomplishExecutionPaymentResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            execution_id: params.execution_id,
         })
     }
 
@@ -2627,6 +2677,100 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.amount, 1500);
+        assert_eq!(result.tx_digest, digest);
+    }
+
+    /// `accomplish_execution_payment` wraps the on-chain
+    /// `nexus_workflow::dag::accomplish_tap_execution_payment` PTB. The
+    /// happy path fetches the shared `DAGExecution` object's metadata,
+    /// builds a single move-call PTB targeting the workflow package, and
+    /// returns the supplied `execution_id` verbatim in the result so
+    /// callers can correlate the digest with the resolved payment.
+    #[tokio::test]
+    async fn tap_actions_accomplish_execution_payment_calls_workflow_dag_entrypoint() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xee"),
+            9,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(execution_ref.version()),
+            None,
+        );
+        let expected_workflow_pkg_id = nexus_objects.workflow_pkg_id;
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![],
+            move |request| {
+                let transaction = request.transaction.as_ref().expect("submitted transaction");
+                let transaction = sui::types::Transaction::try_from(transaction)
+                    .expect("submitted transaction decodes");
+                let sui::types::TransactionKind::ProgrammableTransaction(
+                    sui::types::ProgrammableTransaction { commands, .. },
+                ) = &transaction.kind
+                else {
+                    panic!("expected programmable transaction");
+                };
+                // Exactly one move call: dag::accomplish_tap_execution_payment
+                // on the workflow package.
+                let move_calls: Vec<_> = commands
+                    .iter()
+                    .filter_map(|command| match command {
+                        sui::types::Command::MoveCall(call) => Some(call),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(move_calls.len(), 1, "expected exactly one move call");
+                let call = move_calls[0];
+                assert_eq!(call.package, expected_workflow_pkg_id);
+                assert_eq!(
+                    call.function,
+                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name
+                );
+                assert_eq!(
+                    call.module,
+                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module
+                );
+                // The only argument is the shared DAGExecution input.
+                assert_eq!(call.arguments.len(), 1);
+                assert!(matches!(call.arguments[0], sui::types::Argument::Input(_)));
+            },
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .accomplish_execution_payment(AccomplishExecutionPaymentParams {
+                execution_id: *execution_ref.object_id(),
+            })
+            .await
+            .expect("accomplish execution payment succeeds");
+
+        assert_eq!(result.execution_id, *execution_ref.object_id());
         assert_eq!(result.tx_digest, digest);
     }
 

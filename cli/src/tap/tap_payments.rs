@@ -1,4 +1,8 @@
-use {super::*, nexus_sdk::nexus::tap::fetch_tap_execution_payment, std::time::Duration};
+use {
+    super::*,
+    nexus_sdk::nexus::tap::{fetch_tap_execution_payment, AccomplishExecutionPaymentParams},
+    std::time::Duration,
+};
 
 pub(crate) async fn handle_payments_command(
     command: PaymentsCommand,
@@ -16,48 +20,9 @@ pub(crate) async fn handle_payments_command(
             completed,
             pending,
             all: _,
-        } => {
-            let conf = CliConf::load().await.unwrap_or_default();
-            let agent_id = if alias.is_some() || agent_id.is_some() {
-                Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
-            } else {
-                None
-            };
-            let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-            let owner = nexus_client.signer().get_active_address();
-            let history = fetch_execution_payment_history(
-                nexus_client.crawler(),
-                &nexus_client.get_nexus_objects(),
-                owner,
-                agent_id,
-            )
-            .await
-            .map_err(NexusCliError::Any)?;
-            let include = |receipt: &&TapExecutionPaymentReceipt| {
-                (!completed && !pending)
-                    || (completed && receipt.resolved)
-                    || (pending && !receipt.resolved)
-            };
-            let wallet_receipts = history
-                .wallet_receipts
-                .iter()
-                .filter(include)
-                .cloned()
-                .collect::<Vec<_>>();
-            let vault_receipts = history
-                .vault_receipts
-                .iter()
-                .filter(include)
-                .cloned()
-                .collect::<Vec<_>>();
-            json_output(&payments_list_result_json(
-                owner,
-                agent_id,
-                &wallet_receipts,
-                &vault_receipts,
-                &history.unresolved_execution_ids,
-                &history.resolved_execution_ids,
-            ))
+        } => list_payments(alias, agent_id, completed, pending).await,
+        PaymentsCommand::Resolve { execution_id, gas } => {
+            resolve_payment(execution_id, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
     }
 }
@@ -99,6 +64,84 @@ async fn wait_payment(
         .map_err(NexusCliError::Nexus)?;
 
     json_output(&payment_wait_result_json(&result))
+}
+
+/// Fetch the local-wallet execution payment receipts and, optionally, the
+/// receipts owned by an agent's vault. The `--completed` / `--pending` flags
+/// post-filter the receipts before emission so scripted consumers do not
+/// have to drop fields client-side.
+async fn list_payments(
+    alias: Option<String>,
+    agent_id: Option<sui::types::Address>,
+    completed: bool,
+    pending: bool,
+) -> AnyResult<(), NexusCliError> {
+    let conf = CliConf::load().await.unwrap_or_default();
+    let agent_id = if alias.is_some() || agent_id.is_some() {
+        Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
+    } else {
+        None
+    };
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let owner = nexus_client.signer().get_active_address();
+    let history = fetch_execution_payment_history(
+        nexus_client.crawler(),
+        &nexus_client.get_nexus_objects(),
+        owner,
+        agent_id,
+    )
+    .await
+    .map_err(NexusCliError::Any)?;
+    let include = |receipt: &&TapExecutionPaymentReceipt| {
+        (!completed && !pending)
+            || (completed && receipt.resolved)
+            || (pending && !receipt.resolved)
+    };
+    let wallet_receipts = history
+        .wallet_receipts
+        .iter()
+        .filter(include)
+        .cloned()
+        .collect::<Vec<_>>();
+    let vault_receipts = history
+        .vault_receipts
+        .iter()
+        .filter(include)
+        .cloned()
+        .collect::<Vec<_>>();
+    json_output(&payments_list_result_json(
+        owner,
+        agent_id,
+        &wallet_receipts,
+        &vault_receipts,
+        &history.unresolved_execution_ids,
+        &history.resolved_execution_ids,
+    ))
+}
+
+/// Wrap the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment`
+/// PTB. The shared `DAGExecution` object is the only argument; the SDK
+/// fetches its current ref and submits a single move-call transaction.
+async fn resolve_payment(
+    execution_id: sui::types::Address,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Resolving standard TAP execution payment for DAGExecution '{execution_id}'");
+
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let result = nexus_client
+        .tap()
+        .accomplish_execution_payment(AccomplishExecutionPaymentParams { execution_id })
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    notify_success!(
+        "Resolved execution payment (digest {digest})",
+        digest = result.tx_digest.to_string().truecolor(100, 100, 100),
+    );
+
+    json_output(&payment_resolve_result_json(&result))
 }
 
 #[cfg(test)]

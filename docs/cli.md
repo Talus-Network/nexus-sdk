@@ -656,6 +656,18 @@ Use this in CI pipelines or demos to drive payment settlement instead of hand-ro
 
 Lists wallet-owned `ExecutionPaymentReceipt` objects and, when an agent is supplied (by alias or id), the agent-vault payment-receipt history. Filter to completed-only, pending-only, or both. JSON output includes the owner, optional agent id, wallet receipts, vault receipts, and the unresolved/resolved execution-id lists.
 
+---
+
+**`nexus tap payments resolve --execution-id <OBJECT_ID>`**
+
+Calls `nexus_workflow::dag::accomplish_tap_execution_payment` against a shared `DAGExecution` object so the standard TAP payment moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`). The SDK fetches the execution's current object ref, builds a single move-call PTB, and submits it.
+
+JSON output includes a fixed `function: "accomplish_tap_execution_payment"` marker, the resolved `execution_id`, and the transaction `digest`/`tx_checkpoint`. Pair with `nexus tap payments show` or `nexus tap payments wait` to confirm the linked `TapExecutionPayment` flipped to `accomplished: true`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI...
+{% endhint %}
+
 #### Execution and scheduling
 
 ---

@@ -87,6 +87,7 @@ use {
         create_agent_result_json,
         default_target_result_json,
         dry_run_result_json,
+        payment_resolve_result_json,
         payment_show_result_json,
         payment_wait_result_json,
         payments_list_result_json,
@@ -691,6 +692,19 @@ pub(crate) enum PaymentsCommand {
         #[arg(long, help = "Show all receipts. This is the default.")]
         all: bool,
     },
+    #[command(
+        about = "Resolve a standard TAP payment by returning funds to the invoker given the execution is finished."
+    )]
+    Resolve {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID whose TAP payment should be accomplished.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
@@ -1137,6 +1151,19 @@ mod tests {
         .await
         .expect_err("payments dispatch resolves alias before RPC");
         assert!(payments_error.to_string().contains("No Talus agent alias"));
+
+        let resolve_error = handle(TapCommand::Payments(PaymentsCommand::Resolve {
+            execution_id: sui::types::Address::from_static("0xee"),
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments resolve dispatch reaches missing RPC");
+        assert!(
+            resolve_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {resolve_error}"
+        );
 
         let requirements_error = handle(TapCommand::Requirements {
             agent_id: sui::types::Address::from_static("0xa"),

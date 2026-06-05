@@ -12,7 +12,12 @@ use {
     nexus_sdk::{
         idents::registry::AgentRegistry,
         nexus::{
-            tap::{BindAgentSkillResult, DepositAgentVaultResult, WaitForPaymentResult},
+            tap::{
+                AccomplishExecutionPaymentResult,
+                BindAgentSkillResult,
+                DepositAgentVaultResult,
+                WaitForPaymentResult,
+            },
             workflow::ExecuteResult,
         },
         types::{
@@ -314,6 +319,18 @@ pub(crate) fn payments_list_result_json(
         "vault_receipts": vault_receipts,
         "unresolved_execution_ids": unresolved_execution_ids,
         "resolved_execution_ids": resolved_execution_ids,
+    })
+}
+
+pub(crate) fn payment_resolve_result_json(
+    result: &AccomplishExecutionPaymentResult,
+) -> serde_json::Value {
+    json!({
+        "standard_tap": true,
+        "function": "accomplish_tap_execution_payment",
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "execution_id": result.execution_id,
     })
 }
 
@@ -699,6 +716,26 @@ mod tests {
         assert_eq!(json["elapsed_ms"], serde_json::json!(1234));
         assert_eq!(json["timed_out"], serde_json::Value::Bool(true));
         assert_eq!(json["terminal"], serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn payment_resolve_result_json_exposes_execution_id_and_digest() {
+        let result = AccomplishExecutionPaymentResult {
+            tx_digest: sui::types::Digest::from([3u8; 32]),
+            tx_checkpoint: 77,
+            execution_id: sui::types::Address::from_static("0xee"),
+        };
+        let json = payment_resolve_result_json(&result);
+        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert_eq!(
+            json["function"],
+            serde_json::json!("accomplish_tap_execution_payment")
+        );
+        assert_eq!(
+            json["execution_id"],
+            serde_json::json!(sui::types::Address::from_static("0xee").to_string())
+        );
+        assert_eq!(json["tx_checkpoint"], serde_json::json!(77));
     }
 
     // ---- agent aliases ----
