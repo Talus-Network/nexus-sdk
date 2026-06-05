@@ -694,7 +694,7 @@ pub(crate) enum PaymentsCommand {
         all: bool,
     },
     #[command(
-        about = "Resolve a standard TAP payment by returning funds to the invoker given the execution is finished."
+        about = "Resolve a standard TAP payment by returning funds to the invoker given the execution is finished. Routes through `accomplish_tap_execution_payment_from_agent_vault` when `--alias`/`--agent-id` is supplied, otherwise calls `accomplish_tap_execution_payment`."
     )]
     Resolve {
         #[arg(
@@ -703,6 +703,19 @@ pub(crate) enum PaymentsCommand {
             value_name = "OBJECT_ID"
         )]
         execution_id: sui::types::Address,
+        #[arg(
+            long,
+            help = "Local agent alias whose vault funds the settlement.",
+            value_name = "NAME",
+            conflicts_with = "agent_id"
+        )]
+        alias: Option<String>,
+        #[arg(
+            long,
+            help = "Talus agent object ID whose vault funds the settlement.",
+            value_name = "OBJECT_ID"
+        )]
+        agent_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -1139,6 +1152,8 @@ mod tests {
 
         let resolve_error = handle(TapCommand::Payments(PaymentsCommand::Resolve {
             execution_id: sui::types::Address::from_static("0xee"),
+            alias: None,
+            agent_id: None,
             gas: gas_args(),
         }))
         .await
@@ -1148,6 +1163,21 @@ mod tests {
                 .to_string()
                 .contains("Sui RPC URL is not configured"),
             "unexpected error: {resolve_error}"
+        );
+
+        let resolve_vault_error = handle(TapCommand::Payments(PaymentsCommand::Resolve {
+            execution_id: sui::types::Address::from_static("0xee"),
+            alias: Some("missing".to_string()),
+            agent_id: None,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments resolve --alias resolves before RPC");
+        assert!(
+            resolve_vault_error
+                .to_string()
+                .contains("No Talus agent alias"),
+            "unexpected error: {resolve_vault_error}"
         );
 
         let requirements_error = handle(TapCommand::Requirements {

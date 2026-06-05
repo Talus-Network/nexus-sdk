@@ -21,8 +21,20 @@ pub(crate) async fn handle_payments_command(
             pending,
             all: _,
         } => list_payments(alias, agent_id, completed, pending).await,
-        PaymentsCommand::Resolve { execution_id, gas } => {
-            resolve_payment(execution_id, gas.sui_gas_coin, gas.sui_gas_budget).await
+        PaymentsCommand::Resolve {
+            execution_id,
+            alias,
+            agent_id,
+            gas,
+        } => {
+            resolve_payment(
+                execution_id,
+                alias,
+                agent_id,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
         }
     }
 }
@@ -119,20 +131,36 @@ async fn list_payments(
     ))
 }
 
-/// Wrap the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment`
-/// PTB. The shared `DAGExecution` object is the only argument; the SDK
-/// fetches its current ref and submits a single move-call transaction.
+/// Wrap the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment*`
+/// PTBs. With no agent supplied, the SDK builds the invoker-funded PTB
+/// (`accomplish_tap_execution_payment`) and the shared `DAGExecution` is
+/// the only input. When `--alias` or `--agent-id` resolves to an agent,
+/// the SDK additionally fetches the agent's object ref and routes through
+/// `accomplish_tap_execution_payment_from_agent_vault` so the payment
+/// settles out of the agent's vault.
 async fn resolve_payment(
     execution_id: sui::types::Address,
+    alias: Option<String>,
+    agent_id: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Resolving standard TAP execution payment for DAGExecution '{execution_id}'");
 
+    let conf = CliConf::load().await.unwrap_or_default();
+    let resolved_agent_id = if alias.is_some() || agent_id.is_some() {
+        Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
+    } else {
+        None
+    };
+
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let result = nexus_client
         .tap()
-        .accomplish_execution_payment(AccomplishExecutionPaymentParams { execution_id })
+        .accomplish_execution_payment(AccomplishExecutionPaymentParams {
+            execution_id,
+            agent_id: resolved_agent_id,
+        })
         .await
         .map_err(NexusCliError::Nexus)?;
 

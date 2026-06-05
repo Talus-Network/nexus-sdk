@@ -64,10 +64,6 @@ The JSON output for each registered tool includes the transaction `digest`, `too
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
-{% hint style="info" %}
-Tool registration is currently restricted during the beta phase. To register your tool, please contact the team to be added to the allow list.
-{% endhint %}
-
 ---
 
 **`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
@@ -659,11 +655,16 @@ Lists wallet-owned `ExecutionPaymentReceipt` objects and, when an agent is suppl
 
 ---
 
-**`nexus tap payments resolve --execution-id <OBJECT_ID>`**
+**`nexus tap payments resolve --execution-id <OBJECT_ID> [--alias <NAME> | --agent-id <OBJECT_ID>]`**
 
-Calls `nexus_workflow::dag::accomplish_tap_execution_payment` against a shared `DAGExecution` object so the standard TAP payment moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`). The SDK fetches the execution's current object ref, builds a single move-call PTB, and submits it.
+Settles the standard TAP payment linked to a shared `DAGExecution` so it moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`).
 
-JSON output includes a fixed `function: "accomplish_tap_execution_payment"` marker, the resolved `execution_id`, and the transaction `digest`/`tx_checkpoint`. Pair with `nexus tap payments show` or `nexus tap payments wait` to confirm the linked `TapExecutionPayment` flipped to `accomplished: true`.
+Two on-chain entrypoints are wrapped depending on the funding source:
+
+- Without `--alias`/`--agent-id`, the SDK builds a one-call PTB targeting `nexus_workflow::dag::accomplish_tap_execution_payment` — the invoker-funded path that settles out of the `TapExecutionPayment` object.
+- With `--alias` (resolved against the local agent alias map) or `--agent-id`, the SDK additionally fetches the agent's shared object and routes through `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault` so the payment settles out of the agent's payment vault.
+
+JSON output includes a `function` marker (`accomplish_tap_execution_payment` or `accomplish_tap_execution_payment_from_agent_vault`), the resolved `execution_id`, the resolved `agent_id` (or `null` on the invoker-funded path), and the transaction `digest`/`tx_checkpoint`. Pair with `nexus tap payments show` or `nexus tap payments wait` to confirm the linked `TapExecutionPayment` flipped to `accomplished: true`.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
