@@ -1,4 +1,4 @@
-//! Rust projections of `nexus_workflow::network_auth` on-chain types.
+//! Rust projections of `nexus_registry::network_auth` on-chain types.
 
 use {
     super::{MoveTable, MoveVecSet},
@@ -6,7 +6,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-/// Move `nexus_workflow::network_auth::IdentityKey`.
+/// Move `nexus_registry::network_auth::IdentityKey`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum IdentityKey {
     /// `IdentityKey::Leader { leader_cap_id }`
@@ -35,14 +35,14 @@ impl IdentityKey {
     }
 }
 
-/// Move `nexus_workflow::network_auth::NetworkAuth`.
+/// Move `nexus_registry::network_auth::NetworkAuth`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct NetworkAuth {
     pub id: sui::types::Address,
     pub identities: MoveVecSet<IdentityKey>,
 }
 
-/// Move `nexus_workflow::network_auth::KeyRecord`.
+/// Move `nexus_registry::network_auth::KeyRecord`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct KeyRecord {
     pub scheme: u8,
@@ -51,7 +51,7 @@ pub struct KeyRecord {
     pub revoked_at_ms: Option<u64>,
 }
 
-/// Move `nexus_workflow::network_auth::KeyBinding`.
+/// Move `nexus_registry::network_auth::KeyBinding`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct KeyBinding {
     pub id: sui::types::Address,

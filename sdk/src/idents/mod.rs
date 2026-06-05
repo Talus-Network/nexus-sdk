@@ -17,6 +17,8 @@
 
 pub mod move_std;
 pub mod primitives;
+pub mod registry;
+pub mod scheduler;
 pub mod sui_framework;
 pub mod tap;
 pub mod workflow;

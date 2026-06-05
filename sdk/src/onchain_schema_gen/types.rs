@@ -196,6 +196,18 @@ pub fn is_workflow_vertex_authorization_cap_param(
         && struct_tag.name().as_str() == "VertexAuthorizationCheckCap"
 }
 
+pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
+    };
+
+    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
+        return false;
+    };
+
+    struct_tag.module().as_str() == "dag" && struct_tag.name().as_str() == "DAGExecution"
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, sui::grpc::open_signature_body::Type};
@@ -326,6 +338,11 @@ mod tests {
             "0x45",
             "counter",
             "RandomCounter"
+        )));
+        assert!(is_workflow_dag_execution_param(&make_struct(
+            "0x44",
+            "dag",
+            "DAGExecution"
         )));
     }
 

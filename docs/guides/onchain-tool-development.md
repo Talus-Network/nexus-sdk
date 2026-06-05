@@ -83,7 +83,7 @@ use std::ascii::String as AsciiString;
 /// One-time witness for package initialization.
 public struct MY_ONCHAIN_TOOL has drop {}
 
-/// Witness object used to identify this tool.
+/// Witness object used as the worksheet stamp locator for this tool.
 public struct MyToolWitness has key, store {
     id: UID,
 }
@@ -91,7 +91,6 @@ public struct MyToolWitness has key, store {
 /// Your tool's state object (customize as needed).
 public struct MyToolState has key {
     id: UID,
-    /// Store the witness object that identifies this tool.
     witness: Bag,
     // Add your application-specific fields here
     // Example: value: u64,
@@ -151,7 +150,7 @@ This is the core of your tool, the function that performs the actual execution:
 /// 1. First parameter: worksheet: &mut ProofOfUID
 /// 2. Last parameter: ctx: &mut TxContext
 /// 3. Return type: TaggedOutput
-/// 4. Must stamp worksheet with witness ID
+/// 4. Must stamp worksheet with tool witness ID
 public fun execute(
     worksheet: &mut ProofOfUID,
     state: &mut MyToolState,
@@ -160,11 +159,8 @@ public fun execute(
     clock: &Clock,
     ctx: &mut TxContext,
 ): TaggedOutput {
-    // Get the witness for stamping.
-    let witness = state.witness();
-
-    // REQUIRED: Stamp the worksheet to prove execution
-    worksheet.stamp_with_data(&witness.id, b"my_tool_executed");
+    // REQUIRED: Stamp the worksheet with the tool witness ID to prove execution
+    worksheet.stamp_with_data(&state.witness().id, b"my_tool_executed");
 
     // Implement your tool logic here
     if (input_value == 0) {
@@ -221,10 +217,10 @@ fun witness(self: &MyToolState): &MyToolWitness {
     self.witness.borrow(b"witness")
 }
 
-/// Get the witness ID for external reference.
+/// Get the tool witness ID for external reference.
 /// Useful for registering the tool onchain.
-public fun witness_id(self: &MyToolState): ID {
-    self.witness().id.to_inner()
+public fun tool_witness_id(self: &MyToolState): ID {
+    object::uid_to_inner(&self.witness().id)
 }
 
 // Add getters for your custom fields
@@ -260,16 +256,15 @@ export PACKAGE_ID="0x..."
 After publishing, you'll need:
 
 1. **Module Path**: Combination of package address and module name (e.g., "0xPACKAGE_ID::my_tool")
-1. **Witness ID**: Object ID of your witness object
-1. **\*ToolState**: The shared object necessary as argument for the execute function. _This ID is not required for tool registration._
+1. **Tool witness ID**: Object ID of the witness object stored under your shared tool state. This is used as the inert execution stamp locator during registration.
+1. **\*ToolState**: The shared object necessary as argument for the execute function. This is often the object that stores the witness, but it is not the value passed as `--tool-witness-id`.
 
-You can find the witness ID in the explorer by looking up the Witness object in the dynamic field ID that is given
-to you in the publish output. This object has type: `0x2::dynamic_field::Field<vector<u8>, PACKAGE_ID::my_onchain_tool::MyToolWitness>`
+You can find the tool witness ID in the explorer by looking up the shared state object created by your package initialization and reading its `witness` dynamic field, or by exposing and calling a `tool_witness_id` getter.
 
-Alternatively, you can find the witness ID by using the CLI:
+Alternatively, you can inspect the state object by using the Sui CLI:
 
 ```bash
-sui client object <DYNAMIC_FIELD_ID>
+sui client object <TOOL_STATE_ID>
 ```
 
 ### Step 3: Register with Nexus
@@ -281,7 +276,7 @@ nexus tool register onchain \
   --module-path "$PACKAGE_ID::my_onchain_tool" \
   --tool-fqn "xyz.mydomain.my_onchain_tool@1" \
   --description "My custom onchain tool that processes values" \
-  --witness-id "0x..."
+  --tool-witness-id "0x..."
 ```
 
 The CLI will:

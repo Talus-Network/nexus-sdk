@@ -61,7 +61,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 }
 
 /// Execute function that takes a ProofOfUID worksheet as its first argument.
-/// The tool must stamp the worksheet with the witness ID to prove it was executed.
+/// The tool must stamp the worksheet with the tool witness ID to prove it was executed.
 /// This allows the Nexus framework to verify that the tool was actually invoked.
 ///
 /// This execute function implements conditional logic:
@@ -94,8 +94,8 @@ fun witness(self: &RandomCounter): &OnchainToolWitness {
     self.witness.borrow(b"witness")
 }
 
-public fun witness_id(self: &RandomCounter): ID {
-    self.witness().id.to_inner()
+public fun tool_witness_id(self: &RandomCounter): ID {
+    object::uid_to_inner(&self.witness().id)
 }
 
 #[test_only]

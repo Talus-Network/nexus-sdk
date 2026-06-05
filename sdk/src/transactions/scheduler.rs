@@ -1,9 +1,17 @@
 use {
     crate::{
-        idents::{move_std, primitives, pure_arg, sui_framework, workflow},
+        idents::{move_std, primitives, pure_arg, scheduler, sui_framework, workflow},
         sui,
         transactions,
-        types::{DataStorage, NexusObjects, Storable, StorageKind},
+        types::{
+            AgentId,
+            DataStorage,
+            NexusObjects,
+            SkillId,
+            Storable,
+            StorageKind,
+            TapVertexAuthorizationPlanEntry,
+        },
     },
     serde::{Deserialize, Serialize},
     std::collections::{HashMap, HashSet},
@@ -80,9 +88,9 @@ where
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_METADATA.module,
-            workflow::Scheduler::NEW_METADATA.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_METADATA.module,
+            scheduler::Scheduler::NEW_METADATA.name,
             vec![],
         ),
         vec![metadata],
@@ -101,9 +109,9 @@ pub fn new_task(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW.module,
-            workflow::Scheduler::NEW.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW.module,
+            scheduler::Scheduler::NEW.name,
             vec![],
         ),
         vec![metadata, constraints, execution],
@@ -119,9 +127,9 @@ pub fn attach_tap_scheduled_task_link(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.module,
-            workflow::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.module,
+            scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.name,
             vec![],
         ),
         vec![task, scheduled_task],
@@ -139,9 +147,9 @@ pub fn update_metadata(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::UPDATE_METADATA.module,
-            workflow::Scheduler::UPDATE_METADATA.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::UPDATE_METADATA.module,
+            scheduler::Scheduler::UPDATE_METADATA.name,
             vec![],
         ),
         vec![task, metadata],
@@ -158,9 +166,9 @@ pub fn new_constraints_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let constraint_symbol = match generator {
         OccurrenceGenerator::Queue => {
-            let witness_tag = workflow::into_type_tag(
-                objects.workflow_pkg_id,
-                workflow::Scheduler::QUEUE_GENERATOR_WITNESS,
+            let witness_tag = scheduler::into_type_tag(
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::QUEUE_GENERATOR_WITNESS,
             );
             tx.move_call(
                 sui::tx::Function::new(
@@ -173,9 +181,9 @@ pub fn new_constraints_policy(
             )
         }
         OccurrenceGenerator::Periodic => {
-            let witness_tag = workflow::into_type_tag(
-                objects.workflow_pkg_id,
-                workflow::Scheduler::PERIODIC_GENERATOR_WITNESS,
+            let witness_tag = scheduler::into_type_tag(
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS,
             );
             tx.move_call(
                 sui::tx::Function::new(
@@ -211,9 +219,9 @@ pub fn new_constraints_policy(
 
     let constraints = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_CONSTRAINTS_POLICY.module,
-            workflow::Scheduler::NEW_CONSTRAINTS_POLICY.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_CONSTRAINTS_POLICY.module,
+            scheduler::Scheduler::NEW_CONSTRAINTS_POLICY.name,
             vec![],
         ),
         vec![constraint_sequence],
@@ -250,9 +258,9 @@ pub fn new_queue_generator_state(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.module,
-            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.module,
+            scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.name,
             vec![],
         ),
         vec![],
@@ -268,9 +276,9 @@ pub fn register_queue_generator(
 ) -> anyhow::Result<()> {
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::REGISTER_QUEUE_GENERATOR.module,
-            workflow::Scheduler::REGISTER_QUEUE_GENERATOR.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.module,
+            scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.name,
             vec![],
         ),
         vec![constraints, queue_state],
@@ -286,9 +294,9 @@ pub fn new_periodic_generator_state(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE.module,
-            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.module,
+            scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.name,
             vec![],
         ),
         vec![],
@@ -304,9 +312,9 @@ pub fn register_periodic_generator(
 ) -> anyhow::Result<()> {
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.module,
-            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.module,
+            scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.name,
             vec![],
         ),
         vec![constraints, periodic_state],
@@ -364,9 +372,9 @@ pub fn new_execution_policy(
 
     let execution = tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_EXECUTION_POLICY.module,
-            workflow::Scheduler::NEW_EXECUTION_POLICY.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_EXECUTION_POLICY.module,
+            scheduler::Scheduler::NEW_EXECUTION_POLICY.name,
             vec![],
         ),
         vec![execution_sequence],
@@ -408,6 +416,116 @@ pub fn new_execution_policy(
     );
 
     register_begin_default_agent_execution(tx, objects, execution, config)?;
+
+    Ok(execution)
+}
+
+/// PTB template to construct and register a registered TAP agent execution policy.
+#[allow(clippy::too_many_arguments)]
+pub fn new_agent_execution_policy(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag_id: sui::types::Address,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    agent_id: AgentId,
+    skill_id: SkillId,
+    authorization_plan_commitment: Option<Vec<u8>>,
+    authorization_plan: &[TapVertexAuthorizationPlanEntry],
+) -> anyhow::Result<sui::types::Argument> {
+    let symbol_type =
+        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
+    let witness_tag = workflow::into_type_tag(
+        objects.workflow_pkg_id,
+        workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS,
+    );
+
+    let execution_symbol = tx.move_call(
+        sui::tx::Function::new(
+            objects.primitives_pkg_id,
+            primitives::Policy::WITNESS_SYMBOL.module,
+            primitives::Policy::WITNESS_SYMBOL.name,
+            vec![witness_tag],
+        ),
+        vec![],
+    );
+
+    let execution_sequence = tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::TableVec::EMPTY.module,
+            sui_framework::TableVec::EMPTY.name,
+            vec![symbol_type.clone()],
+        ),
+        vec![],
+    );
+
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::TableVec::PUSH_BACK.module,
+            sui_framework::TableVec::PUSH_BACK.name,
+            vec![symbol_type.clone()],
+        ),
+        vec![execution_sequence, execution_symbol],
+    );
+
+    let execution = tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_EXECUTION_POLICY.module,
+            scheduler::Scheduler::NEW_EXECUTION_POLICY.name,
+            vec![],
+        ),
+        vec![execution_sequence],
+    );
+
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::TableVec::DROP.module,
+            sui_framework::TableVec::DROP.name,
+            vec![symbol_type.clone()],
+        ),
+        vec![execution_sequence],
+    );
+
+    let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
+    let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let agent_id_arg = transactions::tap::agent_id_from_address(tx, objects, agent_id)?;
+    let skill_id_arg = tx.input(pure_arg(&skill_id)?);
+    let authorization_plan_commitment = tx.input(pure_arg(&authorization_plan_commitment)?);
+    let authorization_plan =
+        transactions::dag::tap_authorization_plan(tx, objects, authorization_plan)?;
+
+    let entry_group =
+        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+
+    let with_vertex_inputs = build_inputs_vec_map(tx, objects, input_data)?;
+
+    let config = tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module,
+            workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.name,
+            vec![],
+        ),
+        vec![
+            dag_id_arg,
+            network_id_arg,
+            entry_group,
+            with_vertex_inputs,
+            priority_fee_per_gas_unit,
+            agent_id_arg,
+            skill_id_arg,
+            authorization_plan_commitment,
+            authorization_plan,
+        ],
+    );
+
+    register_begin_agent_execution(tx, objects, execution, config)?;
 
     Ok(execution)
 }
@@ -516,9 +634,9 @@ pub fn execute(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::EXECUTE.module,
-            workflow::Scheduler::EXECUTE.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::EXECUTE.module,
+            scheduler::Scheduler::EXECUTE.name,
             vec![],
         ),
         vec![task],
@@ -536,9 +654,9 @@ pub fn finish(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::FINISH.module,
-            workflow::Scheduler::FINISH.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::FINISH.module,
+            scheduler::Scheduler::FINISH.name,
             vec![],
         ),
         vec![task, proof],
@@ -584,9 +702,9 @@ pub fn add_occurrence_absolute_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.module,
-            workflow::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.module,
+            scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.name,
             vec![],
         ),
         vec![
@@ -637,9 +755,9 @@ pub fn add_occurrence_relative_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.module,
-            workflow::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.module,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.name,
             vec![],
         ),
         vec![
@@ -705,9 +823,9 @@ pub fn new_or_modify_periodic_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.module,
-            workflow::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.module,
+            scheduler::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.name,
             vec![],
         ),
         vec![
@@ -733,9 +851,9 @@ pub fn disable_periodic_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::DISABLE_PERIODIC_FOR_TASK.module,
-            workflow::Scheduler::DISABLE_PERIODIC_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::DISABLE_PERIODIC_FOR_TASK.module,
+            scheduler::Scheduler::DISABLE_PERIODIC_FOR_TASK.name,
             vec![],
         ),
         vec![task],
@@ -754,9 +872,9 @@ pub fn pause_time_constraint_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::PAUSE_TIME_CONSTRAINT_FOR_TASK.module,
-            workflow::Scheduler::PAUSE_TIME_CONSTRAINT_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::PAUSE.module,
+            scheduler::Scheduler::PAUSE.name,
             vec![],
         ),
         vec![task],
@@ -773,9 +891,9 @@ pub fn resume_time_constraint_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::RESUME_TIME_CONSTRAINT_FOR_TASK.module,
-            workflow::Scheduler::RESUME_TIME_CONSTRAINT_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::RESUME.module,
+            scheduler::Scheduler::RESUME.name,
             vec![],
         ),
         vec![task],
@@ -792,9 +910,9 @@ pub fn cancel_time_constraint_for_task(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::CANCEL_TIME_CONSTRAINT_FOR_TASK.module,
-            workflow::Scheduler::CANCEL_TIME_CONSTRAINT_FOR_TASK.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::CANCEL.module,
+            scheduler::Scheduler::CANCEL.name,
             vec![],
         ),
         vec![task],
@@ -818,9 +936,9 @@ pub fn check_queue_occurrence(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
-            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
+            scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
             vec![],
         ),
         vec![task, clock],
@@ -842,9 +960,9 @@ pub fn check_periodic_occurrence(
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
-            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
+            scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
             vec![],
         ),
         vec![task, clock],
@@ -860,9 +978,27 @@ pub fn register_begin_default_agent_execution(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.module,
-            workflow::Dag::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.module,
+            scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.name,
+            vec![],
+        ),
+        vec![policy, config],
+    ))
+}
+
+/// PTB template to register registered agent DAG execution config on the execution policy.
+pub fn register_begin_agent_execution(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    policy: sui::types::Argument,
+    config: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.module,
+            scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.name,
             vec![],
         ),
         vec![policy, config],
@@ -875,7 +1011,7 @@ pub fn prepare_default_agent_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_registry: sui::types::Argument,
-    tap_registry: sui::types::Argument,
+    agent_registry: sui::types::Argument,
     task: sui::types::Argument,
     dag: sui::types::Argument,
     leader_cap: sui::types::Argument,
@@ -890,14 +1026,14 @@ pub fn prepare_default_agent_execution_from_scheduler(
     let payment_refund_mode = tx.input(pure_arg(&payment_refund_mode)?);
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.module,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.module,
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.name,
             vec![],
         ),
         vec![
             dag,
-            tap_registry,
+            agent_registry,
             tool_registry,
             task,
             leader_cap,
@@ -916,7 +1052,7 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_registry: sui::types::Argument,
-    tap_registry: sui::types::Argument,
+    agent_registry: sui::types::Argument,
     scheduled_task: sui::types::Argument,
     task: sui::types::Argument,
     dag: sui::types::Argument,
@@ -925,14 +1061,46 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
             vec![],
         ),
         vec![
             dag,
-            tap_registry,
+            agent_registry,
+            scheduled_task,
+            tool_registry,
+            task,
+            leader_cap,
+            clock,
+        ],
+    ))
+}
+
+/// PTB template to invoke registered DAG execution from a durable TAP scheduled payment.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_agent_execution_from_scheduled_payment(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool_registry: sui::types::Argument,
+    agent_registry: sui::types::Argument,
+    scheduled_task: sui::types::Argument,
+    task: sui::types::Argument,
+    dag: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    clock: sui::types::Argument,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
+            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
+            vec![],
+        ),
+        vec![
+            dag,
+            agent_registry,
             scheduled_task,
             tool_registry,
             task,
@@ -975,18 +1143,18 @@ pub fn execute_scheduled_occurrence(
     let proof = match generator {
         OccurrenceGenerator::Queue => tx.move_call(
             sui::tx::Function::new(
-                objects.workflow_pkg_id,
-                workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
-                workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
+                scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
                 vec![],
             ),
             vec![task, leader_registry, clock],
         ),
         OccurrenceGenerator::Periodic => tx.move_call(
             sui::tx::Function::new(
-                objects.workflow_pkg_id,
-                workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
-                workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
+                scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
                 vec![],
             ),
             vec![task, leader_registry, clock],
@@ -1000,17 +1168,11 @@ pub fn execute_scheduled_occurrence(
         false,
     ));
 
-    // `tap_registry: &TapRegistry`
-    let tap_registry = tx.input(sui::tx::Input::shared(
-        *objects
-            .tap_registry()
-            .ok_or_else(|| anyhow::anyhow!("NexusObjects missing tap_registry object reference"))?
-            .object_id(),
-        objects
-            .tap_registry()
-            .expect("tap registry checked above")
-            .version(),
-        true,
+    // `agent_registry: &TapRegistry`
+    let agent_registry = tx.input(sui::tx::Input::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        false,
     ));
 
     // `dag: &DAG`
@@ -1034,7 +1196,7 @@ pub fn execute_scheduled_occurrence(
         tx,
         objects,
         tool_registry,
-        tap_registry,
+        agent_registry,
         scheduled_task,
         task,
         dag,
@@ -1096,9 +1258,168 @@ pub fn execute_scheduled_occurrence(
     // Consume the proof to satisfy Move's non-drop requirement and reset task policies.
     tx.move_call(
         sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::FINISH.module,
+            scheduler::Scheduler::FINISH.name,
+            vec![],
+        ),
+        vec![task, proof],
+    );
+
+    Ok(())
+}
+
+/// PTB helper that consumes the next scheduled occurrence for a registered TAP skill.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_registered_scheduled_occurrence(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    scheduled_task: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    _amount_priority: u64,
+    generator: OccurrenceGenerator,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<()> {
+    // Create shared inputs once so subsequent commands reuse the same arguments.
+    let task = shared_task_arg(tx, task)?;
+
+    // `leader_registry: &LeaderRegistry`
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+
+    let clock = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    // Consume the occurrence and obtain the proof-of-UID hot potato.
+    let proof = match generator {
+        OccurrenceGenerator::Queue => tx.move_call(
+            sui::tx::Function::new(
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
+                scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
+                vec![],
+            ),
+            vec![task, leader_registry, clock],
+        ),
+        OccurrenceGenerator::Periodic => tx.move_call(
+            sui::tx::Function::new(
+                objects.scheduler_pkg_id,
+                scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
+                scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
+                vec![],
+            ),
+            vec![task, leader_registry, clock],
+        ),
+    };
+
+    // `tool_registry: &ToolRegistry`
+    let tool_registry = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+
+    // `agent_registry: &TapRegistry`
+    let agent_registry = tx.input(sui::tx::Input::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        false,
+    ));
+
+    // `dag: &DAG`
+    let dag = tx.input(sui::tx::Input::shared(
+        *dag.object_id(),
+        dag.version(),
+        false,
+    ));
+    let scheduled_task = tx.input(sui::tx::Input::shared(
+        *scheduled_task.object_id(),
+        scheduled_task.version(),
+        true,
+    ));
+    let leader_cap = tx.input(sui::tx::Input::shared(
+        *leader_cap.object_id(),
+        leader_cap.version(),
+        false,
+    ));
+
+    let results = prepare_agent_execution_from_scheduled_payment(
+        tx,
+        objects,
+        tool_registry,
+        agent_registry,
+        scheduled_task,
+        task,
+        dag,
+        leader_cap,
+        clock,
+    )?;
+
+    // `execution: DAGExecution`
+    let Some(execution) = results.nested(0) else {
+        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    };
+
+    // `ticket: RequestWalkExecution`
+    let Some(ticket) = results.nested(1) else {
+        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
+    };
+
+    let gas_service = tx.input(sui::tx::Input::shared(
+        *objects.gas_service.object_id(),
+        objects.gas_service.version(),
+        false,
+    ));
+    transactions::gas::snapshot_dag_tool_costs(tx, objects, gas_service, execution, dag);
+
+    // `tools_gas: Vec<&mut ToolGas>`
+    let tools_gas = tools_gas
+        .iter()
+        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .collect();
+
+    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
+
+    // `nexus_workflow::dag::request_network_to_execute_walks()`
+    tx.move_call(
+        sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Scheduler::FINISH.module,
-            workflow::Scheduler::FINISH.name,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            vec![],
+        ),
+        vec![dag, execution, ticket, leader_registry, clock],
+    );
+
+    // `DAGExecution`
+    let execution_type =
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+
+    // `sui::transfer::public_share_object<DAGExecution>`
+    tx.move_call(
+        sui::tx::Function::new(
+            sui_framework::PACKAGE_ID,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
+            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
+            vec![execution_type],
+        ),
+        vec![execution],
+    );
+
+    // Consume the proof to satisfy Move's non-drop requirement and reset task policies.
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::FINISH.module,
+            scheduler::Scheduler::FINISH.name,
             vec![],
         ),
         vec![task, proof],
@@ -1257,9 +1578,9 @@ mod tests {
         assert_eq!(insert_call.arguments.len(), 3);
 
         let final_call = inspector.move_call(2);
-        assert_eq!(final_call.package, objects.workflow_pkg_id);
-        assert_eq!(final_call.module, workflow::Scheduler::NEW_METADATA.module);
-        assert_eq!(final_call.function, workflow::Scheduler::NEW_METADATA.name);
+        assert_eq!(final_call.package, objects.scheduler_pkg_id);
+        assert_eq!(final_call.module, scheduler::Scheduler::NEW_METADATA.module);
+        assert_eq!(final_call.function, scheduler::Scheduler::NEW_METADATA.name);
         assert!(final_call.type_arguments.is_empty());
         assert_eq!(final_call.arguments.len(), 1);
         assert_matches!(final_call.arguments[0], sui::types::Argument::Result(0));
@@ -1300,9 +1621,9 @@ mod tests {
         assert_eq!(inspector.commands().len(), 1);
 
         let call = inspector.move_call(0);
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Scheduler::NEW.module);
-        assert_eq!(call.function, workflow::Scheduler::NEW.name);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.module, scheduler::Scheduler::NEW.module);
+        assert_eq!(call.function, scheduler::Scheduler::NEW.name);
         assert_eq!(call.arguments.len(), 3);
         inspector.expect_u64(&call.arguments[0], 1);
         inspector.expect_u64(&call.arguments[1], 2);
@@ -1322,8 +1643,9 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
-        assert_eq!(call.module, workflow::Scheduler::UPDATE_METADATA.module);
-        assert_eq!(call.function, workflow::Scheduler::UPDATE_METADATA.name);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.module, scheduler::Scheduler::UPDATE_METADATA.module);
+        assert_eq!(call.function, scheduler::Scheduler::UPDATE_METADATA.name);
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], 9);
@@ -1340,14 +1662,15 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert!(call.arguments.is_empty());
         assert_eq!(
             call.module,
-            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.module
+            scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.module
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::NEW_QUEUE_GENERATOR_STATE.name
+            scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.name
         );
     }
 
@@ -1364,13 +1687,14 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Scheduler::REGISTER_QUEUE_GENERATOR.module
+            scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.module
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::REGISTER_QUEUE_GENERATOR.name
+            scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_u64(&call.arguments[0], 11);
@@ -1389,14 +1713,15 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert!(call.arguments.is_empty());
         assert_eq!(
             call.module,
-            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE.module
+            scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.module
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::NEW_PERIODIC_GENERATOR_STATE.name
+            scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.name
         );
     }
 
@@ -1413,13 +1738,14 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.module
+            scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.module
         );
         assert_eq!(
             call.function,
-            workflow::Scheduler::REGISTER_PERIODIC_GENERATOR.name
+            scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_u64(&call.arguments[0], 21);
@@ -1438,10 +1764,11 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
-        assert_eq!(call.module, workflow::Scheduler::EXECUTE.module);
-        assert_eq!(call.function, workflow::Scheduler::EXECUTE.name);
+        assert_eq!(call.module, scheduler::Scheduler::EXECUTE.module);
+        assert_eq!(call.function, scheduler::Scheduler::EXECUTE.name);
     }
 
     #[test]
@@ -1455,8 +1782,9 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
-        assert_eq!(call.module, workflow::Scheduler::FINISH.module);
-        assert_eq!(call.function, workflow::Scheduler::FINISH.name);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.module, scheduler::Scheduler::FINISH.module);
+        assert_eq!(call.function, scheduler::Scheduler::FINISH.name);
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], 5);
@@ -1485,6 +1813,7 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_time);
@@ -1516,6 +1845,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_offset);
@@ -1553,6 +1883,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 8);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], first_start);
@@ -1574,6 +1905,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
     }
@@ -1589,6 +1921,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
     }
@@ -1604,6 +1937,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
     }
@@ -1619,6 +1953,7 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(call.arguments.len(), 1);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
     }
@@ -1633,9 +1968,10 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.function,
-            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+            scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1652,9 +1988,10 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.function,
-            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name
+            scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
@@ -1672,18 +2009,43 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
-        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.module
+            scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.name
+            scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.name
         );
         assert_eq!(call.arguments.len(), 2);
         inspector.expect_u64(&call.arguments[0], 13);
         inspector.expect_u64(&call.arguments[1], 14);
+    }
+
+    #[test]
+    fn register_begin_agent_execution_routes_through_dag() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let policy = tx.input(pure_arg(&23_u64).unwrap());
+        let config = tx.input(pure_arg(&24_u64).unwrap());
+        register_begin_agent_execution(&mut tx, &objects, policy, config)
+            .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.module,
+            scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.module
+        );
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.name
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_u64(&call.arguments[0], 23);
+        inspector.expect_u64(&call.arguments[1], 24);
     }
 
     #[test]
@@ -1724,17 +2086,18 @@ mod tests {
         let scheduler_call = calls
             .iter()
             .find(|call| {
-                call.module == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
-                    && call.function == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+                    && call.function == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name
             })
             .expect("queue occurrence check call");
         assert_eq!(
             scheduler_call.module,
-            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+            scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module
         );
         assert_eq!(
             scheduler_call.function,
-            workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+            scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name
         );
         assert_eq!(scheduler_call.arguments.len(), 3);
         inspector.expect_shared_object(&scheduler_call.arguments[0], &task, true);
@@ -1748,20 +2111,21 @@ mod tests {
         let tap_call = calls
             .iter()
             .find(|call| {
-                call.module
-                    == workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                call.package == objects.scheduler_pkg_id
+                    && call.module
+                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
                     && call.function
-                        == workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
+                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
                             .name
             })
             .expect("scheduler default-agent preparation call");
         assert_eq!(
             tap_call.module,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
         );
         assert_eq!(
             tap_call.function,
-            workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
         assert_eq!(tap_call.arguments.len(), 7);
         let sui::types::Input::Shared {
@@ -1778,11 +2142,7 @@ mod tests {
         assert_eq!(object_id, dag.object_id());
         assert_eq!(*initial_shared_version, dag.version());
         assert!(!*mutable);
-        inspector.expect_shared_object(
-            &tap_call.arguments[1],
-            objects.tap_registry().expect("mock has tap registry"),
-            true,
-        );
+        inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[4], &task, true);
@@ -1792,12 +2152,106 @@ mod tests {
         let finish_call = calls
             .iter()
             .find(|call| {
-                call.module == workflow::Scheduler::FINISH.module
-                    && call.function == workflow::Scheduler::FINISH.name
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::FINISH.module
+                    && call.function == scheduler::Scheduler::FINISH.name
             })
             .expect("scheduler finish call");
-        assert_eq!(finish_call.module, workflow::Scheduler::FINISH.module);
-        assert_eq!(finish_call.function, workflow::Scheduler::FINISH.name);
+        assert_eq!(finish_call.module, scheduler::Scheduler::FINISH.module);
+        assert_eq!(finish_call.function, scheduler::Scheduler::FINISH.name);
+        assert_eq!(finish_call.arguments.len(), 2);
+        inspector.expect_shared_object(&finish_call.arguments[0], &task, true);
+        assert_matches!(&finish_call.arguments[1], sui::types::Argument::Result(0));
+    }
+
+    #[test]
+    fn execute_registered_scheduled_occurrence_chains_scheduler_and_tap_calls() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let scheduled_task = sui_mocks::mock_sui_object_ref();
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+        let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        execute_registered_scheduled_occurrence(
+            &mut tx,
+            &objects,
+            &task,
+            &dag,
+            &scheduled_task,
+            &leader_cap,
+            0,
+            OccurrenceGenerator::Queue,
+            &tools_gas,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        assert_eq!(inspector.commands().len(), 7);
+
+        let calls = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let scheduler_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+                    && call.function == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+            })
+            .expect("queue occurrence check call");
+        assert_eq!(scheduler_call.arguments.len(), 3);
+        inspector.expect_shared_object(&scheduler_call.arguments[0], &task, true);
+        inspector.expect_shared_object(
+            &scheduler_call.arguments[1],
+            &objects.leader_registry,
+            false,
+        );
+        inspector.expect_clock(&scheduler_call.arguments[2]);
+
+        let tap_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.scheduler_pkg_id
+                    && call.module
+                        == scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
+                            .module
+                    && call.function
+                        == scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            })
+            .expect("scheduler registered-agent preparation call");
+        assert_eq!(
+            tap_call.module,
+            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+        );
+        assert_eq!(
+            tap_call.function,
+            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+        );
+        assert_eq!(tap_call.arguments.len(), 7);
+        inspector.expect_shared_object(&tap_call.arguments[0], &dag, false);
+        inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
+        inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
+        inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
+        inspector.expect_shared_object(&tap_call.arguments[4], &task, true);
+        inspector.expect_shared_object(&tap_call.arguments[5], &leader_cap, false);
+        inspector.expect_clock(&tap_call.arguments[6]);
+
+        let finish_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::FINISH.module
+                    && call.function == scheduler::Scheduler::FINISH.name
+            })
+            .expect("scheduler finish call");
         assert_eq!(finish_call.arguments.len(), 2);
         inspector.expect_shared_object(&finish_call.arguments[0], &task, true);
         assert_matches!(&finish_call.arguments[1], sui::types::Argument::Result(0));
@@ -1839,25 +2293,28 @@ mod tests {
         let scheduler_idx = calls
             .iter()
             .position(|call| {
-                call.module == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.module
-                    && call.function == workflow::Scheduler::CHECK_QUEUE_OCCURRENCE.name
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module
+                    && call.function == scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name
             })
             .expect("queue occurrence check call");
         let tap_idx = calls
             .iter()
             .position(|call| {
-                call.module
-                    == workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                call.package == objects.scheduler_pkg_id
+                    && call.module
+                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
                     && call.function
-                        == workflow::Dag::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
+                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
                             .name
             })
             .expect("scheduler default-agent preparation call");
         let finish_idx = calls
             .iter()
             .position(|call| {
-                call.module == workflow::Scheduler::FINISH.module
-                    && call.function == workflow::Scheduler::FINISH.name
+                call.package == objects.scheduler_pkg_id
+                    && call.module == scheduler::Scheduler::FINISH.module
+                    && call.function == scheduler::Scheduler::FINISH.name
             })
             .expect("scheduler finish call");
 
@@ -1892,7 +2349,7 @@ mod tests {
         let scheduler_call = inspector.move_call(0);
         assert_eq!(
             scheduler_call.function,
-            workflow::Scheduler::CHECK_PERIODIC_OCCURRENCE.name
+            scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name
         );
     }
 }

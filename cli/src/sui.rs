@@ -354,12 +354,12 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [tap_registry]
+                [agent_registry]
                 object_id = "0x70"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [default_tap_target]
+                [default_tap_executor]
                 agent_id = "0xa1"
                 skill_id = 177
 
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
         assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
-        assert_eq!(objects.registry_pkg_id(), "0x11".parse().unwrap());
+        assert_eq!(objects.registry_pkg_id, "0x11".parse().unwrap());
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(
             *objects.tool_registry.object_id(),
@@ -425,17 +425,14 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            objects.tap_registry().map(|registry| *registry.object_id()),
-            Some(sui::types::Address::from_static("0x70"))
+            *objects.agent_registry.object_id(),
+            sui::types::Address::from_static("0x70")
         );
         assert_eq!(
-            objects.default_tap_target().map(|target| target.agent_id),
-            Some(sui::types::Address::from_static("0xa1"))
+            objects.default_tap_executor.agent_id,
+            sui::types::Address::from_static("0xa1")
         );
-        assert_eq!(
-            objects.default_tap_target().map(|target| target.skill_id),
-            Some(177)
-        );
+        assert_eq!(objects.default_tap_executor.skill_id, 177);
         assert_eq!(
             *objects.gas_service.object_id(),
             sui::types::Address::from_static("0x8")

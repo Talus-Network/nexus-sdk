@@ -27,7 +27,7 @@ use {
 /// A [`ToolRef`] is the differentiating enum between HTTP and Sui hosted tools.
 ///
 /// HTTP tools are represented by their URL, while Sui tools are represented by
-/// a Sui package address, module name, and witness ID.
+/// a Sui package address, module name, and tool witness ID.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "_variant_name")]
 pub enum ToolRef {
@@ -39,18 +39,18 @@ pub enum ToolRef {
         )]
         url: reqwest::Url,
     },
-    /// An on-chain tool represented by a Sui package address, module name, and witness ID.
+    /// An on-chain tool represented by a Sui package address, module name, and tool witness ID.
     Sui {
         package_address: sui::types::Address,
         module_name: sui::types::Identifier,
-        witness_id: sui::types::Address,
+        tool_witness_id: sui::types::Address,
     },
 }
 
 /// [`ToolRef`] display implementation.
 ///
 /// - Http: `https://example.com/my-tool`
-/// - Sui: `0xabc123::my_module@0xwitness` (address::module@witness)
+/// - Sui: `0xabc123::my_module@0xtoolwitness` (address::module@tool-witness)
 impl std::fmt::Display for ToolRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -58,8 +58,8 @@ impl std::fmt::Display for ToolRef {
             ToolRef::Sui {
                 package_address,
                 module_name,
-                witness_id,
-            } => write!(f, "{package_address}::{module_name}@{witness_id}"),
+                tool_witness_id,
+            } => write!(f, "{package_address}::{module_name}@{tool_witness_id}"),
         }
     }
 }
@@ -181,7 +181,7 @@ mod tests {
                 "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
             ),
             module_name: sui::types::Identifier::from_static("my_tool_module"),
-            witness_id: sui::types::Address::from_static(
+            tool_witness_id: sui::types::Address::from_static(
                 "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
             ),
         };
@@ -281,18 +281,18 @@ mod tests {
             "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         );
         let module_name = sui::types::Identifier::from_static("my_tool_module");
-        let witness_id = sui::types::Address::from_static(
+        let tool_witness_id = sui::types::Address::from_static(
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
         );
         let tool_ref = ToolRef::Sui {
             package_address,
             module_name: module_name.clone(),
-            witness_id,
+            tool_witness_id,
         };
         let display = format!("{}", tool_ref);
         assert_eq!(
             display,
-            format!("{}::{}@{}", package_address, module_name, witness_id)
+            format!("{}::{}@{}", package_address, module_name, tool_witness_id)
         );
     }
 

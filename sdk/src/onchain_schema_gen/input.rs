@@ -1,7 +1,11 @@
 //! Input schema generation for Move onchain tools.
 
 use {
-    super::types::{convert_move_signature_to_schema, is_hidden_internal_tool_param},
+    super::types::{
+        convert_move_signature_to_schema,
+        is_hidden_internal_tool_param,
+        is_workflow_dag_execution_param,
+    },
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
@@ -96,6 +100,9 @@ pub async fn generate_input_schema(
                 "mutable".to_string(),
                 Value::Bool(reference_kind == sui::grpc::open_signature::Reference::Mutable),
             );
+        }
+        if is_workflow_dag_execution_param(body) {
+            param_obj.insert("nexus_current_execution".to_string(), Value::Bool(true));
         }
 
         schema_map.insert(param_index.to_string(), Value::Object(param_obj));

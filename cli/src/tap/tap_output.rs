@@ -24,18 +24,12 @@ pub(crate) fn publish_skill_result_json(result: &PublishSkillResult) -> serde_js
         "dag_id": result.dag.dag_object_id,
         "dag_digest": result.dag.tx_digest,
         "dag_checkpoint": result.dag.tx_checkpoint,
-        "endpoint_object_id": result.endpoint.endpoint_object.object_id(),
-        "endpoint_object_version": result.endpoint.endpoint_object.version(),
-        "endpoint_object_digest": result.endpoint.endpoint_object.digest(),
-        "endpoint_digest": result.endpoint.tx_digest,
-        "endpoint_checkpoint": result.endpoint.tx_checkpoint,
         "artifact": result.artifact,
     })
 }
 
 pub(crate) fn register_skill_result_json(
     artifact: &TapPublishArtifact,
-    endpoint_object_id: sui::types::Address,
     result: &RegisterSkillResult,
 ) -> serde_json::Value {
     json!({
@@ -47,7 +41,6 @@ pub(crate) fn register_skill_result_json(
         "skill_id": result.skill_id,
         "dag_id": artifact.dag_id,
         "tap_package_id": artifact.tap_package_id,
-        "endpoint_object_id": endpoint_object_id,
     })
 }
 
@@ -61,8 +54,6 @@ pub(crate) fn announce_result_json(
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "endpoint_key": result.endpoint_key,
-        "endpoint_object_id": result.endpoint_object.object_id(),
-        "endpoint_object_version": result.endpoint_object.version(),
         "tap_package_id": artifact.tap_package_id,
         "config_digest_hex": hex::encode(&result.config_digest),
         "config_digest_input": result.config_digest_input,
