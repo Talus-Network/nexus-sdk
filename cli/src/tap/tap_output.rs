@@ -325,12 +325,18 @@ pub(crate) fn payments_list_result_json(
 pub(crate) fn payment_resolve_result_json(
     result: &AccomplishExecutionPaymentResult,
 ) -> serde_json::Value {
+    let function = if result.agent_id.is_some() {
+        "accomplish_tap_execution_payment_from_agent_vault"
+    } else {
+        "accomplish_tap_execution_payment"
+    };
     json!({
         "standard_tap": true,
-        "function": "accomplish_tap_execution_payment",
+        "function": function,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "execution_id": result.execution_id,
+        "agent_id": result.agent_id,
     })
 }
 
@@ -724,6 +730,7 @@ mod tests {
             tx_digest: sui::types::Digest::from([3u8; 32]),
             tx_checkpoint: 77,
             execution_id: sui::types::Address::from_static("0xee"),
+            agent_id: None,
         };
         let json = payment_resolve_result_json(&result);
         assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
@@ -736,6 +743,26 @@ mod tests {
             serde_json::json!(sui::types::Address::from_static("0xee").to_string())
         );
         assert_eq!(json["tx_checkpoint"], serde_json::json!(77));
+        assert!(json["agent_id"].is_null());
+    }
+
+    #[test]
+    fn payment_resolve_result_json_reports_vault_function_when_agent_supplied() {
+        let result = AccomplishExecutionPaymentResult {
+            tx_digest: sui::types::Digest::from([4u8; 32]),
+            tx_checkpoint: 88,
+            execution_id: sui::types::Address::from_static("0xee"),
+            agent_id: Some(sui::types::Address::from_static("0xa")),
+        };
+        let json = payment_resolve_result_json(&result);
+        assert_eq!(
+            json["function"],
+            serde_json::json!("accomplish_tap_execution_payment_from_agent_vault")
+        );
+        assert_eq!(
+            json["agent_id"],
+            serde_json::json!(sui::types::Address::from_static("0xa").to_string())
+        );
     }
 
     // ---- agent aliases ----

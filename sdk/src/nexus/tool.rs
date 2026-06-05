@@ -159,7 +159,6 @@ mod tests {
         super::*,
         crate::{
             fqn,
-            sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
             types::ToolRef,
         },
