@@ -207,7 +207,7 @@ pub(crate) enum TapCommand {
         about = "Inspect standard TAP execution payments and history."
     )]
     Payments(PaymentsCommand),
-    #[command(subcommand, about = "Inspect the standard TAP registry.")]
+    #[command(subcommand, about = "Inspect the agent registry.")]
     Registry(RegistryCommand),
     #[command(
         subcommand,
@@ -227,7 +227,7 @@ pub(crate) enum TapCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Fetch live skill requirements from the TAP registry.")]
+    #[command(about = "Fetch live skill requirements from the agent registry.")]
     Requirements {
         #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
         agent_id: sui::types::Address,
@@ -604,7 +604,7 @@ pub(crate) enum VaultCommand {
 
 #[derive(Subcommand)]
 pub(crate) enum RegistryCommand {
-    #[command(about = "Print the standard TAP registry contents as JSON.")]
+    #[command(about = "Print the agent registry contents as JSON.")]
     Show,
 }
 

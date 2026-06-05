@@ -1,7 +1,7 @@
 use {super::*, nexus_sdk::nexus::tap::fetch_configured_agent_registry};
 
 pub(crate) async fn show_registry() -> AnyResult<(), NexusCliError> {
-    command_title!("Reading standard TAP registry");
+    command_title!("Reading agent registry");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
@@ -25,7 +25,6 @@ pub(crate) fn registry_show_result_json(
     registry: &nexus_sdk::types::TapRegistry,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "id": registry.id,
         "default_executor": registry.default_executor,
         "agents": registry.agents,
