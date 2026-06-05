@@ -263,12 +263,6 @@ pub(crate) enum RegisterCommand {
         )]
         workflow_authorization_cap_first: bool,
 
-        #[arg(
-            long = "reuse-if-exists",
-            help = "If the Tool and ToolGas objects already exist for this FQN, decode them and skip registration."
-        )]
-        reuse_if_exists: bool,
-
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -511,7 +505,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 collateral_coin,
                 no_save,
                 workflow_authorization_cap_first,
-                reuse_if_exists,
                 gas,
             } => {
                 register_onchain_tool(
@@ -524,7 +517,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     collateral_coin,
                     no_save,
                     workflow_authorization_cap_first,
-                    reuse_if_exists,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
                 )

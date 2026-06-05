@@ -68,16 +68,15 @@ Tool registration is currently restricted during the beta phase. To register you
 
 ---
 
-**`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--reuse-if-exists] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
+**`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
 
 Registers an on-chain Nexus Tool that resolves to a Move package, module, and witness object on Sui. The CLI introspects the Move module's `execute` entry function to auto-generate the input schema and its `Output` enum for the output schema; both can be customized interactively when stdin is a TTY (skipped in `--json` mode). The tool's `Tool` and `ToolGas` object IDs are derived locally from the FQN and surfaced in the JSON response alongside the `OwnerCap<OverTool>` returned by the on-chain call.
 
-- `--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this when the workflow executor must mint a `WorkflowVertexAuthorizationGrant` before each call so the runtime can derive a `VertexAuthorizationCheckCap` and hand it to the tool's `execute` function — without the grant, the cap can't be minted and the vertex (i.e. the tool itself) can't run.
-- `--reuse-if-exists` makes the command idempotent: if the derived `Tool` and `ToolGas` objects already exist on-chain for the given FQN, the registration transaction is skipped and the existing refs are decoded and returned with `reused: true`. The reuse path is useful for CI/CD pipelines and demo orchestration that may run multiple times against the same deployment.
+Registration is not idempotent — the Move-side `register_on_chain_tool` aborts with `EFqnAlreadyExists` when the FQN is already claimed, and the CLI surfaces that abort as a regular error. Read the existing tool with `nexus tool inspect-onchain --tool-fqn <FQN>` before re-running this command.
 
-If both objects derived from the FQN exist _but their counterparts don't_ (only `Tool` without `ToolGas`, or vice versa), the command fails with a clear "inconsistent state" error rather than silently proceeding — recover by resetting the deployment or recreating the missing object.
+`--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this when the workflow executor must mint a `WorkflowVertexAuthorizationGrant` before each call so the runtime can derive a `VertexAuthorizationCheckCap` and hand it to the tool's `execute` function — without the grant, the cap can't be minted and the vertex (i.e. the tool itself) can't run.
 
-The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `tool_witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, `reused`, and the transaction digest. The fresh-registration and `--reuse-if-exists` branches emit the same key names.
+The JSON output includes `tool_id`, `tool_gas_id`, `package_address`, `module_name`, `tool_witness_id`, `owner_cap_over_tool_id`, `owner_cap_over_gas_id`, `workflow_authorization_cap_first`, and the transaction digest.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
