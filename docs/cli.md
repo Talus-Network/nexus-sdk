@@ -64,10 +64,6 @@ The JSON output for each registered tool includes the transaction `digest`, `too
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
-{% hint style="info" %}
-Tool registration is currently restricted during the beta phase. To register your tool, please contact the team to be added to the allow list.
-{% endhint %}
-
 ---
 
 **`nexus tool register onchain --package <ADDRESS> --module <MODULE> --tool-fqn <FQN> --description <DESCRIPTION> --tool-witness-id <OBJECT_ID> [--workflow-authorization-cap-first] [--collateral-coin <OBJECT_ID>] [--timeout <DURATION>] [--no-save]`**
