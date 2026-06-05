@@ -1,7 +1,4 @@
-use {
-    super::*,
-    nexus_sdk::{idents::tap::TapStandard, nexus::tap::DepositAgentVaultParams},
-};
+use {super::*, nexus_sdk::nexus::tap::DepositAgentVaultParams};
 
 pub(crate) async fn deposit_agent_vault(
     alias: Option<String>,
@@ -28,12 +25,5 @@ pub(crate) async fn deposit_agent_vault(
         digest = result.tx_digest.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&json!({
-        "standard_tap": true,
-        "function": TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "agent_id": result.agent_id,
-        "amount": result.amount,
-    }))
+    json_output(&vault_deposit_result_json(&result))
 }

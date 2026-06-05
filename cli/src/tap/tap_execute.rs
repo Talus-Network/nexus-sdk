@@ -70,30 +70,6 @@ pub(crate) async fn execute_agent_dag_skill(
     json_output(&agent_execute_result_json(agent_id, skill_id, &result))
 }
 
-pub(crate) fn agent_execute_result_json(
-    agent_id: AgentId,
-    skill_id: SkillId,
-    result: &nexus_sdk::nexus::workflow::ExecuteResult,
-) -> serde_json::Value {
-    json!({
-        "agent_dag": true,
-        "agent_id": agent_id,
-        "skill_id": skill_id,
-        "execution_id": result.execution_object_id,
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "submit": result.tap_execution.as_ref().map(|submit| json!({
-            "agent_id": submit.agent_id,
-            "skill_id": submit.skill_id,
-            "dag_id": submit.dag_id,
-            "endpoint_key": submit.endpoint_key,
-            "payment_max_budget": submit.payment_max_budget,
-            "payment_refund_mode": submit.payment_refund_mode,
-            "authorization_plan_commitment": submit.authorization_plan_commitment,
-        }))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,6 +19,12 @@ mod tap_validate_skill;
 mod tap_vault;
 mod tap_vault_deposit;
 
+#[cfg(test)]
+use tap_validate_skill::{
+    collect_move_source_files,
+    validate_tap_package_manifest,
+    validate_tap_package_sources,
+};
 use {
     crate::{
         command_title,
@@ -72,12 +78,30 @@ use {
     tap_dry_run::dry_run_skill,
     tap_execute::execute_agent_dag_skill,
     tap_output::{
+        agent_execute_result_json,
+        agent_list_result_json,
+        agent_remove_result_json,
+        agent_save_result_json,
         announce_result_json,
+        bind_result_json,
         create_agent_result_json,
+        default_target_result_json,
+        dry_run_result_json,
+        payment_show_result_json,
+        payment_wait_result_json,
+        payments_list_result_json,
         publish_skill_result_json,
         register_skill_result_json,
+        registry_show_result_json,
         requirements_result_json,
+        scaffold_result_json,
+        schedule_address_funded_result_json,
+        schedule_default_address_funded_result_json,
+        schedule_from_vault_result_json,
         schedule_result_json,
+        validate_skill_result_json,
+        vault_balance_result_json,
+        vault_deposit_result_json,
     },
     tap_payments::handle_payments_command,
     tap_publish_skill::publish_skill,
@@ -97,15 +121,6 @@ use {
     tokio::{
         fs::{create_dir_all, File},
         io::AsyncWriteExt,
-    },
-};
-#[cfg(test)]
-use {
-    tap_execute::agent_execute_result_json,
-    tap_validate_skill::{
-        collect_move_source_files,
-        validate_tap_package_manifest,
-        validate_tap_package_sources,
     },
 };
 
@@ -909,15 +924,12 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
-        nexus_sdk::{
-            nexus::workflow::{ExecuteResult, TapExecutionSubmitMetadata},
-            types::{
-                InterfaceRevision,
-                TapPaymentPolicy,
-                TapSchedulePolicy,
-                TapSkillRequirements,
-                TapVertexAuthorizationSchema,
-            },
+        nexus_sdk::types::{
+            InterfaceRevision,
+            TapPaymentPolicy,
+            TapSchedulePolicy,
+            TapSkillRequirements,
+            TapVertexAuthorizationSchema,
         },
         std::ffi::OsString,
     };
@@ -1349,8 +1361,7 @@ mod tests {
                 config_digest: digest,
                 config_digest_input: digest_input,
             },
-        )
-        .expect("announce result json");
+        );
 
         assert_eq!(output["config_digest_hex"].as_str().unwrap().len(), 64);
         assert_eq!(output["config_digest_hex"], artifact.config_digest_hex);
@@ -1716,213 +1727,5 @@ public struct WeatherSkill has drop {}
 
         assert_eq!(options.payment_source, Vec::<u8>::new());
         assert_eq!(options.authorization_plan_commitment, None);
-    }
-
-    #[test]
-    fn agent_execute_result_json_includes_submit_metadata() {
-        let result = ExecuteResult {
-            tx_digest: sui::types::Digest::from([7; 32]),
-            execution_object_id: sui::types::Address::from_static("0xc"),
-            tx_checkpoint: 42,
-            tap_execution: Some(TapExecutionSubmitMetadata {
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-                dag_id: sui::types::Address::from_static("0xd"),
-                endpoint_key: nexus_sdk::types::TapEndpointKey {
-                    agent_id: sui::types::Address::from_static("0xa"),
-                    skill_id: 11,
-                    interface_revision: InterfaceRevision(3),
-                },
-                payment_max_budget: 99,
-                payment_refund_mode: 7,
-                authorization_plan_commitment: Some(vec![1, 2, 3]),
-                authorization_plan: nexus_sdk::types::TapVertexAuthorizationPlan::default(),
-            }),
-        };
-
-        let output =
-            agent_execute_result_json(sui::types::Address::from_static("0xa"), 11, &result);
-
-        assert_eq!(
-            output["execution_id"],
-            serde_json::json!(sui::types::Address::from_static("0xc").to_string())
-        );
-        assert_eq!(
-            output["submit"]["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["submit"]["endpoint_key"]["interface_revision"],
-            serde_json::json!(3)
-        );
-        assert_eq!(
-            output["submit"]["payment_max_budget"],
-            serde_json::json!(99)
-        );
-        assert_eq!(
-            output["submit"]["authorization_plan_commitment"],
-            serde_json::json!([1, 2, 3])
-        );
-    }
-
-    #[test]
-    fn tap_submission_result_json_helpers_expose_created_ids() {
-        let artifact = TapPublishArtifact::from_config(
-            &TapSkillConfig {
-                name: "weather skill".to_string(),
-                tap_package_name: "weather_tap".to_string(),
-                dag_path: PathBuf::from("dag.json"),
-                tap_package_path: PathBuf::from("tap"),
-                requirements: TapSkillRequirements {
-                    input_schema_commitment: vec![1],
-                    workflow_commitment: vec![2],
-                    metadata_commitment: vec![3],
-                    payment_policy: TapPaymentPolicy::default(),
-                    schedule_policy: TapSchedulePolicy::default(),
-                    vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
-                },
-                shared_objects: Vec::new(),
-                interface_revision: InterfaceRevision(1),
-            },
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("valid artifact");
-
-        let create_output = create_agent_result_json(
-            sui::types::Address::from_static("0x2"),
-            &CreateAgentResult {
-                tx_digest: sui::types::Digest::from([7; 32]),
-                tx_checkpoint: 11,
-                agent_id: sui::types::Address::from_static("0xa"),
-                agent_object: sui::types::ObjectReference::new(
-                    sui::types::Address::from_static("0xa"),
-                    7,
-                    sui::types::Digest::from([8; 32]),
-                ),
-            },
-        );
-        assert_eq!(
-            create_output["agent_id"],
-            serde_json::json!(sui::types::Address::from_static("0xa").to_string())
-        );
-        assert_eq!(create_output["tx_checkpoint"], serde_json::json!(11));
-
-        let register_output = register_skill_result_json(
-            &artifact,
-            &RegisterSkillResult {
-                tx_digest: sui::types::Digest::from([8; 32]),
-                tx_checkpoint: 12,
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-            },
-        );
-        assert_eq!(register_output["skill_id"], serde_json::json!(11));
-        assert_eq!(
-            register_output["dag_id"],
-            serde_json::json!("0x000000000000000000000000000000000000000000000000000000000000000d")
-        );
-    }
-
-    #[test]
-    fn publish_skill_result_json_exposes_complete_artifact_handoff() {
-        let artifact = TapPublishArtifact::from_config(
-            &TapSkillConfig {
-                name: "weather skill".to_string(),
-                tap_package_name: "weather_tap".to_string(),
-                dag_path: PathBuf::from("dag.json"),
-                tap_package_path: PathBuf::from("tap"),
-                requirements: TapSkillRequirements {
-                    input_schema_commitment: vec![1],
-                    workflow_commitment: vec![2],
-                    metadata_commitment: vec![3],
-                    payment_policy: TapPaymentPolicy::default(),
-                    schedule_policy: TapSchedulePolicy::default(),
-                    vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
-                },
-                shared_objects: Vec::new(),
-                interface_revision: InterfaceRevision(1),
-            },
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("valid artifact");
-
-        let output = publish_skill_result_json(&PublishSkillResult {
-            tap_package: nexus_sdk::nexus::tap::TapPackagePublishResult {
-                tx_digest: sui::types::Digest::from([1; 32]),
-                tx_checkpoint: 10,
-                package_id: sui::types::Address::from_static("0xe"),
-            },
-            dag: nexus_sdk::nexus::workflow::PublishResult {
-                tx_digest: sui::types::Digest::from([2; 32]),
-                tx_checkpoint: 11,
-                dag_object_id: sui::types::Address::from_static("0xd"),
-            },
-            artifact,
-        });
-
-        assert_eq!(
-            output["tap_package_id"],
-            serde_json::json!(sui::types::Address::from_static("0xe").to_string())
-        );
-        assert_eq!(
-            output["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["artifact"]["config_digest_hex"]
-                .as_str()
-                .unwrap()
-                .len(),
-            64
-        );
-    }
-
-    #[test]
-    fn tap_requirements_and_schedule_json_helpers_expose_live_state() {
-        let requirements = TapSkillRequirements {
-            input_schema_commitment: vec![1],
-            workflow_commitment: vec![2],
-            metadata_commitment: vec![3],
-            payment_policy: TapPaymentPolicy::default(),
-            schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
-        };
-
-        let requirements_output = requirements_result_json(&GetSkillRequirementsResult {
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            active_endpoint_key: nexus_sdk::types::TapEndpointKey {
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-                interface_revision: InterfaceRevision(3),
-            },
-            requirements,
-        });
-        assert_eq!(
-            requirements_output["active_endpoint_key"]["interface_revision"],
-            serde_json::json!(3)
-        );
-        assert_eq!(
-            requirements_output["requirements"]["workflow_commitment"],
-            serde_json::json!([2])
-        );
-
-        let schedule_output = schedule_result_json(
-            sui::types::Address::from_static("0xc"),
-            &ScheduleSkillExecutionResult {
-                tx_digest: sui::types::Digest::from([9; 32]),
-                tx_checkpoint: 13,
-                scheduled_task_id: sui::types::Address::from_static("0xd"),
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-            },
-        );
-        assert_eq!(
-            schedule_output["scheduled_task_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(schedule_output["tx_checkpoint"], serde_json::json!(13));
     }
 }

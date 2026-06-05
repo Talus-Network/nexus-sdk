@@ -18,18 +18,3 @@ pub(crate) async fn show_default_target() -> AnyResult<(), NexusCliError> {
 
     json_output(&default_target_result_json(&record))
 }
-
-pub(crate) fn default_target_result_json(
-    record: &nexus_sdk::types::DefaultDagExecutorRecord,
-) -> serde_json::Value {
-    json!({
-        "standard_tap": true,
-        "agent_id": record.target.agent_id,
-        "skill_id": record.target.skill_id,
-        "dag_id": record.skill.dag_id,
-        "interface_revision": record.endpoint.key.interface_revision,
-        "config_digest_hex": hex::encode(&record.endpoint.config_digest),
-        "shared_objects": record.endpoint.shared_objects,
-        "requirements": record.endpoint.requirements,
-    })
-}
