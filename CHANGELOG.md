@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `nexus gas priority-fee-vault` commands for configuring the priority-fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority-fee shares.
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
 - `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
@@ -28,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- on-chain and off-chain tool registration now fetches a typed Talus `$US` collateral coin and rejects attempts to reuse the SUI gas coin as collateral.
 - DAG, TAP, scheduler task, scheduler occurrence, and periodic scheduler CLI commands now accept optional priority-fee excess quote flags instead of zero-default priority-fee-per-gas-unit arguments.
 - DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
 - On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
@@ -43,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `TapActions::wait_for_payment_settled` poll helper with `WaitForPaymentResult` (final payment state, `terminal`, `elapsed_ms`, `timed_out`) and a `payment_is_terminal` free function that recognizes `accomplished`/`refunded`/non-`Pending` `TapExecutionPaymentFinalState`. A zero `poll_interval` is rejected with `NexusError::Configuration` to avoid busy-looping the poller.
 - `ToolActions::inspect_tool` that derives `Tool`/`ToolGas` ids from an FQN, probes both on-chain, and decodes the on-chain `Tool` into a `ToolInspection` carrying the full `Tool` record (HTTP- or Sui-variant). Mixed-existence states (one present, the other missing) surface as a clear `NexusError::Configuration`.
 - `TapActions::deposit_agent_payment_vault` high-level helper that fetches the agent object reference, splits the deposit coin from gas, and submits the `tap::deposit_agent_payment_vault` call. `DepositAgentVaultParams` and `DepositAgentVaultResult` expose `agent_id` and `amount` for callers.
+- `UsTokenConfig`, priority-fee vault owner-cap metadata, priority-fee vault state decoding, leader-share and withdrawal quoting, SUI drain quoting, and gas actions for configure/swap/drain/withdraw priority-fee vault flows.
 - Priority payment quote helpers now validate `None => 20` and explicit `10..=10000` priority-fee excess quotes, derive the maximum base gas cap from total escrow, and report expected priority reserve.
 - `NexusObjects` now carries the shared `priority_fee_vault`, and submit-result PTB builders include it when routing off-chain, on-chain, registered-key, and external-verifier submissions.
 - Gas transaction helpers now include TAP payment accomplishment helpers and a leader-cap-gated `withdraw_priority_fee` PTB builder for the shared priority-fee vault.
