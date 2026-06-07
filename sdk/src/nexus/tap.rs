@@ -13,7 +13,7 @@ use {
             signer::ExecutedTransaction,
         },
         sui,
-        transactions::{dag as dag_tx, scheduler as scheduler_tx, tap as tap_tx},
+        transactions::{gas as gas_tx, scheduler as scheduler_tx, tap as tap_tx},
         types::{
             resolve_active_tap_endpoint,
             resolve_active_tap_skill_execution_target,
@@ -676,14 +676,14 @@ impl TapActions {
                 agent_ref.version(),
                 true,
             ));
-            dag_tx::accomplish_tap_execution_payment_from_agent_vault(
+            gas_tx::accomplish_tap_execution_payment_from_agent_vault(
                 &mut tx,
                 &self.client.nexus_objects,
                 agent,
                 execution,
             );
         } else {
-            dag_tx::accomplish_tap_execution_payment(
+            gas_tx::accomplish_tap_execution_payment(
                 &mut tx,
                 &self.client.nexus_objects,
                 execution,
@@ -3196,6 +3196,9 @@ mod tests {
             payment_mode: crate::types::TapPaymentMode::UserFunded,
             source_kind: None,
             source_identity: None,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            effective_priority_fee: 200_000,
             max_budget: 1_000_000,
             locked_budget: 0,
             consumed: 0,

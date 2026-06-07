@@ -14,7 +14,7 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{
             deserialize_sui_u64,
-            effective_priority_fee as validate_effective_priority_fee,
+            effective_priority_fee_quote as validate_effective_priority_fee,
             AgentExecutionConfig,
             DagExecutionConfig,
             DataStorage,

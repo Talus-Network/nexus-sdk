@@ -376,9 +376,10 @@ fn required_total_budget(
     payment_max_budget: u64,
     priority_fee_excess_quote: Option<u64>,
 ) -> anyhow::Result<u64> {
-    let effective_priority_fee = crate::types::effective_priority_fee(priority_fee_excess_quote)?;
+    let effective_priority_fee_quote =
+        crate::types::effective_priority_fee_quote(priority_fee_excess_quote)?;
     let priority_fee =
-        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee)?;
+        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee_quote)?;
     payment_max_budget
         .checked_add(priority_fee)
         .ok_or_else(|| anyhow::anyhow!("payment total budget overflows u64"))
@@ -2470,14 +2471,13 @@ fn execute_agent_dag_internal(
         false,
     ));
 
-    let agent = match agent {
-        Some(agent) => Some(tx.input(sui::tx::Input::shared(
+    let agent = agent.map(|agent| {
+        tx.input(sui::tx::Input::shared(
             *agent.object_id(),
             agent.version(),
             true,
-        ))),
-        None => None,
-    };
+        ))
+    });
 
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),

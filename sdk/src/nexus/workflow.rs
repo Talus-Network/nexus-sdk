@@ -112,9 +112,10 @@ fn resolve_payment_total_budget(
     payment_total_budget: Option<u64>,
     priority_fee_excess_quote: Option<u64>,
 ) -> anyhow::Result<u64> {
-    let effective_priority_fee = crate::types::effective_priority_fee(priority_fee_excess_quote)?;
+    let effective_priority_fee_quote =
+        crate::types::effective_priority_fee_quote(priority_fee_excess_quote)?;
     let priority_fee =
-        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee)?;
+        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee_quote)?;
     let minimum_total = payment_max_budget
         .checked_add(priority_fee)
         .ok_or_else(|| anyhow!("payment total budget overflows u64"))?;

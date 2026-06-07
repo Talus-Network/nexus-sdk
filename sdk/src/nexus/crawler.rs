@@ -1891,9 +1891,11 @@ mod tests {
 
     #[tokio::test]
     async fn get_dynamic_field_values_bcs_pages_and_decodes_values() {
+        type DynamicFieldPage = (Vec<(&'static str, TestValue)>, Option<Vec<u8>>);
+
         let parent_id = sui::types::Address::from_static("0x70");
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let responses: Vec<(Vec<(&'static str, TestValue)>, Option<Vec<u8>>)> = vec![
+        let responses: Vec<DynamicFieldPage> = vec![
             (
                 vec![("test::First", TestValue { value: 3 })],
                 Some(Vec::from(&b"page-2"[..])),
