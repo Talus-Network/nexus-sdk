@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
+- `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
 - `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
 - `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, interface revision, config-digest hex, shared objects, and skill requirements — into one JSON document.
@@ -65,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Durable scheduled TAP models, events, fetch helpers, and transaction builders for address-funded and agent-vault-funded scheduled prepayment, scheduled occurrence payment conversion, scheduled occurrence completion, and scheduler-task link attachment.
 - SDK-level `fetch_task_tap_scheduled_task_link` and `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain scheduled task state without local-only BCS parsing.
 - Default-DAG-executor address-funded scheduling action and PTB builder that omit `agent_id`/`skill_id` arguments and resolve the registry-owned default executor through `TapRegistry`.
+- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 
 #### Changed
 
