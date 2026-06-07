@@ -105,6 +105,7 @@ pub struct AgentDagExecuteInput {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
+    pub payment_total_budget: Option<u64>,
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
@@ -122,6 +123,20 @@ fn prepare_option_address(
     value: Option<sui::types::Address>,
 ) -> anyhow::Result<sui::types::Argument> {
     let element = sui::types::TypeTag::Address;
+    match value {
+        Some(value) => {
+            let value = tx.input(pure_arg(&value)?);
+            Ok(move_std::Option::some(tx, element, value))
+        }
+        None => Ok(move_std::Option::none(tx, element)),
+    }
+}
+
+fn prepare_option_u64(
+    tx: &mut sui::tx::TransactionBuilder,
+    value: Option<u64>,
+) -> anyhow::Result<sui::types::Argument> {
+    let element = sui::types::TypeTag::U64;
     match value {
         Some(value) => {
             let value = tx.input(pure_arg(&value)?);
@@ -346,6 +361,30 @@ fn verifier_registry_arg(
     )))
 }
 
+fn priority_fee_vault_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tx.input(sui::tx::Input::shared(
+        *objects.priority_fee_vault.object_id(),
+        objects.priority_fee_vault.version(),
+        true,
+    )))
+}
+
+fn required_total_budget(
+    payment_max_budget: u64,
+    priority_fee_excess_quote: Option<u64>,
+) -> anyhow::Result<u64> {
+    let effective_priority_fee_quote =
+        crate::types::effective_priority_fee_quote(priority_fee_excess_quote)?;
+    let priority_fee =
+        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee_quote)?;
+    payment_max_budget
+        .checked_add(priority_fee)
+        .ok_or_else(|| anyhow::anyhow!("payment total budget overflows u64"))
+}
+
 /// PTB template for creating a new DAG vertex.
 pub fn create_vertex(
     tx: &mut sui::tx::TransactionBuilder,
@@ -551,39 +590,6 @@ pub fn abort_expired_execution(
             leader_registry_arg,
             clock_arg,
         ],
-    )
-}
-
-pub fn accomplish_tap_execution_payment(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    execution: sui::types::Argument,
-) -> sui::types::Argument {
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name,
-            vec![],
-        ),
-        vec![execution],
-    )
-}
-
-pub fn accomplish_tap_execution_payment_from_agent_vault(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution: sui::types::Argument,
-) -> sui::types::Argument {
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
-            vec![],
-        ),
-        vec![agent, execution],
     )
 }
 
@@ -1419,6 +1425,7 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
             .transpose()?,
     )?);
     let proof = prepare_offchain_verifier_proof(tx, objects, proof)?;
+    let priority_fee_vault = priority_fee_vault_arg(tx, objects)?;
     let gas_charge = tx.input(pure_arg(&gas_charge)?);
 
     tx.move_call(
@@ -1442,6 +1449,7 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
             proof,
             verifier_registry,
             leader_registry,
+            priority_fee_vault,
             network_auth,
             leader_key_binding,
             tool_key_binding,
@@ -1467,6 +1475,7 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
     auxiliary: Option<&OffChainToolResultAuxiliaryV1>,
+    leader_registry: sui::types::Argument,
     gas_charge: u64,
     clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
@@ -1479,6 +1488,7 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
             .map(OffChainToolResultAuxiliaryV1::to_bcs_bytes)
             .transpose()?,
     )?);
+    let priority_fee_vault = priority_fee_vault_arg(tx, objects)?;
     let gas_charge = tx.input(pure_arg(&gas_charge)?);
 
     tx.move_call(
@@ -1499,6 +1509,8 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
             expected_vertex,
             result_bytes,
             auxiliary_bytes,
+            leader_registry,
+            priority_fee_vault,
             gas_charge,
             clock,
         ],
@@ -1566,6 +1578,7 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
+    let priority_fee_vault = priority_fee_vault_arg(tx, objects)?;
     let gas_charge = tx.input(pure_arg(&gas_charge)?);
 
     tx.move_call(
@@ -1589,6 +1602,7 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
             proof,
             verifier_registry,
             leader_registry,
+            priority_fee_vault,
             network_auth,
             leader_key_binding,
             tool_key_binding,
@@ -1718,6 +1732,7 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
     failure_evidence_kind: Option<&FailureEvidenceKind>,
     submitted_failure_reason: Option<Vec<u8>>,
     tool_witness_id: sui::types::Address,
+    leader_registry: sui::types::Argument,
     gas_charge: u64,
     clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
@@ -1729,6 +1744,7 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
     let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+    let priority_fee_vault = priority_fee_vault_arg(tx, objects)?;
     let gas_charge = tx.input(pure_arg(&gas_charge)?);
 
     tx.move_call(
@@ -1752,6 +1768,8 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
             failure_evidence_kind,
             submitted_failure_reason,
             tool_witness_id,
+            leader_registry,
+            priority_fee_vault,
             gas_charge,
             clock,
         ],
@@ -1777,6 +1795,7 @@ pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
     failure_evidence_kind: Option<&FailureEvidenceKind>,
     submitted_failure_reason: Option<Vec<u8>>,
     tool_witness_id: sui::types::Address,
+    leader_registry: sui::types::Argument,
     gas_charge: u64,
     clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
@@ -1785,6 +1804,7 @@ pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
     let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+    let priority_fee_vault = priority_fee_vault_arg(tx, objects)?;
     let gas_charge = tx.input(pure_arg(&gas_charge)?);
 
     tx.move_call(
@@ -1808,6 +1828,8 @@ pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
             failure_evidence_kind,
             submitted_failure_reason,
             tool_witness_id,
+            leader_registry,
+            priority_fee_vault,
             gas_charge,
             clock,
         ],
@@ -1831,6 +1853,7 @@ pub fn submit_on_chain_terminal_err_eval_for_walk(
     reason: DataStorage,
     failure_evidence_kind: &FailureEvidenceKind,
     tool_witness_id: Option<sui::types::Address>,
+    leader_registry: sui::types::Argument,
     clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
     submit_on_chain_tool_result_for_walk_v1(
@@ -1848,6 +1871,7 @@ pub fn submit_on_chain_terminal_err_eval_for_walk(
         Some(failure_evidence_kind),
         None,
         tool_witness_id.unwrap_or(sui::types::Address::ZERO),
+        leader_registry,
         0,
         clock,
     )
@@ -2047,7 +2071,7 @@ pub fn prepare_agent_execution(
     agent: sui::types::Argument,
     dag: sui::types::Argument,
     dag_id: sui::types::Argument,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2141,7 +2165,7 @@ pub fn prepare_agent_execution(
         );
     }
 
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
     let agent_id = tap::agent_id_from_address(tx, objects, agent_execution.agent_id)?;
     let skill_id = tx.input(pure_arg(&agent_execution.skill_id)?);
     let authorization_plan_commitment =
@@ -2161,7 +2185,7 @@ pub fn prepare_agent_execution(
             network,
             entry_group,
             with_vertex_inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             agent_id,
             skill_id,
             authorization_plan_commitment,
@@ -2203,7 +2227,7 @@ pub fn prepare_default_agent_execution(
     agent_registry: sui::types::Argument,
     dag: sui::types::Argument,
     dag_id: sui::types::Argument,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2297,7 +2321,7 @@ pub fn prepare_default_agent_execution(
         );
     }
 
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
     let config = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -2310,7 +2334,7 @@ pub fn prepare_default_agent_execution(
             network,
             entry_group,
             with_vertex_inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
         ],
     );
 
@@ -2375,7 +2399,7 @@ pub fn execute_agent_dag(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     agent: &sui::types::ObjectReference,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2386,7 +2410,7 @@ pub fn execute_agent_dag(
         objects,
         dag,
         Some(agent),
-        priority_fee_per_gas_unit,
+        priority_fee_excess_quote,
         entry_group,
         input_data,
         agent_execution,
@@ -2400,7 +2424,7 @@ pub fn execute_default_agent_dag(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2411,7 +2435,7 @@ pub fn execute_default_agent_dag(
         objects,
         dag,
         None,
-        priority_fee_per_gas_unit,
+        priority_fee_excess_quote,
         entry_group,
         input_data,
         agent_execution,
@@ -2426,13 +2450,20 @@ fn execute_agent_dag_internal(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     agent: Option<&sui::types::ObjectReference>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
     default_executor: bool,
 ) -> anyhow::Result<()> {
+    let payment_total_budget =
+        agent_execution
+            .payment_total_budget
+            .unwrap_or(required_total_budget(
+                agent_execution.payment_max_budget,
+                priority_fee_excess_quote,
+            )?);
     let dag_id = sui_framework::Object::id_from_object_id(tx, *dag.object_id())?;
     let dag = tx.input(sui::tx::Input::shared(
         *dag.object_id(),
@@ -2440,14 +2471,13 @@ fn execute_agent_dag_internal(
         false,
     ));
 
-    let agent = match agent {
-        Some(agent) => Some(tx.input(sui::tx::Input::shared(
+    let agent = agent.map(|agent| {
+        tx.input(sui::tx::Input::shared(
             *agent.object_id(),
             agent.version(),
             true,
-        ))),
-        None => None,
-    };
+        ))
+    });
 
     let tool_registry = tx.input(sui::tx::Input::shared(
         *objects.tool_registry.object_id(),
@@ -2474,8 +2504,8 @@ fn execute_agent_dag_internal(
             *payment_coin_ref.digest(),
         ));
         match agent_execution.payment_coin_balance {
-            Some(balance) if balance > agent_execution.payment_max_budget => {
-                let payment_amount = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
+            Some(balance) if balance > payment_total_budget => {
+                let payment_amount = tx.input(pure_arg(&payment_total_budget)?);
                 tx.split_coins(owned_payment_coin, vec![payment_amount])
                     .nested(0)
                     .ok_or_else(|| anyhow::anyhow!("failed to split TAP execution payment coin"))?
@@ -2483,7 +2513,7 @@ fn execute_agent_dag_internal(
             _ => owned_payment_coin,
         }
     } else {
-        let payment_amount = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
+        let payment_amount = tx.input(pure_arg(&payment_total_budget)?);
         tx.split_coins(tx.gas(), vec![payment_amount])
             .nested(0)
             .ok_or_else(|| anyhow::anyhow!("failed to split TAP execution payment coin"))?
@@ -2497,7 +2527,7 @@ fn execute_agent_dag_internal(
             agent_registry,
             dag,
             dag_id,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             entry_group,
             input_data,
             agent_execution,
@@ -2515,7 +2545,7 @@ fn execute_agent_dag_internal(
             agent,
             dag,
             dag_id,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             entry_group,
             input_data,
             agent_execution,
@@ -2855,6 +2885,17 @@ mod tests {
         objects
     }
 
+    fn test_leader_registry_arg(
+        tx: &mut sui::tx::TransactionBuilder,
+        objects: &NexusObjects,
+    ) -> sui::types::Argument {
+        tx.input(sui::tx::Input::shared(
+            *objects.leader_registry.object_id(),
+            objects.leader_registry.version(),
+            false,
+        ))
+    }
+
     #[test]
     fn test_prepared_tool_output_terminal_err_eval_shape() {
         let reason = DataStorage::try_from(serde_json::json!({
@@ -3173,7 +3214,8 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(call.arguments.len(), 18);
+        assert_eq!(call.arguments.len(), 19);
+        inspector.expect_shared_object(&call.arguments[13], &objects.priority_fee_vault, true);
         assert!(matches!(
             call.arguments[10],
             sui::types::Argument::Result(_)
@@ -3193,6 +3235,7 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_plain_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
@@ -3207,8 +3250,9 @@ mod tests {
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             None,
+            leader_registry,
             0,
-            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3224,13 +3268,16 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
         );
-        assert_eq!(call.arguments.len(), 12);
+        assert_eq!(call.arguments.len(), 14);
+        inspector.expect_shared_object(&call.arguments[10], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[11], &objects.priority_fee_vault, true);
     }
 
     #[test]
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_failure_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
@@ -3245,8 +3292,9 @@ mod tests {
             &mock_runtime_vertex(),
             &mock_offchain_failure_result(),
             Some(&mock_offchain_failure_auxiliary()),
+            leader_registry,
             0,
-            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3262,9 +3310,11 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
         );
-        assert_eq!(call.arguments.len(), 12);
+        assert_eq!(call.arguments.len(), 14);
         assert!(matches!(call.arguments[8], sui::types::Argument::Result(_)));
         assert!(matches!(call.arguments[9], sui::types::Argument::Input(_)));
+        inspector.expect_shared_object(&call.arguments[10], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[11], &objects.priority_fee_vault, true);
     }
     #[test]
     fn test_submit_off_chain_tool_result_for_walk_v1_large_result_avoids_oversized_pure_input() {
@@ -3279,6 +3329,7 @@ mod tests {
 
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
@@ -3293,8 +3344,9 @@ mod tests {
             &mock_runtime_vertex(),
             &result,
             None,
+            leader_registry,
             0,
-            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3435,7 +3487,12 @@ mod tests {
             submit_call.function,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(submit_call.arguments.len(), 18);
+        assert_eq!(submit_call.arguments.len(), 19);
+        inspector.expect_shared_object(
+            &submit_call.arguments[13],
+            &objects.priority_fee_vault,
+            true,
+        );
         assert!(matches!(
             submit_call.arguments[10],
             sui::types::Argument::Result(_)
@@ -3484,6 +3541,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
@@ -3500,8 +3558,9 @@ mod tests {
             None,
             None,
             witness,
+            leader_registry,
             0,
-            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3511,6 +3570,7 @@ mod tests {
         assert_on_chain_submit_call_uses_sdk_move_values(
             &inspector,
             call,
+            &objects,
             objects.workflow_pkg_id,
             witness,
         );
@@ -3521,6 +3581,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_on_chain_tool_result_for_walk_v1_with_args(
             &mut tx,
@@ -3538,8 +3599,9 @@ mod tests {
             None,
             None,
             witness,
+            leader_registry,
             0,
-            sui::types::Argument::Result(9),
+            sui::types::Argument::Result(10),
         )
         .unwrap();
 
@@ -3549,6 +3611,7 @@ mod tests {
         assert_on_chain_submit_call_uses_sdk_move_values(
             &inspector,
             call,
+            &objects,
             objects.workflow_pkg_id,
             witness,
         );
@@ -3590,6 +3653,7 @@ mod tests {
     fn assert_on_chain_submit_call_uses_sdk_move_values(
         inspector: &TxInspector,
         call: &sui::types::MoveCall,
+        objects: &NexusObjects,
         workflow_pkg_id: sui::types::Address,
         expected_tool_witness_id: sui::types::Address,
     ) {
@@ -3602,7 +3666,7 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(call.arguments.len(), 15);
+        assert_eq!(call.arguments.len(), 17);
         assert!(matches!(
             call.arguments[10],
             sui::types::Argument::Result(_)
@@ -3612,7 +3676,9 @@ mod tests {
             call.arguments[12],
             sui::types::Argument::Result(_)
         ));
-        assert!(matches!(call.arguments[13], sui::types::Argument::Input(_)));
+        assert!(matches!(call.arguments[15], sui::types::Argument::Input(_)));
+        inspector.expect_shared_object(&call.arguments[13], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[14], &objects.priority_fee_vault, true);
 
         let failure_option = match call.arguments[10] {
             sui::types::Argument::Result(index) => inspector.move_call(index as usize),
@@ -3702,6 +3768,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
@@ -3718,8 +3785,9 @@ mod tests {
             Some(&FailureEvidenceKind::ToolEvidence),
             Some(b"tool failed".to_vec()),
             tool_witness_id,
+            leader_registry,
             0,
-            sui::types::Argument::Result(6),
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3735,7 +3803,7 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(call.arguments.len(), 15);
+        assert_eq!(call.arguments.len(), 17);
         assert!(matches!(
             call.arguments[10],
             sui::types::Argument::Result(_)
@@ -3745,13 +3813,16 @@ mod tests {
             call.arguments[12],
             sui::types::Argument::Result(_)
         ));
-        assert!(matches!(call.arguments[13], sui::types::Argument::Input(_)));
+        inspector.expect_shared_object(&call.arguments[13], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[14], &objects.priority_fee_vault, true);
+        assert!(matches!(call.arguments[15], sui::types::Argument::Input(_)));
     }
 
     #[test]
     fn test_submit_on_chain_terminal_err_eval_for_walk_defaults_zero_tool_witness_id() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
@@ -3771,7 +3842,8 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             None,
-            sui::types::Argument::Result(6),
+            leader_registry,
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3787,7 +3859,7 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(call.arguments.len(), 15);
+        assert_eq!(call.arguments.len(), 17);
         assert!(matches!(
             call.arguments[10],
             sui::types::Argument::Result(_)
@@ -3797,7 +3869,9 @@ mod tests {
             call.arguments[12],
             sui::types::Argument::Result(_)
         ));
-        assert!(matches!(call.arguments[13], sui::types::Argument::Input(_)));
+        inspector.expect_shared_object(&call.arguments[13], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[14], &objects.priority_fee_vault, true);
+        assert!(matches!(call.arguments[15], sui::types::Argument::Input(_)));
     }
 
     #[test]
@@ -3806,6 +3880,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = test_leader_registry_arg(&mut tx, &objects);
 
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
@@ -3825,7 +3900,8 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             Some(tool_witness_id),
-            sui::types::Argument::Result(6),
+            leader_registry,
+            sui::types::Argument::Result(7),
         )
         .unwrap();
 
@@ -3841,12 +3917,14 @@ mod tests {
             call.function,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
-        assert_eq!(call.arguments.len(), 15);
+        assert_eq!(call.arguments.len(), 17);
         assert!(matches!(call.arguments[11], sui::types::Argument::Input(_)));
         let sui::types::Argument::Result(tool_witness_id_index) = &call.arguments[12] else {
             panic!("expected tool witness ID result argument");
         };
-        assert!(matches!(call.arguments[13], sui::types::Argument::Input(_)));
+        inspector.expect_shared_object(&call.arguments[13], &objects.leader_registry, false);
+        inspector.expect_shared_object(&call.arguments[14], &objects.priority_fee_vault, true);
+        assert!(matches!(call.arguments[15], sui::types::Argument::Input(_)));
         let tool_witness_id_call = inspector.move_call(*tool_witness_id_index as usize);
         assert_eq!(
             tool_witness_id_call.module,
@@ -4012,6 +4090,7 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 55,
+            payment_total_budget: None,
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
@@ -4022,7 +4101,7 @@ mod tests {
             &nexus_objects,
             &dag,
             &agent,
-            13,
+            None,
             entry_group,
             &input_data,
             &agent_execution,
@@ -4072,7 +4151,7 @@ mod tests {
             sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
-        inspector.expect_u64(&config_call.arguments[4], 13);
+        assert_matches!(config_call.arguments[4], sui::types::Argument::Result(_));
         let sui::types::Argument::Result(agent_id_index) = config_call.arguments[5] else {
             panic!("expected agent ID to come from tap::agent_id_from_address");
         };
@@ -4158,6 +4237,7 @@ mod tests {
             payment_coin: Some(payment_coin.clone()),
             payment_coin_balance: Some(1_000),
             payment_max_budget: 55,
+            payment_total_budget: Some(66),
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: vec![entry.clone()],
@@ -4169,7 +4249,7 @@ mod tests {
             &nexus_objects,
             &dag,
             &agent,
-            0,
+            None,
             entry_group,
             &input_data,
             &agent_execution,
@@ -4185,6 +4265,16 @@ mod tests {
                 .any(|command| matches!(command, sui::types::Command::SplitCoins(_))),
             "owned payment coin with excess balance should be split"
         );
+        let split = inspector
+            .commands()
+            .iter()
+            .find_map(|command| match command {
+                sui::types::Command::SplitCoins(split) => Some(split),
+                _ => None,
+            })
+            .expect("split coins command");
+        assert_eq!(split.amounts.len(), 1);
+        inspector.expect_u64(&split.amounts[0], 66);
 
         let grant_ref_index = inspector
             .move_call_indices_to(
@@ -4233,6 +4323,7 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
+            payment_total_budget: None,
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
@@ -4243,7 +4334,7 @@ mod tests {
             &mut tx,
             &nexus_objects,
             &dag,
-            17,
+            None,
             "group1",
             &HashMap::new(),
             &agent_execution,
@@ -4270,16 +4361,6 @@ mod tests {
                 && call.module == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module
                 && call.function == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name
         }));
-        let config_index = inspector
-            .move_call_indices_to(
-                nexus_objects.workflow_pkg_id,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-            )
-            .into_iter()
-            .next()
-            .expect("default execution config call");
-        inspector.expect_u64(&inspector.move_call(config_index).arguments[4], 17);
         assert!(!calls.iter().any(|call| {
             call.package == nexus_objects.workflow_pkg_id
                 && call.module == workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module
@@ -4327,6 +4408,7 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
+            payment_total_budget: None,
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
@@ -4336,7 +4418,7 @@ mod tests {
             &nexus_objects,
             &dag,
             &agent,
-            0,
+            None,
             entry_group,
             &input_data,
             &agent_execution,

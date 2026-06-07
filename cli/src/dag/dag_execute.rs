@@ -12,7 +12,7 @@ use {
     anyhow::anyhow,
     nexus_sdk::{
         nexus::{error::NexusError, workflow::AgentDagExecuteOptions},
-        types::tap_payment_source_for_address,
+        types::{tap_payment_source_for_address, PriorityPaymentBudgetInput},
     },
 };
 
@@ -24,7 +24,7 @@ pub(crate) async fn execute_dag(
     input_json: serde_json::Value,
     remote: Vec<String>,
     inspect: bool,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     payment_coin: Option<sui::types::Address>,
     payment_budget: Option<u64>,
     sui_gas_coin: Option<sui::types::Address>,
@@ -70,6 +70,13 @@ pub(crate) async fn execute_dag(
             "payment budget {budget} exceeds payment coin balance {balance}"
         )));
     }
+    let payment_quote = PriorityPaymentBudgetInput {
+        total_budget: budget,
+        priority_fee_excess_quote,
+        cap: None,
+    }
+    .quote()
+    .map_err(NexusCliError::Any)?;
 
     let nexus_client = get_nexus_client(Some(*gas_coin.object_id()), sui_gas_budget).await?;
 
@@ -84,7 +91,8 @@ pub(crate) async fn execute_dag(
         payment_source: tap_payment_source_for_address(owner).map_err(NexusCliError::Any)?,
         payment_coin: Some(payment_coin),
         payment_coin_balance: Some(balance),
-        payment_max_budget: budget,
+        payment_max_budget: payment_quote.max_gas_budget,
+        payment_total_budget: Some(budget),
         payment_refund_mode: 0,
         authorization_plan_commitment: None,
         authorization_plan: Vec::new(),
@@ -97,7 +105,7 @@ pub(crate) async fn execute_dag(
         .execute_default_agent_dag(
             dag_id,
             input_data,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             Some(&entry_group),
             &storage_conf,
             agent_dag_options,

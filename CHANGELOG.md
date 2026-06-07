@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- DAG, TAP, scheduler task, scheduler occurrence, and periodic scheduler CLI commands now accept optional priority-fee excess quote flags instead of zero-default priority-fee-per-gas-unit arguments.
 - DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
 - On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it.
@@ -42,6 +43,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `TapActions::wait_for_payment_settled` poll helper with `WaitForPaymentResult` (final payment state, `terminal`, `elapsed_ms`, `timed_out`) and a `payment_is_terminal` free function that recognizes `accomplished`/`refunded`/non-`Pending` `TapExecutionPaymentFinalState`. A zero `poll_interval` is rejected with `NexusError::Configuration` to avoid busy-looping the poller.
 - `ToolActions::inspect_tool` that derives `Tool`/`ToolGas` ids from an FQN, probes both on-chain, and decodes the on-chain `Tool` into a `ToolInspection` carrying the full `Tool` record (HTTP- or Sui-variant). Mixed-existence states (one present, the other missing) surface as a clear `NexusError::Configuration`.
 - `TapActions::deposit_agent_payment_vault` high-level helper that fetches the agent object reference, splits the deposit coin from gas, and submits the `tap::deposit_agent_payment_vault` call. `DepositAgentVaultParams` and `DepositAgentVaultResult` expose `agent_id` and `amount` for callers.
+- Priority payment quote helpers now validate `None => 20` and explicit `10..=10000` priority-fee excess quotes, derive the maximum base gas cap from total escrow, and report expected priority reserve.
+- `NexusObjects` now carries the shared `priority_fee_vault`, and submit-result PTB builders include it when routing off-chain, on-chain, registered-key, and external-verifier submissions.
+- Gas transaction helpers now include TAP payment accomplishment helpers and a leader-cap-gated `withdraw_priority_fee` PTB builder for the shared priority-fee vault.
 - `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
 - SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
 - `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.
@@ -69,6 +73,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Workflow object decoding now treats the standard TAP execution context as complete only when agent, skill, endpoint revision, payment, selected DAG, authorization plan, and scheduled occurrence fields are consistent.
+- DAG execution builders and high-level workflow execution options now treat user payment budget as total escrow while passing the derived base gas cap as the onchain TAP `payment_max_budget`
+- Scheduler execution policies, occurrence requests, and periodic schedules now encode optional priority-fee excess quotes and validate them against the supported priority-fee range before PTB construction.
 - `VertexAuthorizationGrantCreatedEvent` and `WorkflowVertexAuthorizationGrant` now use `execution_id`, matching the current Move object/event layout.
 - Default DAG execution helpers prefer the configured `default_tap_target` when it resolves to a runtime-selected active skill, then fall back to registry recovery.
 - `full` and `nexus` no longer enable `move_publish`; package publishing APIs now require the explicit `move_publish` feature, and the CLI opts into it for deployment commands.

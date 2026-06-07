@@ -150,7 +150,11 @@ events! {
     ScheduledAuthorizationGrantCreatedEvent => ScheduledAuthorizationGrantCreated, "ScheduledAuthorizationGrantCreatedEvent",
     ScheduledAuthorizationGrantMaterializedEvent => ScheduledAuthorizationGrantMaterialized, "ScheduledAuthorizationGrantMaterializedEvent",
     AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
+    ExecutionPaymentFeesRecordedEvent => ExecutionPaymentFeesRecorded, "ExecutionPaymentFeesRecordedEvent",
+    FeeBreakdownConsumedEvent => FeeBreakdownConsumed, "FeeBreakdownConsumedEvent",
     GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
+    PriorityFeeDepositedEvent => PriorityFeeDeposited, "PriorityFeeDepositedEvent",
+    PriorityFeeWithdrawnEvent => PriorityFeeWithdrawn, "PriorityFeeWithdrawnEvent",
     ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
     ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
     ScheduledSkillExecutionCreatedEvent => ScheduledSkillExecutionCreated, "ScheduledSkillExecutionCreatedEvent",
@@ -513,6 +517,35 @@ pub struct AgentSkillPaymentCreatedEvent {
     pub source_identity: sui::types::Address,
     pub max_budget: u64,
     pub locked_budget: u64,
+    pub effective_priority_fee: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExecutionPaymentFeesRecordedEvent {
+    pub payment_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub gas_fee: u64,
+    pub tool_fee: u64,
+    pub priority_fee: u64,
+    pub effective_priority_fee: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FeeBreakdownConsumedEvent {
+    pub receipt_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
+    pub payment_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub payer: sui::types::Address,
+    pub source_kind: TapPaymentSourceKind,
+    pub source_identity: sui::types::Address,
+    pub gas_fee: u64,
+    pub tool_fee: u64,
+    pub priority_fee: u64,
+    pub effective_priority_fee: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -524,6 +557,20 @@ pub struct GasPaymentConsumedEvent {
     pub interface_revision: InterfaceRevision,
     pub amount: u64,
     pub consumed_total: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PriorityFeeDepositedEvent {
+    pub vault: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
+    pub amount: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PriorityFeeWithdrawnEvent {
+    pub vault: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
+    pub amount: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -813,7 +860,7 @@ pub struct MissedOccurrenceEvent {
     pub start_time_ms: u64,
     pub deadline_ms: Option<u64>,
     pub pruned_at: u64,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: u64,
     pub generator: PolicySymbol,
 }
 
@@ -848,7 +895,7 @@ pub struct OccurrenceConsumedEvent {
     pub task: sui::types::Address,
     pub start_time_ms: u64,
     pub deadline_ms: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: u64,
     pub generator: PolicySymbol,
     pub executed_at: u64,
 }
@@ -861,7 +908,7 @@ pub struct PeriodicScheduleConfiguredEvent {
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
     pub generated: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: u64,
     pub last_generated_start_ms: Option<u64>,
 }
 

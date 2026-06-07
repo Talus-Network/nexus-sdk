@@ -31,7 +31,7 @@ pub struct PeriodicScheduleInputs {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: Option<u64>,
 }
 
 // Shared helper for turning a scheduler task object ref into a mutable shared argument.
@@ -44,6 +44,20 @@ fn shared_task_arg(
         task.version(),
         true,
     )))
+}
+
+fn prepare_option_u64(
+    tx: &mut sui::tx::TransactionBuilder,
+    value: Option<u64>,
+) -> anyhow::Result<sui::types::Argument> {
+    let element = sui::types::TypeTag::U64;
+    match value {
+        Some(value) => {
+            let value = tx.input(pure_arg(&value)?);
+            Ok(move_std::Option::some(tx, element, value))
+        }
+        None => Ok(move_std::Option::none(tx, element)),
+    }
 }
 
 // == Metadata ==
@@ -329,7 +343,7 @@ pub fn new_execution_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag_id: sui::types::Address,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -392,7 +406,7 @@ pub fn new_execution_policy(
 
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
 
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
@@ -411,7 +425,7 @@ pub fn new_execution_policy(
             network_id_arg,
             entry_group,
             with_vertex_inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
         ],
     );
 
@@ -426,7 +440,7 @@ pub fn new_agent_execution_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag_id: sui::types::Address,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_id: AgentId,
@@ -493,7 +507,7 @@ pub fn new_agent_execution_policy(
 
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
     let agent_id_arg = transactions::tap::agent_id_from_address(tx, objects, agent_id)?;
     let skill_id_arg = tx.input(pure_arg(&skill_id)?);
     let authorization_plan_commitment = tx.input(pure_arg(&authorization_plan_commitment)?);
@@ -517,7 +531,7 @@ pub fn new_agent_execution_policy(
             network_id_arg,
             entry_group,
             with_vertex_inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             agent_id_arg,
             skill_id_arg,
             authorization_plan_commitment,
@@ -672,7 +686,7 @@ pub fn add_occurrence_absolute_for_task(
     task: &sui::types::ObjectReference,
     start_time_ms: u64,
     deadline_offset_ms: Option<u64>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
 ) -> anyhow::Result<sui::types::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
@@ -681,10 +695,10 @@ pub fn add_occurrence_absolute_for_task(
     let start_time_ms = tx.input(pure_arg(&start_time_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = prepare_option_u64(tx, deadline_offset_ms)?;
 
-    // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    // `priority_fee_excess_quote: option::Option<u64>`
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
 
     // `leader_registry: &LeaderRegistry`
     let leader_registry = tx.input(sui::tx::Input::shared(
@@ -711,7 +725,7 @@ pub fn add_occurrence_absolute_for_task(
             task,
             start_time_ms,
             deadline_offset_ms,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             leader_registry,
             clock,
         ],
@@ -725,7 +739,7 @@ pub fn add_occurrence_relative_for_task(
     task: &sui::types::ObjectReference,
     start_offset_ms: u64,
     deadline_offset_ms: Option<u64>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_excess_quote: Option<u64>,
 ) -> anyhow::Result<sui::types::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
@@ -734,10 +748,10 @@ pub fn add_occurrence_relative_for_task(
     let start_offset_ms = tx.input(pure_arg(&start_offset_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = prepare_option_u64(tx, deadline_offset_ms)?;
 
-    // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    // `priority_fee_excess_quote: option::Option<u64>`
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
 
     // `leader_registry: &LeaderRegistry`
     let leader_registry = tx.input(sui::tx::Input::shared(
@@ -764,7 +778,7 @@ pub fn add_occurrence_relative_for_task(
             task,
             start_offset_ms,
             deadline_offset_ms,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             leader_registry,
             clock,
         ],
@@ -786,7 +800,7 @@ pub fn new_or_modify_periodic_for_task(
         period_ms,
         deadline_offset_ms,
         max_iterations,
-        priority_fee_per_gas_unit,
+        priority_fee_excess_quote,
     } = schedule;
 
     // `task: &mut Task`
@@ -799,13 +813,13 @@ pub fn new_or_modify_periodic_for_task(
     let period_ms = tx.input(pure_arg(&period_ms)?);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = prepare_option_u64(tx, deadline_offset_ms)?;
 
     // `max_iterations: option::Option<u64>`
-    let max_iterations = tx.input(pure_arg(&max_iterations)?);
+    let max_iterations = prepare_option_u64(tx, max_iterations)?;
 
-    // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    // `priority_fee_excess_quote: option::Option<u64>`
+    let priority_fee_excess_quote = prepare_option_u64(tx, priority_fee_excess_quote)?;
 
     // `leader_registry: &LeaderRegistry`
     let leader_registry = tx.input(sui::tx::Input::shared(
@@ -834,7 +848,7 @@ pub fn new_or_modify_periodic_for_task(
             period_ms,
             deadline_offset_ms,
             max_iterations,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             leader_registry,
             clock,
         ],
@@ -1119,7 +1133,6 @@ pub fn execute_scheduled_occurrence(
     dag: &sui::types::ObjectReference,
     scheduled_task: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
-    _amount_priority: u64,
     generator: OccurrenceGenerator,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> anyhow::Result<()> {
@@ -1432,7 +1445,11 @@ pub fn execute_registered_scheduled_occurrence(
 mod tests {
     use {
         super::*,
-        crate::{sui, test_utils::sui_mocks},
+        crate::{
+            sui,
+            test_utils::sui_mocks,
+            types::{InterfaceRevision, RuntimeVertex},
+        },
         assert_matches::assert_matches,
     };
 
@@ -1536,17 +1553,6 @@ mod tests {
 
         fn expect_u64(&self, argument: &sui::types::Argument, value: u64) {
             self.expect_pure_bytes(argument, &value.to_le_bytes());
-        }
-
-        fn expect_option_u64(&self, argument: &sui::types::Argument, value: Option<u64>) {
-            match value {
-                Some(inner) => {
-                    let mut bytes = vec![1];
-                    bytes.extend_from_slice(&inner.to_le_bytes());
-                    self.expect_pure_bytes(argument, &bytes);
-                }
-                None => self.expect_pure_bytes(argument, &[0]),
-            }
         }
     }
 
@@ -1753,6 +1759,61 @@ mod tests {
     }
 
     #[test]
+    fn new_agent_execution_policy_encodes_priority_quote_option() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let agent_id = sui::types::Address::from_static("0xa");
+        let entry = TapVertexAuthorizationPlanEntry {
+            vertex: RuntimeVertex::plain("entry"),
+            grant_id: sui::types::Address::from_static("0x30"),
+            tool_package: sui::types::Address::from_static("0x40"),
+            tool_module: "tool".to_string(),
+            tool_function: "run".to_string(),
+            operation_commitment: vec![7],
+            constraints_commitment: vec![8],
+            endpoint_revision: Some(InterfaceRevision(2)),
+            payment_id: Some(sui::types::Address::from_static("0x60")),
+        };
+
+        let execution = new_agent_execution_policy(
+            &mut tx,
+            &objects,
+            dag_id,
+            Some(25),
+            "default",
+            &HashMap::new(),
+            agent_id,
+            2,
+            Some(vec![1, 2, 3]),
+            &[entry],
+        )
+        .expect("ptb construction succeeds");
+
+        assert_matches!(execution, sui::types::Argument::Result(_));
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let config_call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call)
+                    if call.package == objects.workflow_pkg_id
+                        && call.module == workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module
+                        && call.function == workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.name =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .next()
+            .expect("new_agent_execution_config call is present");
+
+        assert_eq!(config_call.arguments.len(), 9);
+        assert_matches!(config_call.arguments[4], sui::types::Argument::Result(_));
+    }
+
+    #[test]
     fn execute_fetches_execution_witness() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
@@ -1798,7 +1859,7 @@ mod tests {
 
         let start_time = 10;
         let deadline = Some(20);
-        let priority_fee_per_gas_unit = 30;
+        let priority_fee_excess_quote = Some(30);
 
         add_occurrence_absolute_for_task(
             &mut tx,
@@ -1806,19 +1867,23 @@ mod tests {
             &task,
             start_time,
             deadline,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        assert_eq!(inspector.commands().len(), 1);
-        let call = inspector.move_call(0);
+        assert_eq!(inspector.commands().len(), 3);
+        let call = inspector.move_call(2);
         assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.name
+        );
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_time);
-        inspector.expect_option_u64(&call.arguments[2], deadline);
-        inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
+        assert_matches!(call.arguments[2], sui::types::Argument::Result(_));
+        assert_matches!(call.arguments[3], sui::types::Argument::Result(_));
         inspector.expect_shared_object(&call.arguments[4], &objects.leader_registry, false);
         inspector.expect_clock(&call.arguments[5]);
     }
@@ -1831,7 +1896,7 @@ mod tests {
 
         let start_offset = 5;
         let deadline_offset = Some(15);
-        let priority_fee_per_gas_unit = 25;
+        let priority_fee_excess_quote = Some(25);
 
         add_occurrence_relative_for_task(
             &mut tx,
@@ -1839,18 +1904,23 @@ mod tests {
             &task,
             start_offset,
             deadline_offset,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(0);
+        assert_eq!(inspector.commands().len(), 3);
+        let call = inspector.move_call(2);
         assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.name
+        );
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], start_offset);
-        inspector.expect_option_u64(&call.arguments[2], deadline_offset);
-        inspector.expect_u64(&call.arguments[3], priority_fee_per_gas_unit);
+        assert_matches!(call.arguments[2], sui::types::Argument::Result(_));
+        assert_matches!(call.arguments[3], sui::types::Argument::Result(_));
         inspector.expect_shared_object(&call.arguments[4], &objects.leader_registry, false);
         inspector.expect_clock(&call.arguments[5]);
     }
@@ -1865,7 +1935,7 @@ mod tests {
         let period = 1_000;
         let deadline_offset = Some(500);
         let max_iterations = Some(3);
-        let priority_fee_per_gas_unit = 75;
+        let priority_fee_excess_quote = Some(75);
 
         new_or_modify_periodic_for_task(
             &mut tx,
@@ -1876,21 +1946,26 @@ mod tests {
                 period_ms: period,
                 deadline_offset_ms: deadline_offset,
                 max_iterations,
-                priority_fee_per_gas_unit,
+                priority_fee_excess_quote,
             },
         )
         .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(0);
+        assert_eq!(inspector.commands().len(), 4);
+        let call = inspector.move_call(3);
         assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.name
+        );
         assert_eq!(call.arguments.len(), 8);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
         inspector.expect_u64(&call.arguments[1], first_start);
         inspector.expect_u64(&call.arguments[2], period);
-        inspector.expect_option_u64(&call.arguments[3], deadline_offset);
-        inspector.expect_option_u64(&call.arguments[4], max_iterations);
-        inspector.expect_u64(&call.arguments[5], priority_fee_per_gas_unit);
+        assert_matches!(call.arguments[3], sui::types::Argument::Result(_));
+        assert_matches!(call.arguments[4], sui::types::Argument::Result(_));
+        assert_matches!(call.arguments[5], sui::types::Argument::Result(_));
         inspector.expect_shared_object(&call.arguments[6], &objects.leader_registry, false);
         inspector.expect_clock(&call.arguments[7]);
     }
@@ -2065,7 +2140,6 @@ mod tests {
             &dag,
             &scheduled_task,
             &leader_cap,
-            0,
             OccurrenceGenerator::Queue,
             &tools_gas,
         )
@@ -2274,7 +2348,6 @@ mod tests {
             &dag,
             &scheduled_task,
             &leader_cap,
-            0,
             OccurrenceGenerator::Queue,
             &tools_gas,
         )
@@ -2339,7 +2412,6 @@ mod tests {
             &dag,
             &scheduled_task,
             &leader_cap,
-            0,
             OccurrenceGenerator::Periodic,
             &tools_gas,
         )

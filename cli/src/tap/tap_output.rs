@@ -493,6 +493,9 @@ mod tests {
             refunded,
             final_state: None,
             locked_vertices: vec![],
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            effective_priority_fee: 200,
         }
     }
 

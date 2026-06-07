@@ -43,70 +43,65 @@ pub(crate) struct ScheduleDeadlineOptions {
     schedule_deadline_offset_ms: Option<u64>,
 }
 
+#[derive(Args)]
+pub(crate) struct CreateTaskCommand {
+    /// DAG object ID providing the execution definition.
+    #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
+    dag_id: sui::types::Address,
+    /// Entry group to invoke when executing the DAG.
+    #[arg(
+        long = "entry-group",
+        short = 'e',
+        default_value = DEFAULT_ENTRY_GROUP,
+        value_name = "NAME",
+    )]
+    entry_group: String,
+    /// Initial input JSON for the DAG execution.
+    #[arg(
+        long = "input-json",
+        short = 'i',
+        value_parser = ValueParser::from(parse_json_string),
+        value_name = "JSON",
+    )]
+    input_json: Option<serde_json::Value>,
+    /// Which input json keys should be stored remotely.
+    #[arg(
+        long = "remote",
+        short = 'r',
+        help = "Which input json keys should be stored remotely. Provide a comma-separated list of {vertex}.{port} values. By default, all fields are stored inline.",
+        value_delimiter = ',',
+        value_name = "VERTEX.PORT"
+    )]
+    remote: Vec<String>,
+    /// Metadata entries to attach to the task as key=value pairs.
+    #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
+    metadata: Vec<String>,
+    /// Optional priority fee excess quote for DAG executions launched by the task.
+    #[arg(long = "execution-priority-fee-excess-quote", value_name = "AMOUNT")]
+    execution_priority_fee_excess_quote: Option<u64>,
+    #[command(flatten)]
+    schedule_start: ScheduleStartOptions,
+    #[command(flatten)]
+    schedule_deadline: ScheduleDeadlineOptions,
+    /// Optional priority fee excess quote for the initial occurrence.
+    #[arg(long = "schedule-priority-fee-excess-quote", value_name = "AMOUNT")]
+    schedule_priority_fee_excess_quote: Option<u64>,
+    /// Generator responsible for producing future occurrences for this task.
+    #[arg(
+        long = "generator",
+        value_enum,
+        default_value_t = TaskGeneratorArg::Queue,
+        value_name = "KIND"
+    )]
+    generator: TaskGeneratorArg,
+    #[command(flatten)]
+    gas: GasArgs,
+}
+
 #[derive(Subcommand)]
 pub(crate) enum TaskCommand {
     #[command(about = "Create a new scheduler task")]
-    Create {
-        /// DAG object ID providing the execution definition.
-        #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
-        dag_id: sui::types::Address,
-        /// Entry group to invoke when executing the DAG.
-        #[arg(
-            long = "entry-group",
-            short = 'e',
-            default_value = DEFAULT_ENTRY_GROUP,
-            value_name = "NAME",
-        )]
-        entry_group: String,
-        /// Initial input JSON for the DAG execution.
-        #[arg(
-            long = "input-json",
-            short = 'i',
-            value_parser = ValueParser::from(parse_json_string),
-            value_name = "JSON",
-        )]
-        input_json: Option<serde_json::Value>,
-        /// Which input json keys should be stored remotely.
-        #[arg(
-            long = "remote",
-            short = 'r',
-            help = "Which input json keys should be stored remotely. Provide a comma-separated list of {vertex}.{port} values. By default, all fields are stored inline.",
-            value_delimiter = ',',
-            value_name = "VERTEX.PORT"
-        )]
-        remote: Vec<String>,
-        /// Metadata entries to attach to the task as key=value pairs.
-        #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
-        metadata: Vec<String>,
-        /// Priority fee per gas unit for DAG executions launched by the task.
-        #[arg(
-            long = "execution-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        execution_priority_fee_per_gas_unit: u64,
-        #[command(flatten)]
-        schedule_start: ScheduleStartOptions,
-        #[command(flatten)]
-        schedule_deadline: ScheduleDeadlineOptions,
-        /// Priority fee per gas unit for the initial occurrence.
-        #[arg(
-            long = "schedule-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        schedule_priority_fee_per_gas_unit: u64,
-        /// Generator responsible for producing future occurrences for this task.
-        #[arg(
-            long = "generator",
-            value_enum,
-            default_value_t = TaskGeneratorArg::Queue,
-            value_name = "KIND"
-        )]
-        generator: TaskGeneratorArg,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
+    Create(Box<CreateTaskCommand>),
     #[command(about = "Inspect a scheduler task")]
     Inspect {
         /// Task object ID to inspect.
@@ -157,19 +152,20 @@ pub(crate) enum TaskCommand {
 
 pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        TaskCommand::Create {
-            dag_id,
-            entry_group,
-            input_json,
-            remote,
-            metadata,
-            execution_priority_fee_per_gas_unit,
-            schedule_start,
-            schedule_deadline,
-            schedule_priority_fee_per_gas_unit,
-            generator,
-            gas,
-        } => {
+        TaskCommand::Create(command) => {
+            let CreateTaskCommand {
+                dag_id,
+                entry_group,
+                input_json,
+                remote,
+                metadata,
+                execution_priority_fee_excess_quote,
+                schedule_start,
+                schedule_deadline,
+                schedule_priority_fee_excess_quote,
+                generator,
+                gas,
+            } = *command;
             let ScheduleStartOptions {
                 schedule_start_ms,
                 schedule_start_offset_ms,
@@ -184,11 +180,11 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 input_json,
                 remote,
                 metadata,
-                execution_priority_fee_per_gas_unit,
+                execution_priority_fee_excess_quote,
                 schedule_start_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_excess_quote,
                 generator.into(),
                 gas,
             )

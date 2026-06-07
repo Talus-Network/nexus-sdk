@@ -1012,6 +1012,8 @@ impl LeaderCap {
 pub struct Gas;
 
 const GAS_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("gas");
+const PRIORITY_FEE_VAULT_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("priority_fee_vault");
 
 impl Gas {
     /// Derive a `ToolGas` object while setting the initial invocation price.
@@ -1062,6 +1064,13 @@ impl Gas {
     pub const OVER_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("OverGas"),
+    };
+    /// PriorityFeeVault type for lookups.
+    ///
+    /// `nexus_workflow::priority_fee_vault::PriorityFeeVault`
+    pub const PRIORITY_FEE_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRIORITY_FEE_VAULT_MODULE,
+        name: sui::types::Identifier::from_static("PriorityFeeVault"),
     };
     /// Refund payment for a vertex in a tool's context.
     ///
@@ -1118,6 +1127,20 @@ impl Gas {
     pub const SNAPSHOT_DAG_TOOL_COSTS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_MODULE,
         name: sui::types::Identifier::from_static("snapshot_dag_tool_costs"),
+    };
+}
+
+// == `nexus_workflow::priority_fee_vault` ==
+
+pub struct PriorityFeeVault;
+
+impl PriorityFeeVault {
+    /// Withdraw a verified leader's claimable priority fees.
+    ///
+    /// `nexus_workflow::priority_fee_vault::withdraw_priority_fee`
+    pub const WITHDRAW_PRIORITY_FEE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: PRIORITY_FEE_VAULT_MODULE,
+        name: sui::types::Identifier::from_static("withdraw_priority_fee"),
     };
 }
 

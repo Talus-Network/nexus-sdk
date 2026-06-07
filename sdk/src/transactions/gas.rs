@@ -205,6 +205,77 @@ pub fn settle_payment_state_for_vertex(
     )
 }
 
+/// PTB template to finalize an invoker-funded TAP payment.
+pub fn accomplish_tap_execution_payment(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    execution: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name,
+            vec![],
+        ),
+        vec![execution],
+    )
+}
+
+/// PTB template to accomplish an agent-vault-funded TAP payment.
+pub fn accomplish_tap_execution_payment_from_agent_vault(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    agent: sui::types::Argument,
+    execution: sui::types::Argument,
+) -> sui::types::Argument {
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
+            vec![],
+        ),
+        vec![agent, execution],
+    )
+}
+
+/// PTB template to withdraw a verified leader's claimable priority fee.
+pub fn withdraw_priority_fee(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    priority_fee_vault: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    amount: u64,
+) -> anyhow::Result<sui::types::Argument> {
+    let priority_fee_vault = tx.input(sui::tx::Input::shared(
+        *priority_fee_vault.object_id(),
+        priority_fee_vault.version(),
+        true,
+    ));
+    let leader_registry = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+    let leader_cap = tx.input(sui::tx::Input::shared(
+        *leader_cap.object_id(),
+        leader_cap.version(),
+        false,
+    ));
+    let amount = tx.input(pure_arg(&amount)?);
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::PriorityFeeVault::WITHDRAW_PRIORITY_FEE.module,
+            workflow::PriorityFeeVault::WITHDRAW_PRIORITY_FEE.name,
+            vec![],
+        ),
+        vec![priority_fee_vault, leader_registry, leader_cap, amount],
+    ))
+}
+
 /// PTB template to refund payment settlement for a vertex.
 #[allow(clippy::too_many_arguments)]
 pub fn refund_payment_state_for_vertex(
@@ -586,6 +657,109 @@ mod tests {
     }
 
     #[test]
+    fn test_accomplish_tap_execution_payment() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        accomplish_tap_execution_payment(&mut tx, &objects, sui::types::Argument::Input(0));
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction {
+                commands,
+                inputs: _,
+            },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to accomplish TAP payment");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name
+        );
+        assert_eq!(call.arguments.len(), 1);
+    }
+
+    #[test]
+    fn test_accomplish_tap_execution_payment_from_agent_vault() {
+        let objects = sui_mocks::mock_nexus_objects();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        accomplish_tap_execution_payment_from_agent_vault(
+            &mut tx,
+            &objects,
+            sui::types::Argument::Input(0),
+            sui::types::Argument::Input(1),
+        );
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, .. },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to accomplish agent-vault TAP payment");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name
+        );
+        assert_eq!(call.arguments.len(), 2);
+    }
+
+    #[test]
+    fn test_withdraw_priority_fee() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let priority_fee_vault = sui_mocks::mock_sui_object_ref();
+        let leader_cap = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        withdraw_priority_fee(&mut tx, &objects, &priority_fee_vault, &leader_cap, 123).unwrap();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, inputs },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to withdraw priority fee");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::PriorityFeeVault::WITHDRAW_PRIORITY_FEE.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::PriorityFeeVault::WITHDRAW_PRIORITY_FEE.name
+        );
+        assert_eq!(call.arguments.len(), 4);
+        assert_shared_object(&inputs, &call.arguments[0], &priority_fee_vault, true);
+        assert_shared_object(&inputs, &call.arguments[1], &objects.leader_registry, false);
+        assert_shared_object(&inputs, &call.arguments[2], &leader_cap, false);
+        assert_pure_u64(&inputs, &call.arguments[3], 123);
+    }
+
+    #[test]
     fn test_refund_payment_state_for_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
 
@@ -738,5 +912,50 @@ mod tests {
             call.function,
             workflow::GasExtension::BUY_LIMITED_INVOCATIONS_GAS_TICKET.name
         );
+    }
+
+    fn input<'a>(
+        inputs: &'a [sui::types::Input],
+        argument: &sui::types::Argument,
+    ) -> &'a sui::types::Input {
+        let sui::types::Argument::Input(index) = argument else {
+            panic!("expected input argument, got {argument:?}");
+        };
+
+        inputs
+            .get(*index as usize)
+            .unwrap_or_else(|| panic!("missing input at index {index}"))
+    }
+
+    fn assert_shared_object(
+        inputs: &[sui::types::Input],
+        argument: &sui::types::Argument,
+        expected: &sui::types::ObjectReference,
+        expected_mutable: bool,
+    ) {
+        let sui::types::Input::Shared {
+            object_id,
+            initial_shared_version,
+            mutable,
+        } = input(inputs, argument)
+        else {
+            panic!("expected shared input, got {:?}", input(inputs, argument));
+        };
+
+        assert_eq!(object_id, expected.object_id());
+        assert_eq!(*initial_shared_version, expected.version());
+        assert_eq!(*mutable, expected_mutable);
+    }
+
+    fn assert_pure_u64(
+        inputs: &[sui::types::Input],
+        argument: &sui::types::Argument,
+        expected: u64,
+    ) {
+        let sui::types::Input::Pure { value } = input(inputs, argument) else {
+            panic!("expected pure input, got {:?}", input(inputs, argument));
+        };
+
+        assert_eq!(bcs::from_bytes::<u64>(value).unwrap(), expected);
     }
 }

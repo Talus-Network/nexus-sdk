@@ -101,9 +101,34 @@ pub struct AgentDagExecuteOptions {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
+    pub payment_total_budget: Option<u64>,
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
+}
+
+fn resolve_payment_total_budget(
+    payment_max_budget: u64,
+    payment_total_budget: Option<u64>,
+    priority_fee_excess_quote: Option<u64>,
+) -> anyhow::Result<u64> {
+    let effective_priority_fee_quote =
+        crate::types::effective_priority_fee_quote(priority_fee_excess_quote)?;
+    let priority_fee =
+        crate::types::priority_fee_for_gas(payment_max_budget, effective_priority_fee_quote)?;
+    let minimum_total = payment_max_budget
+        .checked_add(priority_fee)
+        .ok_or_else(|| anyhow!("payment total budget overflows u64"))?;
+    if let Some(total) = payment_total_budget {
+        if total < minimum_total {
+            anyhow::bail!(
+                "payment total budget {total} is below required base-plus-priority escrow {minimum_total}"
+            );
+        }
+        Ok(total)
+    } else {
+        Ok(minimum_total)
+    }
 }
 
 fn resolve_default_agent_dag_executor(
@@ -553,7 +578,7 @@ impl WorkflowActions {
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
-    /// `priority_fee_per_gas_unit` is the per-transaction priority fee to pass
+    /// `priority_fee_excess_quote` is the optional priority fee percentage to pass
     /// down to the DAG execution.
     ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
@@ -561,7 +586,7 @@ impl WorkflowActions {
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, PortsData>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
     ) -> Result<ExecuteResult, NexusError> {
@@ -569,7 +594,7 @@ impl WorkflowActions {
         self.execute_default_agent_dag(
             dag_object_id,
             entry_data,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             entry_group,
             storage_conf,
             AgentDagExecuteOptions {
@@ -578,6 +603,7 @@ impl WorkflowActions {
                 payment_coin: None,
                 payment_coin_balance: None,
                 payment_max_budget: self.client.gas.get_budget(),
+                payment_total_budget: None,
                 payment_refund_mode: 0,
                 authorization_plan_commitment: None,
                 authorization_plan: Vec::new(),
@@ -593,7 +619,7 @@ impl WorkflowActions {
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, PortsData>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         options: AgentDagExecuteOptions,
@@ -630,6 +656,12 @@ impl WorkflowActions {
             .map_err(NexusError::Parsing)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let payment_total_budget = resolve_payment_total_budget(
+            options.payment_max_budget,
+            options.payment_total_budget,
+            priority_fee_excess_quote,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         validate_standard_tap_payment_options(
             default_executor.target.agent_id,
             &default_executor.endpoint.requirements.payment_policy,
@@ -640,10 +672,10 @@ impl WorkflowActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         if let Some(balance) = options.payment_coin_balance {
-            if balance < options.payment_max_budget {
+            if balance < payment_total_budget {
                 return Err(NexusError::TransactionBuilding(anyhow!(
                     "TAP execution payment coin balance {balance} is below requested budget {}",
-                    options.payment_max_budget
+                    payment_total_budget
                 )));
             }
         }
@@ -672,6 +704,7 @@ impl WorkflowActions {
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
+            payment_total_budget: Some(payment_total_budget),
             payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
@@ -681,7 +714,7 @@ impl WorkflowActions {
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
             &agent_execution,
@@ -786,7 +819,7 @@ impl WorkflowActions {
         agent_id: AgentId,
         skill_id: SkillId,
         entry_data: HashMap<String, PortsData>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         options: AgentDagExecuteOptions,
@@ -838,6 +871,12 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let payment_total_budget = resolve_payment_total_budget(
+            options.payment_max_budget,
+            options.payment_total_budget,
+            priority_fee_excess_quote,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
         validate_authorization_plan(
             &target.endpoint.requirements,
@@ -864,10 +903,10 @@ impl WorkflowActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         if let Some(balance) = options.payment_coin_balance {
-            if balance < options.payment_max_budget {
+            if balance < payment_total_budget {
                 return Err(NexusError::TransactionBuilding(anyhow!(
                     "TAP execution payment coin balance {balance} is below requested budget {}",
-                    options.payment_max_budget
+                    payment_total_budget
                 )));
             }
         }
@@ -878,6 +917,7 @@ impl WorkflowActions {
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
+            payment_total_budget: Some(payment_total_budget),
             payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
@@ -888,7 +928,7 @@ impl WorkflowActions {
             nexus_objects,
             &dag.object_ref(),
             &agent_object.object_ref(),
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
             &agent_execution,
@@ -1700,14 +1740,12 @@ mod tests {
             ])),
         )]);
 
-        let price_priority_fee = 0_u64;
-
         let result = client
             .workflow()
             .execute(
                 *dag_ref.object_id(),
                 entry_data,
-                price_priority_fee,
+                None,
                 None,
                 &StorageConf::default(),
             )
@@ -1893,11 +1931,12 @@ mod tests {
                 agent_id,
                 skill_id,
                 entry_data,
-                0,
+                None,
                 Some("custom"),
                 &StorageConf::default(),
                 AgentDagExecuteOptions {
                     payment_max_budget: 100,
+                    payment_total_budget: None,
                     ..Default::default()
                 },
             )

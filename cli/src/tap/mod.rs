@@ -291,12 +291,11 @@ pub(crate) enum TapCommand {
         )]
         remote: Vec<String>,
         #[arg(
-            long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit for the DAG execution. Defaults to 0 when omitted.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
+            long = "priority-fee-excess-quote",
+            help = "Optional priority fee excess quote for the DAG execution.",
+            value_name = "AMOUNT"
         )]
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         #[arg(
             long = "payment-source-hex",
             help = "Payment source bytes as hex.",
@@ -785,7 +784,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             entry_group,
             input_json,
             remote,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
             payment_source_hex,
             payment_max_budget,
             payment_refund_mode,
@@ -798,7 +797,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 entry_group,
                 input_json,
                 remote,
-                priority_fee_per_gas_unit,
+                priority_fee_excess_quote,
                 payment_source_hex,
                 payment_max_budget,
                 payment_refund_mode,
@@ -1217,7 +1216,7 @@ mod tests {
             entry_group: DEFAULT_ENTRY_GROUP.to_string(),
             input_json: serde_json::json!({}),
             remote: Vec::new(),
-            priority_fee_per_gas_unit: 0,
+            priority_fee_excess_quote: None,
             payment_source_hex: "0xinvalid".to_string(),
             payment_max_budget: 0,
             payment_refund_mode: 0,

@@ -14,6 +14,7 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{
             deserialize_sui_u64,
+            effective_priority_fee_quote as validate_effective_priority_fee,
             AgentExecutionConfig,
             DagExecutionConfig,
             DataStorage,
@@ -73,7 +74,7 @@ pub struct CreateTaskParams {
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, DataStorage>>,
     pub metadata: Vec<(String, String)>,
-    pub execution_priority_fee_per_gas_unit: u64,
+    pub execution_priority_fee_excess_quote: Option<u64>,
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
 }
@@ -98,7 +99,7 @@ pub struct OccurrenceRequest {
     pub deadline_ms: Option<u64>,
     pub start_offset_ms: Option<u64>,
     pub deadline_offset_ms: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: Option<u64>,
 }
 
 impl OccurrenceRequest {
@@ -107,7 +108,7 @@ impl OccurrenceRequest {
         deadline_ms: Option<u64>,
         start_offset_ms: Option<u64>,
         deadline_offset_ms: Option<u64>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_excess_quote: Option<u64>,
         require_start: bool,
     ) -> Result<Self, NexusError> {
         validate_schedule_options(
@@ -117,13 +118,14 @@ impl OccurrenceRequest {
             deadline_offset_ms,
             require_start,
         )?;
+        validate_priority_fee_excess_quote(priority_fee_excess_quote)?;
 
         Ok(Self {
             start_ms,
             deadline_ms,
             start_offset_ms,
             deadline_offset_ms,
-            priority_fee_per_gas_unit,
+            priority_fee_excess_quote,
         })
     }
 }
@@ -142,7 +144,7 @@ pub struct PeriodicScheduleConfig {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_excess_quote: Option<u64>,
 }
 
 pub struct PeriodicScheduleResult {
@@ -216,10 +218,11 @@ impl SchedulerActions {
             entry_group,
             input_data,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_excess_quote,
             initial_schedule: initial_schedule_request,
             generator,
         } = params;
+        validate_priority_fee_excess_quote(execution_priority_fee_excess_quote)?;
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
@@ -236,7 +239,7 @@ impl SchedulerActions {
             &mut tx,
             objects,
             dag_id,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_excess_quote,
             entry_group.as_str(),
             &input_data,
         )
@@ -441,6 +444,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         config: PeriodicScheduleConfig,
     ) -> Result<PeriodicScheduleResult, NexusError> {
+        validate_priority_fee_excess_quote(config.priority_fee_excess_quote)?;
         let address = self.client.signer.get_active_address();
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
@@ -456,7 +460,7 @@ impl SchedulerActions {
                 period_ms: config.period_ms,
                 deadline_offset_ms: config.deadline_offset_ms,
                 max_iterations: config.max_iterations,
-                priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
+                priority_fee_excess_quote: config.priority_fee_excess_quote,
             },
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -544,6 +548,7 @@ impl SchedulerActions {
         request: OccurrenceRequest,
         address: sui::types::Address,
     ) -> Result<ScheduleExecutionResult, NexusError> {
+        validate_priority_fee_excess_quote(request.priority_fee_excess_quote)?;
         let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task_ref = task.object_ref();
@@ -559,7 +564,7 @@ impl SchedulerActions {
                 &task_ref,
                 start_ms,
                 deadline_offset,
-                request.priority_fee_per_gas_unit,
+                request.priority_fee_excess_quote,
             )
         } else {
             scheduler_tx::add_occurrence_relative_for_task(
@@ -568,7 +573,7 @@ impl SchedulerActions {
                 &task_ref,
                 request.start_offset_ms.expect("validated start offset"),
                 request.deadline_offset_ms,
-                request.priority_fee_per_gas_unit,
+                request.priority_fee_excess_quote,
             )
         }
         .map_err(NexusError::TransactionBuilding)?;
@@ -612,6 +617,12 @@ impl SchedulerActions {
             .await
             .map_err(NexusError::Rpc)
     }
+}
+
+fn validate_priority_fee_excess_quote(value: Option<u64>) -> Result<(), NexusError> {
+    validate_effective_priority_fee(value)
+        .map(|_| ())
+        .map_err(|error| NexusError::Configuration(error.to_string()))
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -727,8 +738,20 @@ fn extract_scheduled_agent_execution_config(
     objects: &NexusObjects,
 ) -> anyhow::Result<ScheduledAgentExecutionConfig> {
     let configs = configs.into_iter().collect::<Vec<_>>();
-    let default = extract_begin_default_agent_execution_config(configs.iter().cloned(), objects);
-    if let Ok(config) = default {
+
+    let default_config =
+        workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
+    let default_symbol = workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS
+        .qualified_name(objects.workflow_type_origin_pkg_id());
+    if let Some(value) = transition_config_value(&configs, &default_config, &default_symbol) {
+        let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(
+            value.clone(),
+        )
+        .map_err(|e| {
+            anyhow!(
+                "Could not decode execution policy config for BeginDefaultAgentExecutionWitness: {e}"
+            )
+        })?;
         return Ok(ScheduledAgentExecutionConfig::Default(config));
     }
 
@@ -737,23 +760,43 @@ fn extract_scheduled_agent_execution_config(
     let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
-    let mut candidates = configs.into_iter().filter(|(key, _)| {
-        key.config.matches_qualified_name(&expected_config)
+    let Some(value) = transition_config_value(&configs, &expected_config, &expected_symbol) else {
+        let observed = configs
+            .iter()
+            .map(|(key, _)| {
+                format!(
+                    "config={}, state={:?}, symbol={:?}",
+                    key.config, key.transition.state, key.transition.symbol
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!(
+            "Missing execution policy config for BeginDefaultAgentExecutionWitness or BeginAgentExecutionWitness; observed configs: [{observed}]"
+        );
+    };
+
+    let MoveFields(config): MoveFields<AgentExecutionConfig> =
+        serde_json::from_value(value.clone()).map_err(|e| {
+            anyhow!("Could not decode execution policy config for BeginAgentExecutionWitness: {e}")
+        })?;
+    Ok(ScheduledAgentExecutionConfig::Registered(config))
+}
+
+fn transition_config_value<'a>(
+    configs: &'a [(TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)],
+    expected_config: &str,
+    expected_symbol: &str,
+) -> Option<&'a serde_json::Value> {
+    configs.iter().find_map(|(key, value)| {
+        (key.config.matches_qualified_name(expected_config)
             && key.transition.state.is_none()
             && key
                 .transition
                 .symbol
-                .matches_qualified_name(&expected_symbol)
-    });
-
-    let Some((_key, value)) = candidates.next() else {
-        bail!(
-            "Missing execution policy config for BeginDefaultAgentExecutionWitness or BeginAgentExecutionWitness"
-        );
-    };
-
-    let MoveFields(config): MoveFields<AgentExecutionConfig> = serde_json::from_value(value)?;
-    Ok(ScheduledAgentExecutionConfig::Registered(config))
+                .matches_qualified_name(expected_symbol))
+        .then_some(value)
+    })
 }
 
 fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
@@ -875,6 +918,8 @@ mod tests {
                 TransitionConfigKey,
                 TransitionKey,
                 TypeName,
+                DEFAULT_PRIORITY_FEE,
+                MAX_PRIORITY_FEE,
             },
         },
         rand::thread_rng,
@@ -1197,7 +1242,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![("team".into(), "sdk".into())],
-            execution_priority_fee_per_gas_unit: 1,
+            execution_priority_fee_excess_quote: Some(20),
             initial_schedule: None,
             generator: GeneratorKind::Queue,
         };
@@ -1301,7 +1346,7 @@ mod tests {
         .await;
 
         let initial_schedule =
-            OccurrenceRequest::new(Some(1_000), Some(2_000), None, None, 5, true)
+            OccurrenceRequest::new(Some(1_000), Some(2_000), None, None, Some(20), true)
                 .expect("valid request");
 
         let params = CreateTaskParams {
@@ -1309,7 +1354,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 5,
+            execution_priority_fee_excess_quote: Some(20),
             initial_schedule: Some(initial_schedule),
             generator: GeneratorKind::Queue,
         };
@@ -1503,7 +1548,7 @@ mod tests {
         .await;
 
         let request =
-            OccurrenceRequest::new(Some(2_000), Some(2_500), None, None, 7, true).unwrap();
+            OccurrenceRequest::new(Some(2_000), Some(2_500), None, None, Some(20), true).unwrap();
 
         let result = nexus_client
             .scheduler()
@@ -1574,8 +1619,8 @@ mod tests {
         )
         .await;
 
-        let request =
-            OccurrenceRequest::new(None, None, Some(500), Some(900), 4, true).expect("valid");
+        let request = OccurrenceRequest::new(None, None, Some(500), Some(900), Some(20), true)
+            .expect("valid");
 
         let result = nexus_client
             .scheduler()
@@ -1640,7 +1685,7 @@ mod tests {
             period_ms: 5_000,
             deadline_offset_ms: Some(1_000),
             max_iterations: Some(5),
-            priority_fee_per_gas_unit: 20,
+            priority_fee_excess_quote: Some(20),
         };
 
         let result = nexus_client
@@ -1710,16 +1755,41 @@ mod tests {
 
     #[test]
     fn test_occurrence_request_validation_rules() {
-        assert!(OccurrenceRequest::new(Some(10), Some(20), None, None, 1, true).is_ok());
-        assert!(OccurrenceRequest::new(None, None, Some(5), Some(15), 1, true).is_ok());
+        assert_eq!(
+            validate_effective_priority_fee(None).expect("missing priority uses default"),
+            DEFAULT_PRIORITY_FEE
+        );
+        assert_eq!(
+            validate_effective_priority_fee(Some(10)).expect("minimum priority is valid"),
+            10
+        );
+        assert_eq!(
+            validate_effective_priority_fee(Some(MAX_PRIORITY_FEE))
+                .expect("maximum priority is valid"),
+            MAX_PRIORITY_FEE
+        );
 
-        let err = OccurrenceRequest::new(None, None, None, None, 1, true).unwrap_err();
+        assert!(OccurrenceRequest::new(Some(10), Some(20), None, None, Some(20), true).is_ok());
+        assert!(OccurrenceRequest::new(None, None, Some(5), Some(15), Some(20), true).is_ok());
+        assert!(OccurrenceRequest::new(Some(10), Some(20), None, None, Some(9), true).is_err());
+        assert!(OccurrenceRequest::new(
+            Some(10),
+            Some(20),
+            None,
+            None,
+            Some(MAX_PRIORITY_FEE + 1),
+            true
+        )
+        .is_err());
+
+        let err = OccurrenceRequest::new(None, None, None, None, Some(20), true).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Provide either")));
 
-        let err = OccurrenceRequest::new(Some(50), Some(40), None, None, 1, true).unwrap_err();
+        let err =
+            OccurrenceRequest::new(Some(50), Some(40), None, None, Some(20), true).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Deadline")));
 
-        let err = OccurrenceRequest::new(None, None, None, Some(10), 1, false).unwrap_err();
+        let err = OccurrenceRequest::new(None, None, None, Some(10), Some(20), false).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Deadline flags")));
     }
 

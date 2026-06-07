@@ -25,11 +25,11 @@ pub(crate) async fn create_task(
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
     metadata: Vec<String>,
-    execution_priority_fee_per_gas_unit: u64,
+    execution_priority_fee_excess_quote: Option<u64>,
     schedule_start_ms: Option<u64>,
     schedule_start_offset_ms: Option<u64>,
     schedule_deadline_offset_ms: Option<u64>,
-    schedule_priority_fee_per_gas_unit: u64,
+    schedule_priority_fee_excess_quote: Option<u64>,
     generator: GeneratorKind,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
@@ -81,7 +81,7 @@ pub(crate) async fn create_task(
                 None,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_excess_quote,
                 true,
             )
             .map_err(NexusCliError::Nexus)?,
@@ -105,7 +105,7 @@ pub(crate) async fn create_task(
             entry_group: entry_group.clone(),
             input_data,
             metadata: metadata_pairs,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_excess_quote,
             initial_schedule,
             generator,
         })
