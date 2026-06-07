@@ -12,7 +12,7 @@ use {
 pub struct LeaderRegistry {
     id: sui::types::Address,
     unbonding_duration_ms: u64,
-    min_stake_mist: u64,
+    min_stake_us: u64,
     leaders: MoveVecSet<sui::types::Address>,
     records: MoveTable<sui::types::Address, LeaderRecord>,
     capabilities: LeaderCapabilities,
@@ -45,7 +45,7 @@ impl LeaderRegistry {
         Self {
             id,
             unbonding_duration_ms: 0,
-            min_stake_mist: 0,
+            min_stake_us: 0,
             leaders: MoveVecSet { contents: vec![] },
             records: MoveTable::new(sui::types::Address::ZERO, 0),
             capabilities: LeaderCapabilities {

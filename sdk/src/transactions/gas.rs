@@ -276,6 +276,78 @@ pub fn withdraw_priority_fee(
     ))
 }
 
+/// PTB template to configure the `$US` priority fee vault exchange rate and TAP agent.
+pub fn configure_priority_fee_vault(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    exchange_rate: u64,
+    operator: sui::types::Address,
+) -> anyhow::Result<sui::types::Argument> {
+    let priority_fee_vault = tx.input(sui::tx::Input::shared(
+        *objects.priority_fee_vault.object_id(),
+        objects.priority_fee_vault.version(),
+        true,
+    ));
+    let owner_cap = tx.input(sui::tx::Input::owned(
+        *objects.priority_fee_vault_owner_cap.object_id(),
+        objects.priority_fee_vault_owner_cap.version(),
+        *objects.priority_fee_vault_owner_cap.digest(),
+    ));
+    let exchange_rate = tx.input(pure_arg(&exchange_rate)?);
+    let operator = tx.input(pure_arg(&operator)?);
+    let agent_registry = tx.input(sui::tx::Input::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        true,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::PriorityFeeVault::CONFIGURE.module,
+            workflow::PriorityFeeVault::CONFIGURE.name,
+            vec![],
+        ),
+        vec![
+            priority_fee_vault,
+            owner_cap,
+            exchange_rate,
+            operator,
+            agent_registry,
+        ],
+    ))
+}
+
+/// PTB template to swap an owned `Coin<US>` for vault SUI.
+pub fn swap_us_for_sui(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    us_coin: &sui::types::ObjectReference,
+    min_sui_out: u64,
+) -> anyhow::Result<sui::types::Argument> {
+    let priority_fee_vault = tx.input(sui::tx::Input::shared(
+        *objects.priority_fee_vault.object_id(),
+        objects.priority_fee_vault.version(),
+        true,
+    ));
+    let us_coin = tx.input(sui::tx::Input::owned(
+        *us_coin.object_id(),
+        us_coin.version(),
+        *us_coin.digest(),
+    ));
+    let min_sui_out = tx.input(pure_arg(&min_sui_out)?);
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::PriorityFeeVault::SWAP_US_FOR_SUI.module,
+            workflow::PriorityFeeVault::SWAP_US_FOR_SUI.name,
+            vec![],
+        ),
+        vec![priority_fee_vault, us_coin, min_sui_out],
+    ))
+}
+
 /// PTB template to refund payment settlement for a vertex.
 #[allow(clippy::too_many_arguments)]
 pub fn refund_payment_state_for_vertex(
@@ -760,6 +832,84 @@ mod tests {
     }
 
     #[test]
+    fn test_configure_priority_fee_vault() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let operator = sui::types::Address::from_static("0xcafe");
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        configure_priority_fee_vault(&mut tx, &objects, 77, operator).unwrap();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, inputs },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to configure priority fee vault");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.module, workflow::PriorityFeeVault::CONFIGURE.module);
+        assert_eq!(call.function, workflow::PriorityFeeVault::CONFIGURE.name);
+        assert_eq!(call.arguments.len(), 5);
+        assert_shared_object(
+            &inputs,
+            &call.arguments[0],
+            &objects.priority_fee_vault,
+            true,
+        );
+        assert_owned_object(
+            &inputs,
+            &call.arguments[1],
+            &objects.priority_fee_vault_owner_cap,
+        );
+        assert_pure_u64(&inputs, &call.arguments[2], 77);
+        assert_pure_address(&inputs, &call.arguments[3], operator);
+        assert_shared_object(&inputs, &call.arguments[4], &objects.agent_registry, true);
+    }
+
+    #[test]
+    fn test_swap_us_for_sui() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let us_coin = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        swap_us_for_sui(&mut tx, &objects, &us_coin, 42).unwrap();
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, inputs },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to swap US for SUI");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::PriorityFeeVault::SWAP_US_FOR_SUI.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::PriorityFeeVault::SWAP_US_FOR_SUI.name
+        );
+        assert_eq!(call.arguments.len(), 3);
+        assert_shared_object(
+            &inputs,
+            &call.arguments[0],
+            &objects.priority_fee_vault,
+            true,
+        );
+        assert_owned_object(&inputs, &call.arguments[1], &us_coin);
+        assert_pure_u64(&inputs, &call.arguments[2], 42);
+    }
+
+    #[test]
     fn test_refund_payment_state_for_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
 
@@ -947,6 +1097,20 @@ mod tests {
         assert_eq!(*mutable, expected_mutable);
     }
 
+    fn assert_owned_object(
+        inputs: &[sui::types::Input],
+        argument: &sui::types::Argument,
+        expected: &sui::types::ObjectReference,
+    ) {
+        let sui::types::Input::ImmutableOrOwned(object_ref) = input(inputs, argument) else {
+            panic!("expected owned input, got {:?}", input(inputs, argument));
+        };
+
+        assert_eq!(object_ref.object_id(), expected.object_id());
+        assert_eq!(object_ref.version(), expected.version());
+        assert_eq!(object_ref.digest(), expected.digest());
+    }
+
     fn assert_pure_u64(
         inputs: &[sui::types::Input],
         argument: &sui::types::Argument,
@@ -957,5 +1121,20 @@ mod tests {
         };
 
         assert_eq!(bcs::from_bytes::<u64>(value).unwrap(), expected);
+    }
+
+    fn assert_pure_address(
+        inputs: &[sui::types::Input],
+        argument: &sui::types::Argument,
+        expected: sui::types::Address,
+    ) {
+        let sui::types::Input::Pure { value } = input(inputs, argument) else {
+            panic!("expected pure input, got {:?}", input(inputs, argument));
+        };
+
+        assert_eq!(
+            bcs::from_bytes::<sui::types::Address>(value).unwrap(),
+            expected
+        );
     }
 }

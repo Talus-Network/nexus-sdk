@@ -42,7 +42,7 @@ pub fn register_off_chain_for_self(
     // `timeout_ms: u64`
     let timeout_ms = tx.input(pure_arg(&(meta.timeout.as_millis() as u64))?);
 
-    // `pay_with: Coin<SUI>`
+    // `pay_with: Coin<talus::us::US>`
     let pay_with = tx.input(sui::tx::Input::owned(
         *collateral_coin.object_id(),
         collateral_coin.version(),
@@ -233,7 +233,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     // `tool_witness_id: ID`
     let tool_witness_id = sui_framework::Address::address_from_type(tx, tool_witness_id)?;
 
-    // `pay_with: Coin<SUI>`
+    // `pay_with: Coin<talus::us::US>`
     let pay_with = tx.input(sui::tx::Input::owned(
         *collateral_coin.object_id(),
         collateral_coin.version(),

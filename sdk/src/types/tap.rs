@@ -14,6 +14,10 @@ pub const DEFAULT_PRIORITY_FEE: u64 = 20;
 pub const MIN_PRIORITY_FEE: u64 = 10;
 pub const MAX_PRIORITY_FEE: u64 = 10000;
 
+fn default_priority_fee() -> u64 {
+    DEFAULT_PRIORITY_FEE
+}
+
 fn deserialize_tap_address_value<'de, D>(deserializer: D) -> Result<sui::types::Address, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -441,10 +445,6 @@ fn gas_budget_fits(
         .checked_add(reserve)
         .ok_or_else(|| anyhow::anyhow!("priority gas budget overflows u64"))?;
     Ok(required <= available_after_tool_fees)
-}
-
-fn default_priority_fee() -> u64 {
-    DEFAULT_PRIORITY_FEE
 }
 
 /// Source kind for standard TAP execution payment.

@@ -114,12 +114,21 @@ pub(crate) async fn fetch_coins_for_address(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
 ) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
+    fetch_coins_for_address_by_type(client, owner, sui::types::StructTag::gas_coin(), "coins").await
+}
+
+pub(crate) async fn fetch_coins_for_address_by_type(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    object_type: sui::types::StructTag,
+    _label: &str,
+) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
     let coins_handle = loading!("Fetching coins...");
 
     let request = sui::grpc::ListOwnedObjectsRequest::default()
         .with_owner(owner)
         .with_page_size(1000)
-        .with_object_type(sui::types::StructTag::gas_coin())
+        .with_object_type(object_type)
         .with_read_mask(sui::grpc::FieldMask::from_paths([
             "object_id",
             "version",
@@ -286,6 +295,42 @@ pub(crate) async fn fetch_coin_with_balance_excluding(
             }
 
             Ok(coins.swap_remove(by_order))
+        }
+    }
+}
+
+pub(crate) async fn fetch_coin_by_type(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
+    object_type: sui::types::StructTag,
+    label: &str,
+) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
+    let mut coins = fetch_coins_for_address_by_type(client, owner, object_type, label).await?;
+
+    if coins.is_empty() {
+        return Err(NexusCliError::Any(anyhow!(
+            "The wallet does not have enough {label} objects to submit the transaction"
+        )));
+    }
+
+    match by_address {
+        Some(id) => coins
+            .into_iter()
+            .find(|(coin, _)| *coin.object_id() == id)
+            .map(|(coin, _)| coin)
+            .ok_or_else(|| {
+                NexusCliError::Any(anyhow!("{label} object '{id}' not found in wallet"))
+            }),
+        None => {
+            if by_order >= coins.len() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "The wallet does not have enough {label} objects to select object #{by_order}"
+                )));
+            }
+
+            Ok(coins.swap_remove(by_order).0)
         }
     }
 }

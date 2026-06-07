@@ -32,7 +32,7 @@ pub(crate) enum OccurrenceCommand {
         start: OccurrenceStartOptions,
         #[command(flatten)]
         deadline: OccurrenceDeadlineOptions,
-        /// Optional priority fee excess quote applied to the occurrence.
+        /// Optional priority fee excess percentage quote applied to the occurrence.
         #[arg(long = "priority-fee-excess-quote", value_name = "AMOUNT")]
         priority_fee_excess_quote: Option<u64>,
         #[command(flatten)]

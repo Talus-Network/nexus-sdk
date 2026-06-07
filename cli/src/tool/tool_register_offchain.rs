@@ -85,7 +85,15 @@ async fn register_one_tool(
     let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
-    let collateral_coin = fetch_coin(grpc_client, owner, collateral_coin, 1).await?;
+    let collateral_coin = fetch_coin_by_type(
+        grpc_client,
+        owner,
+        collateral_coin,
+        0,
+        nexus_objects.us_token.coin_type_tag(),
+        "US collateral coin",
+    )
+    .await?;
 
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
@@ -285,7 +293,7 @@ pub(crate) async fn register_off_chain_tool(
 ) -> AnyResult<(), NexusCliError> {
     if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
         return Err(NexusCliError::Any(anyhow!(
-            "The coin used for collateral cannot be the same as the gas coin."
+            "The US collateral coin cannot be the same as the SUI gas coin."
         )));
     }
 

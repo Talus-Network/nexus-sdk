@@ -10,6 +10,7 @@ mod nexus_data;
 mod nexus_data_parser;
 mod nexus_objects;
 mod ports_data;
+mod priority_fee_vault;
 mod runtime_vertex;
 mod scheduler;
 mod secret;
@@ -33,8 +34,14 @@ pub use {
     move_json::*,
     network_auth::*,
     nexus_data::*,
-    nexus_objects::NexusObjects,
+    nexus_objects::{NexusObjects, UsTokenConfig},
     ports_data::PortsData,
+    priority_fee_vault::{
+        PriorityFeeAccount,
+        PriorityFeeSuiDrainQuote,
+        PriorityFeeVaultState,
+        PriorityFeeWithdrawalQuote,
+    },
     runtime_vertex::RuntimeVertex,
     scheduler::*,
     secret::Secret,

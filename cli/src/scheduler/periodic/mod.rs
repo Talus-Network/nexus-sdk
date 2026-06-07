@@ -22,7 +22,7 @@ pub(crate) enum PeriodicCommand {
         /// Maximum number of generated occurrences (None for infinite).
         #[arg(long = "max-iterations", value_name = "COUNT")]
         max_iterations: Option<u64>,
-        /// Optional priority fee excess quote associated with occurrences.
+        /// Optional priority fee excess percentage quote associated with occurrences.
         #[arg(long = "priority-fee-excess-quote", value_name = "AMOUNT")]
         priority_fee_excess_quote: Option<u64>,
         #[command(flatten)]
