@@ -284,9 +284,9 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus dag inspect-execution --dag-execution-id <OBJECT_ID> --execution-checkpoint <CHECKPOINT>`**
+**`nexus dag inspect-execution --dag-execution-id <OBJECT_ID>`**
 
-Inspects a DAG execution process based on the provided `DAGExecution` object ID and the Sui checkpoint at which the execution transaction was committed (returned by `nexus dag execute` / `nexus tap execute`). The command subscribes to the on-chain event stream starting at that checkpoint and emits each walk advance, end-state, terminal `_err_eval` record, and the final execution-finished event in human-readable form or as a JSON trace when `--json` is set.
+Inspects a DAG execution process from its `DAGExecution` object ID. The SDK derives the starting checkpoint by chasing `Owner::Shared(initial_shared_version)` → time-pinned `previous_transaction` → that transaction's `checkpoint`, so callers no longer have to track which checkpoint the execution was committed in. The command subscribes to the on-chain event stream starting at that checkpoint and emits each walk advance, end-state, terminal `_err_eval` record, and the final execution-finished event in human-readable form or as a JSON trace when `--json` is set.
 
 ---
 

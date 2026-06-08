@@ -347,6 +347,182 @@ fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
     assert_eq!(table_vec.size(), 5);
 }
 
+/// End-to-end check for [`Crawler::get_object_creation_checkpoint`].
+///
+/// Publishes the test contract (which creates a shared `Guy` object in its
+/// `init`), then submits three follow-up `bump_age` transactions against
+/// `Guy`. Each follow-up tx lands in a later checkpoint than the publish,
+/// so the LATEST `previous_transaction` on the shared object is guaranteed
+/// to differ from the creation tx digest. We then call
+/// `get_object_creation_checkpoint(guy_id)` and assert it returns the
+/// publish-tx's checkpoint — proving the helper walks
+/// `Owner::Shared(initial_shared_version) → version-pinned
+/// previous_transaction → checkpoint` rather than just reading the
+/// object's current `previous_transaction`.
+#[tokio::test]
+async fn test_object_crawler_get_object_creation_checkpoint() {
+    use nexus_sdk::{nexus::signer::Signer, test_utils::sui_mocks};
+
+    let test_utils::containers::SuiInstance {
+        rpc_port,
+        faucet_port,
+        container: _container,
+        ..
+    } = test_utils::containers::setup_sui_instance().await;
+
+    let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+    let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
+
+    let mut rng = rand::thread_rng();
+    let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+    let addr = pk.public_key().derive_address();
+
+    test_utils::faucet::request_tokens(&faucet_url, addr)
+        .await
+        .expect("Failed to request tokens from faucet.");
+
+    let gas_coins = test_utils::gas::fetch_gas_coins(&rpc_url, addr)
+        .await
+        .expect("Failed to fetch gas coins.");
+
+    let publish_response = test_utils::contracts::publish_move_package(
+        &pk,
+        &rpc_url,
+        "tests/move/object_crawler_test",
+        gas_coins.first().cloned().unwrap().0,
+    )
+    .await;
+
+    let creation_checkpoint = publish_response.checkpoint;
+    let pkg_id = publish_response
+        .objects
+        .iter()
+        .find_map(|object| match object.data() {
+            sui::types::ObjectData::Package(package) => Some(package.id),
+            _ => None,
+        })
+        .expect("Move package must be published");
+    let guy_id = publish_response
+        .objects
+        .iter()
+        .find_map(|object| {
+            let sui::types::ObjectType::Struct(object_type) = object.object_type() else {
+                return None;
+            };
+            (*object_type.name() == sui::types::Identifier::from_static("Guy"))
+                .then_some(object.object_id())
+        })
+        .expect("Guy object must be created");
+    let guy_id = sui::types::Address::from_str(&guy_id.to_string()).expect("Guy id parses");
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let grpc = sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
+        .expect("Could not create gRPC client");
+    let crawler = Crawler::new(Arc::new(Mutex::new(grpc.clone())));
+
+    // Read the freshly-published `Guy` to capture its `initial_shared_version`,
+    // which is needed to feed the shared input to subsequent PTBs and is the
+    // exact value the helper under test is supposed to derive internally.
+    let guy_metadata = crawler
+        .get_object_metadata(guy_id)
+        .await
+        .expect("Guy metadata after publish");
+    let initial_shared_version = match guy_metadata.owner {
+        sui::types::Owner::Shared(v) => v,
+        other => panic!("Guy must be a shared object after publish, got {other:?}"),
+    };
+    let initial_version_at_publish = guy_metadata.version;
+
+    // Bump `Guy` three times. Each call lands in a later checkpoint than the
+    // publish, so the most-recent `previous_transaction` on `guy_id` will be
+    // the third `bump_age` tx — exactly the value the helper must NOT return.
+    let mut gas_coin_ref = crawler
+        .get_object_metadata(*gas_coins.first().unwrap().0.object_id())
+        .await
+        .expect("gas coin metadata")
+        .object_ref();
+    let reference_gas_price = grpc
+        .clone()
+        .get_reference_gas_price()
+        .await
+        .expect("Failed to get reference gas price.");
+    let signer = Signer::new(
+        Arc::new(Mutex::new(grpc.clone())),
+        pk.clone(),
+        std::time::Duration::from_secs(30),
+        Arc::new(sui_mocks::mock_nexus_objects()),
+    );
+
+    let mut bump_checkpoints = Vec::new();
+    for _ in 0..3 {
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let guy_arg = tx.input(sui::tx::Input::shared(guy_id, initial_shared_version, true));
+        tx.move_call(
+            sui::tx::Function::new(
+                pkg_id,
+                sui::types::Identifier::from_static("main"),
+                sui::types::Identifier::from_static("bump_age"),
+                vec![],
+            ),
+            vec![guy_arg],
+        );
+        tx.set_sender(addr);
+        tx.set_gas_budget(1_000_000_000);
+        tx.set_gas_price(reference_gas_price);
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin_ref.object_id(),
+            gas_coin_ref.version(),
+            *gas_coin_ref.digest(),
+        )]);
+        let tx = tx.finish().expect("Failed to finish bump_age transaction.");
+        let signature = signer
+            .sign_tx(&tx)
+            .await
+            .expect("Failed to sign bump_age transaction.");
+        let executed = signer
+            .execute_tx(tx, signature, &mut gas_coin_ref)
+            .await
+            .expect("Failed to execute bump_age transaction.");
+        bump_checkpoints.push(executed.checkpoint);
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // The helper under test: should return the publish-tx's checkpoint, not
+    // any of the bump_age checkpoints we just produced.
+    let resolved = crawler
+        .get_object_creation_checkpoint(guy_id)
+        .await
+        .expect("creation checkpoint resolves");
+
+    assert_eq!(
+        resolved, creation_checkpoint,
+        "expected creation checkpoint to match the publish tx's checkpoint"
+    );
+    for bump_checkpoint in &bump_checkpoints {
+        assert_ne!(
+            resolved, *bump_checkpoint,
+            "creation checkpoint must NOT match any of the post-publish bump_age tx checkpoints"
+        );
+    }
+
+    // Sanity check: the bumps actually advanced the object's version, so this
+    // test would have failed loudly if the helper accidentally returned the
+    // latest-tx checkpoint (e.g. by reading `previous_transaction` off the
+    // current object instead of the version-pinned one).
+    let post_bump_metadata = crawler
+        .get_object_metadata(guy_id)
+        .await
+        .expect("Guy metadata after bumps");
+    assert!(
+        post_bump_metadata.version > initial_version_at_publish,
+        "bump_age calls must have advanced Guy's version (initial {initial_version_at_publish}, \
+         post-bump {})",
+        post_bump_metadata.version,
+    );
+}
+
 #[test]
 fn map_deserializes_from_object_contents_variant() {
     let value = json!({
