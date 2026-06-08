@@ -13,6 +13,7 @@ pub struct LeaderRegistry {
     id: sui::types::Address,
     unbonding_duration_ms: u64,
     min_stake_mist: u64,
+    max_transaction_budget: u64,
     leaders: MoveVecSet<sui::types::Address>,
     records: MoveTable<sui::types::Address, LeaderRecord>,
     capabilities: LeaderCapabilities,
@@ -40,12 +41,18 @@ impl LeaderRegistry {
         self.capabilities.network_id()
     }
 
+    /// Maximum budget (in MIST) a leader may spend on a single transaction.
+    pub fn max_transaction_budget(&self) -> u64 {
+        self.max_transaction_budget
+    }
+
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, network: sui::types::Address) -> Self {
         Self {
             id,
             unbonding_duration_ms: 0,
             min_stake_mist: 0,
+            max_transaction_budget: 10_000_000_000,
             leaders: MoveVecSet { contents: vec![] },
             records: MoveTable::new(sui::types::Address::ZERO, 0),
             capabilities: LeaderCapabilities {
