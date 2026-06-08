@@ -53,7 +53,7 @@ nexus-sdk/                  cargo workspace root
 └── CHANGELOG.md            keep-a-changelog, per-crate sections
 ```
 
-Adjacent repos under `/home/kouks/Code/talus/`:
+Sibling repos checked out next to this one (paths depend on local layout):
 
 - `nexus-next/` — on-chain Move packages (`sui/primitives`, `sui/interface`,
   `sui/registry`, `sui/workflow`), example TAPs (`sui/examples/demo_tap`),
@@ -138,7 +138,7 @@ Adjacent repos under `/home/kouks/Code/talus/`:
 
 ## Step-by-step: adding a new feature
 
-1. **Plan in a scratch file under `/home/kouks/.claude/plans/`** if the
+1. **Plan in a scratch file under `~/.claude/plans/`** if the
    change spans more than one module. Capture the SDK additions, CLI
    additions, JSON contract, tests, and verification steps.
 1. **Add the SDK primitive** under `sdk/src/nexus/<area>.rs`:
