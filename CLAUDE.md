@@ -138,9 +138,6 @@ Sibling repos checked out next to this one (paths depend on local layout):
 
 ## Step-by-step: adding a new feature
 
-1. **Plan in a scratch file under `~/.claude/plans/`** if the
-   change spans more than one module. Capture the SDK additions, CLI
-   additions, JSON contract, tests, and verification steps.
 1. **Add the SDK primitive** under `sdk/src/nexus/<area>.rs`:
    - Define the params and result structs near the existing ones.
    - Add the `impl <Area>Actions { pub async fn … }` method.
