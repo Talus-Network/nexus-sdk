@@ -114,9 +114,7 @@ pub(crate) enum DagCommand {
         gas: GasArgs,
     },
 
-    #[command(
-        about = "Inspect a Nexus DAG execution process based on the provided object ID and execution checkpoint."
-    )]
+    #[command(about = "Inspect a Nexus DAG execution.")]
     InspectExecution {
         /// The object ID of the Nexus DAGExecution object.
         #[arg(
@@ -126,13 +124,6 @@ pub(crate) enum DagCommand {
             value_name = "OBJECT_ID"
         )]
         dag_execution_id: sui::types::Address,
-        /// The entry group to invoke.
-        #[arg(
-            long = "execution-checkpoint",
-            short = 'c',
-            help = "The checkpoint of the transaction that triggered the execution."
-        )]
-        execution_checkpoint: u64,
     },
 
     #[command(about = "Show the standard TAP execution payment consumed by a DAG execution.")]
@@ -191,10 +182,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         }
 
         // == `$ nexus dag inspect-execution` ==
-        DagCommand::InspectExecution {
-            dag_execution_id,
-            execution_checkpoint,
-        } => inspect_dag_execution(dag_execution_id, execution_checkpoint).await,
+        DagCommand::InspectExecution { dag_execution_id } => {
+            inspect_dag_execution(dag_execution_id).await
+        }
 
         // == `$ nexus dag execution-cost` ==
         DagCommand::ExecutionCost { dag_execution_id } => execution_cost(dag_execution_id).await,

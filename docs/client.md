@@ -177,7 +177,6 @@ let inspect = nexus_client
     .workflow()
     .inspect_execution(
         execute_result.execution_object_id,
-        execute_result.tx_digest,
         Some(Duration::from_secs(180)), // timeout
     )
     .await?;

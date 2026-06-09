@@ -41,11 +41,12 @@ fn terminal_err_eval_duplicate_suffix(event: &NexusEventKind) -> &'static str {
     }
 }
 
-/// Inspect a Nexus DAG execution process based on the provided object ID and
-/// execution digest.
+/// Inspect a Nexus DAG execution process. The SDK derives the starting
+/// checkpoint from the DAGExecution object's creation transaction (see
+/// [`nexus_sdk::nexus::crawler::Crawler::get_object_creation_checkpoint`]),
+/// so callers no longer need to thread it through.
 pub(crate) async fn inspect_dag_execution(
     dag_execution_id: sui::types::Address,
-    execution_checkpoint: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
@@ -53,7 +54,7 @@ pub(crate) async fn inspect_dag_execution(
 
     let mut result = nexus_client
         .workflow()
-        .inspect_execution(dag_execution_id, execution_checkpoint, None)
+        .inspect_execution(dag_execution_id, None)
         .await
         .map_err(NexusCliError::Nexus)?;
 
