@@ -131,27 +131,18 @@ fn registry_with_active_revision(active_revision: u64) -> TapRegistry {
     TapRegistry {
         id: addr("0x91"),
         agents: vec![TapAgentRecord {
-            agent_id,
-            owner: addr("0x92"),
-            operator: addr("0x93"),
             active: true,
-            next_skill_index: 1,
             skills: MoveTable::new(addr("0x95"), 1),
-            endpoints: MoveTable::new(addr("0x96"), 1),
         }],
         skills: vec![TapSkillRecord {
-            agent_id,
-            skill_id,
-            dag_id: addr("0x94"),
-            dag_binding: TapDagBinding::pinned(addr("0x94")),
-            workflow_commitment: requirements.workflow_commitment.clone(),
-            requirements_commitment: requirements.input_schema_commitment.clone(),
-            metadata_commitment: requirements.metadata_commitment.clone(),
-            payment_policy: requirements.payment_policy.clone(),
-            schedule_policy: requirements.schedule_policy.clone(),
-            capability_schema_commitment: vec![5],
-            active_interface_revision: InterfaceRevision(active_revision),
+            agent_id: Some(agent_id),
+            skill_id: Some(skill_id),
+            description: requirements.metadata_commitment.clone(),
             active: true,
+            dag_binding: TapDagBinding::pinned(addr("0x94")),
+            requirements: requirements.clone(),
+            current_interface_revision: InterfaceRevision(active_revision),
+            outstanding_scheduled_task_count: 0,
         }],
         endpoints: vec![endpoint_revision(1), endpoint_revision(2)],
         default_executor: Some(DefaultDagExecutor { agent_id, skill_id }),
@@ -239,9 +230,12 @@ fn active_endpoint_resolution_uses_skill_active_revision_pointer() {
 
 #[test]
 fn registry_recovery_uses_agent_registry_active_revision_pointer() {
-    let registry = registry_with_active_revision(2);
-    let bytes = bcs::to_bytes(&registry).expect("registry BCS");
-    let registry: TapRegistry = bcs::from_bytes(&bytes).expect("registry layout decodes");
+    let mut registry = registry_with_active_revision(2);
+    let mut other_active_skill = registry.skills[0].clone();
+    other_active_skill.agent_id = Some(addr("0xb2"));
+    other_active_skill.skill_id = Some(177);
+    registry.skills.push(other_active_skill);
+
     let active = registry
         .active_endpoint_record(addr("0xa1"), 177)
         .expect("active registry endpoint");
@@ -261,6 +255,15 @@ fn registry_recovery_uses_agent_registry_active_revision_pointer() {
         })
         .expect("pinned endpoint");
     assert_eq!(pinned.key.interface_revision, InterfaceRevision(1));
+
+    let skill_bytes = bcs::to_bytes(&registry.skills[0]).expect("stored skill BCS");
+    let stored_skill: TapSkillRecord = bcs::from_bytes(&skill_bytes).expect("stored skill decodes");
+    assert_eq!(stored_skill.agent_id, None);
+    assert_eq!(stored_skill.skill_id, None);
+    assert_eq!(
+        stored_skill.current_interface_revision,
+        InterfaceRevision(2)
+    );
 }
 
 #[test]
@@ -619,7 +622,6 @@ fn transaction_builders_select_tap_functions() {
         &mut tx,
         &objects,
         registry,
-        addr("0xa3"),
         vec![4],
     )
     .expect("deployment bootstrap builder");
@@ -688,7 +690,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let mut tx = sui::tx::TransactionBuilder::new();
 
     let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
-    tap_tx::create_agent(&mut tx, &objects, registry, addr("0x91")).expect("create agent");
+    tap_tx::create_agent(&mut tx, &objects, registry).expect("create agent");
 
     let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
     let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, true));
@@ -791,31 +793,18 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
     let registry = TapRegistry {
         id: addr("0x91"),
         agents: vec![TapAgentRecord {
-            agent_id,
-            owner: addr("0x92"),
-            operator: addr("0x93"),
             active: true,
-            next_skill_index: 1,
             skills: MoveTable::new(addr("0x95"), 1),
-            endpoints: MoveTable::new(addr("0x96"), 1),
         }],
         skills: vec![TapSkillRecord {
-            agent_id,
-            skill_id,
-            dag_id,
-            dag_binding: TapDagBinding::pinned(dag_id),
-            workflow_commitment: artifact.requirements.workflow_commitment.clone(),
-            requirements_commitment: artifact.requirements.input_schema_commitment.clone(),
-            metadata_commitment: artifact.requirements.metadata_commitment.clone(),
-            payment_policy: artifact.requirements.payment_policy.clone(),
-            schedule_policy: artifact.requirements.schedule_policy.clone(),
-            capability_schema_commitment: artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            active_interface_revision: artifact.interface_revision,
+            agent_id: Some(agent_id),
+            skill_id: Some(skill_id),
+            description: artifact.requirements.metadata_commitment.clone(),
             active: true,
+            dag_binding: TapDagBinding::pinned(dag_id),
+            requirements: artifact.requirements.clone(),
+            current_interface_revision: artifact.interface_revision,
+            outstanding_scheduled_task_count: 0,
         }],
         endpoints: vec![TapEndpointRevision {
             agent_id,

@@ -215,7 +215,6 @@ pub struct EndpointInspection {
 /// Inputs to [`TapActions::bind_agent_skill`].
 #[derive(Clone, Debug)]
 pub struct BindAgentSkillParams {
-    pub operator: sui::types::Address,
     pub artifact: TapPublishArtifact,
 }
 
@@ -368,17 +367,14 @@ impl TapActions {
     }
 
     /// Create a standard Talus agent through the configured TAP registry.
-    pub async fn create_agent(
-        &self,
-        operator: sui::types::Address,
-    ) -> Result<CreateAgentResult, NexusError> {
+    pub async fn create_agent(&self) -> Result<CreateAgentResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry)
             .map_err(NexusError::TransactionBuilding)?;
         tx.move_call(
             sui::tx::Function::new(
@@ -626,7 +622,7 @@ impl TapActions {
 
     /// Deposit `amount` MIST into the agent's payment vault, splitting from
     /// the transaction gas coin. The vault is shared so any address can
-    /// deposit; withdrawal stays gated on the agent owner or operator.
+    /// deposit; withdrawal stays gated on mutable agent custody.
     pub async fn deposit_agent_payment_vault(
         &self,
         params: DepositAgentVaultParams,
@@ -1112,7 +1108,7 @@ impl TapActions {
         &self,
         params: BindAgentSkillParams,
     ) -> Result<BindAgentSkillResult, NexusError> {
-        let BindAgentSkillParams { operator, artifact } = params;
+        let BindAgentSkillParams { artifact } = params;
 
         let config_digest_input = artifact.endpoint_config_digest_input();
         let config_digest = config_digest_input
@@ -1125,7 +1121,7 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry)
             .map_err(NexusError::TransactionBuilding)?;
 
         if artifact
@@ -1388,22 +1384,25 @@ async fn fetch_agent_registry_tables(
 
     let mut agents = Vec::with_capacity(agent_records.len());
     let mut skills = Vec::new();
-    let mut endpoints = Vec::new();
-    for (_, agent) in agent_records {
+    for (agent_id, agent) in agent_records {
         let skill_records = crawler
             .get_dynamic_fields_bcs::<SkillId, TapSkillRecord>(agent.skills.id, agent.skills.size())
             .await?;
-        let endpoint_records = crawler
-            .get_dynamic_fields_bcs::<crate::types::TapEndpointRevisionKey, crate::types::TapEndpointRevision>(
-                agent.endpoints.id,
-                agent.endpoints.size(),
-            )
-            .await?;
 
-        skills.extend(skill_records.into_values());
-        endpoints.extend(endpoint_records.into_values());
+        for (skill_id, mut skill) in skill_records {
+            skill.agent_id = Some(agent_id);
+            skill.skill_id = Some(skill_id);
+            skills.push(skill);
+        }
         agents.push(agent);
     }
+    let endpoint_records = crawler
+        .get_dynamic_fields_bcs::<
+            crate::types::TapEndpointRevisionKey,
+            crate::types::TapEndpointRevision,
+        >(raw.data.endpoints.id, raw.data.endpoints.size())
+        .await?;
+    let endpoints = endpoint_records.into_values().collect();
 
     Ok(Response {
         object_id: raw.object_id,
@@ -1837,27 +1836,18 @@ mod tests {
         TapRegistry {
             id: sui::types::Address::from_static("0xf"),
             agents: vec![TapAgentRecord {
-                agent_id: agent,
-                owner: sui::types::Address::from_static("0x1"),
-                operator: sui::types::Address::from_static("0x2"),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::from_static("0x90"), 1),
-                endpoints: MoveTable::new(sui::types::Address::from_static("0x91"), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id: agent,
-                skill_id,
-                dag_id: sui::types::Address::from_static("0x3"),
-                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x3")),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![5],
-                active_interface_revision: InterfaceRevision(2),
+                agent_id: Some(agent),
+                skill_id: Some(skill_id),
+                description: requirements.metadata_commitment.clone(),
                 active: true,
+                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x3")),
+                requirements: requirements.clone(),
+                current_interface_revision: InterfaceRevision(2),
+                outstanding_scheduled_task_count: 0,
             }],
             endpoints: vec![
                 endpoint_revision(1),
@@ -1896,8 +1886,9 @@ mod tests {
 
         let agent = registry.agents[0].clone();
         let skill_record = registry.skills[0].clone();
+        let first_endpoint = registry.endpoints.first().expect("endpoint selected");
         let endpoint_record = registry
-            .active_endpoint_record(skill_record.agent_id, skill_record.skill_id)
+            .active_endpoint_record(first_endpoint.agent_id, first_endpoint.skill_id)
             .ok()
             .and_then(|active| {
                 registry.endpoints.iter().find(|endpoint| {
@@ -1906,8 +1897,7 @@ mod tests {
                         && endpoint.interface_revision == active.key.interface_revision
                 })
             })
-            .or_else(|| registry.endpoints.first())
-            .expect("endpoint selected")
+            .unwrap_or(first_endpoint)
             .clone();
         let agent_field_ref = sui_mocks::mock_sui_object_ref();
         let skill_field_ref = sui_mocks::mock_sui_object_ref();
@@ -1921,8 +1911,7 @@ mod tests {
                 .map(|default_executor| DefaultDagExecutorValue {
                     agent: crate::types::TapAgentObject {
                         id: default_executor.agent_id,
-                        next_skill_index: agent.next_skill_index,
-                        owner: agent.owner,
+                        next_skill_id: 1,
                         registry_id: Some(registry.id).into(),
                     },
                     skill_id: default_executor.skill_id,
@@ -1932,6 +1921,7 @@ mod tests {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
+                endpoints: MoveTable::new(sui::types::Address::from_static("0x9001"), 1),
             },
             agent_field_ref,
             skill_field_ref,
@@ -1967,7 +1957,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id,
+                mock.endpoint_record.agent_id,
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1976,14 +1966,14 @@ mod tests {
             vec![(
                 mock.agent_field_ref.clone(),
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id,
+                mock.endpoint_record.agent_id,
                 mock.agent_record.clone(),
             )],
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.skill_record.skill_id,
+                mock.endpoint_record.skill_id,
                 mock.skill_field_ref.object_id().to_owned(),
             )],
         );
@@ -1992,7 +1982,7 @@ mod tests {
             vec![(
                 mock.skill_field_ref.clone(),
                 sui::types::Owner::Shared(1),
-                mock.skill_record.skill_id,
+                mock.endpoint_record.skill_id,
                 mock.skill_record.clone(),
             )],
         );
@@ -2000,6 +1990,7 @@ mod tests {
             state_service_mock,
             vec![(
                 TapEndpointRevisionKey::new(
+                    mock.endpoint_record.agent_id,
                     mock.endpoint_record.skill_id,
                     mock.endpoint_record.interface_revision,
                 ),
@@ -2012,6 +2003,7 @@ mod tests {
                 mock.endpoint_field_ref.clone(),
                 sui::types::Owner::Shared(1),
                 TapEndpointRevisionKey::new(
+                    mock.endpoint_record.agent_id,
                     mock.endpoint_record.skill_id,
                     mock.endpoint_record.interface_revision,
                 ),
@@ -2118,7 +2110,6 @@ mod tests {
         )
         .expect("active skill target");
 
-        assert_eq!(target.skill.dag_id, sui::types::Address::from_static("0x3"));
         assert_eq!(
             target.skill.dag_binding,
             TapDagBinding::pinned(sui::types::Address::from_static("0x3"))
@@ -2329,8 +2320,6 @@ mod tests {
                     event: events::AgentCreatedEvent {
                         agent_id: sui::types::Address::from_static("0xa"),
                         vault_id: sui::types::Address::from_static("0xb"),
-                        owner: sui::types::Address::from_static("0x1"),
-                        operator: sui::types::Address::from_static("0x2"),
                     },
                 })
                 .unwrap(),
@@ -2347,7 +2336,7 @@ mod tests {
 
         let result = client
             .tap()
-            .create_agent(sui::types::Address::from_static("0x2"))
+            .create_agent()
             .await
             .expect("create agent succeeds");
 

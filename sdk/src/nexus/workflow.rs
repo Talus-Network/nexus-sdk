@@ -1216,8 +1216,9 @@ mod tests {
 
         let agent = registry.agents[0].clone();
         let skill_record = registry.skills[0].clone();
+        let first_endpoint = registry.endpoints.first().expect("endpoint selected");
         let endpoint_record = registry
-            .active_endpoint_record(skill_record.agent_id, skill_record.skill_id)
+            .active_endpoint_record(first_endpoint.agent_id, first_endpoint.skill_id)
             .ok()
             .and_then(|active| {
                 registry.endpoints.iter().find(|endpoint| {
@@ -1226,8 +1227,7 @@ mod tests {
                         && endpoint.interface_revision == active.key.interface_revision
                 })
             })
-            .or_else(|| registry.endpoints.first())
-            .expect("endpoint selected")
+            .unwrap_or(first_endpoint)
             .clone();
         let default_executor_field_ref = registry
             .default_executor
@@ -1238,8 +1238,7 @@ mod tests {
                 .map(|default_executor| DefaultDagExecutorValue {
                     agent: crate::types::TapAgentObject {
                         id: default_executor.agent_id,
-                        next_skill_index: agent.next_skill_index,
-                        owner: agent.owner,
+                        next_skill_id: 1,
                         registry_id: Some(registry.id).into(),
                     },
                     skill_id: default_executor.skill_id,
@@ -1249,6 +1248,7 @@ mod tests {
             registry_object: TapRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
+                endpoints: MoveTable::new(sui::types::Address::from_static("0x9001"), 1),
             },
             agent_field_ref: sui_mocks::mock_sui_object_ref(),
             skill_field_ref: sui_mocks::mock_sui_object_ref(),
@@ -1283,7 +1283,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id,
+                mock.endpoint_record.agent_id,
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1292,14 +1292,14 @@ mod tests {
             vec![(
                 mock.agent_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id,
+                mock.endpoint_record.agent_id,
                 mock.agent_record,
             )],
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.skill_record.skill_id,
+                mock.endpoint_record.skill_id,
                 mock.skill_field_ref.object_id().to_owned(),
             )],
         );
@@ -1308,7 +1308,7 @@ mod tests {
             vec![(
                 mock.skill_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.skill_record.skill_id,
+                mock.endpoint_record.skill_id,
                 mock.skill_record,
             )],
         );
@@ -1316,6 +1316,7 @@ mod tests {
             state_service_mock,
             vec![(
                 TapEndpointRevisionKey::new(
+                    mock.endpoint_record.agent_id,
                     mock.endpoint_record.skill_id,
                     mock.endpoint_record.interface_revision,
                 ),
@@ -1328,6 +1329,7 @@ mod tests {
                 mock.endpoint_field_ref,
                 sui::types::Owner::Shared(1),
                 TapEndpointRevisionKey::new(
+                    mock.endpoint_record.agent_id,
                     mock.endpoint_record.skill_id,
                     mock.endpoint_record.interface_revision,
                 ),
@@ -1550,27 +1552,18 @@ mod tests {
         let agent_registry = TapRegistry {
             id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
-                agent_id: default_agent,
-                owner: sui::types::Address::generate(&mut rng),
-                operator: sui::types::Address::generate(&mut rng),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id: default_agent,
-                skill_id: default_skill_id,
-                dag_id: *dag_ref.object_id(),
-                dag_binding: TapDagBinding::runtime_selected(),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![],
-                active_interface_revision: InterfaceRevision(1),
+                agent_id: Some(default_agent),
+                skill_id: Some(default_skill_id),
+                description: requirements.metadata_commitment.clone(),
                 active: true,
+                dag_binding: TapDagBinding::runtime_selected(),
+                requirements: requirements.clone(),
+                current_interface_revision: InterfaceRevision(1),
+                outstanding_scheduled_task_count: 0,
             }],
             endpoints: vec![TapEndpointRevision {
                 agent_id: default_agent,
@@ -1760,27 +1753,18 @@ mod tests {
         let agent_registry = TapRegistry {
             id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
-                agent_id,
-                owner: sui::types::Address::generate(&mut rng),
-                operator: sui::types::Address::generate(&mut rng),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id,
-                skill_id,
-                dag_id: *dag_ref.object_id(),
-                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![],
-                active_interface_revision: InterfaceRevision(1),
+                agent_id: Some(agent_id),
+                skill_id: Some(skill_id),
+                description: requirements.metadata_commitment.clone(),
                 active: true,
+                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
+                requirements: requirements.clone(),
+                current_interface_revision: InterfaceRevision(1),
+                outstanding_scheduled_task_count: 0,
             }],
             endpoints: vec![TapEndpointRevision {
                 agent_id,

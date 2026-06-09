@@ -42,6 +42,10 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("create_scheduled_occurrence_payment"),
     };
+    pub const CREATE_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("create_skill"),
+    };
     pub const DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("default_dag_executor_workflow_worksheet"),
@@ -119,6 +123,14 @@ impl AgentRegistry {
                 "schedule_skill_execution_from_agent_vault_with_grants",
             ),
         };
+    pub const SET_AGENT_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("set_agent_active"),
+    };
+    pub const SET_SKILL_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("set_skill_active"),
+    };
     pub const SET_SKILL_ACTIVE_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("set_skill_active_revision"),
@@ -126,6 +138,18 @@ impl AgentRegistry {
     pub const TRIGGER_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("trigger_scheduled_skill_execution"),
+    };
+    pub const UPDATE_DAG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_dag"),
+    };
+    pub const UPDATE_SKILL_DESCRIPTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_skill_description"),
+    };
+    pub const UPDATE_SKILL_POLICIES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_skill_policies"),
     };
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,

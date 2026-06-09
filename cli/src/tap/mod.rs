@@ -166,8 +166,6 @@ pub(crate) enum TapCommand {
     },
     #[command(about = "Create a standard Talus agent.")]
     CreateAgent {
-        #[arg(long, help = "Agent operator address.", value_name = "ADDRESS")]
-        operator: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -223,8 +221,6 @@ pub(crate) enum TapCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         artifact: PathBuf,
-        #[arg(long, help = "Agent operator address.", value_name = "ADDRESS")]
-        operator: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -712,9 +708,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::PublishSkill { config, out, gas } => {
             publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
-        TapCommand::CreateAgent { operator, gas } => {
-            create_agent(operator, gas.sui_gas_coin, gas.sui_gas_budget).await
-        }
+        TapCommand::CreateAgent { gas } => create_agent(gas.sui_gas_coin, gas.sui_gas_budget).await,
         TapCommand::RegisterSkill {
             artifact,
             agent_id,
@@ -740,11 +734,9 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::Payments(command) => handle_payments_command(command).await,
         TapCommand::Registry(RegistryCommand::Show) => show_registry().await,
         TapCommand::DefaultTarget(DefaultTargetCommand::Show) => show_default_target().await,
-        TapCommand::Bind {
-            artifact,
-            operator,
-            gas,
-        } => bind_agent_skill(artifact, operator, gas.sui_gas_coin, gas.sui_gas_budget).await,
+        TapCommand::Bind { artifact, gas } => {
+            bind_agent_skill(artifact, gas.sui_gas_coin, gas.sui_gas_budget).await
+        }
         TapCommand::Requirements { agent_id, skill_id } => {
             fetch_requirements(agent_id, skill_id).await
         }
@@ -1062,12 +1054,9 @@ mod tests {
             .to_string()
             .contains("Sui RPC URL is not configured"));
 
-        let missing_rpc = handle(TapCommand::CreateAgent {
-            operator: sui::types::Address::from_static("0x2"),
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("create-agent dispatch reaches missing RPC");
+        let missing_rpc = handle(TapCommand::CreateAgent { gas: gas_args() })
+            .await
+            .expect_err("create-agent dispatch reaches missing RPC");
         assert!(missing_rpc
             .to_string()
             .contains("Sui RPC URL is not configured"));

@@ -214,17 +214,23 @@ impl fmt::Display for TapEndpointKey {
     }
 }
 
-/// Dynamic table key used by `nexus_registry::agent_registry::AgentRecord.endpoints`.
+/// Dynamic table key used by the registry-level endpoint revision table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TapEndpointRevisionKey {
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
 }
 
 impl TapEndpointRevisionKey {
-    pub fn new(skill_id: SkillId, interface_revision: InterfaceRevision) -> Self {
+    pub fn new(
+        agent_id: AgentId,
+        skill_id: SkillId,
+        interface_revision: InterfaceRevision,
+    ) -> Self {
         Self {
+            agent_id,
             skill_id,
             interface_revision,
         }
@@ -698,36 +704,27 @@ pub struct TapSkillRequirements {
 /// Stored `nexus_registry::agent_registry::AgentRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapAgentRecord {
-    pub agent_id: AgentId,
-    pub owner: sui::types::Address,
-    pub operator: sui::types::Address,
     pub active: bool,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub next_skill_index: u64,
     pub skills: MoveTable<SkillId, TapSkillRecord>,
-    pub endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
 }
 
 /// Stored `nexus_interface::tap::SkillRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSkillRecord {
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub dag_id: sui::types::Address,
-    pub dag_binding: TapDagBinding,
+    /// SDK-expanded dynamic table context. This is not part of the on-chain `SkillRecord`.
+    #[serde(skip)]
+    pub agent_id: Option<AgentId>,
+    /// SDK-expanded dynamic table context. This is not part of the on-chain `SkillRecord`.
+    #[serde(skip)]
+    pub skill_id: Option<SkillId>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub workflow_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub requirements_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub metadata_commitment: Vec<u8>,
-    pub payment_policy: TapPaymentPolicy,
-    pub schedule_policy: TapSchedulePolicy,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub capability_schema_commitment: Vec<u8>,
-    pub active_interface_revision: InterfaceRevision,
+    pub description: Vec<u8>,
     pub active: bool,
+    pub dag_binding: TapDagBinding,
+    pub requirements: TapSkillRequirements,
+    pub current_interface_revision: InterfaceRevision,
+    #[serde(deserialize_with = "deserialize_tap_u64_value")]
+    pub outstanding_scheduled_task_count: u64,
 }
 
 /// Stored `nexus_interface::tap::EndpointRevision`.
@@ -800,8 +797,7 @@ impl DefaultDagExecutorValue {
 pub struct TapAgentObject {
     pub id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub next_skill_index: u64,
-    pub owner: sui::types::Address,
+    pub next_skill_id: u64,
     pub registry_id: MoveOption<sui::types::Address>,
 }
 
@@ -810,6 +806,7 @@ pub struct TapAgentObject {
 pub struct TapRegistryObject {
     pub id: sui::types::Address,
     pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
+    pub endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
 }
 
 /// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
@@ -854,7 +851,9 @@ impl TapRegistry {
         let skills = self
             .skills
             .iter()
-            .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id)
+            .filter(|skill| {
+                skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
+            })
             .collect::<Vec<_>>();
 
         let skill = match skills.as_slice() {
@@ -886,7 +885,7 @@ impl TapRegistry {
         let key = TapEndpointKey {
             agent_id,
             skill_id,
-            interface_revision: skill.active_interface_revision,
+            interface_revision: skill.current_interface_revision,
         };
         self.endpoint_record(key)
     }
@@ -1660,7 +1659,7 @@ impl TapSkillConfig {
     }
 }
 
-/// Author-to-operator artifact produced after TAP plus DAG publishing.
+/// Published TAP plus DAG artifact used when binding an agent skill.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapPublishArtifact {
     pub skill_name: String,
@@ -1970,7 +1969,9 @@ pub fn resolve_active_tap_endpoint<'a>(
 ) -> Result<&'a TapEndpointRecord, TapEndpointResolutionError> {
     let skill_matches = skills
         .iter()
-        .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id)
+        .filter(|skill| {
+            skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
+        })
         .collect::<Vec<_>>();
 
     let skill = match skill_matches.as_slice() {
@@ -1993,7 +1994,7 @@ pub fn resolve_active_tap_endpoint<'a>(
         .filter(|record| {
             record.key.agent_id == agent_id
                 && record.key.skill_id == skill_id
-                && record.key.interface_revision == skill.active_interface_revision
+                && record.key.interface_revision == skill.current_interface_revision
         })
         .collect::<Vec<_>>();
 
@@ -2022,7 +2023,9 @@ pub fn resolve_active_tap_skill_execution_target(
     let skill_matches = registry
         .skills
         .iter()
-        .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id && skill.active)
+        .filter(|skill| {
+            skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
+        })
         .collect::<Vec<_>>();
 
     let skill = match skill_matches.as_slice() {
@@ -2102,23 +2105,16 @@ mod tests {
         }
     }
 
-    fn skill(active: bool, active_interface_revision: u64) -> TapSkillRecord {
+    fn skill(active: bool, current_interface_revision: u64) -> TapSkillRecord {
         TapSkillRecord {
-            agent_id: addr("0xa"),
-            skill_id: 11,
-            dag_id: addr("0x44"),
-            dag_binding: TapDagBinding::pinned(addr("0x44")),
-            workflow_commitment: vec![2],
-            requirements_commitment: vec![1],
-            metadata_commitment: vec![3],
-            payment_policy: TapPaymentPolicy {
-                max_budget: 100,
-                ..TapPaymentPolicy::default()
-            },
-            schedule_policy: TapSchedulePolicy::default(),
-            capability_schema_commitment: vec![7],
-            active_interface_revision: InterfaceRevision(active_interface_revision),
+            agent_id: Some(addr("0xa")),
+            skill_id: Some(11),
+            description: vec![3],
             active,
+            dag_binding: TapDagBinding::pinned(addr("0x44")),
+            requirements: requirements(),
+            current_interface_revision: InterfaceRevision(current_interface_revision),
+            outstanding_scheduled_task_count: 0,
         }
     }
 
@@ -2193,11 +2189,13 @@ mod tests {
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
             agents: MoveTable<sui::types::Address, TapAgentRecord>,
+            endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
         }
 
         let raw = RawTapRegistryObjectBcs {
             id: addr("0xf"),
             agents: MoveTable::new(addr("0x90"), 0),
+            endpoints: MoveTable::new(addr("0x91"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
         let decoded: TapRegistryObject =
@@ -2205,6 +2203,7 @@ mod tests {
 
         assert_eq!(decoded.id, addr("0xf"));
         assert_eq!(decoded.agents.id, addr("0x90"));
+        assert_eq!(decoded.endpoints.id, addr("0x91"));
     }
 
     #[test]
@@ -2742,7 +2741,6 @@ mod tests {
         let resolved = resolve_active_tap_skill_execution_target(&registry, addr("0xa"), 11)
             .expect("active skill target");
 
-        assert_eq!(resolved.skill.dag_id, addr("0x44"));
         assert_eq!(
             resolved.skill.dag_binding,
             TapDagBinding::pinned(addr("0x44"))

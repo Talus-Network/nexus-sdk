@@ -66,15 +66,11 @@ pub(crate) fn dry_run_result_json(
 // Publish + bind lifecycle
 // ============================================================================
 
-pub(crate) fn create_agent_result_json(
-    operator: sui::types::Address,
-    result: &CreateAgentResult,
-) -> serde_json::Value {
+pub(crate) fn create_agent_result_json(result: &CreateAgentResult) -> serde_json::Value {
     json!({
         "standard_tap": true,
         "function": TapStandard::CREATE_AGENT.name.to_string(),
         "agent_id": result.agent_id,
-        "operator": operator,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
     })
@@ -112,7 +108,6 @@ pub(crate) fn register_skill_result_json(
 
 pub(crate) fn bind_result_json(
     artifact: &TapPublishArtifact,
-    operator: sui::types::Address,
     result: &BindAgentSkillResult,
 ) -> serde_json::Value {
     json!({
@@ -120,7 +115,6 @@ pub(crate) fn bind_result_json(
         "function": "bind_agent_skill",
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
-        "operator": operator,
         "agent_id": result.agent_id,
         "agent_object_id": result.agent_object.object_id(),
         "agent_object_version": result.agent_object.version(),
@@ -359,7 +353,8 @@ pub(crate) fn default_target_result_json(record: &DefaultDagExecutorRecord) -> s
         "standard_tap": true,
         "agent_id": record.target.agent_id,
         "skill_id": record.target.skill_id,
-        "dag_id": record.skill.dag_id,
+        "dag_binding": record.skill.dag_binding,
+        "dag_id": record.skill.dag_binding.pinned_dag_id(),
         "interface_revision": record.endpoint.key.interface_revision,
         "config_digest_hex": hex::encode(&record.endpoint.config_digest),
         "shared_objects": record.endpoint.shared_objects,
@@ -502,19 +497,16 @@ mod tests {
     fn tap_submission_result_json_helpers_expose_created_ids() {
         let artifact = fixture_artifact();
 
-        let create_output = create_agent_result_json(
-            sui::types::Address::from_static("0x2"),
-            &CreateAgentResult {
-                tx_digest: sui::types::Digest::from([7; 32]),
-                tx_checkpoint: 11,
-                agent_id: sui::types::Address::from_static("0xa"),
-                agent_object: sui::types::ObjectReference::new(
-                    sui::types::Address::from_static("0xa"),
-                    7,
-                    sui::types::Digest::from([8; 32]),
-                ),
-            },
-        );
+        let create_output = create_agent_result_json(&CreateAgentResult {
+            tx_digest: sui::types::Digest::from([7; 32]),
+            tx_checkpoint: 11,
+            agent_id: sui::types::Address::from_static("0xa"),
+            agent_object: sui::types::ObjectReference::new(
+                sui::types::Address::from_static("0xa"),
+                7,
+                sui::types::Digest::from([8; 32]),
+            ),
+        });
         assert_eq!(
             create_output["agent_id"],
             serde_json::json!(sui::types::Address::from_static("0xa").to_string())
@@ -591,7 +583,7 @@ mod tests {
                 requirements: artifact.requirements.clone(),
             },
         };
-        let json = bind_result_json(&artifact, sui::types::Address::from_static("0x2"), &result);
+        let json = bind_result_json(&artifact, &result);
         assert_eq!(json["function"], "bind_agent_skill");
         assert_eq!(
             json["agent_id"],

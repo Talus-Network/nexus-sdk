@@ -1435,8 +1435,6 @@ mod tests {
                     event: AgentCreatedEvent {
                         agent_id: sui::types::Address::from_static("0x1"),
                         vault_id: sui::types::Address::from_static("0x1a"),
-                        owner: sui::types::Address::from_static("0x18"),
-                        operator: sui::types::Address::from_static("0x19"),
                     },
                 })
                 .expect("AgentCreatedEvent sample serializes"),
@@ -1491,7 +1489,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         previous_revision: InterfaceRevision(8),
-                        active_interface_revision: InterfaceRevision(9),
+                        current_interface_revision: InterfaceRevision(9),
                     },
                 })
                 .expect("SkillActiveRevisionUpdatedEvent sample serializes"),

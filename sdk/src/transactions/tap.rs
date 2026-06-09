@@ -63,15 +63,12 @@ pub fn create_agent(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::types::Argument,
-    operator: sui::types::Address,
 ) -> anyhow::Result<sui::types::Argument> {
-    let operator = tx.input(pure_arg(&operator)?);
-
     Ok(agent_registry_call(
         tx,
         objects,
         AgentRegistry::CREATE_AGENT,
-        vec![registry, operator],
+        vec![registry],
     ))
 }
 
@@ -110,14 +107,9 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::types::Argument,
-    operator: sui::types::Address,
     config_digest: Vec<u8>,
 ) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        tx.input(pure_arg(&operator)?),
-        tx.input(pure_arg(&config_digest)?),
-    ];
+    let args = vec![registry, tx.input(pure_arg(&config_digest)?)];
 
     let result = agent_registry_call(
         tx,
@@ -126,6 +118,44 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
         args,
     );
     Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_skill(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    dag_id: sui::types::Address,
+    description: Vec<u8>,
+    workflow_commitment: Vec<u8>,
+    requirements_commitment: Vec<u8>,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+    capability_schema_commitment: Vec<u8>,
+    active: bool,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&dag_id)?),
+        tx.input(pure_arg(&description)?),
+        tx.input(pure_arg(&workflow_commitment)?),
+        tx.input(pure_arg(&requirements_commitment)?),
+        payment_policy,
+        schedule_policy,
+        tx.input(pure_arg(&capability_schema_commitment)?),
+        tx.input(pure_arg(&active)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::CREATE_SKILL,
+        args,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -356,6 +386,119 @@ pub fn set_skill_active_revision(
     ))
 }
 
+pub fn set_skill_active(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    skill_id: SkillId,
+    active: bool,
+) -> anyhow::Result<sui::types::Argument> {
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&skill_id)?),
+        tx.input(pure_arg(&active)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::SET_SKILL_ACTIVE,
+        args,
+    ))
+}
+
+pub fn set_agent_active(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    active: bool,
+) -> anyhow::Result<sui::types::Argument> {
+    let args = vec![registry, agent, tx.input(pure_arg(&active)?)];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::SET_AGENT_ACTIVE,
+        args,
+    ))
+}
+
+pub fn update_skill_description(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    skill_id: SkillId,
+    description: Vec<u8>,
+) -> anyhow::Result<sui::types::Argument> {
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&skill_id)?),
+        tx.input(pure_arg(&description)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::UPDATE_SKILL_DESCRIPTION,
+        args,
+    ))
+}
+
+pub fn update_dag(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    skill_id: SkillId,
+    dag_id: sui::types::Address,
+) -> anyhow::Result<sui::types::Argument> {
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&skill_id)?),
+        tx.input(pure_arg(&dag_id)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::UPDATE_DAG,
+        args,
+    ))
+}
+
+pub fn update_skill_policies(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    skill_id: SkillId,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&skill_id)?),
+        payment_policy,
+        schedule_policy,
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::UPDATE_SKILL_POLICIES,
+        args,
+    ))
+}
+
 pub fn worksheet(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -492,8 +635,7 @@ pub fn withdraw_agent_payment_vault(
     agent: sui::types::Argument,
     amount: u64,
 ) -> anyhow::Result<sui::types::Argument> {
-    // The TAP Move module checks that the transaction sender is the agent
-    // owner or operator registered in the TapRegistry.
+    // The TAP Move module checks mutable agent custody through the registry.
     let amount = tx.input(pure_arg(&amount)?);
 
     Ok(agent_registry_call(

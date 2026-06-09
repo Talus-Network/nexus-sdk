@@ -386,8 +386,6 @@ pub struct AnnounceInterfacePackageEvent {
 pub struct AgentCreatedEvent {
     pub agent_id: AgentId,
     pub vault_id: sui::types::Address,
-    pub owner: sui::types::Address,
-    pub operator: sui::types::Address,
 }
 
 /// Fired when a published DAG/TAP package is registered as a skill.
@@ -426,7 +424,7 @@ pub struct SkillActiveRevisionUpdatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub previous_revision: InterfaceRevision,
-    pub active_interface_revision: InterfaceRevision,
+    pub current_interface_revision: InterfaceRevision,
 }
 
 /// Fired when worksheet routing resolves a pinned endpoint.
