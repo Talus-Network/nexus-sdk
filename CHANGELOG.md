@@ -35,7 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
 - `tap scaffold` now writes a `tap/Move.toml` that declares all four published Nexus dependencies (`nexus_primitives`, `nexus_interface`, `nexus_registry`, `nexus_workflow`). The previous scaffold omitted `nexus_registry`, forcing authors to add it by hand before the package would compile against the TAP development guide's recommended template.
 - `tap validate-skill` and `tap publish-skill` no longer accept `--tap-package`. The flag was a redundant override of `tap_package_path` from the skill config; relying on it from a parent directory produced confusing double-prefixed paths (`tutorial-transfer/tutorial-transfer/tap/Move.toml does not exist`). Both commands now resolve the TAP package strictly from the config's `tap_package_path` (resolved relative to the config file's directory).
-- `dag inspect-execution` no longer accepts `--execution-checkpoint`. The SDK now derives the starting checkpoint from the `DAGExecution` object's creation transaction (via `Crawler::get_object_creation_checkpoint`), so callers — including the `nexus dag execute --inspect` self-chain — pass only the execution id.
+- `dag inspect-execution` no longer accepts `--execution-checkpoint`. The SDK now derives the starting checkpoint from the `DAGExecution` object's creation transaction (via `Crawler::get_object_creation_checkpoint`).
 
 #### Fixed
 
@@ -100,6 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Walrus file downloads now flush the destination file before returning.
 - On-chain DAG transaction helpers now use the single typed `submit_on_chain_tool_result_for_walk_v1` surface and no longer expose the stale BCS-envelope or split success/failure helper API.
 - Signed HTTP response signing now steers low-level callers to `sign_invoke_response_with_body_v1`; the deprecated status-only helper rejects 2xx responses because `_err_eval` outcome derivation depends on the response body.
+- Added `max_transaction_budget` to `LeaderRegistry` model
 
 #### Fixed
 
