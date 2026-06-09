@@ -674,7 +674,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--payment-refund-mode <MODE>] [--authorization-plan-hash-hex <HEX>] [--grant-bind VERTEX:STATE:PKG::MOD::FN ...]`**
+**`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--payment-refund-mode <MODE>] [--authorization-plan-hash-hex <HEX>]`**
 
 Executes a standard TAP skill through its currently-active endpoint and DAG. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the standard TAP execution payment:
 
@@ -682,13 +682,10 @@ Executes a standard TAP skill through its currently-active endpoint and DAG. Inp
 - `--payment-max-budget` caps the standard TAP payment.
 - `--payment-refund-mode` chooses the refund behaviour byte.
 - `--authorization-plan-hash-hex` optionally supplies an authorization-plan commitment for cap-gated tools.
-- `--grant-bind` wires up a cap-gated vertex. Repeat once per cap-gated vertex. The value is a colon-delimited triple `VERTEX:STATE_OBJECT_ID:PACKAGE::MODULE::FUNCTION`: the execute PTB mints a `WorkflowVertexAuthorizationGrant` for `VERTEX` and calls `PACKAGE::MODULE::FUNCTION(state, vertex_bytes, grant_id)` so the tap package can lock shared state to that grant before the leader dispatches the walk.
 
 JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active endpoint key/object, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
 
-{% hint style="warning" %}
-`--grant-bind` encodes one semi-custom binding shape: a single shared state object passed as the first argument and a fixed `(state, vertex_bytes, grant_id)` bind-function signature. This covers the standard cap-gated TAP pattern (see the [TAP development guide](guides/1-tap-development.md)), but it is not fully general. Designs that need a different bind signature, additional arguments, or a different grant-wiring strategy cannot be expressed through this flag — use the SDK (`nexus_sdk::transactions::dag::VertexGrantBind`) to build the execute PTB directly instead.
-{% endhint %}
+Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific. Build a single PTB with `sui client ptb` (or the `nexus_sdk::transactions::dag::create_vertex_authorization_grant` builder) that calls `nexus_workflow::dag::create_vertex_authorization_grant`, hands the result to your tap package's bind hook, and only then invokes the workflow's begin / request-walk entrypoints. See the [TAP development guide](guides/1-tap-development.md) for a worked example.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

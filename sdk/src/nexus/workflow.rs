@@ -104,11 +104,6 @@ pub struct AgentDagExecuteOptions {
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
-    /// Cap-gated vertex bindings. For each entry the execute PTB mints a
-    /// `WorkflowVertexAuthorizationGrant` and calls the named tap-package
-    /// Move function to record the grant id in shared state before requesting
-    /// the leader to dispatch the walk.
-    pub grant_binds: Vec<crate::transactions::dag::VertexGrantBind>,
 }
 
 fn resolve_default_agent_dag_executor(
@@ -586,7 +581,6 @@ impl WorkflowActions {
                 payment_refund_mode: 0,
                 authorization_plan_commitment: None,
                 authorization_plan: Vec::new(),
-                grant_binds: Vec::new(),
             },
         )
         .await
@@ -681,7 +675,6 @@ impl WorkflowActions {
             payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
-            grant_binds: options.grant_binds.clone(),
         };
 
         if let Err(e) = dag::execute_default_agent_dag(
@@ -888,7 +881,6 @@ impl WorkflowActions {
             payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
-            grant_binds: options.grant_binds.clone(),
         };
 
         if let Err(e) = dag::execute_agent_dag(

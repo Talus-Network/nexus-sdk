@@ -1,6 +1,6 @@
 # Scaffold the TAP package
 
-This page generates the on-disk shape of a TAP skill and replaces the scaffolded Move stub with a real state module that holds a SUI treasury **plus** a per-execution "pending grant" slot. The grant slot is what gives the production-correct treasury gate later: only the legitimate caller can fill it, and the vertex tool refuses to drain the treasury without it.
+This page generates the on-disk shape of a TAP skill and replaces the scaffolded Move stub with a real state module that holds a SUI treasury and the per-vertex witness object the on-chain tool will be registered against.
 
 ## 1. Generate the scaffold
 
@@ -25,11 +25,27 @@ tutorial-transfer/
 
 Each generated file is a stub. The scaffolded `tutorial_transfer.move` is a single drop witness with an `init_for_test` helper — enough to compile, but nothing the workflow can actually call.
 
-## 2. Point Move.toml at the published Nexus dependencies
+## 2. Trim the scaffolded `tap/Move.toml` and stage `nexus_primitives`
 
-The scaffold's `tap/Move.toml` declares relative-path dependencies on `nexus_primitives`, `nexus_interface`, `nexus_registry`, and `nexus_workflow` under `../../nexus/sui/`. Replace it with the working version below, updating each `local = "..."` path so it resolves to the published Sui Move sources for your target network (their published addresses are recorded in the same `objects.testnet.toml` you pointed `nexus conf set --nexus.objects` at).
+The scaffold ships with four `[dependencies]` entries (`nexus_primitives`, `nexus_interface`, `nexus_registry`, `nexus_workflow`) so authors who reach for the full standard-TAP surface don't have to add deps mid-build. The minimal vertex tool we're about to write only touches `nexus_primitives` — `data`, `proof_of_uid`, and `tagged_output`. Drop the other three entries so the build resolves the smallest possible dep tree:
 
-A working `tap/Move.toml` on testnet (substitute your own paths and chain id):
+```toml
+[dependencies]
+nexus_primitives = { local = "deps/primitives" }
+```
+
+Then stage the `nexus_primitives` package under `tap/deps/primitives/`. It lives in `nexus-next/sui/primitives/`; either copy the directory in or point the `local` path at wherever your installation keeps it. The staged dependency needs its own `Move.toml` with an `[environments]` table and a `Published.toml` carrying the deployed package address.
+
+The scaffold writes an `[environments]` table pre-filled with the public-testnet chain id, which is what this guide targets:
+
+```toml
+[environments]
+testnet = "4c78adac"
+```
+
+Leave that as-is unless you're publishing to a different network. If you are, replace the row with `<env_alias> = "<chain-id>"` for your target network (the alias must match a name in `sui client envs`, and the chain id is what `sui client chain-identifier` prints while that env is active).
+
+The end result looks like:
 
 ```toml
 [package]
@@ -39,25 +55,18 @@ edition = "2024"
 
 [dependencies]
 nexus_primitives = { local = "deps/primitives" }
-nexus_interface  = { local = "deps/interface" }
-nexus_registry   = { local = "deps/registry" }
-nexus_workflow   = { local = "deps/workflow" }
-
-[addresses]
-tutorial_transfer = "0x0"
 
 [environments]
-testnet = "<chain-id-from-sui-client-chain-identifier>"
+testnet = "4c78adac"
 ```
 
-Each staged dependency under `deps/<name>/` needs its own `Move.toml` with a `published-at` line carrying the deployed package address from `objects.testnet.toml` and an `[environments]` section matching the one above. `nexus_workflow`, in turn, depends on `nexus_registry`/`nexus_interface`/`nexus_primitives`, so wire all four.
+{% hint style="info" %}
+`nexus tap validate-skill` enforces the new-style 2024 layout: the manifest must have `[package].version`, `edition = "2024"` (no `.beta`), an `[environments]` table, and **no** `[addresses]` section. Old-style packages can't resolve their dependency graph against the new-style published Nexus packages, so the validator rejects them up front with a pointer at the field that needs fixing.
+{% endhint %}
 
 ## 3. Replace the scaffold's Move source
 
-The interesting work is in `tap/sources/tutorial_transfer.move`. Replace its contents with the module below. Compared to a plain "treasury + transfer" example we add two pieces that cap-gated TAP execution requires:
-
-- `authorized_grant_id: Option<address>` — a slot that the SDK fills with the freshly-minted `VertexAuthorizationGrant` id before each execution.
-- `bind_pending_grant(state, vertex_bytes, grant_id)` — a public Move function with a SDK-fixed signature that `nexus tap execute --grant-bind` calls inside the execute PTB to lock the state to _this_ execution's grant.
+The interesting work is in `tap/sources/tutorial_transfer.move`. Replace its contents with the module below. The state object holds a SUI treasury that the vertex tool will drain on each execution, plus the per-vertex witness whose UID feeds `nexus tool register onchain --tool-witness-id` and the worksheet stamp at runtime.
 
 ```move
 module tutorial_transfer::tutorial_transfer;
@@ -78,23 +87,19 @@ public struct TransferVertexWitness has key, store {
 }
 
 /// Shared state for the tutorial skill. Holds the SUI treasury that the
-/// transfer vertex drains, plus a per-execution grant id that the SDK
-/// populates via `bind_pending_grant` before the leader dispatches the walk.
+/// transfer vertex drains on each execution plus the per-vertex witness
+/// the on-chain tool registers against.
 public struct TutorialState has key, store {
     id: UID,
     transfer_vertex_witness: TransferVertexWitness,
     treasury: option::Option<Coin<SUI>>,
-    authorized_grant_id: option::Option<address>,
 }
-
-const EAlreadyBound: u64 = 0;
 
 fun init(_otw: TUTORIAL_TRANSFER, ctx: &mut TxContext) {
     public_share_object(TutorialState {
         id: object::new(ctx),
         transfer_vertex_witness: TransferVertexWitness { id: object::new(ctx) },
         treasury: option::none(),
-        authorized_grant_id: option::none(),
     });
 }
 
@@ -126,37 +131,9 @@ public fun fund_treasury(state: &mut TutorialState, coin: Coin<SUI>) {
     }
 }
 
-/// State-bind hook for `nexus tap execute --grant-bind`. The SDK calls this
-/// function as part of the execute PTB *after* the workflow has minted the
-/// vertex-authorization grant attached to the new `DAGExecution` and *before*
-/// the leader dispatches the walk. The signature must be exactly
-/// `(&mut TutorialState, vector<u8>, address)` — the SDK passes the vertex
-/// name's bytes as the second argument and the freshly-minted grant id as
-/// the third.
-///
-/// We `abort` if a grant is already pending so the same state can't be
-/// re-bound by a different (agent, skill) racing for the treasury. The
-/// vertex tool clears the slot at the end of every walk so repeat
-/// invocations work.
-public fun bind_pending_grant(
-    state: &mut TutorialState,
-    _vertex_name: vector<u8>,
-    grant_id: address,
-) {
-    assert!(state.authorized_grant_id.is_none(), EAlreadyBound);
-    option::fill(&mut state.authorized_grant_id, grant_id);
-}
-
-/// Consume the grant id previously bound by `bind_pending_grant`. Only the
-/// sibling `transfer_vertex` module can call this — the assertion lives there.
-public(package) fun extract_authorized_grant(state: &mut TutorialState): address {
-    option::extract(&mut state.authorized_grant_id)
-}
-
 /// Drain the treasury. `public(package)` keeps the function callable only
 /// from sibling modules in `tutorial_transfer` (i.e. `transfer_vertex`), so
-/// nothing outside this package can pull funds out by side-stepping the
-/// grant check.
+/// nothing outside this package can pull funds out directly.
 public(package) fun take_treasury(state: &mut TutorialState): Coin<SUI> {
     option::extract(&mut state.treasury)
 }
@@ -164,10 +141,9 @@ public(package) fun take_treasury(state: &mut TutorialState): Coin<SUI> {
 
 Key things to notice:
 
-- `TutorialState` is shared (`public_share_object`) so the workflow, the treasury funder, and the `bind_pending_grant` caller can all reach it.
+- `TutorialState` is shared (`public_share_object`) so the workflow and the treasury funder can both reach it.
 - `TransferVertexWitness` is stored inside `TutorialState` so its `UID` is stable for the package's lifetime — the on-chain tool registers against it once.
-- `bind_pending_grant` is `public` because the SDK's execute PTB calls it via a Move call. The signature is fixed by the SDK convention: `(&mut TutorialState, vector<u8>, address)`.
-- `take_treasury` and `extract_authorized_grant` are `public(package)`. The sibling `transfer_vertex` module (next page) is the only caller.
+- `take_treasury` is `public(package)`. The sibling `transfer_vertex` module (next page) is the only caller; nothing outside the `tutorial_transfer` package can extract the coin directly.
 
 ## 4. Validate locally
 
@@ -188,7 +164,7 @@ If the Move package fails to compile, the error surfaces here — fix the source
 ## What you have now
 
 - A `tap/Move.toml` and `tap/sources/tutorial_transfer.move` that compile against the published Nexus deps for your network.
-- A `TutorialState` shared object with a SUI-coin treasury, a witness object, a `fund_treasury` entry function, and a `bind_pending_grant` hook that the SDK will fill before each execution.
+- A `TutorialState` shared object with a SUI-coin treasury, a witness object, and a `fund_treasury` entry function.
 - A `skill.tap.json` and `dag.json` still in their scaffold-default shapes — we'll edit those two pages from now.
 
 Next: [Write the on-chain transfer tool](3-tap-transfer-tool.md).

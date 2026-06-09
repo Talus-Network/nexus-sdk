@@ -43,17 +43,13 @@ curl -s "$RPC_URL" -H 'Content-Type: application/json' \
 
 Expected: `100000000`.
 
-## 2. Pick a payment coin and execute the skill (cap-gated)
+## 2. Pick a payment coin and execute the skill
 
-`nexus tap execute --grant-bind` submits one transaction that:
+`nexus tap execute` submits one transaction that:
 
 - Locks a standard TAP `ExecutionPayment` (paid out of the wallet's coins).
-- Initialises the `DAGExecution` object.
-- **Mints a `WorkflowVertexAuthorizationGrant`** for `transfer_vertex` and attaches it to the execution.
-- **Calls `tutorial_transfer::bind_pending_grant(state, b"transfer_vertex", grant_id)`** so the state slot picks up the just-minted grant id.
-- Shares the execution and emits the request-for-walk event.
-
-The leader then picks up the walk, mints a `VertexAuthorizationCheckCap` from the attached grant, runs `transfer_vertex::execute(cap, worksheet, state, recipient)` on chain, and the workflow marks the walk `Successful`. Your wallet sees `consumed` MIST debited from the payment object; the recipient receives whatever was in the treasury.
+- Initialises the `DAGExecution` object and shares it.
+- Calls the workflow's `request_network_to_execute_walks`, which emits a `RequestWalkExecutionEvent` for the `transfer_vertex` walk. The leader picks the event up, runs `transfer_vertex::execute(worksheet, state, recipient)` on chain, and marks the walk `Successful`. Your wallet sees `consumed` MIST debited from the payment object; the recipient receives whatever was in the treasury.
 
 Pick any coin that has enough room for the payment max-budget (50 million MIST in the example below — adjust to taste):
 
@@ -70,32 +66,18 @@ INPUT_JSON=$(jq -cn \
     --arg recipient "$RECIPIENT" \
     '{transfer_vertex: {"0": $state, "1": $recipient}}')
 
-GRANT_BIND="transfer_vertex:$STATE:$PKG::tutorial_transfer::bind_pending_grant"
-
-nexus tap execute \
+EXEC_JSON=$(nexus tap execute \
     --agent-id           "$AGENT" \
     --skill-id           0 \
     --input-json         "$INPUT_JSON" \
     --payment-max-budget 50000000 \
-    --grant-bind         "$GRANT_BIND" \
     --sui-gas-coin       "$PAYMENT_COIN" \
     --sui-gas-budget     500000000 \
-    --json
+    --json)
+
+EXEC=$(printf '%s' "$EXEC_JSON" | jq -r '.execution_id')
+echo "Execution: $EXEC"
 ```
-
-`--grant-bind` is a colon-delimited triple:
-
-```text
-<vertex_name>:<state_object_id>:<package>::<module>::<function>
-```
-
-- `vertex_name` — the DAG vertex to mint a grant for. Must match the vertex in `dag.json`.
-- `state_object_id` — the shared `TutorialState` object the SDK passes as the first argument when it calls the bind function.
-- `package::module::function` — the bind hook (`bind_pending_grant` from page 2). The function signature must be exactly `(&mut <YourState>, vector<u8>, address)`.
-
-Repeat `--grant-bind` once per cap-gated vertex if your skill has more than one.
-
-> **`--grant-bind` is semi-custom — it is not fully general.** The flag bakes in one binding shape: a single shared state object passed as the first argument and a fixed `(&mut <YourState>, vector<u8>, address)` bind-function signature. That is exactly the pattern this tutorial uses, and it covers the common cap-gated TAP case. But if your design needs a different bind signature, extra arguments, a different state-wiring strategy, or more than one bind call per vertex, the CLI flag cannot express it. In that case, drive the execute PTB from the SDK (`nexus_sdk::transactions::dag::VertexGrantBind`) where you control the full transaction shape.
 
 The output gives you `execution_id` and `tx_checkpoint`:
 
@@ -107,17 +89,8 @@ The output gives you `execution_id` and `tx_checkpoint`:
   "execution_id": "0x7b582d5fe921f4a35dcdb9897c5fc66e3d2ebae5301e3fd43376ed9576e15ea9",
   "digest": "...",
   "tx_checkpoint": 117137,
-  "submit": {
-    /* ... */
-  }
+  "submit": { /* ... */ }
 }
-```
-
-Capture the execution id and the checkpoint:
-
-```bash
-EXEC=$(... | jq -r '.execution_id')
-CKPT=$(... | jq -r '.tx_checkpoint')
 ```
 
 ## 3. Wait for the recipient balance to increase
@@ -139,15 +112,15 @@ done
 
 You should see the deposit amount (`100000000` MIST in the example) land within ~15 seconds on a healthy network.
 
-You can also confirm the state's grant slot has been cleared (the vertex tool extracts it as part of the consume-and-drain):
+You can also confirm the treasury has been drained:
 
 ```bash
 curl -s "$RPC_URL" -H 'Content-Type: application/json' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"sui_getObject\",\"params\":[\"$STATE\",{\"showContent\":true}]}" |
-    jq '.result.data.content.fields | {treasury: .treasury, authorized_grant_id: .authorized_grant_id}'
+    jq '.result.data.content.fields.treasury'
 ```
 
-Both fields should be `null` — the treasury moved out, the grant was consumed.
+The field should be `null` — the coin moved out of state into the recipient address.
 
 ## 4. Inspect the execution and payment
 
@@ -155,8 +128,7 @@ Both fields should be `null` — the treasury moved out, the grant was consumed.
 
 ```bash
 nexus dag inspect-execution \
-    --dag-execution-id    "$EXEC" \
-    --execution-checkpoint "$CKPT" \
+    --dag-execution-id "$EXEC" \
     --json | jq
 ```
 
@@ -190,33 +162,25 @@ nexus dag execution-cost --dag-execution-id "$EXEC" --json
 
 Returns `payment_id`, `max_budget`, `locked_budget`, `consumed`, `outstanding_locks`, plus `accomplished`/`refunded` flags. This is the same data `payments show` returns, scoped to one execution.
 
-## 6. Why this is now production-correct
-
-The cap-gated flow we just ran is what closes the treasury gate end-to-end:
-
-1. `--grant-bind` made the execute PTB mint a `WorkflowVertexAuthorizationGrant` and write its id into `TutorialState.authorized_grant_id` _before_ the leader saw a request-for-walk event. Any walk driven by anyone other than this PTB would start from `authorized_grant_id: None` — the vertex tool's `extract_authorized_grant` would simply abort.
-1. The workflow minted the cap from that grant. The cap's `grant_id` is the same value we just wrote into state.
-1. The vertex tool's `assert!(cap.grant_id == expected)` ties the cap, the grant, and the state together. A walk dispatched from any other `(agent, skill)` produces a cap whose `grant_id` was never written into our state, so the assertion fails and the walk aborts before any coin moves.
-
-If someone unrelated tries to attack the skill — register their own `(agent', skill')` listing our tool in `fixed_tools`, mint _their_ grant, drain _our_ treasury — the cap they hand to `execute` carries their grant id, not ours. The assertion fails on their first attempt. The recipient receives nothing. The attacker still paid the gas for the failed walk; we lose nothing.
-
 ## What you built
 
 End-to-end, your skill does this on every call:
 
-1. Invoker submits `tap execute --grant-bind` with a payment coin.
-1. Workflow locks the payment, records the `DAGExecution`, mints a `VertexAuthorizationGrant` attached to it, and the SDK calls `bind_pending_grant(state, b"transfer_vertex", grant_id)` to lock state to that grant.
-1. Workflow emits the request-for-walk event; the SDK shares the execution.
-1. Leader picks the walk up, mints a `VertexAuthorizationCheckCap` from the grant, dry-runs `transfer_vertex::execute`, then submits the real transaction.
-1. `execute` asserts `cap.grant_id == state.authorized_grant_id`, consumes the cap, drains the treasury, fires `public_transfer` to the recipient, stamps the worksheet, and returns the `Transferred` tagged output.
+1. Invoker submits `nexus tap execute` with a payment coin. Workflow locks the payment, records the `DAGExecution`, shares it, and emits a `RequestWalkExecutionEvent` for the `transfer_vertex` walk.
+1. Leader picks the walk up, runs `transfer_vertex::execute(worksheet, state, recipient)` on chain.
+1. `execute` drains the treasury, fires `public_transfer` to the recipient, stamps the worksheet, and returns the `Transferred` tagged output.
 1. Workflow records the walk as `Successful`; the payment settles asynchronously.
 1. You see the recipient balance go up; `inspect-execution` and `payments show` confirm the on-chain trail.
 
-Re-running just means funding the treasury again and calling `tap execute --grant-bind` again with a fresh recipient (or the same one). The previous walk consumed the grant and cleared the state slot; the new walk mints a fresh grant.
+Re-running just means funding the treasury again and calling `tap execute` again with a fresh recipient (or the same one).
+
+{% hint style="danger" %}
+**This flow is unauthorized.** Anyone who can reach a workflow dispatch against `(agent, skill)` will drain the treasury — there is no per-call authorization check on `transfer_vertex::execute`. The only thing keeping the funds in place is the `public(package)` visibility on `take_treasury`, which prevents *direct* Move-side calls from other packages; it does **not** prevent another skill author from publishing their own DAG that lists `tutorial.local.transfer_vertex@1` in its entry vertex and submitting `tap execute` against their own agent. Treat this guide as an introduction to the workflow lifecycle, not as a production pattern. The cap concept (`WorkflowVertexAuthorizationGrant`, `VertexAuthorizationCheckCap`, `fixed_tools` with `requires_payment: true`, `--workflow-authorization-cap-first`) plus the state-bound grant-id check that closes the multi-`(agent, skill)` attack will land in a follow-up cap-gated TAP guide.
+{% endhint %}
 
 ## Next steps
 
-You now have the cap-gated synchronous-transfer pattern down. The CLI surface for the rest of standard TAP is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
+The CLI surface for the rest of standard TAP is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
 
 - **`nexus tap vault deposit`** to pre-fund a payment vault on the agent instead of paying per-call.
 - **`nexus tap schedule-from-vault`**, **`nexus tap schedule-address-funded`**, and **`nexus tap schedule-default-address-funded`** to drive scheduled executions tied to a scheduler task.
