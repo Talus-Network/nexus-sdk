@@ -209,14 +209,6 @@ pub(crate) async fn inspect_dag_execution(
         }
     }
 
-    // The event channel closing without surfacing a terminal event almost
-    // always means the SDK's poller errored (e.g. a checkpoint in the
-    // catch-up range came back NotFound from the gRPC backend, or the
-    // checkpoint stream dropped). Awaiting the JoinHandle here turns that
-    // silent empty trace into a real error message instead of a confusing
-    // `[]` JSON payload. On the happy path the poller has already returned
-    // `Ok(())` after emitting `ExecutionFinished`, so this is essentially
-    // a no-op for successful inspections.
     await_poller_outcome(result.poller).await?;
 
     json_output(&json_trace)?;
@@ -225,11 +217,7 @@ pub(crate) async fn inspect_dag_execution(
 }
 
 /// Drain the SDK's event-poller `JoinHandle` after the CLI's inspection
-/// loop ends and surface any error it reported. The receiver-loop in
-/// [`inspect_dag_execution`] otherwise exits cleanly when the channel
-/// closes — that channel closure is exactly what happens when the poller
-/// errors out partway through catch-up, so without this step the CLI hides
-/// the underlying RPC failure behind an empty JSON trace.
+/// loop ends and surface any error it reported.
 pub(crate) async fn await_poller_outcome(
     poller: tokio::task::JoinHandle<Result<(), nexus_sdk::nexus::error::NexusError>>,
 ) -> Result<(), NexusCliError> {
@@ -238,6 +226,7 @@ pub(crate) async fn await_poller_outcome(
             "DAG execution inspection task failed to join: {join_err}"
         ))
     })?;
+
     outcome.map_err(NexusCliError::Nexus)
 }
 
