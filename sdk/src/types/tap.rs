@@ -669,6 +669,18 @@ pub struct TapVertexAuthorizationSchema {
     pub requires_payment: bool,
 }
 
+impl TapVertexAuthorizationSchema {
+    /// True when the schema carries no fixed tools and does not require payment.
+    /// In that case, the chain's `register_skill` reconstructs the requirements
+    /// digest with this same default schema, so callers can use the simpler
+    /// register entrypoint. When this returns false, callers must route through
+    /// `register_skill_with_vertex_authorization_schema` so the chain sees the
+    /// real schema during digest validation.
+    pub fn is_default(&self) -> bool {
+        self.fixed_tools.is_empty() && !self.requires_payment
+    }
+}
+
 /// User-facing skill requirements fetched before dry-run or execution.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSkillRequirements {
@@ -1668,7 +1680,20 @@ impl TapPublishArtifact {
         tap_package_id: sui::types::Address,
     ) -> anyhow::Result<Self> {
         config.validate()?;
-        let digest_input = config.digest_input();
+        // Substitute the `0x0` sentinel in `fixed_tools.package_id` with the
+        // just-published `tap_package_id` so authors can declare self-referential
+        // on-chain tools without a chicken-and-egg with the package address.
+        let mut requirements = config.requirements.clone();
+        for tool in &mut requirements.vertex_authorization_schema.fixed_tools {
+            if tool.package_id == sui::types::Address::ZERO {
+                tool.package_id = tap_package_id;
+            }
+        }
+        let digest_input = TapConfigDigestInput {
+            interface_revision: config.interface_revision,
+            shared_objects: config.shared_objects.clone(),
+            requirements: requirements.clone(),
+        };
         let config_digest = digest_input.digest()?;
         let config_digest_hex = hex::encode(&config_digest);
 
@@ -1680,7 +1705,7 @@ impl TapPublishArtifact {
             config_digest,
             config_digest_hex,
             shared_objects: config.shared_objects.clone(),
-            requirements: config.requirements.clone(),
+            requirements,
         })
     }
 
@@ -2200,6 +2225,95 @@ mod tests {
         assert_eq!(artifact.dag_id, addr("0x8"));
         assert_eq!(artifact.tap_package_id, addr("0x7"));
         assert_eq!(artifact.config_digest_hex.len(), 64);
+    }
+
+    #[test]
+    fn vertex_authorization_schema_is_default_predicate() {
+        // is_default toggles which register entrypoint the SDK takes. Both
+        // populated fixed_tools and a true requires_payment flag must flip it
+        // false so the cap-gated path runs; the empty/!requires_payment shape
+        // is what the chain reconstructs on the simple register entrypoint.
+        let mut schema = TapVertexAuthorizationSchema::default();
+        assert!(schema.is_default());
+
+        schema.requires_payment = true;
+        assert!(!schema.is_default());
+
+        schema.requires_payment = false;
+        schema.fixed_tools = vec![TapAuthorizedTool {
+            package_id: addr("0x42"),
+            module: "tap".to_string(),
+            function: "execute".to_string(),
+            operation_commitment: vec![1, 2, 3],
+        }];
+        assert!(!schema.is_default());
+    }
+
+    #[test]
+    fn publish_artifact_substitutes_zero_sentinel_fixed_tool_package_id() {
+        // `from_config` rewrites any fixed_tools[].package_id == 0x0 into the
+        // just-published tap_package_id so authors can declare self-referential
+        // cap-gated tools without knowing the package address ahead of time.
+        // Crucially, the rewrite must propagate into the config digest input so
+        // the on-chain digest validation sees the same shape; otherwise
+        // register_skill rejects the artifact with a digest mismatch.
+        let mut reqs = requirements();
+        reqs.vertex_authorization_schema = TapVertexAuthorizationSchema {
+            schema_commitment: vec![],
+            fixed_tools: vec![
+                TapAuthorizedTool {
+                    package_id: sui::types::Address::ZERO,
+                    module: "tap".to_string(),
+                    function: "execute_self".to_string(),
+                    operation_commitment: vec![],
+                },
+                TapAuthorizedTool {
+                    package_id: addr("0x99"),
+                    module: "external".to_string(),
+                    function: "call".to_string(),
+                    operation_commitment: vec![],
+                },
+            ],
+            requires_payment: false,
+        };
+        let config = TapSkillConfig {
+            name: "self".to_string(),
+            tap_package_name: "self_tap".to_string(),
+            dag_path: PathBuf::from("skill.dag.json"),
+            tap_package_path: PathBuf::from("tap"),
+            requirements: reqs,
+            shared_objects: vec![],
+            interface_revision: InterfaceRevision(1),
+        };
+
+        let dag_id = addr("0x8");
+        let tap_pkg = addr("0x7");
+        let artifact =
+            TapPublishArtifact::from_config(&config, dag_id, tap_pkg).expect("valid artifact");
+
+        let tools = &artifact
+            .requirements
+            .vertex_authorization_schema
+            .fixed_tools;
+        assert_eq!(tools[0].package_id, tap_pkg, "0x0 sentinel must rewrite");
+        assert_eq!(
+            tools[1].package_id,
+            addr("0x99"),
+            "non-sentinel entries must be left alone"
+        );
+
+        // The digest must be computed after substitution so on-chain validation
+        // agrees with what the artifact carries.
+        let mut substituted_reqs = config.requirements.clone();
+        substituted_reqs.vertex_authorization_schema.fixed_tools[0].package_id = tap_pkg;
+        let expected_digest = TapConfigDigestInput {
+            interface_revision: InterfaceRevision(1),
+            shared_objects: vec![],
+            requirements: substituted_reqs,
+        }
+        .digest()
+        .expect("expected digest");
+        assert_eq!(artifact.config_digest, expected_digest);
     }
 
     #[test]

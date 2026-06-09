@@ -1,7 +1,7 @@
 use super::*;
 
 pub(crate) async fn dry_run_skill(config: PathBuf) -> AnyResult<(), NexusCliError> {
-    let config = validate_skill(config, None).await?;
+    let config = validate_skill(config).await?;
     let digest = config
         .digest_input()
         .digest_hex()

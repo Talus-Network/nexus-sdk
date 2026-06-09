@@ -23,6 +23,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("announce_endpoint_revision"),
     };
+    pub const AUTHORIZED_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("authorized_tool"),
+    };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: STANDARD_TAP_MODULE,
@@ -193,6 +197,10 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("trigger_scheduled_skill_execution"),
     };
+    pub const VERTEX_AUTHORIZATION_SCHEMA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("vertex_authorization_schema"),
+    };
     /// Withdraw unlocked SUI from a standard TAP `AgentPaymentVault`.
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -237,6 +245,15 @@ pub fn scheduled_authorization_grant_template_type(
         package_id,
         STANDARD_TAP_MODULE,
         sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
+        vec![],
+    )))
+}
+
+pub fn tap_authorized_tool_type(package_id: sui::types::Address) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        package_id,
+        STANDARD_TAP_MODULE,
+        sui::types::Identifier::from_static("TapAuthorizedTool"),
         vec![],
     )))
 }
@@ -323,6 +340,10 @@ mod tests {
                 execution_payment_receipt_type(package),
                 sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
             ),
+            (
+                tap_authorized_tool_type(package),
+                sui::types::Identifier::from_static("TapAuthorizedTool"),
+            ),
         ] {
             let sui::types::TypeTag::Struct(tag) = tag else {
                 panic!("expected struct type tag");
@@ -332,5 +353,31 @@ mod tests {
             assert_eq!(*tag.name(), expected_name);
             assert!(tag.type_params().is_empty());
         }
+    }
+
+    #[test]
+    fn standard_tap_idents_added_for_cap_gated_skills() {
+        // Idents introduced for cap-gated skill registration and grant
+        // composition. A regression that renames one of these on chain would
+        // silently break either skill registration with a non-default
+        // `TapVertexAuthorizationSchema` or scheduled-skill grant minting; the
+        // assertion pins both the module and the Move function/struct name.
+        assert_eq!(TapStandard::AUTHORIZED_TOOL.module, STANDARD_TAP_MODULE);
+        assert_eq!(
+            TapStandard::AUTHORIZED_TOOL.name,
+            sui::types::Identifier::from_static("authorized_tool")
+        );
+        assert_eq!(
+            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.module,
+            STANDARD_TAP_MODULE
+        );
+        assert_eq!(
+            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name,
+            sui::types::Identifier::from_static("vertex_authorization_schema")
+        );
+        assert_eq!(
+            TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
+            sui::types::Identifier::from_static("trigger_scheduled_skill_execution")
+        );
     }
 }

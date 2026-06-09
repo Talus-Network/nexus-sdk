@@ -314,7 +314,7 @@ Manage scheduler tasks, occurrences, and periodic schedules.
 
 ---
 
-**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-priority-fee-per-gas-unit <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-priority-fee-per-gas-unit <mist>] [--generator queue|periodic]`**
+**`nexus scheduler task create --dag-id <id> [--entry-group <group>] [--input-json <json>] [--remote vertex.port,...] [--metadata key=value ...] [--execution-priority-fee-per-gas-unit <mist>] [--schedule-start-ms <ms> | --schedule-start-offset-ms <ms>] [--schedule-deadline-offset-ms <ms>] [--schedule-priority-fee-per-gas-unit <mist>] [--generator queue|periodic] [--agent-id <id> --skill-id <u64>]`**
 
 Creates a new scheduler task tied to the specified DAG. Key options:
 
@@ -325,6 +325,7 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
 - `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-priority-fee-per-gas-unit` sets the priority fee for that initial occurrence.
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
+- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`BeginAgentExecutionWitness`) instead of the default DAG-execution policy, so the task can be paired with `tap schedule-from-vault`, `tap schedule-address-funded`, or `tap schedule-default-address-funded` to fund and trigger occurrences.
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
 
@@ -506,9 +507,9 @@ Generates a TAP package skeleton in `<target>/<name-kebab-cased>/`, containing a
 
 ---
 
-**`nexus tap validate-skill --config <PATH> [--tap-package <PATH>]`**
+**`nexus tap validate-skill --config <PATH>`**
 
-Statically validates a TAP skill config JSON and the local TAP package it references — package manifest, named-address aliases, module declarations, and the bundled DAG JSON. `--tap-package` overrides the `tap_package_path` field in the config so the same config can be validated against a relocated package. No network is required.
+Statically validates a TAP skill config JSON and the local TAP package it references — package manifest, named-address aliases, module declarations, and the bundled DAG JSON. The TAP package is resolved from the config's `tap_package_path` (interpreted relative to the config file's directory). No network is required.
 
 ---
 
@@ -520,7 +521,7 @@ Runs `validate-skill` and computes a config digest against the zero package addr
 
 ---
 
-**`nexus tap publish-skill --config <PATH> [--tap-package <PATH>] [--out <PATH>]`**
+**`nexus tap publish-skill --config <PATH> [--out <PATH>]`**
 
 Publishes a full TAP skill in one shot: publishes the TAP Move package, publishes the DAG, creates and shares a `StandardEndpoint` object for the package, and constructs a `TapPublishArtifact` carrying everything an operator needs to bind the skill to an agent. The JSON output includes the TAP `package_id`, the `dag_id`, the endpoint object ref, the per-step transaction digests and checkpoints, and the full `artifact`. When `--out` is supplied, the artifact is also written to disk as JSON for handoff to operators (e.g. to feed `register-skill` or `bind`).
 
@@ -683,6 +684,8 @@ Executes a standard TAP skill through its currently-active endpoint and DAG. Inp
 - `--authorization-plan-hash-hex` optionally supplies an authorization-plan commitment for cap-gated tools.
 
 JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active endpoint key/object, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
+
+Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific. Build a single PTB with `sui client ptb` (or the `nexus_sdk::transactions::dag::create_vertex_authorization_grant` builder) that calls `nexus_workflow::dag::create_vertex_authorization_grant`, hands the result to your tap package's bind hook, and only then invokes the workflow's begin / request-walk entrypoints. See the [TAP development guide](guides/1-tap-development.md) for a worked example.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

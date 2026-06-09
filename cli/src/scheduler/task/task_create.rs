@@ -31,8 +31,15 @@ pub(crate) async fn create_task(
     schedule_deadline_offset_ms: Option<u64>,
     schedule_priority_fee_per_gas_unit: u64,
     generator: GeneratorKind,
+    agent_id: Option<sui::types::Address>,
+    skill_id: Option<u64>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
+    if agent_id.is_some() != skill_id.is_some() {
+        return Err(NexusCliError::Any(anyhow!(
+            "--agent-id and --skill-id must be provided together (or both omitted) to scope the task to a registered TAP agent skill"
+        )));
+    }
     command_title!(
         "Creating scheduler task for DAG '{dag_id}'",
         dag_id = dag_id
@@ -108,6 +115,8 @@ pub(crate) async fn create_task(
             execution_priority_fee_per_gas_unit,
             initial_schedule,
             generator,
+            agent_id,
+            skill_id,
         })
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -175,5 +184,79 @@ fn describe_generator(symbol: &PolicySymbol) -> String {
     match symbol {
         PolicySymbol::Witness(name) => name.name.clone(),
         PolicySymbol::Uid(uid) => uid.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::prelude::GasArgs};
+
+    fn gas_args() -> GasArgs {
+        GasArgs {
+            sui_gas_coin: None,
+            sui_gas_budget: 100_000_000,
+        }
+    }
+
+    /// Half-supplied `(--agent-id, --skill-id)` must be caught locally before
+    /// any RPC traffic so the user sees a clear error instead of a confusing
+    /// chain-side failure. The CLI validates the pair up-front; the SDK
+    /// validates again as a defense-in-depth layer. We exercise only the CLI
+    /// guard here (no Nexus client is constructed) — a regression that drops
+    /// the early-return would surface as a missing-RPC error instead.
+    #[tokio::test]
+    async fn create_task_rejects_agent_id_without_skill_id() {
+        let dag_id = sui::types::Address::from_static("0xd");
+        let err = create_task(
+            dag_id,
+            "entry".to_string(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            0,
+            None,
+            None,
+            None,
+            0,
+            GeneratorKind::Queue,
+            Some(sui::types::Address::from_static("0xa")),
+            None,
+            gas_args(),
+        )
+        .await
+        .expect_err("agent-only must error before any RPC");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--agent-id") && msg.contains("--skill-id"),
+            "expected agent/skill validation error, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_task_rejects_skill_id_without_agent_id() {
+        let dag_id = sui::types::Address::from_static("0xd");
+        let err = create_task(
+            dag_id,
+            "entry".to_string(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            0,
+            None,
+            None,
+            None,
+            0,
+            GeneratorKind::Queue,
+            None,
+            Some(7),
+            gas_args(),
+        )
+        .await
+        .expect_err("skill-only must error before any RPC");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--agent-id") && msg.contains("--skill-id"),
+            "expected agent/skill validation error, got: {msg}"
+        );
     }
 }

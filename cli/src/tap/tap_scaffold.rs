@@ -24,8 +24,10 @@ pub(crate) async fn scaffold_tap_skill(
             create_dir_all(parent).await.map_err(NexusCliError::Io)?;
         }
 
-        let mut file = File::create(path).await.map_err(NexusCliError::Io)?;
-        file.write_all(contents.as_bytes())
+        // Use `tokio::fs::write` so each file is flushed and closed before we
+        // move on — a dropped `tokio::fs::File` does not flush its buffer, so a
+        // subsequent reader (e.g. `validate-skill`) could see a partial file.
+        tokio::fs::write(path, contents.as_bytes())
             .await
             .map_err(NexusCliError::Io)?;
     }
@@ -48,15 +50,27 @@ pub(crate) fn scaffold_files(
             format!(
                 r#"[package]
 name = "{package_name}"
-edition = "2024.beta"
+version = "1.0.0"
+edition = "2024"
 
+# Stage these four packages under `deps/<name>/` before running
+# `tap publish-skill`. The default vertex-tool stub only imports
+# `nexus_primitives`, but the full standard-TAP surface (cap-gated
+# authorization, scheduled tasks, registry interactions) needs the other
+# three. Drop unused entries if you want a leaner build.
 [dependencies]
-nexus_interface = {{ local = "../../nexus/sui/interface" }}
-nexus_workflow = {{ local = "../../nexus/sui/workflow" }}
-nexus_primitives = {{ local = "../../nexus/sui/primitives" }}
+nexus_primitives = {{ local = "deps/primitives" }}
+nexus_interface  = {{ local = "deps/interface" }}
+nexus_registry   = {{ local = "deps/registry" }}
+nexus_workflow   = {{ local = "deps/workflow" }}
 
-[addresses]
-{package_name} = "0x0"
+# Map env alias → chain id for every Sui network you plan to publish to. The
+# alias must match the `sui client envs` name and the value is what
+# `sui client chain-identifier` prints while that env is active. The default
+# entry below targets public testnet; if you target a different network add
+# or replace the row, e.g. `mainnet = "35834a8a"`.
+[environments]
+testnet = "4c78adac"
 "#
             ),
         ),
@@ -153,5 +167,101 @@ mod tests {
         assert!(files
             .iter()
             .any(|(_, contents)| contents.contains("module weather_skill::weather_skill;")));
+    }
+
+    #[test]
+    fn scaffolded_move_toml_declares_all_four_nexus_dependencies() {
+        // The scaffold ships with all four published Nexus packages
+        // (primitives, interface, registry, workflow) declared so authors
+        // who reach for any standard-TAP surface beyond the minimal vertex
+        // tool — cap-gated authorization, scheduler interactions, registry
+        // lookups — don't have to discover and add deps mid-build. Authors
+        // who want a leaner manifest can drop unused entries themselves.
+        let files = scaffold_files(
+            "tutorial transfer",
+            "tutorial_transfer",
+            "tutorial_transfer",
+        );
+        let move_toml = files
+            .iter()
+            .find_map(|(path, contents)| {
+                (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
+            })
+            .expect("Move.toml present");
+        for dep in [
+            "nexus_primitives = { local = \"deps/primitives\" }",
+            "nexus_interface  = { local = \"deps/interface\" }",
+            "nexus_registry   = { local = \"deps/registry\" }",
+            "nexus_workflow   = { local = \"deps/workflow\" }",
+        ] {
+            assert!(
+                move_toml.contains(dep),
+                "scaffolded Move.toml missing entry: {dep}"
+            );
+        }
+    }
+
+    #[test]
+    fn scaffolded_move_toml_prefills_testnet_chain_id() {
+        // The scaffold defaults to public testnet so `tap publish-skill`
+        // works out of the box for the most common dev target. Authors who
+        // target a different network edit the [environments] table.
+        let files = scaffold_files(
+            "tutorial transfer",
+            "tutorial_transfer",
+            "tutorial_transfer",
+        );
+        let move_toml = files
+            .iter()
+            .find_map(|(path, contents)| {
+                (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
+            })
+            .expect("Move.toml present");
+        assert!(
+            move_toml.contains("testnet = \"4c78adac\""),
+            "scaffolded Move.toml must default [environments].testnet to the public testnet chain id"
+        );
+    }
+
+    #[test]
+    fn scaffolded_move_toml_uses_new_style_layout() {
+        // `validate-skill` requires the new-style 2024 layout: `version`,
+        // `edition = "2024"`, an `[environments]` table, and no `[addresses]`
+        // (which would mark the package as old-style and break dependency
+        // resolution against new-style published deps). Pin the scaffold to
+        // that shape so the very first `validate-skill` after `tap scaffold`
+        // doesn't reject the manifest it just wrote.
+        let files = scaffold_files(
+            "tutorial transfer",
+            "tutorial_transfer",
+            "tutorial_transfer",
+        );
+        let move_toml = files
+            .iter()
+            .find_map(|(path, contents)| {
+                (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
+            })
+            .expect("Move.toml present");
+
+        assert!(
+            move_toml.contains("version = \"1.0.0\""),
+            "scaffolded Move.toml must carry a [package].version field"
+        );
+        assert!(
+            move_toml.contains("edition = \"2024\""),
+            "scaffolded Move.toml must use edition = \"2024\""
+        );
+        assert!(
+            !move_toml.contains("2024.beta"),
+            "scaffolded Move.toml must not use the old 2024.beta edition"
+        );
+        assert!(
+            move_toml.contains("[environments]"),
+            "scaffolded Move.toml must declare an [environments] table"
+        );
+        assert!(
+            !move_toml.contains("[addresses]"),
+            "scaffolded Move.toml must not declare [addresses] (old-style marker)"
+        );
     }
 }

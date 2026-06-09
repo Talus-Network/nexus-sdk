@@ -197,6 +197,28 @@ impl Crawler {
             .await
     }
 
+    /// Fetch the connected RPC's chain identifier in the 8-hex-char form
+    /// Sui's Move builder uses for `[environments]` lookups (the same value
+    /// `sui client chain-identifier` prints). The gRPC service-info call
+    /// returns the genesis checkpoint digest base58-encoded; we decode it
+    /// and hex-encode the first four bytes to derive the short identifier.
+    pub async fn get_chain_id(&self) -> anyhow::Result<String> {
+        let mut client = self.client.lock().await;
+        let response = client
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .map_err(|e| anyhow!("failed to fetch service info from the connected RPC: {e}"))?;
+        let base58 = response
+            .into_inner()
+            .chain_id
+            .ok_or_else(|| anyhow!("connected RPC did not return a chain id in service info"))?;
+        let digest = sui::types::Digest::from_base58(&base58).map_err(|e| {
+            anyhow!("connected RPC returned an unparsable chain id '{base58}': {e}")
+        })?;
+        Ok(hex::encode(&digest.as_bytes()[..4]))
+    }
+
     /// Fetch an object's metadata only, omitting its content.
     pub async fn get_object_metadata(
         &self,
