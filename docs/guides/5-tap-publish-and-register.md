@@ -3,7 +3,7 @@
 Three on-chain transactions in this page:
 
 1. `nexus tap publish-skill` — publishes the TAP Move package, publishes the DAG, and writes a publish artifact JSON.
-1. `nexus tool register onchain --workflow-authorization-cap-first` — adds the on-chain transfer vertex to the tool registry through the cap-gated entry point so the workflow will mint a `VertexAuthorizationCheckCap` for every dispatch.
+1. `nexus tool register onchain` — adds the on-chain transfer vertex to the tool registry.
 1. `nexus tap bind` — creates a Talus agent and registers the skill against it in one transaction.
 
 Each step records what the next one needs. Capture the IDs as you go.
@@ -22,7 +22,7 @@ What `publish-skill` does in a single transaction:
 
 - Builds and publishes `tap/` as a new Move package.
 - Publishes the DAG in `dag.json` on chain, getting back a `dag_id`.
-- Substitutes the `0x0` sentinel in `skill.tap.json`'s `fixed_tools[].package_id` with the freshly-published `tap_package_id` (so the artifact's authorization schema commits to the real package address).
+- Computes the substituted requirements from `skill.tap.json` (in this guide there is nothing to substitute because `fixed_tools` is empty).
 - Computes the endpoint config digest from the substituted requirements, shared objects, and interface revision.
 - Writes a `TapPublishArtifact` JSON to `--out`. Downstream `tap register-skill` / `tap bind` / `tap announce` all consume this file.
 
@@ -72,7 +72,7 @@ echo "STATE=$STATE WITNESS=$WITNESS"
 
 `STATE` is the shared `TutorialState` object id; `WITNESS` is the UID we'll register as the on-chain tool's `tool_witness_id`. The publish transaction is in the wallet's recent history because `nexus tap publish-skill` was the last state-changing call.
 
-## 3. Register the on-chain transfer tool (cap-gated)
+## 3. Register the on-chain transfer tool
 
 ```bash
 nexus tool register onchain \
@@ -81,25 +81,21 @@ nexus tool register onchain \
     --tool-fqn       tutorial.local.transfer_vertex@1 \
     --description    "Tutorial transfer vertex" \
     --tool-witness-id "$WITNESS" \
-    --workflow-authorization-cap-first \
-    --reuse-if-exists \
     --sui-gas-budget 500000000 \
     --json
 ```
 
 A few things worth knowing:
 
-- **`--workflow-authorization-cap-first`** is the cap-gated registration. It marks the tool record in the registry so the workflow knows to mint a `VertexAuthorizationCheckCap` for every dispatch. Without this flag, the workflow refuses to mint a cap and `dag::create_vertex_authorization_grant` aborts with `EVertexAuthorizationGrantToolNotCapFirst` on the next page.
 - **`--package` and `--module`** must match the Move package id and module name. The CLI derives the tool's input/output schemas from the on-chain Move ABI, so a mismatch fails fast.
 - **`--tool-fqn`** must equal the FQN you set in the Move source and in `dag.json`. All three must agree.
 - **`--tool-witness-id`** ties the tool registration to the `TransferVertexWitness` inside `TutorialState`.
-- **`--reuse-if-exists`** makes the call idempotent: if the FQN is already registered with matching parameters, the command decodes the existing refs and returns `reused: true` instead of erroring.
 
-The JSON output includes the derived `tool_id`, `tool_gas_id`, decoded schemas, and — critically — `"workflow_authorization_cap_first": true`. Confirm that flag is `true` in the response before moving on. If it's `false` the tool is registered through the non-cap entry and the rest of the tutorial won't work; in that case unregister, pick a fresh FQN, and re-register with `--workflow-authorization-cap-first`.
+The JSON output includes the derived `tool_id`, `tool_gas_id`, and the decoded schemas. The tool registers through the plain (non-cap-gated) entry point, so the workflow will dispatch walks against it without minting any per-walk authorization cap.
 
 ## 4. Create the agent and register the skill
 
-`nexus tap bind` does this in a single PTB: it calls `tap::create_agent` and then `tap::register_skill_with_vertex_authorization_schema` (auto-routed because our `vertex_authorization_schema` has non-default `fixed_tools` and `requires_payment: true`).
+`nexus tap bind` does this in a single PTB: it calls `tap::create_agent` and then `tap::register_skill` (the plain entry point, because our `vertex_authorization_schema` is at its scaffold default — empty `fixed_tools`, `requires_payment: false`).
 
 ```bash
 nexus tap bind \
@@ -134,7 +130,7 @@ nexus tap bind \
 AGENT=$(jq -r '.agent_id' bind.json)
 ```
 
-> **Re-running the guide?** If you already have an agent, use `nexus tap register-skill --agent-id <existing> --artifact artifact.json` instead of `tap bind`. That command auto-detects the cap-gated schema and routes through the same PTB.
+> **Re-running the guide?** If you already have an agent, use `nexus tap register-skill --agent-id <existing> --artifact artifact.json` instead of `tap bind`.
 
 ## 5. Confirm in the registry
 
@@ -145,15 +141,15 @@ nexus tap registry show --json | jq --arg agent "$AGENT" '{
 }'
 ```
 
-You should see exactly one agent entry with your `agent_id` + `operator`, and one skill entry with `skill_id: 0` and `dag_id` matching the value you captured from `publish-skill`. The skill's stored requirements carry the `fixed_tools` entry pointing at your published `tap_package_id` (the `0x0` sentinel got substituted by `publish-skill`).
+You should see exactly one agent entry with your `agent_id` + `operator`, and one skill entry with `skill_id: 0` and `dag_id` matching the value you captured from `publish-skill`. The skill's stored requirements carry an empty `fixed_tools` list.
 
 `nexus tap default-target show` is unaffected — that's the registry-managed default executor, not your new agent.
 
 ## What you have now
 
 - A published TAP Move package and DAG. Their ids are in `artifact.json`.
-- A registered cap-gated on-chain transfer vertex tool. The registry record has `workflow_authorization_cap_first: true`, so the workflow will mint and require a `VertexAuthorizationCheckCap` for every dispatch.
-- A new Talus agent with one skill bound to it. The skill's `skill_id` is `0` (skills are numbered per-agent starting at 0). The on-chain skill record carries the `fixed_tools` schema so the workflow knows which tool the cap covers.
+- A registered on-chain transfer vertex tool through the plain (non-cap-gated) entry point.
+- A new Talus agent with one skill bound to it. The skill's `skill_id` is `0` (skills are numbered per-agent starting at 0).
 
 The agent is empty so far — the treasury inside `TutorialState` is still `option::none()`. The next page funds it and runs the first execution.
 

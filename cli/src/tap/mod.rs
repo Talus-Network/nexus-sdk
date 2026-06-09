@@ -309,22 +309,6 @@ pub(crate) enum TapCommand {
             value_name = "HEX"
         )]
         authorization_plan_commitment_hex: Option<String>,
-        #[arg(
-            long = "grant-bind",
-            help = "Cap-gated vertex grant binding. Repeat once per cap-gated vertex. \
-                    Format: VERTEX:STATE_OBJECT_ID:PACKAGE::MODULE::FUNCTION \
-                    (e.g. transfer_vertex:0xaa..:0xbb..::tutorial_transfer::bind_pending_grant). \
-                    The execute PTB mints a WorkflowVertexAuthorizationGrant for VERTEX \
-                    and calls PACKAGE::MODULE::FUNCTION(state, vertex_bytes, grant_id) so the \
-                    tap_package can lock state to that grant before the leader dispatches the walk. \
-                    NOTE: this flag encodes one semi-custom binding shape — a single shared state \
-                    object passed as the first argument and a (state, vertex_bytes, grant_id) bind \
-                    signature. Designs that need a different bind signature, extra arguments, or a \
-                    different grant-wiring strategy are not expressible here; reach for the SDK \
-                    (nexus_sdk::transactions::dag::VertexGrantBind) to build the execute PTB directly.",
-            value_name = "VERTEX:STATE:PKG::MOD::FN"
-        )]
-        grant_bind: Vec<String>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -776,7 +760,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             payment_max_budget,
             payment_refund_mode,
             authorization_plan_commitment_hex,
-            grant_bind,
             gas,
         } => {
             execute_agent_dag_skill(
@@ -790,7 +773,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 payment_max_budget,
                 payment_refund_mode,
                 authorization_plan_commitment_hex,
-                grant_bind,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -1207,7 +1189,6 @@ mod tests {
             payment_max_budget: 0,
             payment_refund_mode: 0,
             authorization_plan_commitment_hex: None,
-            grant_bind: Vec::new(),
             gas: gas_args(),
         })
         .await
@@ -1509,19 +1490,27 @@ weather_skill = "0x0"
             .expect("scaffold succeeds");
 
         let root = tempdir.join("weather-skill");
+        // `validate-skill` now enforces the new-style 2024 layout, so a
+        // manifest carrying [addresses] is rejected up front (the section is
+        // an old-style marker that breaks dep resolution against new-style
+        // published packages, regardless of whether the alias matches).
         tokio::fs::write(
             root.join("tap/Move.toml"),
             r#"[package]
 name = "weather_skill"
-edition = "2024.beta"
+version = "1.0.0"
+edition = "2024"
 
 [dependencies]
-nexus_interface = { local = "../../nexus/sui/interface" }
-nexus_workflow = { local = "../../nexus/sui/workflow" }
-nexus_primitives = { local = "../../nexus/sui/primitives" }
+nexus_interface = { local = "deps/interface" }
+nexus_workflow = { local = "deps/workflow" }
+nexus_primitives = { local = "deps/primitives" }
 
 [addresses]
 other_alias = "0x0"
+
+[environments]
+localnet = "6c457631"
 "#,
         )
         .await
@@ -1529,11 +1518,9 @@ other_alias = "0x0"
 
         let error = validate_skill(root.join("skill.tap.json"))
             .await
-            .expect_err("missing address alias must fail validation");
+            .expect_err("[addresses] section must fail validation");
         assert!(
-            error
-                .to_string()
-                .contains("must define [addresses].weather_skill"),
+            error.to_string().contains("[addresses]"),
             "unexpected error: {error}"
         );
     }
@@ -1606,24 +1593,79 @@ public struct WeatherSkill has drop {}
         );
 
         let no_package_name = tempdir.join("no-name.toml");
-        std::fs::write(
-            &no_package_name,
-            "[package]\n[addresses]\nweather_skill = \"0x0\"\n",
-        )
-        .unwrap();
+        std::fs::write(&no_package_name, "[package]\nedition = \"2024\"\n").unwrap();
         let error = validate_tap_package_manifest(&no_package_name, &config).unwrap_err();
         assert!(
             error.to_string().contains("missing [package].name"),
             "unexpected error: {error}"
         );
 
-        let no_addresses = tempdir.join("no-addresses.toml");
-        std::fs::write(&no_addresses, "[package]\nname = \"weather_skill\"\n").unwrap();
-        let error = validate_tap_package_manifest(&no_addresses, &config).unwrap_err();
+        // `validate-skill` now enforces the new-style 2024 layout up front. A
+        // manifest without [package].version fails fast so the author catches
+        // the missing field locally rather than at `tap publish-skill` time.
+        let no_version = tempdir.join("no-version.toml");
+        std::fs::write(
+            &no_version,
+            "[package]\nname = \"weather_skill\"\nedition = \"2024\"\n[environments]\nlocalnet = \"6c457631\"\n",
+        )
+        .unwrap();
+        let error = validate_tap_package_manifest(&no_version, &config).unwrap_err();
         assert!(
-            error.to_string().contains("missing [addresses]"),
+            error.to_string().contains("[package].version"),
             "unexpected error: {error}"
         );
+
+        // The old beta edition won't resolve against new-style published deps,
+        // so reject it. `validate-skill` accepts only `edition = "2024"`.
+        let beta_edition = tempdir.join("beta-edition.toml");
+        std::fs::write(
+            &beta_edition,
+            "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024.beta\"\n[environments]\nlocalnet = \"6c457631\"\n",
+        )
+        .unwrap();
+        let error = validate_tap_package_manifest(&beta_edition, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("edition = \"2024.beta\""),
+            "unexpected error: {error}"
+        );
+
+        // [addresses] is the old-style marker — reject manifests that carry
+        // it, even if their other fields look new-style.
+        let with_addresses = tempdir.join("with-addresses.toml");
+        std::fs::write(
+            &with_addresses,
+            "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[addresses]\nweather_skill = \"0x0\"\n[environments]\nlocalnet = \"6c457631\"\n",
+        )
+        .unwrap();
+        let error = validate_tap_package_manifest(&with_addresses, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("[addresses]"),
+            "unexpected error: {error}"
+        );
+
+        // [environments] is required so Sui can resolve per-network
+        // `Published.toml` for each dependency. Missing → reject.
+        let no_environments = tempdir.join("no-environments.toml");
+        std::fs::write(
+            &no_environments,
+            "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        let error = validate_tap_package_manifest(&no_environments, &config).unwrap_err();
+        assert!(
+            error.to_string().contains("[environments]"),
+            "unexpected error: {error}"
+        );
+
+        // Happy path: full new-style manifest with one environment entry.
+        let valid = tempdir.join("valid-new-style.toml");
+        std::fs::write(
+            &valid,
+            "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[environments]\nlocalnet = \"6c457631\"\n",
+        )
+        .unwrap();
+        validate_tap_package_manifest(&valid, &config)
+            .expect("complete new-style manifest must validate");
     }
 
     #[test]

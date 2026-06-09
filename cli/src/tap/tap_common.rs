@@ -39,7 +39,6 @@ pub(crate) fn agent_execute_options_from_cli(
             "authorization-plan-hash",
         )?,
         authorization_plan: Vec::new(),
-        grant_binds: Vec::new(),
     })
 }
 

@@ -1,8 +1,4 @@
-use {
-    super::*,
-    crate::types::AgentId,
-    nexus_sdk::transactions::dag::{MoveCallTarget, VertexGrantBind},
-};
+use {super::*, crate::types::AgentId};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_agent_dag_skill(
@@ -16,23 +12,18 @@ pub(crate) async fn execute_agent_dag_skill(
     payment_max_budget: u64,
     payment_refund_mode: u8,
     authorization_plan_commitment_hex: Option<String>,
-    grant_bind: Vec<String>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing agent DAG skill '{agent_id}:{skill_id}'");
 
-    let mut options = agent_execute_options_from_cli(
+    let options = agent_execute_options_from_cli(
         payment_source_hex,
         payment_max_budget,
         payment_refund_mode,
         authorization_plan_commitment_hex,
     )?;
-    let parsed_binds = parse_grant_binds(&grant_bind)?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    if !parsed_binds.is_empty() {
-        options.grant_binds = resolve_grant_binds(&nexus_client, parsed_binds).await?;
-    }
     let conf = CliConf::load().await.unwrap_or_default();
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf = conf.data_storage.clone().into();
@@ -79,84 +70,6 @@ pub(crate) async fn execute_agent_dag_skill(
     json_output(&agent_execute_result_json(agent_id, skill_id, &result))
 }
 
-/// Pre-RPC representation of one `--grant-bind` flag value.
-struct ParsedGrantBind {
-    vertex: String,
-    state_object_id: sui::types::Address,
-    package: sui::types::Address,
-    module: String,
-    function: String,
-}
-
-fn parse_grant_binds(raw: &[String]) -> AnyResult<Vec<ParsedGrantBind>, NexusCliError> {
-    raw.iter().map(|s| parse_grant_bind(s)).collect()
-}
-
-fn parse_grant_bind(raw: &str) -> AnyResult<ParsedGrantBind, NexusCliError> {
-    // Format: VERTEX:STATE_OBJECT:PACKAGE::MODULE::FUNCTION
-    let (vertex, rest) = raw.split_once(':').ok_or_else(|| {
-        NexusCliError::Any(anyhow!(
-            "invalid --grant-bind '{raw}': expected VERTEX:STATE:PKG::MOD::FN"
-        ))
-    })?;
-    let (state, target) = rest.split_once(':').ok_or_else(|| {
-        NexusCliError::Any(anyhow!(
-            "invalid --grant-bind '{raw}': missing state object ID"
-        ))
-    })?;
-    let parts: Vec<&str> = target.split("::").collect();
-    if parts.len() != 3 {
-        return Err(NexusCliError::Any(anyhow!(
-            "invalid --grant-bind '{raw}': bind target must be PACKAGE::MODULE::FUNCTION"
-        )));
-    }
-    let package = parts[0].parse().map_err(|e| {
-        NexusCliError::Any(anyhow!(
-            "invalid --grant-bind '{raw}': bind target package is not a Sui address: {e}"
-        ))
-    })?;
-    let state_object_id = state.parse().map_err(|e| {
-        NexusCliError::Any(anyhow!(
-            "invalid --grant-bind '{raw}': state object id is not a Sui address: {e}"
-        ))
-    })?;
-    Ok(ParsedGrantBind {
-        vertex: vertex.to_string(),
-        state_object_id,
-        package,
-        module: parts[1].to_string(),
-        function: parts[2].to_string(),
-    })
-}
-
-async fn resolve_grant_binds(
-    nexus_client: &nexus_sdk::nexus::client::NexusClient,
-    parsed: Vec<ParsedGrantBind>,
-) -> AnyResult<Vec<VertexGrantBind>, NexusCliError> {
-    let mut out = Vec::with_capacity(parsed.len());
-    for entry in parsed {
-        let state_ref = nexus_client
-            .crawler()
-            .get_object_metadata(entry.state_object_id)
-            .await
-            .map_err(NexusCliError::Any)?
-            .object_ref();
-        out.push(VertexGrantBind {
-            vertex: entry.vertex,
-            state_object: state_ref,
-            bind_target: MoveCallTarget {
-                package: entry.package,
-                module: sui::types::Identifier::new(&entry.module)
-                    .map_err(|e| NexusCliError::Any(anyhow!("invalid bind-target module: {e}")))?,
-                function: sui::types::Identifier::new(&entry.function).map_err(|e| {
-                    NexusCliError::Any(anyhow!("invalid bind-target function: {e}"))
-                })?,
-            },
-        });
-    }
-    Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,7 +87,6 @@ mod tests {
             0,
             0,
             None,
-            Vec::new(),
             None,
             DEFAULT_GAS_BUDGET,
         )

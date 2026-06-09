@@ -88,7 +88,6 @@ pub(crate) async fn execute_dag(
         payment_refund_mode: 0,
         authorization_plan_commitment: None,
         authorization_plan: Vec::new(),
-        grant_binds: Vec::new(),
     };
 
     let tx_handle = loading!("Crafting and executing transaction...");

@@ -177,6 +177,10 @@ pub struct ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
 pub struct TapPackagePublishOptions {
     pub package_path: PathBuf,
     pub named_address_overrides: Vec<(String, sui::types::Address)>,
+    /// Build environment to feed into Sui's Move builder. New-style 2024
+    /// packages need this so dependency `Published.toml` files resolve to
+    /// the right addresses for the connected network.
+    pub environment: Option<crate::sui::build::Environment>,
 }
 
 /// Result returned after publishing a TAP Move package.
@@ -294,8 +298,12 @@ impl TapActions {
         &self,
         options: TapPackagePublishOptions,
     ) -> Result<TapPackagePublishResult, NexusError> {
-        let package = build_move_package(&options.package_path, &options.named_address_overrides)
-            .map_err(NexusError::TransactionBuilding)?;
+        let package = build_move_package(
+            &options.package_path,
+            &options.named_address_overrides,
+            options.environment.clone(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let address = self.client.signer.get_active_address();
         let mut tx = sui::tx::TransactionBuilder::new();
         let upgrade_cap = tx.publish(
@@ -1338,6 +1346,7 @@ where
 fn build_move_package(
     package_path: &std::path::Path,
     named_address_overrides: &[(String, sui::types::Address)],
+    environment: Option<crate::sui::build::Environment>,
 ) -> anyhow::Result<CompiledPackage> {
     let mut build_config = crate::sui::build::BuildConfig::new_for_testing_replace_addresses(
         named_address_overrides
@@ -1346,6 +1355,9 @@ fn build_move_package(
             .collect::<Vec<_>>(),
     );
     build_config.print_diags_to_stderr = false;
+    if let Some(env) = environment {
+        build_config.environment = env;
+    }
     build_config.build(package_path)
 }
 
