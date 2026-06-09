@@ -16,7 +16,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     #[derive(Deserialize)]
     struct ToolRegistry {
-        timeouts: DynamicMap<ToolFqn, String>,
+        timeouts: DynamicMap<String, String>,
     }
 
     let tool_registry = match crawler
@@ -40,18 +40,12 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         }
     };
 
-    let tool_ids = match timeouts
+    let tool_ids = timeouts
         .iter()
-        .map(|(fqn, _)| Tool::derive_id(*nexus_objects.tool_registry.object_id(), fqn))
-        .collect::<AnyResult<Vec<_>>>()
-    {
-        Ok(ids) => ids,
-        Err(e) => {
-            tools_handle.error();
-
-            return Err(NexusCliError::Any(e));
-        }
-    };
+        .filter_map(|(fqn, _)| {
+            Tool::derive_id(*nexus_objects.tool_registry.object_id(), &fqn.parse().ok()?).ok()
+        })
+        .collect::<Vec<_>>();
 
     let tools = match crawler.get_objects::<Tool>(&tool_ids).await {
         Ok(tools) => tools,
@@ -88,7 +82,9 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
             tool.reference.to_string(),
             format!(
                 "{} ms",
-                timeouts.get(&tool.fqn).unwrap_or(&"N/A".to_string())
+                timeouts
+                    .get(&tool.fqn.to_string())
+                    .unwrap_or(&"N/A".to_string())
             ),
             tool.registered_at.to_string(),
             tool.unregistered_at
