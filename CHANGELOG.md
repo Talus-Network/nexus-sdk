@@ -288,6 +288,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - bug where foreign `AnnounceInterfacePackageEvent` events could not be parsed because they did not originate from Nexus packages, which is however expected
+- `time` crate vulnerability (upgrade to `0.3.47`)
 
 ### `nexus-cli`
 
