@@ -1,5 +1,4 @@
 mod tap_agent;
-mod tap_announce;
 mod tap_bind;
 mod tap_common;
 mod tap_create_agent;
@@ -15,6 +14,7 @@ mod tap_requirements;
 mod tap_scaffold;
 mod tap_schedule;
 mod tap_schedule_address_funded;
+mod tap_update_skill;
 mod tap_validate_skill;
 mod tap_vault;
 mod tap_vault_deposit;
@@ -44,13 +44,13 @@ use {
             tap::{
                 fetch_execution_payment_history,
                 fetch_tap_agent_payment_vault_for_agent,
-                AnnounceEndpointRevisionResult,
                 CreateAgentResult,
                 GetSkillRequirementsResult,
                 PublishSkillResult,
                 RegisterSkillResult,
                 ScheduleSkillExecutionResult,
                 TapPackagePublishOptions,
+                UpdateSkillResult,
             },
             workflow::AgentDagExecuteOptions,
         },
@@ -65,13 +65,13 @@ use {
     },
     regex::Regex,
     tap_agent::handle_agent_command,
-    tap_announce::announce_endpoint_revision,
     tap_bind::bind_agent_skill,
     tap_common::{
         agent_execute_options_from_cli,
         agent_id_from_alias_or_arg,
         decode_hex_arg,
         read_artifact,
+        schedule_policy_from_cli,
     },
     tap_create_agent::create_agent,
     tap_default_target::show_default_target,
@@ -82,7 +82,6 @@ use {
         agent_list_result_json,
         agent_remove_result_json,
         agent_save_result_json,
-        announce_result_json,
         bind_result_json,
         create_agent_result_json,
         default_target_result_json,
@@ -100,6 +99,7 @@ use {
         schedule_default_address_funded_result_json,
         schedule_from_vault_result_json,
         schedule_result_json,
+        update_skill_result_json,
         validate_skill_result_json,
         vault_balance_result_json,
         vault_deposit_result_json,
@@ -116,6 +116,7 @@ use {
         schedule_default_address_funded,
         schedule_from_vault,
     },
+    tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
     tap_vault_deposit::deposit_agent_vault,
@@ -182,8 +183,8 @@ pub(crate) enum TapCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Announce an endpoint revision from a publish artifact.")]
-    Announce {
+    #[command(about = "Update an existing TAP skill from a publish artifact.")]
+    UpdateSkill {
         #[arg(
             long,
             help = "Path to the publish artifact JSON.",
@@ -293,13 +294,6 @@ pub(crate) enum TapCommand {
         )]
         payment_max_budget: u64,
         #[arg(
-            long = "payment-refund-mode",
-            help = "Standard TAP payment refund mode byte.",
-            value_name = "MODE",
-            default_value_t = 0u8
-        )]
-        payment_refund_mode: u8,
-        #[arg(
             long = "authorization-plan-hash-hex",
             help = "Optional authorization-plan hash bytes as hex.",
             value_name = "HEX"
@@ -340,13 +334,6 @@ pub(crate) enum TapCommand {
             value_name = "AMOUNT"
         )]
         occurrence_budget: u64,
-        #[arg(
-            long = "refund-mode",
-            help = "Standard TAP payment refund mode byte.",
-            default_value_t = 0u8,
-            value_name = "MODE"
-        )]
-        refund_mode: u8,
         #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
         recurrence_kind: String,
         #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
@@ -404,13 +391,6 @@ pub(crate) enum TapCommand {
             value_name = "AMOUNT"
         )]
         occurrence_budget: u64,
-        #[arg(
-            long = "refund-mode",
-            help = "Standard TAP payment refund mode byte.",
-            default_value_t = 0u8,
-            value_name = "MODE"
-        )]
-        refund_mode: u8,
         #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
         recurrence_kind: String,
         #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
@@ -470,13 +450,6 @@ pub(crate) enum TapCommand {
             value_name = "AMOUNT"
         )]
         occurrence_budget: u64,
-        #[arg(
-            long = "refund-mode",
-            help = "Standard TAP payment refund mode byte.",
-            default_value_t = 0u8,
-            value_name = "MODE"
-        )]
-        refund_mode: u8,
         #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
         recurrence_kind: String,
         #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
@@ -714,13 +687,13 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             agent_id,
             gas,
         } => register_skill(artifact, agent_id, gas.sui_gas_coin, gas.sui_gas_budget).await,
-        TapCommand::Announce {
+        TapCommand::UpdateSkill {
             artifact,
             agent_id,
             skill_id,
             gas,
         } => {
-            announce_endpoint_revision(
+            update_skill_from_artifact(
                 artifact,
                 agent_id,
                 skill_id,
@@ -750,7 +723,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             priority_fee_per_gas_unit,
             payment_source_hex,
             payment_max_budget,
-            payment_refund_mode,
             authorization_plan_commitment_hex,
             gas,
         } => {
@@ -763,7 +735,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 priority_fee_per_gas_unit,
                 payment_source_hex,
                 payment_max_budget,
-                payment_refund_mode,
                 authorization_plan_commitment_hex,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
@@ -806,7 +777,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             prepay_amount,
             refund_recipient,
             occurrence_budget,
-            refund_mode,
             recurrence_kind,
             min_interval_ms,
             max_occurrences,
@@ -823,7 +793,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 prepay_amount,
                 refund_recipient,
                 occurrence_budget,
-                refund_mode,
                 recurrence_kind,
                 min_interval_ms,
                 max_occurrences,
@@ -842,7 +811,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             skill_id,
             prepay_amount,
             occurrence_budget,
-            refund_mode,
             recurrence_kind,
             min_interval_ms,
             max_occurrences,
@@ -858,7 +826,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 skill_id,
                 prepay_amount,
                 occurrence_budget,
-                refund_mode,
                 recurrence_kind,
                 min_interval_ms,
                 max_occurrences,
@@ -876,7 +843,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             prepay_amount,
             refund_recipient,
             occurrence_budget,
-            refund_mode,
             recurrence_kind,
             min_interval_ms,
             max_occurrences,
@@ -891,7 +857,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 prepay_amount,
                 refund_recipient,
                 occurrence_budget,
-                refund_mode,
                 recurrence_kind,
                 min_interval_ms,
                 max_occurrences,
@@ -918,7 +883,6 @@ mod tests {
             TapPaymentPolicy,
             TapSchedulePolicy,
             TapSkillRequirements,
-            TapVertexAuthorizationSchema,
         },
         std::ffi::OsString,
     };
@@ -975,13 +939,10 @@ mod tests {
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
 
@@ -1079,17 +1040,17 @@ mod tests {
             .to_string()
             .contains("Sui RPC URL is not configured"));
 
-        let announce_error = handle(TapCommand::Announce {
+        let update_error = handle(TapCommand::UpdateSkill {
             artifact: root.join("missing-artifact.json"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
             gas: gas_args(),
         })
         .await
-        .expect_err("announce dispatch reads artifact first");
+        .expect_err("update skill dispatch reads artifact first");
         assert!(
-            announce_error.to_string().contains("No such file")
-                || announce_error.to_string().contains("not found")
+            update_error.to_string().contains("No such file")
+                || update_error.to_string().contains("not found")
         );
 
         handle(TapCommand::Agent(AgentCommand::Save {
@@ -1176,7 +1137,6 @@ mod tests {
             priority_fee_per_gas_unit: 0,
             payment_source_hex: "0xinvalid".to_string(),
             payment_max_budget: 0,
-            payment_refund_mode: 0,
             authorization_plan_commitment_hex: None,
             gas: gas_args(),
         })
@@ -1224,7 +1184,6 @@ mod tests {
             prepay_amount: 100,
             refund_recipient: None,
             occurrence_budget: 100,
-            refund_mode: 0,
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
             max_occurrences: 1,
@@ -1246,7 +1205,6 @@ mod tests {
             skill_id: 11,
             prepay_amount: 100,
             occurrence_budget: 100,
-            refund_mode: 0,
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
             max_occurrences: 1,
@@ -1267,7 +1225,6 @@ mod tests {
             prepay_amount: 100,
             refund_recipient: None,
             occurrence_budget: 100,
-            refund_mode: 0,
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
             max_occurrences: 1,
@@ -1332,11 +1289,11 @@ mod tests {
             artifact.tap_package_id,
             sui::types::Address::from_static("0xe")
         );
-        assert_eq!(artifact.config_digest_hex.len(), 64);
+        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
     }
 
     #[test]
-    fn announce_result_digest_fields_are_revision_bound() {
+    fn update_skill_result_exposes_skill_update_revision() {
         let config = TapSkillConfig {
             name: "weather skill".to_string(),
             tap_package_name: "weather_tap".to_string(),
@@ -1344,13 +1301,10 @@ mod tests {
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
         let artifact = TapPublishArtifact::from_config(
@@ -1359,25 +1313,22 @@ mod tests {
             sui::types::Address::from_static("0xe"),
         )
         .expect("valid artifact");
-        let digest_input = artifact.endpoint_config_digest_input();
-        let digest = digest_input.digest().expect("endpoint digest");
-        let output = announce_result_json(
+        let output = update_skill_result_json(
             &artifact,
-            &AnnounceEndpointRevisionResult {
+            &UpdateSkillResult {
                 tx_digest: sui::types::Digest::from([7; 32]),
                 tx_checkpoint: 42,
-                endpoint_key: nexus_sdk::types::TapEndpointKey {
-                    agent_id: sui::types::Address::from_static("0xa"),
-                    skill_id: 11,
-                    interface_revision: InterfaceRevision(1),
-                },
-                config_digest: digest,
-                config_digest_input: digest_input,
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+                current_interface_revision: InterfaceRevision(3),
+                dag_binding: nexus_sdk::types::TapDagBinding::pinned(artifact.dag_id),
+                requirements: artifact.requirements.clone(),
             },
         );
 
-        assert_eq!(output["config_digest_hex"].as_str().unwrap().len(), 64);
-        assert_eq!(output["config_digest_hex"], artifact.config_digest_hex);
+        assert_eq!(output["function"], "update_skill");
+        assert_eq!(output["current_interface_revision"], serde_json::json!(3));
+        assert!(output.get("config_digest_hex").is_none());
     }
 
     #[tokio::test]
@@ -1390,13 +1341,10 @@ mod tests {
             tap_package_path: PathBuf::from("missing-tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![1],
-                metadata_commitment: vec![1],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
         let config_path = tempdir.join("skill.tap.json");
@@ -1558,7 +1506,6 @@ public struct WeatherSkill has drop {}
             dag_path: PathBuf::from("dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements::default(),
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
 
@@ -1666,7 +1613,6 @@ public struct WeatherSkill has drop {}
             dag_path: PathBuf::from("dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements::default(),
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
 
@@ -1718,13 +1664,10 @@ public struct WeatherSkill has drop {}
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: Vec::new(),
             interface_revision: InterfaceRevision(1),
         };
         let artifact = TapPublishArtifact::from_config(
@@ -1785,18 +1728,17 @@ public struct WeatherSkill has drop {}
     #[test]
     fn agent_execute_options_decode_payment_and_authorization_args() {
         let options =
-            agent_execute_options_from_cli("0x0102".to_string(), 99, 7, Some("0x0908".to_string()))
+            agent_execute_options_from_cli("0x0102".to_string(), 99, Some("0x0908".to_string()))
                 .expect("valid options");
 
         assert_eq!(options.payment_source, vec![1, 2]);
         assert_eq!(options.payment_max_budget, 99);
-        assert_eq!(options.payment_refund_mode, 7);
         assert_eq!(options.authorization_plan_commitment, Some(vec![9, 8]));
     }
 
     #[test]
     fn agent_execute_options_accept_empty_optional_authorization_hash() {
-        let options = agent_execute_options_from_cli(String::new(), 0, 0, Some(String::new()))
+        let options = agent_execute_options_from_cli(String::new(), 0, Some(String::new()))
             .expect("valid defaults");
 
         assert_eq!(options.payment_source, Vec::<u8>::new());

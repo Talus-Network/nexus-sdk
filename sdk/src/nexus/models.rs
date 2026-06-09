@@ -6,6 +6,7 @@ use {
         nexus::crawler::{DynamicMap, Map, Set},
         sui,
         types::{
+            deserialize_move_option_sui_u64,
             parse_string_value,
             strip_fields_owned,
             AgentId,
@@ -14,7 +15,7 @@ use {
             MoveVecSet,
             NexusData,
             SkillId,
-            TapEndpointKey,
+            TapSkillRevisionKey,
             TapVertexAuthorizationPlan,
             TapVertexAuthorizationPlanEntry,
             TypeName,
@@ -25,7 +26,6 @@ use {
     },
     anyhow::{anyhow, bail},
     serde::{Deserialize, Serialize},
-    serde_json::Value,
     std::collections::{HashMap, HashSet},
 };
 
@@ -75,8 +75,8 @@ pub struct DagExecution {
 }
 
 impl DagExecution {
-    pub fn endpoint_key(&self) -> Option<TapEndpointKey> {
-        Some(TapEndpointKey {
+    pub fn skill_revision_key(&self) -> Option<TapSkillRevisionKey> {
+        Some(TapSkillRevisionKey {
             agent_id: self.tap_agent_id.0?,
             skill_id: self.tap_skill_id.0?,
             interface_revision: self.tap_interface_revision.0?,
@@ -342,53 +342,6 @@ where
     D: serde::Deserializer<'de>,
 {
     MoveOption::<VerifierConfig>::deserialize(deserializer).map(|value| value.0)
-}
-
-fn deserialize_move_option_sui_u64<'de, D>(deserializer: D) -> Result<MoveOption<u64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return MoveOption::<u64>::deserialize(deserializer);
-    }
-
-    fn parse_value(value: Value) -> Result<Option<u64>, String> {
-        let value = strip_fields_owned(value);
-        match value {
-            Value::Null => Ok(None),
-            Value::String(value) => value
-                .parse::<u64>()
-                .map(Some)
-                .map_err(|e| format!("invalid number: {e}")),
-            Value::Number(value) => value
-                .as_u64()
-                .map(Some)
-                .ok_or_else(|| "expected unsigned number".to_string()),
-            Value::Array(mut values) => values
-                .drain(..)
-                .next()
-                .map(parse_value)
-                .transpose()
-                .map(|value| value.flatten()),
-            Value::Object(mut object) => {
-                if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
-                    return parse_value(vec);
-                }
-                if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
-                    return parse_value(inner);
-                }
-                if object.contains_key("none") || object.contains_key("None") {
-                    return Ok(None);
-                }
-                Err("expected Move Option<u64>".to_string())
-            }
-            other => Err(format!("unexpected value for Option<u64>: {other}")),
-        }
-    }
-
-    parse_value(Deserialize::deserialize(deserializer)?)
-        .map(MoveOption)
-        .map_err(serde::de::Error::custom)
 }
 
 fn empty_move_option<T>() -> MoveOption<T> {

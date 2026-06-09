@@ -105,7 +105,6 @@ pub struct AgentDagExecuteInput {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
-    pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
 }
@@ -159,8 +158,8 @@ fn tap_authorization_grant_ref(
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
     let operation_commitment = tx.input(pure_arg(&entry.operation_commitment)?);
     let constraints_commitment = tx.input(pure_arg(&entry.constraints_commitment)?);
-    let endpoint_revision =
-        prepare_option_interface_revision(tx, objects, entry.endpoint_revision)?;
+    let interface_revision =
+        prepare_option_interface_revision(tx, objects, entry.interface_revision)?;
     let payment_id = prepare_option_address(tx, entry.payment_id)?;
 
     Ok(tx.move_call(
@@ -178,7 +177,7 @@ fn tap_authorization_grant_ref(
             tool_function,
             operation_commitment,
             constraints_commitment,
-            endpoint_revision,
+            interface_revision,
             payment_id,
         ],
     ))
@@ -2171,7 +2170,6 @@ pub fn prepare_agent_execution(
 
     let payment_source = tx.input(pure_arg(&agent_execution.payment_source)?);
     let payment_max_budget = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
-    let payment_refund_mode = tx.input(pure_arg(&agent_execution.payment_refund_mode)?);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -2189,7 +2187,6 @@ pub fn prepare_agent_execution(
             payment_coin,
             payment_source,
             payment_max_budget,
-            payment_refund_mode,
             clock,
         ],
     ))
@@ -2316,7 +2313,6 @@ pub fn prepare_default_agent_execution(
 
     let payment_source = tx.input(pure_arg(&agent_execution.payment_source)?);
     let payment_max_budget = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
-    let payment_refund_mode = tx.input(pure_arg(&agent_execution.payment_refund_mode)?);
     let authorization_plan_commitment =
         tx.input(pure_arg(&agent_execution.authorization_plan_commitment)?);
     let authorization_plan =
@@ -2337,7 +2333,6 @@ pub fn prepare_default_agent_execution(
             payment_coin,
             payment_source,
             payment_max_budget,
-            payment_refund_mode,
             authorization_plan_commitment,
             authorization_plan,
             clock,
@@ -4012,7 +4007,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 55,
-            payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
         };
@@ -4074,17 +4068,17 @@ mod tests {
         inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
         inspector.expect_u64(&config_call.arguments[4], 13);
         let sui::types::Argument::Result(agent_id_index) = config_call.arguments[5] else {
-            panic!("expected agent ID to come from tap::agent_id_from_address");
+            panic!("expected agent ID");
         };
         let agent_id_call = inspector.move_call(agent_id_index as usize);
-        assert_eq!(agent_id_call.package, nexus_objects.interface_pkg_id);
+        assert_eq!(agent_id_call.package, sui_framework::PACKAGE_ID);
         assert_eq!(
             agent_id_call.module,
-            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.module
+            sui_framework::Object::ID_FROM_ADDRESS.module
         );
         assert_eq!(
             agent_id_call.function,
-            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.name
+            sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&agent_id_call.arguments[0], agent_execution.agent_id);
 
@@ -4095,7 +4089,7 @@ mod tests {
             begin_call.function,
             workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
         );
-        assert_eq!(begin_call.arguments.len(), 10);
+        assert_eq!(begin_call.arguments.len(), 9);
         inspector.expect_shared_object(&begin_call.arguments[2], &agent, true);
         assert_matches!(
             &begin_call.arguments[5],
@@ -4148,7 +4142,7 @@ mod tests {
             tool_function: "run".to_string(),
             operation_commitment: vec![7],
             constraints_commitment: vec![8],
-            endpoint_revision: Some(InterfaceRevision(2)),
+            interface_revision: Some(InterfaceRevision(2)),
             payment_id: Some(sui::types::Address::from_static("0x60")),
         };
         let agent_execution = AgentDagExecuteInput {
@@ -4158,7 +4152,6 @@ mod tests {
             payment_coin: Some(payment_coin.clone()),
             payment_coin_balance: Some(1_000),
             payment_max_budget: 55,
-            payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: vec![entry.clone()],
         };
@@ -4233,7 +4226,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
-            payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
         };
@@ -4327,7 +4319,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
-            payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
         };

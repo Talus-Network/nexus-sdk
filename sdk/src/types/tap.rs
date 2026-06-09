@@ -175,7 +175,7 @@ pub const fn skill_id(value: u64) -> SkillId {
     value
 }
 
-/// TAP endpoint revision used for active lookup and in-flight pinning.
+/// TAP skill interface revision used for fresh lookup and in-flight pinning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[serde(transparent)]
 pub struct InterfaceRevision(pub u64);
@@ -195,45 +195,22 @@ impl fmt::Display for InterfaceRevision {
     }
 }
 
-/// Key for an in-flight endpoint revision.
+/// Key for a pinned skill interface revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapEndpointKey {
+pub struct TapSkillRevisionKey {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
 }
 
-impl fmt::Display for TapEndpointKey {
+impl fmt::Display for TapSkillRevisionKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}:{}:{}",
             self.agent_id, self.skill_id, self.interface_revision
         )
-    }
-}
-
-/// Dynamic table key used by the registry-level endpoint revision table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapEndpointRevisionKey {
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-}
-
-impl TapEndpointRevisionKey {
-    pub fn new(
-        agent_id: AgentId,
-        skill_id: SkillId,
-        interface_revision: InterfaceRevision,
-    ) -> Self {
-        Self {
-            agent_id,
-            skill_id,
-            interface_revision,
-        }
     }
 }
 
@@ -248,23 +225,6 @@ pub struct TapWorksheetKey {
 impl fmt::Display for TapWorksheetKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.agent_id, self.skill_id)
-    }
-}
-
-/// Shared object metadata required by a standard TAP endpoint.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapSharedObjectRef {
-    pub id: sui::types::Address,
-    pub mutable: bool,
-}
-
-impl TapSharedObjectRef {
-    pub fn immutable(id: sui::types::Address) -> Self {
-        Self { id, mutable: false }
-    }
-
-    pub fn mutable(id: sui::types::Address) -> Self {
-        Self { id, mutable: true }
     }
 }
 
@@ -334,13 +294,107 @@ fn deserialize_tap_payment_mode_value(value: &serde_json::Value) -> Option<TapPa
 }
 
 /// TAP-facing payment policy summary used by config digest and dry-run checks.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapPaymentPolicy {
-    pub mode: TapPaymentMode,
-    pub max_budget: u64,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub token_type_commitment: Vec<u8>,
-    pub refund_mode: u8,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum TapPaymentPolicy {
+    UserFunded,
+    AgentFunded { max_budget: u64 },
+}
+
+impl<'de> Deserialize<'de> for TapPaymentPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            enum RawTapPaymentPolicy {
+                UserFunded,
+                AgentFunded { max_budget: u64 },
+            }
+
+            return RawTapPaymentPolicy::deserialize(deserializer).map(|raw| match raw {
+                RawTapPaymentPolicy::UserFunded => TapPaymentPolicy::UserFunded,
+                RawTapPaymentPolicy::AgentFunded { max_budget } => {
+                    TapPaymentPolicy::AgentFunded { max_budget }
+                }
+            });
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        deserialize_tap_payment_policy_value(&value)
+            .ok_or_else(|| D::Error::custom("missing TAP payment policy value"))
+    }
+}
+
+fn deserialize_tap_payment_policy_value(value: &serde_json::Value) -> Option<TapPaymentPolicy> {
+    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
+        ["@variant", "variant", "type"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+    }
+
+    fn parse_agent_funded(fields: Option<&serde_json::Value>) -> Option<TapPaymentPolicy> {
+        let max_budget = fields
+            .and_then(|fields| match fields {
+                serde_json::Value::Object(object) => object.get("max_budget"),
+                other => Some(other),
+            })
+            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
+        Some(TapPaymentPolicy::AgentFunded { max_budget })
+    }
+
+    match value {
+        serde_json::Value::String(text) if text == "UserFunded" || text == "user_funded" => {
+            Some(TapPaymentPolicy::UserFunded)
+        }
+        serde_json::Value::Object(object) => {
+            if let Some(text) = variant_text(object) {
+                return match text {
+                    "UserFunded" | "user_funded" => Some(TapPaymentPolicy::UserFunded),
+                    "AgentFunded" | "agent_funded" => {
+                        parse_agent_funded(object.get("fields").or(Some(value)))
+                    }
+                    _ => None,
+                };
+            }
+
+            if object.contains_key("UserFunded") {
+                return Some(TapPaymentPolicy::UserFunded);
+            }
+            if let Some(fields) = object.get("AgentFunded") {
+                return parse_agent_funded(Some(fields));
+            }
+            if object.contains_key("max_budget") {
+                return parse_agent_funded(Some(value));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+impl TapPaymentPolicy {
+    pub fn user_funded() -> Self {
+        Self::UserFunded
+    }
+
+    pub fn agent_funded(max_budget: u64) -> Self {
+        Self::AgentFunded { max_budget }
+    }
+
+    pub fn mode(&self) -> TapPaymentMode {
+        match self {
+            Self::UserFunded => TapPaymentMode::UserFunded,
+            Self::AgentFunded { .. } => TapPaymentMode::AgentFunded,
+        }
+    }
+
+    pub fn max_budget(&self) -> u64 {
+        match self {
+            Self::UserFunded => 0,
+            Self::AgentFunded { max_budget } => *max_budget,
+        }
+    }
 }
 
 /// Source kind for standard TAP execution payment.
@@ -587,12 +641,7 @@ impl TapPaymentSource {
 
 impl Default for TapPaymentPolicy {
     fn default() -> Self {
-        Self {
-            mode: TapPaymentMode::UserFunded,
-            max_budget: 0,
-            token_type_commitment: Vec::new(),
-            refund_mode: 0,
-        }
+        Self::UserFunded
     }
 }
 
@@ -620,71 +669,133 @@ impl TapDagBinding {
     }
 }
 
-/// TAP-facing schedule policy summary used by config digest and dry-run checks.
+/// TAP-facing recurrence mode for a scheduled skill.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum TapRecurrenceKind {
+    Once,
+    Recursive {
+        min_interval_ms: u64,
+        max_occurrences: Option<u64>,
+    },
+}
+
+impl<'de> Deserialize<'de> for TapRecurrenceKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            enum RawTapRecurrenceKind {
+                Once,
+                Recursive {
+                    min_interval_ms: u64,
+                    max_occurrences: Option<u64>,
+                },
+            }
+
+            return RawTapRecurrenceKind::deserialize(deserializer).map(|raw| match raw {
+                RawTapRecurrenceKind::Once => TapRecurrenceKind::Once,
+                RawTapRecurrenceKind::Recursive {
+                    min_interval_ms,
+                    max_occurrences,
+                } => TapRecurrenceKind::Recursive {
+                    min_interval_ms,
+                    max_occurrences,
+                },
+            });
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        deserialize_tap_recurrence_kind_value(&value)
+            .ok_or_else(|| D::Error::custom("missing TAP recurrence kind value"))
+    }
+}
+
+fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<TapRecurrenceKind> {
+    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
+        ["@variant", "variant", "type"]
+            .into_iter()
+            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
+    }
+
+    fn parse_recursive(fields: Option<&serde_json::Value>) -> Option<TapRecurrenceKind> {
+        let serde_json::Value::Object(object) = fields? else {
+            return None;
+        };
+        let min_interval_ms = object
+            .get("min_interval_ms")
+            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
+        let max_occurrences = object
+            .get("max_occurrences")
+            .and_then(|value| {
+                crate::types::deserialize_move_option_sui_u64(value.clone())
+                    .ok()
+                    .map(|value| value.0)
+            })
+            .flatten();
+        Some(TapRecurrenceKind::Recursive {
+            min_interval_ms,
+            max_occurrences,
+        })
+    }
+
+    match value {
+        serde_json::Value::String(text) if text == "Once" || text == "once" => {
+            Some(TapRecurrenceKind::Once)
+        }
+        serde_json::Value::Object(object) => {
+            if let Some(text) = variant_text(object) {
+                return match text {
+                    "Once" | "once" => Some(TapRecurrenceKind::Once),
+                    "Recursive" | "recursive" => {
+                        parse_recursive(object.get("fields").or(Some(value)))
+                    }
+                    _ => None,
+                };
+            }
+
+            if object.contains_key("Once") {
+                return Some(TapRecurrenceKind::Once);
+            }
+            if let Some(fields) = object.get("Recursive") {
+                return parse_recursive(Some(fields));
+            }
+            if object.contains_key("min_interval_ms") {
+                return parse_recursive(Some(value));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// TAP-facing schedule policy summary used by dry-run checks.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapSchedulePolicy {
-    #[serde(
-        deserialize_with = "crate::types::deserialize_move_ascii_string",
-        serialize_with = "crate::types::serialize_move_ascii_string"
-    )]
-    pub recurrence_kind: String,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub min_interval_ms: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub max_occurrences: u64,
+    pub recurrence: TapRecurrenceKind,
     pub allow_recursive: bool,
 }
 
 impl Default for TapSchedulePolicy {
     fn default() -> Self {
         Self {
-            recurrence_kind: "once".to_string(),
-            min_interval_ms: 0,
-            max_occurrences: 1,
+            recurrence: TapRecurrenceKind::Once,
             allow_recursive: false,
         }
     }
 }
 
-/// Fixed on-chain tool entry that can receive vertex authorization.
+/// Fixed tool that must be preserved by a skill DAG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapAuthorizedTool {
-    pub package_id: sui::types::Address,
+pub struct TapFixedTool {
+    pub tool_registry_id: sui::types::Address,
     #[serde(
-        alias = "module_name",
+        alias = "fqn",
         deserialize_with = "crate::types::deserialize_move_ascii_string",
         serialize_with = "crate::types::serialize_move_ascii_string"
     )]
-    pub module: String,
-    #[serde(
-        alias = "function_name",
-        deserialize_with = "crate::types::deserialize_move_ascii_string",
-        serialize_with = "crate::types::serialize_move_ascii_string"
-    )]
-    pub function: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_commitment: Vec<u8>,
-}
-
-/// Vertex authorization schema committed into endpoint config.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapVertexAuthorizationSchema {
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub schema_commitment: Vec<u8>,
-    pub fixed_tools: Vec<TapAuthorizedTool>,
-    pub requires_payment: bool,
-}
-
-impl TapVertexAuthorizationSchema {
-    /// True when the schema carries no fixed tools and does not require payment.
-    /// In that case, the chain's `register_skill` reconstructs the requirements
-    /// digest with this same default schema, so callers can use the simpler
-    /// register entrypoint. When this returns false, callers must route through
-    /// `register_skill_with_vertex_authorization_schema` so the chain sees the
-    /// real schema during digest validation.
-    pub fn is_default(&self) -> bool {
-        self.fixed_tools.is_empty() && !self.requires_payment
-    }
+    pub tool_fqn: String,
 }
 
 /// User-facing skill requirements fetched before dry-run or execution.
@@ -692,13 +803,10 @@ impl TapVertexAuthorizationSchema {
 pub struct TapSkillRequirements {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub input_schema_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub workflow_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub metadata_commitment: Vec<u8>,
     pub payment_policy: TapPaymentPolicy,
     pub schedule_policy: TapSchedulePolicy,
-    pub vertex_authorization_schema: TapVertexAuthorizationSchema,
+    #[serde(default)]
+    pub fixed_tools: Vec<TapFixedTool>,
 }
 
 /// Stored `nexus_registry::agent_registry::AgentRecord`.
@@ -724,42 +832,7 @@ pub struct TapSkillRecord {
     pub requirements: TapSkillRequirements,
     pub current_interface_revision: InterfaceRevision,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub outstanding_scheduled_task_count: u64,
-}
-
-/// Stored `nexus_interface::tap::EndpointRevision`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapEndpointRevision {
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-    pub shared_objects: Vec<TapSharedObjectRef>,
-    pub requirements: TapSkillRequirements,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub config_digest: Vec<u8>,
-}
-
-impl TapEndpointRevision {
-    pub fn key(&self) -> TapEndpointKey {
-        TapEndpointKey {
-            agent_id: self.agent_id,
-            skill_id: self.skill_id,
-            interface_revision: self.interface_revision,
-        }
-    }
-
-    pub fn to_endpoint_record(&self) -> anyhow::Result<TapEndpointRecord> {
-        let record = TapEndpointRecord {
-            key: self.key(),
-            shared_objects: self.shared_objects.clone(),
-            config_digest: self.config_digest.clone(),
-            requirements: self.requirements.clone(),
-        };
-
-        record.validate()?;
-        Ok(record)
-    }
+    pub scheduled_task_count: u64,
 }
 
 /// Standard network default DAG executor for arbitrary-DAG execution.
@@ -806,7 +879,6 @@ pub struct TapAgentObject {
 pub struct TapRegistryObject {
     pub id: sui::types::Address,
     pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
-    pub endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
 }
 
 /// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
@@ -815,39 +887,45 @@ pub struct TapRegistry {
     pub id: sui::types::Address,
     pub agents: Vec<TapAgentRecord>,
     pub skills: Vec<TapSkillRecord>,
-    pub endpoints: Vec<TapEndpointRevision>,
     #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
 }
 
 impl TapRegistry {
-    /// Convert all endpoint revisions into leader-facing endpoint records.
-    pub fn endpoint_records(&self) -> anyhow::Result<Vec<TapEndpointRecord>> {
-        self.endpoints
+    /// Convert current skill revisions into leader-facing skill revision records.
+    pub fn skill_revision_records(&self) -> anyhow::Result<Vec<TapSkillRevisionRecord>> {
+        self.skills
             .iter()
-            .map(TapEndpointRevision::to_endpoint_record)
+            .filter_map(TapSkillRevisionRecord::from_skill_record)
+            .map(|record| {
+                record.validate()?;
+                Ok(record)
+            })
             .collect()
     }
 
-    pub fn endpoint_record(&self, key: TapEndpointKey) -> anyhow::Result<TapEndpointRecord> {
+    pub fn skill_revision_record(
+        &self,
+        key: TapSkillRevisionKey,
+    ) -> anyhow::Result<TapSkillRevisionRecord> {
         let matches = self
-            .endpoints
-            .iter()
-            .filter(|endpoint| endpoint.key() == key)
+            .skill_revision_records()?
+            .into_iter()
+            .filter(|skill_revision| skill_revision.key == key)
             .collect::<Vec<_>>();
 
         match matches.as_slice() {
-            [] => anyhow::bail!("TAP endpoint revision not found for key {key}"),
-            [endpoint] => endpoint.to_endpoint_record(),
-            _ => anyhow::bail!("duplicate TAP endpoint revisions found for key {key}"),
+            [] => anyhow::bail!("TAP skill revision not found for key {key}"),
+            [skill_revision] => Ok(skill_revision.clone()),
+            _ => anyhow::bail!("duplicate TAP skill revisions found for key {key}"),
         }
     }
 
-    pub fn active_endpoint_record(
+    pub fn active_skill_revision_record(
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
-    ) -> anyhow::Result<TapEndpointRecord> {
+    ) -> anyhow::Result<TapSkillRevisionRecord> {
         let skills = self
             .skills
             .iter()
@@ -858,7 +936,7 @@ impl TapRegistry {
 
         let skill = match skills.as_slice() {
             [] => {
-                return Err(TapEndpointResolutionError::MissingActiveRevision {
+                return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
                     agent_id,
                     skill_id,
                 }
@@ -866,14 +944,14 @@ impl TapRegistry {
             }
             [skill] if skill.active => *skill,
             [_] => {
-                return Err(TapEndpointResolutionError::MissingActiveRevision {
+                return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
                     agent_id,
                     skill_id,
                 }
                 .into())
             }
             _ => {
-                return Err(TapEndpointResolutionError::DuplicateActiveRevision {
+                return Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
                     agent_id,
                     skill_id,
                     count: skills.len(),
@@ -882,12 +960,16 @@ impl TapRegistry {
             }
         };
 
-        let key = TapEndpointKey {
-            agent_id,
-            skill_id,
-            interface_revision: skill.current_interface_revision,
+        let skill_revision = TapSkillRevisionRecord {
+            key: TapSkillRevisionKey {
+                agent_id,
+                skill_id,
+                interface_revision: skill.current_interface_revision,
+            },
+            requirements: skill.requirements.clone(),
         };
-        self.endpoint_record(key)
+        skill_revision.validate()?;
+        Ok(skill_revision)
     }
 
     pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
@@ -896,17 +978,27 @@ impl TapRegistry {
     }
 }
 
-/// Active or pinned endpoint record returned to leader and SDK callers.
+/// Active or pinned skill revision record returned to leader and SDK callers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapEndpointRecord {
-    pub key: TapEndpointKey,
-    pub shared_objects: Vec<TapSharedObjectRef>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub config_digest: Vec<u8>,
+pub struct TapSkillRevisionRecord {
+    pub key: TapSkillRevisionKey,
     pub requirements: TapSkillRequirements,
 }
 
-impl TapEndpointRecord {
+impl TapSkillRevisionRecord {
+    fn from_skill_record(skill: &TapSkillRecord) -> Option<Self> {
+        let agent_id = skill.agent_id?;
+        let skill_id = skill.skill_id?;
+        Some(Self {
+            key: TapSkillRevisionKey {
+                agent_id,
+                skill_id,
+                interface_revision: skill.current_interface_revision,
+            },
+            requirements: skill.requirements.clone(),
+        })
+    }
+
     pub fn worksheet_key(&self) -> TapWorksheetKey {
         TapWorksheetKey {
             agent_id: self.key.agent_id,
@@ -915,10 +1007,6 @@ impl TapEndpointRecord {
     }
 
     pub fn validate(&self) -> Result<(), TapValidationError> {
-        if self.config_digest.is_empty() {
-            return Err(TapValidationError::MissingConfigDigest);
-        }
-
         validate_requirements(&self.requirements)?;
 
         Ok(())
@@ -952,7 +1040,6 @@ pub struct TapExecutionPayment {
     pub locked_budget: u64,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub consumed: u64,
-    pub refund_mode: u8,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub payment_source_hash: Vec<u8>,
     pub accomplished: bool,
@@ -968,8 +1055,8 @@ impl TapExecutionPayment {
         self.id
     }
 
-    pub fn endpoint_key(&self) -> TapEndpointKey {
-        TapEndpointKey {
+    pub fn skill_revision_key(&self) -> TapSkillRevisionKey {
+        TapSkillRevisionKey {
             agent_id: self.agent_id,
             skill_id: self.skill_id,
             interface_revision: self.interface_revision,
@@ -1153,6 +1240,7 @@ pub enum TapScheduledTaskState {
     Canceled,
     Completed,
     Exhausted,
+    Failed,
 }
 
 impl<'de> Deserialize<'de> for TapScheduledTaskState {
@@ -1168,6 +1256,7 @@ impl<'de> Deserialize<'de> for TapScheduledTaskState {
                 Canceled,
                 Completed,
                 Exhausted,
+                Failed,
             }
 
             return RawState::deserialize(deserializer).map(|state| match state {
@@ -1175,6 +1264,7 @@ impl<'de> Deserialize<'de> for TapScheduledTaskState {
                 RawState::Canceled => Self::Canceled,
                 RawState::Completed => Self::Completed,
                 RawState::Exhausted => Self::Exhausted,
+                RawState::Failed => Self::Failed,
             });
         }
 
@@ -1193,6 +1283,7 @@ fn deserialize_tap_scheduled_task_state_value(
             "canceled" | "Canceled" => Some(TapScheduledTaskState::Canceled),
             "completed" | "Completed" => Some(TapScheduledTaskState::Completed),
             "exhausted" | "Exhausted" => Some(TapScheduledTaskState::Exhausted),
+            "failed" | "Failed" => Some(TapScheduledTaskState::Failed),
             _ => None,
         }
     }
@@ -1400,19 +1491,18 @@ pub struct TapVertexAuthorizationPlanEntry {
         default,
         deserialize_with = "deserialize_move_option_interface_revision"
     )]
-    pub endpoint_revision: Option<InterfaceRevision>,
+    pub interface_revision: Option<InterfaceRevision>,
     #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
     pub payment_id: Option<sui::types::Address>,
 }
 
 impl TapVertexAuthorizationPlanEntry {
-    pub fn allowed_tool(&self) -> TapAuthorizedTool {
-        TapAuthorizedTool {
-            package_id: self.tool_package,
-            module: self.tool_module.clone(),
-            function: self.tool_function.clone(),
-            operation_commitment: self.operation_commitment.clone(),
-        }
+    pub fn matches_fixed_tool(&self, fixed_tool: &TapFixedTool) -> bool {
+        let module_and_function = format!("{}::{}", self.tool_module, self.tool_function);
+        fixed_tool.tool_fqn == module_and_function
+            || fixed_tool
+                .tool_fqn
+                .ends_with(&format!("::{module_and_function}"))
     }
 }
 
@@ -1521,7 +1611,7 @@ pub struct TapScheduledSkillTask {
     pub occurrence_budget: u64,
     #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
     pub remaining_funds: u64,
-    pub refund_mode: u8,
+    pub payment_policy: TapPaymentPolicy,
     pub schedule_policy: TapSchedulePolicy,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub schedule_entries_commitment: Vec<u8>,
@@ -1536,7 +1626,8 @@ pub struct TapScheduledSkillTask {
     #[serde(default)]
     pub scheduled_authorization_grants: Vec<TapScheduledAuthorizationGrantRef>,
     pub state: TapScheduledTaskState,
-    pub active: bool,
+    #[serde(default, deserialize_with = "deserialize_tap_byte_vector")]
+    pub failure_reason: Vec<u8>,
 }
 
 impl TapScheduledSkillTask {
@@ -1553,8 +1644,7 @@ impl TapScheduledSkillTask {
     }
 
     pub fn can_spawn_occurrence(&self) -> bool {
-        self.active
-            && self.state == TapScheduledTaskState::Active
+        self.state == TapScheduledTaskState::Active
             && self.occurrence_budget > 0
             && self.remaining_funds >= self.occurrence_budget
     }
@@ -1574,50 +1664,19 @@ pub struct TapScheduledOccurrenceRecord {
     pub final_state: TapScheduledOccurrenceFinalState,
 }
 
-/// Registered skill plus the currently active endpoint used for fresh standard execution.
+/// Registered skill plus the currently active skill revision used for fresh standard execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapActiveSkillExecutionTarget {
     pub skill: TapSkillRecord,
-    pub endpoint: TapEndpointRecord,
+    pub skill_revision: TapSkillRevisionRecord,
 }
 
-/// Default execution target plus active endpoint recovered for fresh default DAG execution.
+/// Default execution target plus active skill revision recovered for fresh default DAG execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultDagExecutorRecord {
     pub target: DefaultDagExecutor,
     pub skill: TapSkillRecord,
-    pub endpoint: TapEndpointRecord,
-}
-
-/// Digest input committed by endpoint announcements and publish artifacts.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapConfigDigestInput {
-    pub interface_revision: InterfaceRevision,
-    pub shared_objects: Vec<TapSharedObjectRef>,
-    pub requirements: TapSkillRequirements,
-}
-
-#[derive(Serialize)]
-struct TapConfigDigestInputBcs {
-    interface_revision: InterfaceRevision,
-    shared_objects: Vec<TapSharedObjectRef>,
-    requirements: TapSkillRequirements,
-}
-
-impl TapConfigDigestInput {
-    pub fn digest(&self) -> anyhow::Result<Vec<u8>> {
-        let input = TapConfigDigestInputBcs {
-            interface_revision: self.interface_revision,
-            shared_objects: self.shared_objects.clone(),
-            requirements: self.requirements.clone(),
-        };
-        let bytes = bcs::to_bytes(&input)?;
-        Ok(Sha256::digest(bytes).to_vec())
-    }
-
-    pub fn digest_hex(&self) -> anyhow::Result<String> {
-        Ok(hex::encode(self.digest()?))
-    }
+    pub skill_revision: TapSkillRevisionRecord,
 }
 
 /// DAG-backed TAP skill config used by SDK/CLI authoring helpers.
@@ -1628,19 +1687,10 @@ pub struct TapSkillConfig {
     pub dag_path: PathBuf,
     pub tap_package_path: PathBuf,
     pub requirements: TapSkillRequirements,
-    pub shared_objects: Vec<TapSharedObjectRef>,
     pub interface_revision: InterfaceRevision,
 }
 
 impl TapSkillConfig {
-    pub fn digest_input(&self) -> TapConfigDigestInput {
-        TapConfigDigestInput {
-            interface_revision: self.interface_revision,
-            shared_objects: self.shared_objects.clone(),
-            requirements: self.requirements.clone(),
-        }
-    }
-
     pub fn validate(&self) -> Result<(), TapValidationError> {
         if self.name.trim().is_empty() {
             return Err(TapValidationError::MissingSkillName);
@@ -1666,9 +1716,6 @@ pub struct TapPublishArtifact {
     pub dag_id: sui::types::Address,
     pub tap_package_id: sui::types::Address,
     pub interface_revision: InterfaceRevision,
-    pub config_digest: Vec<u8>,
-    pub config_digest_hex: String,
-    pub shared_objects: Vec<TapSharedObjectRef>,
     pub requirements: TapSkillRequirements,
 }
 
@@ -1679,49 +1726,14 @@ impl TapPublishArtifact {
         tap_package_id: sui::types::Address,
     ) -> anyhow::Result<Self> {
         config.validate()?;
-        // Substitute the `0x0` sentinel in `fixed_tools.package_id` with the
-        // just-published `tap_package_id` so authors can declare self-referential
-        // on-chain tools without a chicken-and-egg with the package address.
-        let mut requirements = config.requirements.clone();
-        for tool in &mut requirements.vertex_authorization_schema.fixed_tools {
-            if tool.package_id == sui::types::Address::ZERO {
-                tool.package_id = tap_package_id;
-            }
-        }
-        let digest_input = TapConfigDigestInput {
-            interface_revision: config.interface_revision,
-            shared_objects: config.shared_objects.clone(),
-            requirements: requirements.clone(),
-        };
-        let config_digest = digest_input.digest()?;
-        let config_digest_hex = hex::encode(&config_digest);
 
         Ok(Self {
             skill_name: config.name.clone(),
             dag_id,
             tap_package_id,
             interface_revision: config.interface_revision,
-            config_digest,
-            config_digest_hex,
-            shared_objects: config.shared_objects.clone(),
-            requirements,
+            requirements: config.requirements.clone(),
         })
-    }
-
-    pub fn endpoint_config_digest_input(&self) -> TapConfigDigestInput {
-        TapConfigDigestInput {
-            interface_revision: self.interface_revision,
-            shared_objects: self.shared_objects.clone(),
-            requirements: self.requirements.clone(),
-        }
-    }
-
-    pub fn endpoint_config_digest(&self) -> anyhow::Result<Vec<u8>> {
-        self.endpoint_config_digest_input().digest()
-    }
-
-    pub fn endpoint_config_digest_hex(&self) -> anyhow::Result<String> {
-        self.endpoint_config_digest_input().digest_hex()
     }
 }
 
@@ -1731,16 +1743,14 @@ pub enum TapValidationError {
     MissingTapPackageName,
     MissingDagPath,
     MissingTapPackagePath,
-    MissingWorkflowCommitment,
-    MissingRequirementsCommitment,
-    MissingConfigDigest,
+    MissingInputCommitment,
     EmptyAuthorizedToolModule,
     EmptyAuthorizedToolFunction,
     DuplicateAuthorizationPlanVertex,
     AuthorizationPlanCommitmentMismatch,
     AuthorizationPlanGrantMismatch,
     AuthorizationPlanToolNotAuthorized,
-    AuthorizationPlanEndpointMismatch,
+    AuthorizationPlanSkillRevisionMismatch,
     AuthorizationPlanPaymentMismatch,
     AuthorizationGrantNotShared,
 }
@@ -1752,13 +1762,7 @@ impl fmt::Display for TapValidationError {
             TapValidationError::MissingTapPackageName => write!(f, "TAP package name is required"),
             TapValidationError::MissingDagPath => write!(f, "DAG path is required"),
             TapValidationError::MissingTapPackagePath => write!(f, "TAP package path is required"),
-            TapValidationError::MissingWorkflowCommitment => write!(f, "workflow hash is required"),
-            TapValidationError::MissingRequirementsCommitment => {
-                write!(f, "requirements hash is required")
-            }
-            TapValidationError::MissingConfigDigest => {
-                write!(f, "endpoint config digest is required")
-            }
+            TapValidationError::MissingInputCommitment => write!(f, "input commitment is required"),
             TapValidationError::EmptyAuthorizedToolModule => {
                 write!(f, "authorized tool module is required")
             }
@@ -1780,13 +1784,13 @@ impl fmt::Display for TapValidationError {
             TapValidationError::AuthorizationPlanToolNotAuthorized => {
                 write!(
                     f,
-                    "authorization plan tool is not allowed by endpoint requirements"
+                    "authorization plan tool is not allowed by skill revision requirements"
                 )
             }
-            TapValidationError::AuthorizationPlanEndpointMismatch => {
+            TapValidationError::AuthorizationPlanSkillRevisionMismatch => {
                 write!(
                     f,
-                    "authorization plan endpoint revision does not match request context"
+                    "authorization plan skill revision does not match request context"
                 )
             }
             TapValidationError::AuthorizationPlanPaymentMismatch => {
@@ -1805,7 +1809,7 @@ impl fmt::Display for TapValidationError {
 impl std::error::Error for TapValidationError {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TapEndpointResolutionError {
+pub enum TapSkillRevisionResolutionError {
     MissingActiveRevision {
         agent_id: AgentId,
         skill_id: SkillId,
@@ -1815,47 +1819,41 @@ pub enum TapEndpointResolutionError {
         skill_id: SkillId,
         count: usize,
     },
-    InvalidEndpoint(TapValidationError),
+    InvalidSkillRevision(TapValidationError),
 }
 
-impl fmt::Display for TapEndpointResolutionError {
+impl fmt::Display for TapSkillRevisionResolutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id } => {
-                write!(f, "no active TAP endpoint for agent_id={agent_id}, skill_id={skill_id}")
+            TapSkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id } => {
+                write!(f, "no active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}")
             }
-            TapEndpointResolutionError::DuplicateActiveRevision {
+            TapSkillRevisionResolutionError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count,
             } => write!(
                 f,
-                "expected one active TAP endpoint for agent_id={agent_id}, skill_id={skill_id}, found {count}"
+                "expected one active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}, found {count}"
             ),
-            TapEndpointResolutionError::InvalidEndpoint(error) => {
-                write!(f, "invalid TAP endpoint: {error}")
+            TapSkillRevisionResolutionError::InvalidSkillRevision(error) => {
+                write!(f, "invalid TAP skill revision: {error}")
             }
         }
     }
 }
 
-impl std::error::Error for TapEndpointResolutionError {}
+impl std::error::Error for TapSkillRevisionResolutionError {}
 
 pub fn validate_requirements(
     requirements: &TapSkillRequirements,
 ) -> Result<(), TapValidationError> {
-    if requirements.workflow_commitment.is_empty() {
-        return Err(TapValidationError::MissingWorkflowCommitment);
-    }
     if requirements.input_schema_commitment.is_empty() {
-        return Err(TapValidationError::MissingRequirementsCommitment);
+        return Err(TapValidationError::MissingInputCommitment);
     }
-    for tool in &requirements.vertex_authorization_schema.fixed_tools {
-        if tool.module.trim().is_empty() {
+    for tool in &requirements.fixed_tools {
+        if tool.tool_fqn.trim().is_empty() {
             return Err(TapValidationError::EmptyAuthorizedToolModule);
-        }
-        if tool.function.trim().is_empty() {
-            return Err(TapValidationError::EmptyAuthorizedToolFunction);
         }
     }
 
@@ -1878,12 +1876,10 @@ pub fn validate_authorization_plan(
         {
             return Err(TapValidationError::DuplicateAuthorizationPlanVertex);
         }
-        let allowed = entry.allowed_tool();
         if !requirements
-            .vertex_authorization_schema
             .fixed_tools
             .iter()
-            .any(|tool| tool == &allowed)
+            .any(|tool| entry.matches_fixed_tool(tool))
         {
             return Err(TapValidationError::AuthorizationPlanToolNotAuthorized);
         }
@@ -1906,25 +1902,10 @@ pub fn validate_standard_tap_payment_options(
     policy: &TapPaymentPolicy,
     payment_source: &[u8],
     payment_max_budget: u64,
-    payment_refund_mode: u8,
     payer: sui::types::Address,
 ) -> anyhow::Result<()> {
-    if policy.max_budget != 0 && payment_max_budget > policy.max_budget {
-        anyhow::bail!(
-            "standard TAP payment budget {} exceeds endpoint policy max {}",
-            payment_max_budget,
-            policy.max_budget
-        );
-    }
-    if payment_refund_mode != policy.refund_mode {
-        anyhow::bail!(
-            "standard TAP payment refund mode {} does not match endpoint policy {}",
-            payment_refund_mode,
-            policy.refund_mode
-        );
-    }
-    match policy.mode {
-        TapPaymentMode::UserFunded => {
+    match policy {
+        TapPaymentPolicy::UserFunded => {
             let expected = bcs::to_bytes(&payer)?;
             let source_is_valid =
                 payment_source.is_empty() || payment_source == expected.as_slice();
@@ -1934,7 +1915,14 @@ pub fn validate_standard_tap_payment_options(
                 );
             }
         }
-        TapPaymentMode::AgentFunded => {
+        TapPaymentPolicy::AgentFunded { max_budget } => {
+            if payment_max_budget == 0 || payment_max_budget > *max_budget {
+                anyhow::bail!(
+                    "standard TAP agent-funded payment budget {} must be positive and no greater than skill policy max {}",
+                    payment_max_budget,
+                    max_budget
+                );
+            }
             let expected = bcs::to_bytes(&agent_id)?;
             let source_is_valid = payment_source == expected.as_slice();
             if !source_is_valid {
@@ -1960,13 +1948,13 @@ pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<V
     TapPaymentSource::agent_vault(agent_id).to_bcs_bytes()
 }
 
-/// Resolve exactly one active endpoint for fresh execution.
-pub fn resolve_active_tap_endpoint<'a>(
-    records: &'a [TapEndpointRecord],
+/// Resolve exactly one active skill revision for fresh execution.
+pub fn resolve_active_tap_skill_revision<'a>(
+    records: &'a [TapSkillRevisionRecord],
     skills: &[TapSkillRecord],
     agent_id: AgentId,
     skill_id: SkillId,
-) -> Result<&'a TapEndpointRecord, TapEndpointResolutionError> {
+) -> Result<&'a TapSkillRevisionRecord, TapSkillRevisionResolutionError> {
     let skill_matches = skills
         .iter()
         .filter(|skill| {
@@ -1975,13 +1963,21 @@ pub fn resolve_active_tap_endpoint<'a>(
         .collect::<Vec<_>>();
 
     let skill = match skill_matches.as_slice() {
-        [] => return Err(TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id }),
+        [] => {
+            return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
+                agent_id,
+                skill_id,
+            })
+        }
         [skill] if skill.active => *skill,
         [_] => {
-            return Err(TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id })
+            return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
+                agent_id,
+                skill_id,
+            })
         }
         _ => {
-            return Err(TapEndpointResolutionError::DuplicateActiveRevision {
+            return Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count: skill_matches.len(),
@@ -1999,14 +1995,14 @@ pub fn resolve_active_tap_endpoint<'a>(
         .collect::<Vec<_>>();
 
     match active.as_slice() {
-        [] => Err(TapEndpointResolutionError::MissingActiveRevision { agent_id, skill_id }),
+        [] => Err(TapSkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id }),
         [record] => {
             record
                 .validate()
-                .map_err(TapEndpointResolutionError::InvalidEndpoint)?;
+                .map_err(TapSkillRevisionResolutionError::InvalidSkillRevision)?;
             Ok(record)
         }
-        _ => Err(TapEndpointResolutionError::DuplicateActiveRevision {
+        _ => Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
             agent_id,
             skill_id,
             count: active.len(),
@@ -2014,7 +2010,7 @@ pub fn resolve_active_tap_endpoint<'a>(
     }
 }
 
-/// Resolve the unique active skill and endpoint for fresh standard execution.
+/// Resolve the unique active skill and skill revision for fresh standard execution.
 pub fn resolve_active_tap_skill_execution_target(
     registry: &TapRegistry,
     agent_id: AgentId,
@@ -2042,9 +2038,12 @@ pub fn resolve_active_tap_skill_execution_target(
         ),
     };
 
-    let endpoint = registry.active_endpoint_record(agent_id, skill_id)?;
+    let skill_revision = registry.active_skill_revision_record(agent_id, skill_id)?;
 
-    Ok(TapActiveSkillExecutionTarget { skill, endpoint })
+    Ok(TapActiveSkillExecutionTarget {
+        skill,
+        skill_revision,
+    })
 }
 
 /// Resolve the configured default TAP DAG executor from registry state.
@@ -2066,7 +2065,7 @@ pub fn resolve_default_tap_dag_executor(
     Ok(DefaultDagExecutorRecord {
         target,
         skill: execution_target.skill,
-        endpoint: execution_target.endpoint,
+        skill_revision: execution_target.skill_revision,
     })
 }
 
@@ -2081,26 +2080,19 @@ mod tests {
     fn requirements() -> TapSkillRequirements {
         TapSkillRequirements {
             input_schema_commitment: vec![1],
-            workflow_commitment: vec![2],
-            metadata_commitment: vec![3],
-            payment_policy: TapPaymentPolicy {
-                max_budget: 100,
-                ..TapPaymentPolicy::default()
-            },
+            payment_policy: TapPaymentPolicy::AgentFunded { max_budget: 100 },
             schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            fixed_tools: Vec::new(),
         }
     }
 
-    fn endpoint(revision: u64) -> TapEndpointRecord {
-        TapEndpointRecord {
-            key: TapEndpointKey {
+    fn skill_revision(revision: u64) -> TapSkillRevisionRecord {
+        TapSkillRevisionRecord {
+            key: TapSkillRevisionKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
             },
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
-            config_digest: vec![9],
             requirements: requirements(),
         }
     }
@@ -2114,7 +2106,7 @@ mod tests {
             dag_binding: TapDagBinding::pinned(addr("0x44")),
             requirements: requirements(),
             current_interface_revision: InterfaceRevision(current_interface_revision),
-            outstanding_scheduled_task_count: 0,
+            scheduled_task_count: 0,
         }
     }
 
@@ -2123,62 +2115,53 @@ mod tests {
             id: addr("0xf"),
             agents: Vec::new(),
             skills: vec![skill(true, 2)],
-            endpoints: vec![TapEndpointRevision {
-                agent_id: addr("0xa"),
-                skill_id: 11,
-                interface_revision: InterfaceRevision(2),
-                shared_objects: vec![TapSharedObjectRef::immutable(addr("0xd"))],
-                requirements: requirements(),
-                config_digest: vec![9],
-            }],
             default_executor: None,
         }
     }
 
     #[test]
-    fn config_digest_is_deterministic() {
-        let input = TapConfigDigestInput {
-            interface_revision: InterfaceRevision(3),
-            shared_objects: vec![TapSharedObjectRef::mutable(addr("0x4"))],
-            requirements: requirements(),
-        };
+    fn skill_revision_records_are_derived_from_current_skills() {
+        let registry = registry_with_active_skill();
+        let records = registry.skill_revision_records().expect("derived records");
 
-        assert_eq!(input.digest().unwrap(), input.digest().unwrap());
-        assert_eq!(input.digest_hex().unwrap().len(), 64);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].key.agent_id, addr("0xa"));
+        assert_eq!(records[0].key.skill_id, 11);
+        assert_eq!(records[0].key.interface_revision, InterfaceRevision(2));
     }
 
     #[test]
-    fn validate_rejects_missing_requirements_commitment() {
+    fn validate_rejects_missing_input_commitment() {
         let mut requirements = requirements();
         requirements.input_schema_commitment.clear();
 
         assert_eq!(
             validate_requirements(&requirements),
-            Err(TapValidationError::MissingRequirementsCommitment)
+            Err(TapValidationError::MissingInputCommitment)
         );
     }
 
     #[test]
     fn active_resolution_requires_exactly_one_active_revision() {
-        let active = endpoint(1);
-        let inactive = endpoint(2);
+        let active = skill_revision(1);
+        let inactive = skill_revision(2);
         let records = vec![active.clone(), inactive];
         let skills = vec![skill(true, 1)];
 
-        let resolved = resolve_active_tap_endpoint(
+        let resolved = resolve_active_tap_skill_revision(
             &records,
             &skills,
             active.key.agent_id,
             active.key.skill_id,
         )
-        .expect("one active endpoint");
+        .expect("one active skill revision");
 
         assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
 
-        let duplicate = vec![endpoint(1), endpoint(1)];
+        let duplicate = vec![skill_revision(1), skill_revision(1)];
         assert!(matches!(
-            resolve_active_tap_endpoint(&duplicate, &skills, addr("0xa"), 11),
-            Err(TapEndpointResolutionError::DuplicateActiveRevision { count: 2, .. })
+            resolve_active_tap_skill_revision(&duplicate, &skills, addr("0xa"), 11),
+            Err(TapSkillRevisionResolutionError::DuplicateActiveRevision { count: 2, .. })
         ));
     }
 
@@ -2189,13 +2172,11 @@ mod tests {
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
             agents: MoveTable<sui::types::Address, TapAgentRecord>,
-            endpoints: MoveTable<TapEndpointRevisionKey, TapEndpointRevision>,
         }
 
         let raw = RawTapRegistryObjectBcs {
             id: addr("0xf"),
             agents: MoveTable::new(addr("0x90"), 0),
-            endpoints: MoveTable::new(addr("0x91"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
         let decoded: TapRegistryObject =
@@ -2203,18 +2184,16 @@ mod tests {
 
         assert_eq!(decoded.id, addr("0xf"));
         assert_eq!(decoded.agents.id, addr("0x90"));
-        assert_eq!(decoded.endpoints.id, addr("0x91"));
     }
 
     #[test]
-    fn publish_artifact_contains_digest_and_onchain_package_ids() {
+    fn publish_artifact_contains_onchain_package_ids() {
         let config = TapSkillConfig {
             name: "weather".to_string(),
             tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
         };
 
@@ -2223,124 +2202,23 @@ mod tests {
 
         assert_eq!(artifact.dag_id, addr("0x8"));
         assert_eq!(artifact.tap_package_id, addr("0x7"));
-        assert_eq!(artifact.config_digest_hex.len(), 64);
     }
 
     #[test]
-    fn vertex_authorization_schema_is_default_predicate() {
-        // is_default toggles which register entrypoint the SDK takes. Both
-        // populated fixed_tools and a true requires_payment flag must flip it
-        // false so the cap-gated path runs; the empty/!requires_payment shape
-        // is what the chain reconstructs on the simple register entrypoint.
-        let mut schema = TapVertexAuthorizationSchema::default();
-        assert!(schema.is_default());
-
-        schema.requires_payment = true;
-        assert!(!schema.is_default());
-
-        schema.requires_payment = false;
-        schema.fixed_tools = vec![TapAuthorizedTool {
-            package_id: addr("0x42"),
-            module: "tap".to_string(),
-            function: "execute".to_string(),
-            operation_commitment: vec![1, 2, 3],
-        }];
-        assert!(!schema.is_default());
-    }
-
-    #[test]
-    fn publish_artifact_substitutes_zero_sentinel_fixed_tool_package_id() {
-        // `from_config` rewrites any fixed_tools[].package_id == 0x0 into the
-        // just-published tap_package_id so authors can declare self-referential
-        // cap-gated tools without knowing the package address ahead of time.
-        // Crucially, the rewrite must propagate into the config digest input so
-        // the on-chain digest validation sees the same shape; otherwise
-        // register_skill rejects the artifact with a digest mismatch.
-        let mut reqs = requirements();
-        reqs.vertex_authorization_schema = TapVertexAuthorizationSchema {
-            schema_commitment: vec![],
-            fixed_tools: vec![
-                TapAuthorizedTool {
-                    package_id: sui::types::Address::ZERO,
-                    module: "tap".to_string(),
-                    function: "execute_self".to_string(),
-                    operation_commitment: vec![],
-                },
-                TapAuthorizedTool {
-                    package_id: addr("0x99"),
-                    module: "external".to_string(),
-                    function: "call".to_string(),
-                    operation_commitment: vec![],
-                },
-            ],
-            requires_payment: false,
-        };
-        let config = TapSkillConfig {
-            name: "self".to_string(),
-            tap_package_name: "self_tap".to_string(),
-            dag_path: PathBuf::from("skill.dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: reqs,
-            shared_objects: vec![],
-            interface_revision: InterfaceRevision(1),
-        };
-
-        let dag_id = addr("0x8");
-        let tap_pkg = addr("0x7");
-        let artifact =
-            TapPublishArtifact::from_config(&config, dag_id, tap_pkg).expect("valid artifact");
-
-        let tools = &artifact
-            .requirements
-            .vertex_authorization_schema
-            .fixed_tools;
-        assert_eq!(tools[0].package_id, tap_pkg, "0x0 sentinel must rewrite");
-        assert_eq!(
-            tools[1].package_id,
-            addr("0x99"),
-            "non-sentinel entries must be left alone"
-        );
-
-        // The digest must be computed after substitution so on-chain validation
-        // agrees with what the artifact carries.
-        let mut substituted_reqs = config.requirements.clone();
-        substituted_reqs.vertex_authorization_schema.fixed_tools[0].package_id = tap_pkg;
-        let expected_digest = TapConfigDigestInput {
-            interface_revision: InterfaceRevision(1),
-            shared_objects: vec![],
-            requirements: substituted_reqs,
-        }
-        .digest()
-        .expect("expected digest");
-        assert_eq!(artifact.config_digest, expected_digest);
-    }
-
-    #[test]
-    fn publish_artifact_builds_revision_digest_input() {
+    fn publish_artifact_preserves_current_skill_inputs() {
         let config = TapSkillConfig {
             name: "weather".to_string(),
             tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
-            shared_objects: vec![TapSharedObjectRef::immutable(addr("0x9"))],
             interface_revision: InterfaceRevision(1),
         };
         let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
             .expect("valid artifact");
 
-        let input = artifact.endpoint_config_digest_input();
-        let endpoint_digest = artifact.endpoint_config_digest().expect("endpoint digest");
-
-        assert_eq!(input.interface_revision, InterfaceRevision(1));
-        assert_eq!(
-            artifact
-                .endpoint_config_digest_hex()
-                .expect("endpoint digest hex")
-                .len(),
-            64
-        );
-        assert_eq!(endpoint_digest, artifact.config_digest);
+        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert_eq!(artifact.requirements, config.requirements);
     }
 
     #[test]
@@ -2350,31 +2228,21 @@ mod tests {
         let explicit_source = tap_payment_source_for_address(payer).expect("payer source");
         let typed_source = tap_payment_source_for_invoker(payer).expect("typed payer source");
         let other_source = tap_payment_source_for_address(addr("0x2")).expect("other source");
-        let policy = TapPaymentPolicy {
-            max_budget: 100,
-            ..TapPaymentPolicy::default()
-        };
+        let policy = TapPaymentPolicy::UserFunded;
 
-        validate_standard_tap_payment_options(agent, &policy, &[], 100, 0, payer)
+        validate_standard_tap_payment_options(agent, &policy, &[], 100, payer)
             .expect("implicit payer source");
-        validate_standard_tap_payment_options(agent, &policy, &explicit_source, 100, 0, payer)
+        validate_standard_tap_payment_options(agent, &policy, &explicit_source, 100, payer)
             .expect("explicit payer source");
         assert!(
-            validate_standard_tap_payment_options(agent, &policy, &typed_source, 100, 0, payer,)
+            validate_standard_tap_payment_options(agent, &policy, &typed_source, 100, payer,)
                 .is_err(),
             "typed invoker sources are not accepted by Move direct user-funded policy"
         );
-        assert!(validate_standard_tap_payment_options(
-            agent,
-            &policy,
-            &other_source,
-            100,
-            0,
-            payer,
-        )
-        .is_err());
-        assert!(validate_standard_tap_payment_options(agent, &policy, &[], 101, 0, payer).is_err());
-        assert!(validate_standard_tap_payment_options(agent, &policy, &[], 100, 9, payer).is_err());
+        assert!(
+            validate_standard_tap_payment_options(agent, &policy, &other_source, 100, payer,)
+                .is_err()
+        );
     }
 
     #[test]
@@ -2384,40 +2252,31 @@ mod tests {
         let legacy_agent_source = tap_payment_source_for_address(agent).expect("agent source");
         let agent_source = tap_payment_source_for_agent_vault(agent).expect("agent vault source");
 
-        let agent_funded = TapPaymentPolicy {
-            mode: TapPaymentMode::AgentFunded,
-            ..TapPaymentPolicy::default()
-        };
-        assert!(
-            validate_standard_tap_payment_options(
-                agent,
-                &agent_funded,
-                &agent_source,
-                0,
-                0,
-                payer,
-            )
-            .is_err(),
-            "typed agent-vault sources are not accepted by Move direct agent-funded policy"
-        );
+        let agent_funded = TapPaymentPolicy::AgentFunded { max_budget: 100 };
         validate_standard_tap_payment_options(
             agent,
             &agent_funded,
             &legacy_agent_source,
-            0,
-            0,
+            100,
             payer,
         )
-        .expect("legacy agent-funded source");
+        .expect("agent-funded source at policy cap");
         assert!(
-            validate_standard_tap_payment_options(agent, &agent_funded, &[], 0, 0, payer,).is_err()
+            validate_standard_tap_payment_options(agent, &agent_funded, &[], 100, payer,).is_err()
         );
         assert!(validate_standard_tap_payment_options(
             agent,
             &agent_funded,
             &agent_source,
-            0,
-            0,
+            100,
+            payer,
+        )
+        .is_err());
+        assert!(validate_standard_tap_payment_options(
+            agent,
+            &agent_funded,
+            &legacy_agent_source,
+            101,
             payer,
         )
         .is_err());
@@ -2585,7 +2444,6 @@ mod tests {
             "max_budget": "100",
             "locked_budget": "80",
             "consumed": "0",
-            "refund_mode": 0,
             "payment_source_hash": base64::engine::general_purpose::STANDARD.encode(&source_hash),
             "accomplished": false,
             "refunded": false,
@@ -2638,7 +2496,6 @@ mod tests {
             "payment_mode": {"@variant": "user_funded"},
             "max_budget": "100",
             "consumed": "0",
-            "refund_mode": 0,
             "payment_source_hash": [],
             "accomplished": false,
             "refunded": false
@@ -2679,7 +2536,7 @@ mod tests {
             tool_function: "run".to_string(),
             operation_commitment: vec![7],
             constraints_commitment: vec![8],
-            endpoint_revision: Some(InterfaceRevision(2)),
+            interface_revision: Some(InterfaceRevision(2)),
             payment_id: Some(addr("0x60")),
         }
     }
@@ -2702,35 +2559,37 @@ mod tests {
     fn authorization_plan_validation_rejects_duplicate_and_unlisted_tools() {
         let vertex = RuntimeVertex::plain("entry");
         let entry = authorization_plan_entry(vertex.clone());
-        let mut requirements = requirements();
-        requirements.vertex_authorization_schema.fixed_tools = vec![entry.allowed_tool()];
+        let mut fixed_tool_requirements = requirements();
+        fixed_tool_requirements.fixed_tools = vec![TapFixedTool {
+            tool_registry_id: addr("0x6"),
+            tool_fqn: "demo::tool::run".to_string(),
+        }];
         let plan = TapVertexAuthorizationPlan(vec![entry.clone()]);
         let hash = plan.hash().unwrap();
 
-        validate_authorization_plan(&requirements, &plan, Some(&hash)).expect("valid plan");
+        validate_authorization_plan(&fixed_tool_requirements, &plan, Some(&hash))
+            .expect("valid plan");
         assert_eq!(
-            validate_authorization_plan(&requirements, &plan, Some(&[0])).unwrap_err(),
+            validate_authorization_plan(&fixed_tool_requirements, &plan, Some(&[0])).unwrap_err(),
             TapValidationError::AuthorizationPlanCommitmentMismatch
         );
         validate_authorization_plan(
-            &requirements,
+            &fixed_tool_requirements,
             &TapVertexAuthorizationPlan::default(),
             Some(&[9, 8]),
         )
         .expect("hash-only contexts without concrete plan entries remain tolerated");
         assert_eq!(
             validate_authorization_plan(
-                &requirements,
+                &fixed_tool_requirements,
                 &TapVertexAuthorizationPlan(vec![entry.clone(), entry.clone()]),
                 None,
             )
             .unwrap_err(),
             TapValidationError::DuplicateAuthorizationPlanVertex
         );
-
-        requirements.vertex_authorization_schema.fixed_tools.clear();
         assert_eq!(
-            validate_authorization_plan(&requirements, &plan, None).unwrap_err(),
+            validate_authorization_plan(&requirements(), &plan, None).unwrap_err(),
             TapValidationError::AuthorizationPlanToolNotAuthorized
         );
     }
@@ -2746,7 +2605,7 @@ mod tests {
             TapDagBinding::pinned(addr("0x44"))
         );
         assert_eq!(
-            resolved.endpoint.key.interface_revision,
+            resolved.skill_revision.key.interface_revision,
             InterfaceRevision(2)
         );
     }
@@ -2817,11 +2676,9 @@ mod tests {
             "payment_source_hash": source_hash,
             "occurrence_budget": "25",
             "remaining_funds": { "value": "50" },
-            "refund_mode": 0,
+            "payment_policy": "UserFunded",
             "schedule_policy": {
-                "recurrence_kind": "once",
-                "min_interval_ms": "0",
-                "max_occurrences": "3",
+                "recurrence": "Once",
                 "allow_recursive": false
             },
             "schedule_entries_commitment": [7, 8],
@@ -2880,7 +2737,7 @@ mod tests {
         assert!(task.can_spawn_occurrence());
         assert_eq!(task.next_after_ms, 11);
         assert_eq!(task.occurrences_spawned, 2);
-        assert!(task.active);
+        assert_eq!(task.state, TapScheduledTaskState::Active);
     }
 
     #[test]
@@ -2895,11 +2752,9 @@ mod tests {
             "payment_source_bytes": [9],
             "payment_source_hash": [8],
             "occurrence_budget": "25",
-            "refund_mode": 0,
+            "payment_policy": { "AgentFunded": { "max_budget": "100" } },
             "schedule_policy": {
-                "recurrence_kind": "once",
-                "min_interval_ms": "0",
-                "max_occurrences": "3",
+                "recurrence": "Once",
                 "allow_recursive": false
             },
             "schedule_entries_commitment": [7, 8],

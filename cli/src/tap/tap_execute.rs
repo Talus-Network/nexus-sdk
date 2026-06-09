@@ -10,7 +10,6 @@ pub(crate) async fn execute_agent_dag_skill(
     priority_fee_per_gas_unit: u64,
     payment_source_hex: String,
     payment_max_budget: u64,
-    payment_refund_mode: u8,
     authorization_plan_commitment_hex: Option<String>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -20,7 +19,6 @@ pub(crate) async fn execute_agent_dag_skill(
     let options = agent_execute_options_from_cli(
         payment_source_hex,
         payment_max_budget,
-        payment_refund_mode,
         authorization_plan_commitment_hex,
     )?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
@@ -84,7 +82,6 @@ mod tests {
             Vec::new(),
             0,
             "0xinvalid".to_string(),
-            0,
             0,
             None,
             None,

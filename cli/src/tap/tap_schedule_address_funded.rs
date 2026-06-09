@@ -1,28 +1,11 @@
 use {
     super::*,
-    nexus_sdk::{
-        nexus::tap::{
-            ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams,
-            ScheduleSkillExecutionAddressFundedParams,
-            ScheduleSkillExecutionFromAgentVaultParams,
-        },
-        types::TapSchedulePolicy,
+    nexus_sdk::nexus::tap::{
+        ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams,
+        ScheduleSkillExecutionAddressFundedParams,
+        ScheduleSkillExecutionFromAgentVaultParams,
     },
 };
-
-fn build_schedule_policy(
-    recurrence_kind: String,
-    min_interval_ms: u64,
-    max_occurrences: u64,
-    allow_recursive: bool,
-) -> TapSchedulePolicy {
-    TapSchedulePolicy {
-        recurrence_kind,
-        min_interval_ms,
-        max_occurrences,
-        allow_recursive,
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn schedule_address_funded(
@@ -32,7 +15,6 @@ pub(crate) async fn schedule_address_funded(
     prepay_amount: u64,
     refund_recipient: Option<sui::types::Address>,
     occurrence_budget: u64,
-    refund_mode: u8,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
@@ -50,12 +32,12 @@ pub(crate) async fn schedule_address_funded(
     let refill_policy_commitment = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
     let schedule_entries_commitment =
         decode_hex_arg(&schedule_entries_commitment_hex, "schedule-entries-hash")?;
-    let schedule_policy = build_schedule_policy(
-        recurrence_kind,
+    let schedule_policy = schedule_policy_from_cli(
+        &recurrence_kind,
         min_interval_ms,
         max_occurrences,
         allow_recursive,
-    );
+    )?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let scheduler_task = nexus_client
         .crawler()
@@ -73,7 +55,6 @@ pub(crate) async fn schedule_address_funded(
             refund_recipient,
             payment_source: Vec::new(),
             occurrence_budget,
-            refund_mode,
             schedule_policy,
             refill_policy_commitment,
             schedule_entries_commitment,
@@ -107,7 +88,6 @@ pub(crate) async fn schedule_from_vault(
     skill_id: u64,
     prepay_amount: u64,
     occurrence_budget: u64,
-    refund_mode: u8,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
@@ -125,12 +105,12 @@ pub(crate) async fn schedule_from_vault(
     let refill_policy_commitment = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
     let schedule_entries_commitment =
         decode_hex_arg(&schedule_entries_commitment_hex, "schedule-entries-hash")?;
-    let schedule_policy = build_schedule_policy(
-        recurrence_kind,
+    let schedule_policy = schedule_policy_from_cli(
+        &recurrence_kind,
         min_interval_ms,
         max_occurrences,
         allow_recursive,
-    );
+    )?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let scheduler_task = nexus_client
         .crawler()
@@ -146,7 +126,6 @@ pub(crate) async fn schedule_from_vault(
             skill_id,
             prepay_amount,
             occurrence_budget,
-            refund_mode,
             schedule_policy,
             refill_policy_commitment,
             schedule_entries_commitment,
@@ -179,7 +158,6 @@ pub(crate) async fn schedule_default_address_funded(
     prepay_amount: u64,
     refund_recipient: Option<sui::types::Address>,
     occurrence_budget: u64,
-    refund_mode: u8,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
@@ -195,12 +173,12 @@ pub(crate) async fn schedule_default_address_funded(
     let refill_policy_commitment = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
     let schedule_entries_commitment =
         decode_hex_arg(&schedule_entries_commitment_hex, "schedule-entries-hash")?;
-    let schedule_policy = build_schedule_policy(
-        recurrence_kind,
+    let schedule_policy = schedule_policy_from_cli(
+        &recurrence_kind,
         min_interval_ms,
         max_occurrences,
         allow_recursive,
-    );
+    )?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let scheduler_task = nexus_client
         .crawler()
@@ -217,7 +195,6 @@ pub(crate) async fn schedule_default_address_funded(
                 refund_recipient,
                 payment_source: Vec::new(),
                 occurrence_budget,
-                refund_mode,
                 schedule_policy,
                 refill_policy_commitment,
                 schedule_entries_commitment,

@@ -543,7 +543,6 @@ mod tests {
                 SharedObjectRef,
                 SkillId,
                 TapDagBinding,
-                TapSharedObjectRef,
                 TapSkillRequirements,
                 TapVertexAuthorizationPlanEntry,
                 WorkflowFailureClass,
@@ -1119,8 +1118,8 @@ mod tests {
         let requested_event = wrapped_nexus_event(
             &objects,
             emitter_package,
-            objects.interface_pkg_id,
-            "tap",
+            objects.workflow_pkg_id,
+            "dag",
             "AgentSkillExecutionRequestedEvent",
             AgentSkillExecutionRequestedEventBcs {
                 execution_id: sui::types::Address::from_static("0x22"),
@@ -1449,9 +1448,6 @@ mod tests {
                         dag_binding: TapDagBinding::pinned(sui::types::Address::from_static(
                             "0x1a",
                         )),
-                        workflow_commitment: vec![1],
-                        requirements_commitment: vec![2],
-                        capability_schema_commitment: vec![5],
                     },
                 })
                 .expect("SkillRegisteredEvent sample serializes"),
@@ -1467,20 +1463,19 @@ mod tests {
                 .expect("DefaultDagExecutorUpdatedEvent sample serializes"),
             ),
             (
-                "EndpointRevisionAnnouncedEvent",
+                "SkillContractRevisionedEvent",
                 bcs::to_bytes(&Wrapper {
-                    event: EndpointRevisionAnnouncedEvent {
+                    event: SkillContractRevisionedEvent {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
-                        interface_revision: InterfaceRevision(9),
-                        shared_objects: vec![TapSharedObjectRef::mutable(
-                            sui::types::Address::from_static("0x1e"),
-                        )],
+                        current_interface_revision: InterfaceRevision(9),
+                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static(
+                            "0x1d",
+                        )),
                         requirements: TapSkillRequirements::default(),
-                        config_digest: vec![8, 8],
                     },
                 })
-                .expect("EndpointRevisionAnnouncedEvent sample serializes"),
+                .expect("SkillContractRevisionedEvent sample serializes"),
             ),
             (
                 "SkillActiveRevisionUpdatedEvent",
@@ -1493,18 +1488,6 @@ mod tests {
                     },
                 })
                 .expect("SkillActiveRevisionUpdatedEvent sample serializes"),
-            ),
-            (
-                "WorksheetResolvedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: WorksheetResolvedEvent {
-                        agent_id: sui::types::Address::from_static("0x1"),
-                        skill_id: 2,
-                        interface_revision: InterfaceRevision(9),
-                        execution_id: sui::types::Address::from_static("0x20"),
-                    },
-                })
-                .expect("WorksheetResolvedEvent sample serializes"),
             ),
             (
                 "AgentSkillExecutionRequestedEvent",
@@ -1595,7 +1578,6 @@ mod tests {
                         source_identity: sui::types::Address::from_static("0x40"),
                         prepaid_amount: 50,
                         occurrence_budget: 10,
-                        refund_mode: 0,
                     },
                 })
                 .expect("ScheduledSkillExecutionCreatedEvent sample serializes"),
@@ -1856,36 +1838,6 @@ mod tests {
                 ],
             ),
             (
-                "EndpointRevisionAnnouncedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 29, 4, 0, 0, 0, 0, 0, 0, 0, 32, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-                    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 1, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 30, 5, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 1, 3, 0, 16, 39, 0, 0, 0, 0, 0,
-                    0, 2, 1, 2, 2, 3, 4, 111, 110, 99, 101, 10, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,
-                    0, 0, 0, 1, 1, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 4, 116, 111, 111, 108, 3, 114, 117,
-                    110, 1, 5, 1, 2, 8, 8, 1,
-                ],
-            ),
-            (
-                "WorksheetResolvedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 31,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33,
-                ],
-            ),
-            (
                 "AgentSkillExecutionRequestedEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2131,9 +2083,8 @@ mod tests {
                 "AgentCreatedEvent"
                     | "SkillRegisteredEvent"
                     | "DefaultDagExecutorUpdatedEvent"
-                    | "EndpointRevisionAnnouncedEvent"
+                    | "SkillContractRevisionedEvent"
                     | "SkillActiveRevisionUpdatedEvent"
-                    | "WorksheetResolvedEvent"
                     | "AgentSkillExecutionRequestedEvent"
                     | "AgentSkillPaymentCreatedEvent"
                     | "GasPaymentConsumedEvent"

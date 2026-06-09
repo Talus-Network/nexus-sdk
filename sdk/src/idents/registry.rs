@@ -12,10 +12,6 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("AgentRegistry"),
     };
-    pub const ANNOUNCE_ENDPOINT_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("announce_endpoint_revision"),
-    };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: AGENT_REGISTRY_MODULE,
@@ -50,10 +46,6 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("default_dag_executor_workflow_worksheet"),
     };
-    pub const ENDPOINT_REVISION_ANNOUNCED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
-    };
     pub const GET_SKILL_REQUIREMENTS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("get_skill_requirements"),
@@ -83,13 +75,10 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
     };
-    pub const REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "register_skill_with_vertex_authorization_schema",
-            ),
-        };
+    pub const REGISTER_SKILL_WITH_FIXED_TOOLS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AGENT_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("register_skill_with_fixed_tools"),
+    };
     pub const SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
         ModuleAndNameIdent {
             module: AGENT_REGISTRY_MODULE,
@@ -130,10 +119,6 @@ impl AgentRegistry {
     pub const SET_SKILL_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("set_skill_active"),
-    };
-    pub const SET_SKILL_ACTIVE_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("set_skill_active_revision"),
     };
     pub const TRIGGER_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,

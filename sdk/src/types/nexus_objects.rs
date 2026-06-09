@@ -7,6 +7,8 @@ use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(all(test, feature = "sui_idents"))]
+use crate::idents::registry;
+#[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::workflow;
 #[cfg(feature = "sui_idents")]
 use crate::idents::{scheduler, tap, ModuleAndNameIdent};
@@ -367,8 +369,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.registry_pkg_id,
-                tap::STANDARD_TAP_MODULE,
-                tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
+                registry::AGENT_REGISTRY_MODULE,
+                tap::TapStandard::SKILL_REGISTERED_EVENT.name,
                 vec![],
             ),
         );
@@ -380,7 +382,7 @@ mod tests {
             sui::types::StructTag::new(
                 objects.interface_pkg_id,
                 sui::types::Identifier::from_static("unrelated"),
-                sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
+                sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
                 vec![],
             ),
         );

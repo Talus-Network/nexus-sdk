@@ -48,16 +48,12 @@ pub(crate) fn validate_skill_result_json(config: &TapSkillConfig) -> serde_json:
     })
 }
 
-pub(crate) fn dry_run_result_json(
-    config: &TapSkillConfig,
-    config_digest_hex_with_zero_package: String,
-) -> serde_json::Value {
+pub(crate) fn dry_run_result_json(config: &TapSkillConfig) -> serde_json::Value {
     json!({
         "dry_run": true,
         "valid": true,
         "skill_name": config.name,
         "interface_revision": config.interface_revision,
-        "config_digest_hex_with_zero_package": config_digest_hex_with_zero_package,
         "next_step": "publish TAP plus DAG, then create-agent and register-skill",
     })
 }
@@ -121,24 +117,25 @@ pub(crate) fn bind_result_json(
         "skill_id": result.skill_id,
         "dag_id": artifact.dag_id,
         "tap_package_id": artifact.tap_package_id,
-        "config_digest_hex": hex::encode(&result.config_digest),
-        "config_digest_input": result.config_digest_input,
     })
 }
 
-pub(crate) fn announce_result_json(
+pub(crate) fn update_skill_result_json(
     artifact: &TapPublishArtifact,
-    result: &AnnounceEndpointRevisionResult,
+    result: &UpdateSkillResult,
 ) -> serde_json::Value {
     json!({
         "standard_tap": true,
-        "function": TapStandard::ANNOUNCE_ENDPOINT_REVISION.name.to_string(),
+        "function": "update_skill",
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
-        "endpoint_key": result.endpoint_key,
+        "agent_id": result.agent_id,
+        "skill_id": result.skill_id,
+        "current_interface_revision": result.current_interface_revision,
+        "dag_id": artifact.dag_id,
         "tap_package_id": artifact.tap_package_id,
-        "config_digest_hex": hex::encode(&result.config_digest),
-        "config_digest_input": result.config_digest_input,
+        "dag_binding": result.dag_binding,
+        "requirements": result.requirements,
     })
 }
 
@@ -162,9 +159,8 @@ pub(crate) fn agent_execute_result_json(
             "agent_id": submit.agent_id,
             "skill_id": submit.skill_id,
             "dag_id": submit.dag_id,
-            "endpoint_key": submit.endpoint_key,
+            "skill_revision_key": submit.skill_revision_key,
             "payment_max_budget": submit.payment_max_budget,
-            "payment_refund_mode": submit.payment_refund_mode,
             "authorization_plan_commitment": submit.authorization_plan_commitment,
         }))
     })
@@ -176,7 +172,7 @@ pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> s
         "function": TapStandard::GET_SKILL_REQUIREMENTS.name.to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
-        "active_endpoint_key": result.active_endpoint_key,
+        "active_skill_revision_key": result.active_skill_revision_key,
         "requirements": result.requirements,
     })
 }
@@ -280,7 +276,6 @@ pub(crate) fn payment_show_result_json(payment: &TapExecutionPayment) -> serde_j
         "max_budget": payment.max_budget,
         "locked_budget": payment.locked_budget,
         "consumed": payment.consumed,
-        "refund_mode": payment.refund_mode,
         "accomplished": payment.accomplished,
         "refunded": payment.refunded,
         "final_state": payment.final_state,
@@ -344,7 +339,6 @@ pub(crate) fn registry_show_result_json(registry: &TapRegistry) -> serde_json::V
         "default_executor": registry.default_executor,
         "agents": registry.agents,
         "skills": registry.skills,
-        "endpoints": registry.endpoints,
     })
 }
 
@@ -355,10 +349,8 @@ pub(crate) fn default_target_result_json(record: &DefaultDagExecutorRecord) -> s
         "skill_id": record.target.skill_id,
         "dag_binding": record.skill.dag_binding,
         "dag_id": record.skill.dag_binding.pinned_dag_id(),
-        "interface_revision": record.endpoint.key.interface_revision,
-        "config_digest_hex": hex::encode(&record.endpoint.config_digest),
-        "shared_objects": record.endpoint.shared_objects,
-        "requirements": record.endpoint.requirements,
+        "interface_revision": record.skill_revision.key.interface_revision,
+        "requirements": record.skill_revision.requirements,
     })
 }
 
@@ -429,14 +421,12 @@ mod tests {
             },
             types::{
                 InterfaceRevision,
-                TapConfigDigestInput,
-                TapEndpointKey,
                 TapPaymentMode,
                 TapPaymentPolicy,
                 TapSchedulePolicy,
                 TapSkillRequirements,
+                TapSkillRevisionKey,
                 TapVertexAuthorizationPlan,
-                TapVertexAuthorizationSchema,
             },
         },
     };
@@ -451,13 +441,10 @@ mod tests {
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: vec![],
             interface_revision: InterfaceRevision(1),
         };
         TapPublishArtifact::from_config(
@@ -482,7 +469,6 @@ mod tests {
             max_budget: 1_000,
             locked_budget: 0,
             consumed: 0,
-            refund_mode: 0,
             payment_source_hash: vec![],
             accomplished,
             refunded,
@@ -555,11 +541,8 @@ mod tests {
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
         assert_eq!(
-            output["artifact"]["config_digest_hex"]
-                .as_str()
-                .unwrap()
-                .len(),
-            64
+            output["artifact"]["interface_revision"],
+            serde_json::json!(1)
         );
     }
 
@@ -576,12 +559,6 @@ mod tests {
                 sui::types::Digest::from([5u8; 32]),
             ),
             skill_id: 7,
-            config_digest: vec![9u8; 32],
-            config_digest_input: TapConfigDigestInput {
-                interface_revision: InterfaceRevision(1),
-                shared_objects: vec![],
-                requirements: artifact.requirements.clone(),
-            },
         };
         let json = bind_result_json(&artifact, &result);
         assert_eq!(json["function"], "bind_agent_skill");
@@ -590,8 +567,26 @@ mod tests {
             serde_json::json!(sui::types::Address::from_static("0xa1").to_string())
         );
         assert_eq!(json["skill_id"], serde_json::json!(7));
-        assert_eq!(json["config_digest_hex"].as_str().unwrap().len(), 64);
         assert_eq!(json["tx_checkpoint"], serde_json::json!(100));
+    }
+
+    #[test]
+    fn update_skill_result_json_exposes_skill_update_revision() {
+        let artifact = fixture_artifact();
+        let result = UpdateSkillResult {
+            tx_digest: sui::types::Digest::from([7u8; 32]),
+            tx_checkpoint: 100,
+            agent_id: sui::types::Address::from_static("0xa1"),
+            skill_id: 7,
+            current_interface_revision: InterfaceRevision(2),
+            dag_binding: nexus_sdk::types::TapDagBinding::pinned(artifact.dag_id),
+            requirements: artifact.requirements.clone(),
+        };
+        let json = update_skill_result_json(&artifact, &result);
+        assert_eq!(json["function"], "update_skill");
+        assert_eq!(json["skill_id"], serde_json::json!(7));
+        assert_eq!(json["current_interface_revision"], serde_json::json!(2));
+        assert!(json.get("config_digest_hex").is_none());
     }
 
     // ---- execute + requirements + schedule ----
@@ -606,13 +601,12 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xd"),
-                endpoint_key: TapEndpointKey {
+                skill_revision_key: TapSkillRevisionKey {
                     agent_id: sui::types::Address::from_static("0xa"),
                     skill_id: 11,
                     interface_revision: InterfaceRevision(3),
                 },
                 payment_max_budget: 99,
-                payment_refund_mode: 7,
                 authorization_plan_commitment: Some(vec![1, 2, 3]),
                 authorization_plan: TapVertexAuthorizationPlan::default(),
             }),
@@ -630,7 +624,7 @@ mod tests {
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
         assert_eq!(
-            output["submit"]["endpoint_key"]["interface_revision"],
+            output["submit"]["skill_revision_key"]["interface_revision"],
             serde_json::json!(3)
         );
         assert_eq!(
@@ -647,17 +641,15 @@ mod tests {
     fn tap_requirements_and_schedule_json_helpers_expose_live_state() {
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![1],
-            workflow_commitment: vec![2],
-            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            fixed_tools: Vec::new(),
         };
 
         let requirements_output = requirements_result_json(&GetSkillRequirementsResult {
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            active_endpoint_key: TapEndpointKey {
+            active_skill_revision_key: TapSkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(3),
@@ -665,12 +657,12 @@ mod tests {
             requirements,
         });
         assert_eq!(
-            requirements_output["active_endpoint_key"]["interface_revision"],
+            requirements_output["active_skill_revision_key"]["interface_revision"],
             serde_json::json!(3)
         );
         assert_eq!(
-            requirements_output["requirements"]["workflow_commitment"],
-            serde_json::json!([2])
+            requirements_output["requirements"]["input_schema_commitment"],
+            serde_json::json!([1])
         );
 
         let schedule_output = schedule_result_json(
@@ -812,13 +804,10 @@ mod tests {
             tap_package_path: PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: vec![],
             interface_revision: InterfaceRevision(7),
         };
 
@@ -826,11 +815,8 @@ mod tests {
         assert_eq!(validate["valid"], serde_json::Value::Bool(true));
         assert_eq!(validate["interface_revision"], serde_json::json!(7));
 
-        let dry_run = dry_run_result_json(&config, "abcdef".to_string());
+        let dry_run = dry_run_result_json(&config);
         assert_eq!(dry_run["dry_run"], serde_json::Value::Bool(true));
-        assert_eq!(
-            dry_run["config_digest_hex_with_zero_package"],
-            serde_json::json!("abcdef")
-        );
+        assert!(dry_run.get("config_digest_hex_with_zero_package").is_none());
     }
 }
