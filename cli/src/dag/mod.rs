@@ -114,9 +114,7 @@ pub(crate) enum DagCommand {
         gas: GasArgs,
     },
 
-    #[command(
-        about = "Inspect a Nexus DAG execution. The starting checkpoint is derived from the DAGExecution object's creation transaction."
-    )]
+    #[command(about = "Inspect a Nexus DAG execution.")]
     InspectExecution {
         /// The object ID of the Nexus DAGExecution object.
         #[arg(

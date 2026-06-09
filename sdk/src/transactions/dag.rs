@@ -108,32 +108,6 @@ pub struct AgentDagExecuteInput {
     pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
-    /// Cap-gated vertex bindings. For each entry the SDK mints a
-    /// `WorkflowVertexAuthorizationGrant` inside the execute PTB and calls
-    /// `bind_target.package::bind_target.module::bind_target.function(
-    /// state_object, vertex_bytes, grant_id)` so the tap_package can lock state
-    /// to the freshly-minted grant. The skill must already be registered
-    /// cap-gated (the named tool's `workflow_authorization_cap_first` flag).
-    pub grant_binds: Vec<VertexGrantBind>,
-}
-
-/// One per cap-gated vertex: mint a grant and call a tap-package Move function
-/// to record the grant id in shared state. The Move function must have signature
-/// `fn(state: &mut TutorialState, vertex_bytes: vector<u8>, grant_id: address)`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VertexGrantBind {
-    pub vertex: String,
-    pub state_object: sui::types::ObjectReference,
-    pub bind_target: MoveCallTarget,
-}
-
-/// Triple identifying a Move entry function. Used by [`VertexGrantBind`] to
-/// describe the state-bind hook.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MoveCallTarget {
-    pub package: sui::types::Address,
-    pub module: sui::types::Identifier,
-    pub function: sui::types::Identifier,
 }
 
 fn tap_authorization_grant_ref_type(objects: &NexusObjects) -> sui::types::TypeTag {
@@ -2573,41 +2547,6 @@ fn execute_agent_dag_internal(
     crate::transactions::gas::snapshot_dag_tool_costs(tx, objects, gas_service, execution, dag);
     lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
 
-    if !agent_execution.grant_binds.is_empty() {
-        let agent_arg = agent.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Cap-gated grant binding is only supported on agent-owned skills; the default executor flow has no Agent argument to mint a grant against",
-            )
-        })?;
-        for bind in &agent_execution.grant_binds {
-            let grant_id = create_vertex_authorization_grant(
-                tx,
-                objects,
-                dag,
-                execution,
-                tool_registry,
-                agent_arg,
-                agent_execution.skill_id,
-                &RuntimeVertex::plain(&bind.vertex),
-            )?;
-            let state_arg = tx.input(sui::tx::Input::shared(
-                *bind.state_object.object_id(),
-                bind.state_object.version(),
-                true,
-            ));
-            let vertex_bytes = tx.input(pure_arg(&bind.vertex.as_bytes().to_vec())?);
-            tx.move_call(
-                sui::tx::Function::new(
-                    bind.bind_target.package,
-                    bind.bind_target.module.clone(),
-                    bind.bind_target.function.clone(),
-                    vec![],
-                ),
-                vec![state_arg, vertex_bytes, grant_id],
-            );
-        }
-    }
-
     let leader_registry = tx.input(sui::tx::Input::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
@@ -4076,7 +4015,6 @@ mod tests {
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
-            grant_binds: Vec::new(),
         };
 
         execute_agent_dag(
@@ -4223,7 +4161,6 @@ mod tests {
             payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: vec![entry.clone()],
-            grant_binds: Vec::new(),
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -4299,7 +4236,6 @@ mod tests {
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
-            grant_binds: Vec::new(),
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -4394,7 +4330,6 @@ mod tests {
             payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
-            grant_binds: Vec::new(),
         };
         execute_agent_dag(
             &mut tx,
@@ -4434,180 +4369,6 @@ mod tests {
                         || call.function == workflow::Dag::LEADER_STAMP_WORKSHEET_FOR_DRY_RUN.name)
             }),
             "agent DAG builders must not call legacy witness worksheet stamp helpers"
-        );
-    }
-
-    #[test]
-    fn execute_agent_dag_with_grant_binds_mints_grants_and_calls_bind_targets() {
-        // For each `VertexGrantBind` entry, the execute PTB must (1) mint a
-        // `WorkflowVertexAuthorizationGrant` via
-        // `dag::create_vertex_authorization_grant`, and (2) call the supplied
-        // tap-package Move hook so the state slot is set to the grant id
-        // atomically with the execution start. Both calls must happen
-        // between `lock_payment_state_for_tools` and
-        // `request_network_to_execute_walks` — the leader otherwise
-        // dispatches the walk before the cap-gated tool sees the grant.
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let dag = sui_mocks::mock_sui_object_ref();
-        let agent = sui_mocks::mock_sui_object_ref();
-        let state_object = sui_mocks::mock_sui_object_ref();
-        let bind_package = sui::types::Address::from_static("0xabc");
-        let entry_group = "group1";
-        let input_data = HashMap::new();
-        let tools_gas = HashSet::new();
-
-        let agent_execution = AgentDagExecuteInput {
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 17,
-            payment_source: vec![1, 2],
-            payment_coin: None,
-            payment_coin_balance: None,
-            payment_max_budget: 55,
-            payment_refund_mode: 7,
-            authorization_plan_commitment: None,
-            authorization_plan: Vec::new(),
-            grant_binds: vec![
-                VertexGrantBind {
-                    vertex: "transfer".to_string(),
-                    state_object: state_object.clone(),
-                    bind_target: MoveCallTarget {
-                        package: bind_package,
-                        module: sui::types::Identifier::from_static("tap_demo"),
-                        function: sui::types::Identifier::from_static("bind_pending_grant"),
-                    },
-                },
-                VertexGrantBind {
-                    vertex: "delayed".to_string(),
-                    state_object: state_object.clone(),
-                    bind_target: MoveCallTarget {
-                        package: bind_package,
-                        module: sui::types::Identifier::from_static("tap_demo"),
-                        function: sui::types::Identifier::from_static("bind_pending_delayed_grant"),
-                    },
-                },
-            ],
-        };
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        execute_agent_dag(
-            &mut tx,
-            &nexus_objects,
-            &dag,
-            &agent,
-            0,
-            entry_group,
-            &input_data,
-            &agent_execution,
-            &tools_gas,
-        )
-        .expect("agent DAG with grant binds succeeds");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-
-        // One grant minted per bind entry.
-        let grant_mint_indices = inspector.move_call_indices_to(
-            nexus_objects.workflow_pkg_id,
-            &workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.module,
-            &workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.name,
-        );
-        assert_eq!(
-            grant_mint_indices.len(),
-            agent_execution.grant_binds.len(),
-            "one grant minted per VertexGrantBind"
-        );
-
-        // One bind hook called per entry, using the supplied package + module/function.
-        for bind in &agent_execution.grant_binds {
-            let bind_indices = inspector.move_call_indices_to(
-                bind.bind_target.package,
-                &bind.bind_target.module,
-                &bind.bind_target.function,
-            );
-            assert_eq!(
-                bind_indices.len(),
-                1,
-                "exactly one call to {}::{}::{}",
-                bind.bind_target.package,
-                bind.bind_target.module,
-                bind.bind_target.function
-            );
-            let bind_call = inspector.move_call(bind_indices[0]);
-            // Expected signature: (state: &mut T, vertex_bytes: vector<u8>, grant_id)
-            assert_eq!(bind_call.arguments.len(), 3);
-            // grant_id is the nested result of the create_vertex_authorization_grant
-            // call (the function returns an ID, so it shows up as Result(_)).
-            assert!(matches!(
-                bind_call.arguments[2],
-                sui::types::Argument::Result(_)
-            ));
-        }
-
-        // Ordering invariant: every grant-mint must precede the network's
-        // walk-request; otherwise the leader sees an empty state slot.
-        let request_index = inspector
-            .move_call_indices_to(
-                nexus_objects.workflow_pkg_id,
-                &workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-                &workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
-            )
-            .into_iter()
-            .next()
-            .expect("request_network_to_execute_walks call");
-        for grant_index in &grant_mint_indices {
-            assert!(
-                *grant_index < request_index,
-                "grant mint must precede leader dispatch"
-            );
-        }
-    }
-
-    #[test]
-    fn execute_default_agent_dag_rejects_grant_binds() {
-        // Cap-gated grant binding requires an Agent argument to mint the grant
-        // against. The default-executor entrypoint has no agent, so any
-        // grant_binds supplied for that path must surface as a builder
-        // error rather than silently dropping the binding.
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let dag = sui_mocks::mock_sui_object_ref();
-        let state_object = sui_mocks::mock_sui_object_ref();
-        let agent_execution = AgentDagExecuteInput {
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            payment_source: vec![1],
-            payment_coin: None,
-            payment_coin_balance: None,
-            payment_max_budget: 3,
-            payment_refund_mode: 4,
-            authorization_plan_commitment: None,
-            authorization_plan: Vec::new(),
-            grant_binds: vec![VertexGrantBind {
-                vertex: "transfer".to_string(),
-                state_object: state_object.clone(),
-                bind_target: MoveCallTarget {
-                    package: sui::types::Address::from_static("0xabc"),
-                    module: sui::types::Identifier::from_static("tap_demo"),
-                    function: sui::types::Identifier::from_static("bind_pending_grant"),
-                },
-            }],
-        };
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let err = execute_default_agent_dag(
-            &mut tx,
-            &nexus_objects,
-            &dag,
-            17,
-            "group1",
-            &HashMap::new(),
-            &agent_execution,
-            &HashSet::new(),
-        )
-        .expect_err("default executor path must reject grant binds");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("Cap-gated grant binding")
-                || msg.contains("default executor")
-                || msg.contains("Agent argument"),
-            "error message should explain why default-executor cannot accept grant_binds; got: {msg}"
         );
     }
 
