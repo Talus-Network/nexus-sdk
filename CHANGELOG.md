@@ -173,6 +173,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
 - Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
 
+## [`1.0.1`] - 2025-06-09
+
+### `nexus-cli`
+
+#### Fixed
+
+- `nexus tool list` breaking if any tool is registered with invalid FQN
+
 ## [`1.0.0`] - 2026-04-23
 
 ### `nexus-cli`
