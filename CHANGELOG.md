@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, derives the current skill artifact, and writes the agent/skill binding data needed for follow-up execution.
+- `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, current interface revisions, DAG bindings, and skill requirements) as stable JSON.
 - `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, DAG binding, interface revision, and skill requirements — into one JSON document.
 - `tap payments show` command that reads a `TapExecutionPayment` object and emits a flat JSON of all payment fields plus a computed `terminal` flag.
@@ -30,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
+- `TapPublishArtifact` no longer carries `tap_package_id`; reusable skill artifacts now contain only the fields consumed by register, bind, and update flows.
 - On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it.
 - Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by skill-declared authorization-aware fixed tools.
@@ -42,6 +44,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap publish-skill --out`, `tap scaffold`, and `tool new` now write generated files with `tokio::fs::write` instead of `File::create` + `write_all`. A dropped `tokio::fs::File` does not flush its internal buffer, so under load a reader (or the next command in a pipeline) could observe a truncated or empty artifact/scaffold file — surfacing as an intermittent `EOF while parsing a value` failure (e.g. the flaky `publish_artifact_flow_writes_revision_metadata` test).
 - `tool register onchain` now correctly disambiguates `OwnerCap<OverTool>` vs `OwnerCap<OverGas>` in the post-registration response. `OverTool` is defined in the registry package (`nexus_registry::tool_registry::OverTool`) while `OverGas` lives in the workflow package (`nexus_workflow::gas::OverGas`), so the inner type's address differs per cap; the previous filter rejected the `OverTool` cap by comparing both inners against `workflow_pkg_id` and surfaced a misleading "Could not find the OwnerCap<OverTool> object ID in the transaction response" error after a successful registration.
 
+### docs
+
+#### Changed
+
+- TAP CLI and tutorial docs now describe the simplified current-skill model, revised skill-update flow, simplified payment and schedule policies, fixed-tool requirements, and scheduled-task reserve flows.
+
 ### `nexus-sdk`
 
 #### Added
@@ -52,7 +60,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `ToolActions::inspect_tool` that derives `Tool`/`ToolGas` ids from an FQN, probes both on-chain, and decodes the on-chain `Tool` into a `ToolInspection` carrying the full `Tool` record (HTTP- or Sui-variant). Mixed-existence states (one present, the other missing) surface as a clear `NexusError::Configuration`.
 - `TapActions::deposit_agent_payment_vault` high-level helper that fetches the agent object reference, splits the deposit coin from gas, and submits the `tap::deposit_agent_payment_vault` call. `DepositAgentVaultParams` and `DepositAgentVaultResult` expose `agent_id` and `amount` for callers.
 - `transactions::tap::register_skill_with_fixed_tools` PTB builder and fixed-tool argument helpers, so skills can register registry-verified `TapFixedTool` requirements without carrying a vertex authorization schema.
-- `TapPublishArtifact::from_config` now substitutes the `0x0` sentinel in any fixed-tool package reference with the just-published `tap_package_id` before deriving the skill artifact evidence. Authors can declare a self-referential on-chain tool entry without knowing the package id ahead of time.
 - `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
 - SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
 - `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.

@@ -399,16 +399,15 @@ fn publish_artifact_preserves_skill_contract_without_endpoint_digest() {
         interface_revision: InterfaceRevision(3),
     };
 
-    let artifact =
-        nexus_sdk::types::TapPublishArtifact::from_config(&config, addr("0x24"), addr("0x25"))
-            .expect("valid artifact");
+    let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, addr("0x24"))
+        .expect("valid artifact");
     assert_eq!(artifact.skill_name, "weather");
     assert_eq!(artifact.dag_id, addr("0x24"));
-    assert_eq!(artifact.tap_package_id, addr("0x25"));
     assert_eq!(artifact.interface_revision, InterfaceRevision(3));
     assert_eq!(artifact.requirements, config.requirements);
 
     let value = serde_json::to_value(&artifact).expect("artifact json");
+    assert!(value.get("tap_package_id").is_none());
     assert!(value.get("config_digest").is_none());
     assert!(value.get("config_digest_hex").is_none());
     assert!(value.get("shared_objects").is_none());
@@ -685,7 +684,6 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let objects = nexus_objects();
     let agent_id = addr("0xa5");
     let dag_id = addr("0xd5");
-    let tap_package_id = addr("0xe5");
     let config = TapSkillConfig {
         name: "demo tap".to_string(),
         tap_package_name: "demo_tap".to_string(),
@@ -695,9 +693,8 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
         interface_revision: InterfaceRevision(1),
     };
     assert!(config.tap_package_path.join("Move.toml").exists());
-    let artifact =
-        nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
-            .expect("publish artifact");
+    let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
+        .expect("publish artifact");
     let mut tx = sui::tx::TransactionBuilder::new();
 
     let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
@@ -777,7 +774,6 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
     let agent_id = addr("0xa5");
     let skill_id = 181;
     let dag_id = addr("0xd5");
-    let tap_package_id = addr("0xe5");
     let config = TapSkillConfig {
         name: "demo tap".to_string(),
         tap_package_name: "demo_tap".to_string(),
@@ -787,9 +783,8 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
         interface_revision: InterfaceRevision(1),
     };
     assert!(config.tap_package_path.join("Move.toml").exists());
-    let artifact =
-        nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
-            .expect("publish artifact");
+    let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
+        .expect("publish artifact");
 
     let registry = TapRegistry {
         id: addr("0x91"),

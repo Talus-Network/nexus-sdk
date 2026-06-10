@@ -48,30 +48,13 @@ You're not declaring types here; the leader reads the registered tool's input sc
     "input_schema_commitment": [
       116, 117, 116, 111, 114, 105, 97, 108, 45, 105, 110, 112, 117, 116
     ],
-    "workflow_commitment": [
-      116, 117, 116, 111, 114, 105, 97, 108, 45, 119, 111, 114, 107, 102, 108,
-      111, 119
-    ],
-    "metadata_commitment": [116, 117, 116, 111, 114, 105, 97, 108],
-    "payment_policy": {
-      "mode": "user_funded",
-      "max_budget": 0,
-      "token_type_commitment": [],
-      "refund_mode": 0
-    },
+    "payment_policy": "UserFunded",
     "schedule_policy": {
-      "recurrence_kind": "once",
-      "min_interval_ms": 0,
-      "max_occurrences": 1,
+      "recurrence": "Once",
       "allow_recursive": false
     },
-    "vertex_authorization_schema": {
-      "schema_commitment": [],
-      "fixed_tools": [],
-      "requires_payment": false
-    }
+    "fixed_tools": []
   },
-  "shared_objects": [],
   "interface_revision": 1
 }
 ```
@@ -80,12 +63,10 @@ Field by field:
 
 - **`tap_package_name`** must match the Move package name (`tutorial_transfer`) — `publish-skill` uses it as the named-address override when it compiles the package.
 - **`dag_path` / `tap_package_path`** are relative to this file. The scaffold wires both for you and we keep them as-is.
-- **`requirements.input_schema_commitment` / `workflow_commitment` / `metadata_commitment`** are opaque byte vectors that endpoint announcements commit to. The JSON above encodes the ASCII strings `tutorial-input`, `tutorial-workflow`, and `tutorial`. Anything reproducible works; downstream tooling treats these as identifiers.
-- **`payment_policy.mode = "user_funded"`** means the wallet calling `nexus tap execute` supplies the SUI for the standard TAP payment. The alternative, `agent_funded`, draws from the agent's payment vault.
-- **`payment_policy.max_budget = 0`** disables the on-chain budget cap; the invoker still passes a `--payment-max-budget` at execute time, but the skill itself doesn't constrain it.
-- **`schedule_policy.recurrence_kind = "once"`** keeps the demo synchronous. We're not using the scheduler in this guide.
-- **`vertex_authorization_schema.fixed_tools: []`** and **`requires_payment: false`** mean the workflow does **not** mint a per-walk authorization cap for the vertex tool. The tool's `execute` runs on every dispatched walk without any caller-side check. That's the unauthorized shape this guide builds — the closing note on the last page covers what it would take to add a cap-gated check.
-- **`shared_objects: []`** because the workflow doesn't need to lock any _additional_ shared objects beyond what the vertex tool already takes as arguments. `TutorialState` is supplied through the entry port, not declared here.
+- **`requirements.input_schema_commitment`** is an opaque byte vector that identifies the expected input shape. The JSON above encodes the ASCII string `tutorial-input`; anything reproducible works because downstream tooling treats it as an identifier.
+- **`payment_policy: "UserFunded"`** means the wallet calling `nexus tap execute` supplies the SUI for the standard TAP payment. The alternative shape is `{"AgentFunded": {"max_budget": <MIST>}}`, which draws from the agent's payment vault and caps the requested budget.
+- **`schedule_policy.recurrence = "Once"`** keeps the demo synchronous. Recursive schedules use `{"Recursive": {"min_interval_ms": <MS>, "max_occurrences": <COUNT or null>}}` and must set `allow_recursive: true`.
+- **`fixed_tools: []`** means this skill does not preserve any registry-verified fixed tools in its DAG. Fixed tools are a DAG preservation requirement, not an authorization grant list.
 - **`interface_revision: 1`** is the standard TAP interface generation; bump it only when the on-chain TAP interface ships a new revision.
 
 ## 3. Dry-run
@@ -105,7 +86,7 @@ You should see the validation summary again — no chain calls happen yet. If th
 You now have:
 
 - A `dag.json` whose only vertex is the on-chain transfer tool we wrote.
-- A `skill.tap.json` whose `payment_policy` makes the invoker pay for each execution, whose `schedule_policy` keeps everything single-shot, and whose `vertex_authorization_schema` is left at its scaffold default (no `fixed_tools`, no `requires_payment`).
+- A `skill.tap.json` whose `payment_policy` makes the invoker pay for each execution, whose `schedule_policy` keeps everything single-shot, and whose `fixed_tools` requirement is empty.
 - A `validate-skill` and `dry-run` that both pass.
 
 Everything is still local — nothing has touched the chain yet. The next page goes on chain three times: publish the Move package + DAG, register the on-chain tool, and bind the agent.

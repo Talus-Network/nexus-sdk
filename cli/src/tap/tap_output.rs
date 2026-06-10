@@ -58,6 +58,12 @@ pub(crate) fn dry_run_result_json(config: &TapSkillConfig) -> serde_json::Value 
     })
 }
 
+pub(crate) fn create_skill_artifact_result_json(
+    artifact: &TapPublishArtifact,
+) -> serde_json::Value {
+    json!(artifact)
+}
+
 // ============================================================================
 // Publish + bind lifecycle
 // ============================================================================
@@ -98,7 +104,6 @@ pub(crate) fn register_skill_result_json(
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
         "dag_id": artifact.dag_id,
-        "tap_package_id": artifact.tap_package_id,
     })
 }
 
@@ -116,7 +121,6 @@ pub(crate) fn bind_result_json(
         "agent_object_version": result.agent_object.version(),
         "skill_id": result.skill_id,
         "dag_id": artifact.dag_id,
-        "tap_package_id": artifact.tap_package_id,
     })
 }
 
@@ -133,7 +137,6 @@ pub(crate) fn update_skill_result_json(
         "skill_id": result.skill_id,
         "current_interface_revision": result.current_interface_revision,
         "dag_id": artifact.dag_id,
-        "tap_package_id": artifact.tap_package_id,
         "dag_binding": result.dag_binding,
         "requirements": result.requirements,
     })
@@ -447,12 +450,8 @@ mod tests {
             },
             interface_revision: InterfaceRevision(1),
         };
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("artifact builds")
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("artifact builds")
     }
 
     fn fixture_payment(accomplished: bool, refunded: bool) -> TapExecutionPayment {
@@ -818,5 +817,23 @@ mod tests {
         let dry_run = dry_run_result_json(&config);
         assert_eq!(dry_run["dry_run"], serde_json::Value::Bool(true));
         assert!(dry_run.get("config_digest_hex_with_zero_package").is_none());
+    }
+
+    #[test]
+    fn create_skill_artifact_result_json_is_raw_artifact_shape() {
+        let artifact = fixture_artifact();
+        let output = create_skill_artifact_result_json(&artifact);
+
+        assert_eq!(output["skill_name"], serde_json::json!("weather skill"));
+        assert_eq!(output["interface_revision"], serde_json::json!(1));
+        assert_eq!(
+            output["dag_id"],
+            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
+        );
+        assert!(output.get("requirements").is_some());
+        assert!(output.get("standard_tap").is_none());
+        assert!(output.get("function").is_none());
+        assert!(output.get("out").is_none());
+        assert!(output.get("tap_package_id").is_none());
     }
 }

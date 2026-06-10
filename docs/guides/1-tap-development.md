@@ -6,26 +6,28 @@ This series teaches how to build, register, and operate a **standard TAP skill**
 
 ## What a TAP skill is
 
-A standard Talus Agent Protocol (TAP) **skill** wraps up to three things behind one on-chain identity:
+A standard Talus Agent Protocol (TAP) **skill** wraps up to three things behind one registry identity:
 
 1. A **TAP Move package** — your custom Move code: shared state objects, the witness type that ties a vertex tool to your package, and any business-logic helpers the tool needs (e.g. coin custody). At the protocol level this is optional: `register_skill` itself doesn't take a package id, so a skill whose DAG uses only off-chain HTTP tools and no on-chain state doesn't need one. This tutorial's skill uses an on-chain transfer tool, so the package contents below are required.
 1. A **DAG** — the workflow definition the leader executes when the skill runs. For this tutorial the DAG has a single vertex that calls one on-chain Move tool.
-1. A **skill config** (`skill.tap.json`) — declares the DAG, the TAP package path, the skill's payment/schedule/authorization requirements, and the shared objects the workflow needs to touch.
+1. A **skill config** (`skill.tap.json`) — declares the DAG, the TAP package path, and the skill's input, payment, schedule, and fixed-tool requirements.
 
-A skill lives under an **agent** (also on-chain). The agent record carries the operator address that's allowed to drive executions; the skill record carries the DAG + requirements. Each `(agent, skill)` pair has one or more **endpoint revisions** — a version-pinned bundle of `(shared_objects, requirements, config_digest)` that the workflow reads at runtime. `nexus tap bind` / `nexus tap register-skill` always create `interface_revision(1)` atomically with the skill record, and subsequent revisions are appended via `nexus tap announce`; the registry's endpoints table is append-only, so revisions never drop to zero.
+A skill lives under an **agent** (also on-chain). Mutable custody of the `Agent` object is the lifecycle authorization handle, and the registry stores the agent's active flag plus skill records. Each skill record carries the DAG binding, simplified requirements, and a `current_interface_revision` that fresh executions and scheduled-task creation use. `nexus tap bind` / `nexus tap register-skill` create revision `1` with the skill record, and `nexus tap update-skill` moves the current skill contract to a new revision for future starts.
 
-Three things sit inside that bundle:
+The current skill contract has these important parts:
 
-- **`shared_objects`** is the list of *skill-author-owned* shared Move objects that the skill's vertex tools will read or write at execution time, each tagged with a mutability bit (`{ id, mutable }`). It does **not** include workflow framework objects like `AgentRegistry`, `ToolRegistry`, `Clock`, the `Agent`, the `DAG`, or `ToolGas` cells — those are wired into every execute PTB automatically by the SDK. It's advisory metadata: it's committed into `config_digest` so the advertisement can't be swapped after announcement, but the PTB builder still has to fetch and pass these object refs explicitly per execution. An empty list is valid for a skill with no custom on-chain state. For this tutorial, the only entry will be the `TutorialState` shared object that holds the treasury `Balance<SUI>`, declared mutable because the transfer tool drains it.
-- **`requirements`** carries the four commitments (input schema, workflow, metadata, capability schema) plus the payment policy, schedule policy, and vertex authorization schema (`fixed_tools` + `requires_payment`).
-- **`config_digest`** is `sha2_256(BCS({ interface_revision, shared_objects, requirements }))`, checked by `assert_valid_config_digest` before any announcement is accepted.
+- **DAG binding** points to the published DAG that workflow execution should run. The concrete shared objects a skill needs, such as this tutorial's `TutorialState`, are supplied as execution inputs rather than stored in a separate endpoint-revision table.
+- **`requirements.input_schema_commitment`** is an opaque byte vector that identifies the expected input shape for tooling and dry-run checks.
+- **`requirements.payment_policy`** is either `UserFunded` or `AgentFunded { max_budget }`; user-funded execution supplies the payment coin at call time, while agent-funded execution draws from the agent's payment vault.
+- **`requirements.schedule_policy`** declares whether scheduled execution is one-shot or recursive, including `allow_recursive` and recurrence bounds.
+- **`requirements.fixed_tools`** is the canonical set of registry-verified tools that must remain present in the bound DAG. It is a preservation requirement, not the old authorized-tool or vertex-authorization schema.
 
 ## What we'll build
 
 The tutorial's skill exposes a single vertex tool that does one job: **drain a SUI treasury sitting in the TAP package's shared state into a recipient address** passed as a workflow input. The state is funded out-of-band (we'll add a `fund_treasury` helper), and each skill execution moves the treasury balance to the recipient. The workflow dispatches the walk, the leader runs the Move tool, the recipient receives SUI.
 
 {% hint style="warning" %}
-**This tutorial is intentionally unauthorized.** The on-chain transfer tool is registered through the plain `register_on_chain_tool` entry point and the skill config carries an empty `fixed_tools` list, so any workflow execution against this skill can drain the treasury — there is no per-call authorization check. The end of the last page covers what that means in practice and points at the follow-up guide for cap-gated authorization (`VertexAuthorizationCheckCap`, `WorkflowVertexAuthorizationGrant`, `fixed_tools` with `requires_payment: true`), which is the production-ready way to wrap the same transfer logic.
+**This tutorial is intentionally minimal.** The on-chain transfer tool is registered through the plain `register_on_chain_tool` entry point and the skill config carries an empty `fixed_tools` list, so any workflow execution against this skill can drain the treasury — there is no per-call authorization check. The end of the last page covers what that means in practice and points at the follow-up guide for cap-gated authorization (`VertexAuthorizationCheckCap`, `WorkflowVertexAuthorizationGrant`, and `fixed_tools`), which is the production-ready way to wrap the same transfer logic.
 {% endhint %}
 
 ## End-to-end flow
@@ -75,5 +77,5 @@ The TAP CLI surface is broader than what one tutorial can show. After you finish
 
 - Vault funding and vault-funded scheduling (`nexus tap vault deposit`, `nexus tap schedule-from-vault`).
 - Address-funded scheduling and the default-executor variant (`nexus tap schedule-address-funded`, `nexus tap schedule-default-address-funded`).
-- Endpoint revision announcements for already-bound skills (`nexus tap announce`).
+- Current skill updates for already-bound skills (`nexus tap update-skill`).
 - Inspecting payment receipts and execution costs (`nexus tap payments list`, `nexus dag execution-cost`).

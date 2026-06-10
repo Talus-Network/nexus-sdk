@@ -1714,7 +1714,6 @@ impl TapSkillConfig {
 pub struct TapPublishArtifact {
     pub skill_name: String,
     pub dag_id: sui::types::Address,
-    pub tap_package_id: sui::types::Address,
     pub interface_revision: InterfaceRevision,
     pub requirements: TapSkillRequirements,
 }
@@ -1723,18 +1722,33 @@ impl TapPublishArtifact {
     pub fn from_config(
         config: &TapSkillConfig,
         dag_id: sui::types::Address,
-        tap_package_id: sui::types::Address,
     ) -> anyhow::Result<Self> {
         config.validate()?;
 
         Ok(Self {
             skill_name: config.name.clone(),
             dag_id,
-            tap_package_id,
             interface_revision: config.interface_revision,
             requirements: config.requirements.clone(),
         })
     }
+}
+
+pub fn tap_input_commitment_from_dag_inputs<I, V, P>(inputs: I) -> Vec<u8>
+where
+    I: IntoIterator<Item = (V, P)>,
+    V: AsRef<str>,
+    P: AsRef<str>,
+{
+    let mut canonical_inputs = inputs
+        .into_iter()
+        .map(|(vertex, port)| (vertex.as_ref().to_string(), port.as_ref().to_string()))
+        .collect::<Vec<_>>();
+    canonical_inputs.sort();
+
+    let encoded =
+        bcs::to_bytes(&canonical_inputs).expect("canonical TAP DAG input pairs should encode");
+    Sha256::digest(encoded).to_vec()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2187,7 +2201,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_artifact_contains_onchain_package_ids() {
+    fn publish_artifact_contains_skill_artifact_fields() {
         let config = TapSkillConfig {
             name: "weather".to_string(),
             tap_package_name: "weather_tap".to_string(),
@@ -2197,11 +2211,11 @@ mod tests {
             interface_revision: InterfaceRevision(1),
         };
 
-        let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
-            .expect("valid artifact");
+        let artifact =
+            TapPublishArtifact::from_config(&config, addr("0x8")).expect("valid artifact");
 
         assert_eq!(artifact.dag_id, addr("0x8"));
-        assert_eq!(artifact.tap_package_id, addr("0x7"));
+        assert_eq!(artifact.skill_name, "weather");
     }
 
     #[test]
@@ -2214,11 +2228,26 @@ mod tests {
             requirements: requirements(),
             interface_revision: InterfaceRevision(1),
         };
-        let artifact = TapPublishArtifact::from_config(&config, addr("0x8"), addr("0x7"))
-            .expect("valid artifact");
+        let artifact =
+            TapPublishArtifact::from_config(&config, addr("0x8")).expect("valid artifact");
 
         assert_eq!(artifact.interface_revision, InterfaceRevision(1));
         assert_eq!(artifact.requirements, config.requirements);
+    }
+
+    #[test]
+    fn dag_input_commitment_is_order_independent() {
+        let first = tap_input_commitment_from_dag_inputs([
+            ("weather::V2", "city"),
+            ("weather::V1", "country"),
+        ]);
+        let second = tap_input_commitment_from_dag_inputs([
+            ("weather::V1", "country"),
+            ("weather::V2", "city"),
+        ]);
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 32);
     }
 
     #[test]

@@ -483,17 +483,18 @@ This command requires that a wallet is connected to the CLI...
 
 ### `nexus tap`
 
-Commands for authoring, publishing, registering, executing, and inspecting standard TAP (Talus Agent Protocol) packages. The TAP surface covers the full lifecycle from scaffolding a new skill locally through publishing it on-chain, binding it to an agent, executing or scheduling it, and inspecting the resulting registry/endpoint/payment state.
+Commands for authoring, publishing, registering, executing, scheduling, and inspecting standard TAP (Talus Agent Protocol) packages. The TAP surface covers the full lifecycle from scaffolding a new skill locally through publishing it on-chain, binding it to an agent, updating the current skill revision, and inspecting registry/payment/scheduled-task state.
 
 A typical lifecycle looks like:
 
 1. `tap scaffold` — generate a TAP package + DAG + skill config skeleton.
-1. `tap validate-skill` / `tap dry-run` — verify the local artifacts and compute a config digest.
-1. `tap publish-skill` — publish the Move package, publish the DAG, create+share a standard endpoint, and write a portable publish artifact.
+1. `tap validate-skill` / `tap dry-run` — verify the local artifacts and report the validated skill name plus interface revision.
+1. `tap publish-skill` — publish the Move package, publish the DAG, derive the current skill artifact, and write a portable publish artifact.
+1. `tap create-skill-artifact` — build the same portable skill artifact locally when the DAG and TAP package were published by another flow.
 1. `tap create-agent` (or `tap bind` to do create+register in one PTB) — get an on-chain agent identity.
-1. `tap register-skill` and `tap announce` — bind the skill to the agent and announce subsequent endpoint revisions.
+1. `tap register-skill` and `tap update-skill` — bind the skill to the agent and move future executions to a new current skill revision when the DAG or policies change.
 1. `tap execute` / `tap schedule` — run the skill once or schedule recurring/queued executions.
-1. `tap registry show`, `tap endpoint inspect`, `tap payments show`/`wait`, `tap vault balance`, `tap payments list` — inspect on-chain state and drive settlement.
+1. `tap registry show`, `tap default-target show`, `tap requirements`, `tap payments show`/`wait`, `tap vault balance`, and `tap payments list` — inspect on-chain state and drive settlement.
 
 All commands accept `--json` for stable machine-readable output.
 
@@ -515,7 +516,7 @@ Statically validates a TAP skill config JSON and the local TAP package it refere
 
 **`nexus tap dry-run --config <PATH>`**
 
-Runs `validate-skill` and computes a config digest against the zero package address (`0x0`), useful before publishing to verify the skill config compiles, the DAG validates, and the artifact will produce a stable digest. The JSON output reports `valid`, the skill name, interface revision, and the zero-package `config_digest_hex_with_zero_package`.
+Runs `validate-skill` and checks the local TAP package, DAG, and simplified skill requirements before any chain write. The JSON output reports `valid`, the skill name, and the requested interface revision.
 
 #### Publishing (on-chain authoring)
 
@@ -523,19 +524,27 @@ Runs `validate-skill` and computes a config digest against the zero package addr
 
 **`nexus tap publish-skill --config <PATH> [--out <PATH>]`**
 
-Publishes a full TAP skill in one shot: publishes the TAP Move package, publishes the DAG, creates and shares a `StandardEndpoint` object for the package, and constructs a `TapPublishArtifact` carrying everything an operator needs to bind the skill to an agent. The JSON output includes the TAP `package_id`, the `dag_id`, the endpoint object ref, the per-step transaction digests and checkpoints, and the full `artifact`. When `--out` is supplied, the artifact is also written to disk as JSON for handoff to operators (e.g. to feed `register-skill` or `bind`).
+Publishes the TAP Move package, publishes the DAG, and constructs a `TapPublishArtifact` carrying the `dag_id`, requested `interface_revision`, and simplified requirements needed to bind or update a skill. The JSON output includes the TAP `package_id`, the `dag_id`, the per-step transaction digests and checkpoints, and the full `artifact`. When `--out` is supplied, the artifact is also written to disk as JSON for `register-skill`, `bind`, or `update-skill`.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
+
+---
+
+**`nexus tap create-skill-artifact --skill-name <NAME> --dag-id <OBJECT_ID> --interface-revision <U64> --payment-mode <user-funded|agent-funded> [--agent-funded-max-budget <AMOUNT>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--fixed-tool <REGISTRY_ID=FQN>] --out <PATH>`**
+
+Creates a skill `TapPublishArtifact` file from explicit skill inputs and a read-only fetch of the published DAG. Use it when a script has already published or otherwise knows the DAG id, but still wants the canonical skill artifact consumed by `tap register-skill`, `tap bind`, and `tap update-skill`. The command derives `requirements.input_schema_commitment` from the fetched DAG input-port data and aborts without writing if the DAG cannot be fetched or decoded. The artifact file and `--json` output contain only the active TAP artifact fields: `skill_name`, `dag_id`, `interface_revision`, and `requirements`.
+
+`--payment-mode agent-funded` requires a positive `--agent-funded-max-budget`; `--payment-mode user-funded` rejects that budget flag. `--fixed-tool` is repeatable and maps directly to `requirements.fixed_tools[]` as `<tool_registry_id>=<tool_fqn>`.
 
 #### Agent setup
 
 ---
 
-**`nexus tap create-agent --operator <ADDRESS>`**
+**`nexus tap create-agent`**
 
-Creates a standard Talus agent through the configured TAP registry and shares the agent object. The operator address is recorded as the agent's operational signer; the wallet that runs the command becomes the owner. JSON output includes the new `agent_id`, the operator address, and the transaction digest/checkpoint.
+Creates a standard Talus agent through the configured TAP registry and shares the agent object. Mutable custody of the `Agent` object is the lifecycle authorization handle. JSON output includes the new `agent_id` and the transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -543,13 +552,13 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap bind --artifact <ARTIFACT_JSON> --operator <ADDRESS>`**
+**`nexus tap bind --artifact <ARTIFACT_JSON>`**
 
 Composes `tap::create_agent` and `tap::register_skill` into a single PTB, returning the new agent and skill bound together in one transaction. Use this when an agent has not been created yet and the operator wants the standard "create + register first skill" flow in one round-trip.
 
-The artifact JSON is the one produced by `nexus tap publish-skill` — it carries DAG id, TAP package id, interface revision, requirements, and shared objects.
+The artifact JSON is the one produced by `nexus tap publish-skill` — it carries DAG id, TAP package id, interface revision, and simplified requirements.
 
-The JSON output exposes the transaction digest and checkpoint, the new `agent_id` and `skill_id`, the agent object ref, and both the hex-encoded `config_digest` and the structured `config_digest_input` used to derive it — enough evidence to record the binding in an external system without re-fetching it.
+The JSON output exposes the transaction digest and checkpoint, the new `agent_id` and `skill_id`, the agent object ref, and structured skill evidence for external bookkeeping.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -573,13 +582,13 @@ Lists locally saved Talus agent aliases.
 
 Removes a locally saved Talus agent alias.
 
-#### Skill registration and endpoint revisions
+#### Skill Registration and Current Revisions
 
 ---
 
 **`nexus tap register-skill --artifact <PATH> --agent-id <OBJECT_ID>`**
 
-Registers a TAP skill against an existing agent using the publish artifact. The artifact supplies the DAG id, TAP package id, interface revision, requirements, and shared objects. JSON output includes the new `skill_id`, the `agent_id`, the DAG and TAP package ids, and the transaction digest/checkpoint.
+Registers a TAP skill against an existing agent using the publish artifact. The artifact supplies the DAG id, TAP package id, interface revision, and simplified requirements. JSON output includes the new `skill_id`, the `agent_id`, the DAG and TAP package ids, and the transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -587,9 +596,9 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap announce --artifact <PATH> --agent-id <OBJECT_ID> --skill-id <U64>`**
+**`nexus tap update-skill --artifact <PATH> --agent-id <OBJECT_ID> --skill-id <U64>`**
 
-Announces an endpoint revision for an existing skill. The artifact's interface revision and config-digest input are used to compute the on-chain `config_digest` that binds package, revision, shared objects, and skill requirements. JSON output includes the endpoint key (agent/skill/revision), the hex-encoded `config_digest`, and the structured `config_digest_input`.
+Updates an existing skill from a publish artifact. The current CLI path refreshes the skill DAG/policy contract and reports the resulting `current_interface_revision`; there is no endpoint-revision table or separate announce step in the active TAP model. JSON output includes the `agent_id`, `skill_id`, artifact evidence, `current_interface_revision`, and transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -601,19 +610,19 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap registry show`**
 
-Reads the configured TAP registry and prints its full contents as JSON: a `standard_tap` flag, the registry `id`, the configured `default_executor`, all `agents`, `skills`, and `endpoints` (every revision). This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
+Reads the configured TAP registry and prints its full contents as JSON: a `standard_tap` flag, the registry `id`, the configured `default_executor`, all agent records, and each skill's active flag, DAG binding, current interface revision, requirements, and scheduled-task count. This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
 
 ---
 
 **`nexus tap default-target show`**
 
-Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the resolved `dag_id`, the active `interface_revision`, the `config_digest_hex`, the endpoint `shared_objects`, and the published skill `requirements`. Useful for scripts that want to drive the network's default agent without hard-coding ids.
+Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the DAG binding, active interface revision, and published skill requirements. Useful for scripts that want to drive the network's default agent without hard-coding ids.
 
 ---
 
 **`nexus tap requirements --agent-id <OBJECT_ID> --skill-id <U64>`**
 
-Fetches the live skill requirements from the TAP registry for a given agent/skill pair: the active endpoint key (agent/skill/interface revision) and the registered requirements (input schema commitment, workflow commitment, metadata commitment, payment policy, schedule policy, vertex authorization schema). Use this before `tap execute` or `tap schedule` to confirm the active revision and verify the runtime inputs match the on-chain commitments.
+Fetches the live skill requirements from the TAP registry for a given agent/skill pair: the active skill revision key `(agent_id, skill_id, current_interface_revision)` plus the registered requirements (`input_schema_commitment`, payment policy, schedule policy, and fixed tools). Use this before `tap execute` or `tap schedule` to confirm the active revision and verify the runtime inputs match the on-chain commitments.
 
 #### Vaults and payments
 
@@ -637,7 +646,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap payments show --payment-id <OBJECT_ID>`**
 
-Reads a standard `TapExecutionPayment` object and emits a flat JSON of its fields: payment/execution/agent/skill ids, interface revision, endpoint object id, payer, mode/source kind/source identity, budgets and consumed amount, refund mode, `accomplished`/`refunded` booleans, raw `final_state`, computed `terminal` flag (true once accomplished/refunded), and the list of currently-locked vertices. Replaces shell-side BCS decoding of payment object internals.
+Reads a standard `TapExecutionPayment` object and emits a flat JSON of its fields: payment/execution/agent/skill ids, interface revision, payer, mode/source kind/source identity, locked budget, consumed amount, `accomplished`/`refunded` booleans, raw `final_state`, computed `terminal` flag, and the list of currently-locked vertices. Replaces shell-side BCS decoding of payment object internals.
 
 ---
 
@@ -674,16 +683,15 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--payment-refund-mode <MODE>] [--authorization-plan-hash-hex <HEX>]`**
+**`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--authorization-plan-hash-hex <HEX>]`**
 
-Executes a standard TAP skill through its currently-active endpoint and DAG. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the standard TAP execution payment:
+Executes a standard TAP skill through its current registry skill revision and DAG binding. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the standard TAP execution payment:
 
 - `--payment-source-hex` provides typed payment-source bytes (invoker-funded vs agent-vault-funded). Empty defaults to the invoker.
 - `--payment-max-budget` caps the standard TAP payment.
-- `--payment-refund-mode` chooses the refund behaviour byte.
 - `--authorization-plan-hash-hex` optionally supplies an authorization-plan commitment for cap-gated tools.
 
-JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active endpoint key/object, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
+JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active skill revision key, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
 
 Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific. Build a single PTB with `sui client ptb` (or the `nexus_sdk::transactions::dag::create_vertex_authorization_grant` builder) that calls `nexus_workflow::dag::create_vertex_authorization_grant`, hands the result to your tap package's bind hook, and only then invokes the workflow's begin / request-walk entrypoints. See the [TAP development guide](guides/1-tap-development.md) for a worked example.
 
@@ -703,7 +711,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-address-funded --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--refund-mode <MODE>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
+**`nexus tap schedule-address-funded --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
 
 Creates a durable address-funded `ScheduledSkillTask` for a specific agent + skill, attaches it to the existing scheduler task via `TapScheduledTaskLink`, and shares the scheduled TAP task — all in one transaction. `--prepay-amount` MIST are split from the signer's gas coin to prepay the schedule; `--refund-recipient` defaults to the signer. JSON output includes the `scheduled_task_id`, `scheduler_task_id`, agent and skill ids, prepay amount, occurrence budget, and transaction digest/checkpoint.
 
@@ -715,7 +723,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-from-vault --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-mode <MODE>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
+**`nexus tap schedule-from-vault --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
 
 Creates a durable agent-vault-funded `ScheduledSkillTask` for a specific agent + skill, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. `--prepay-amount` MIST are drawn from the agent's payment vault; pair with `nexus tap vault deposit` when the vault needs to be funded first. JSON output mirrors `tap schedule-address-funded` minus `refund_recipient`.
 
@@ -725,7 +733,7 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-default-address-funded --scheduler-task-id <OBJECT_ID> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--refund-mode <MODE>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
+**`nexus tap schedule-default-address-funded --scheduler-task-id <OBJECT_ID> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
 
 Creates a durable address-funded `ScheduledSkillTask` tied to the registry-owned default DAG executor, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. Unlike `tap schedule-address-funded`, no `--agent-id`/`--skill-id` flags are required: the configured default executor is used. JSON output mirrors `tap schedule-address-funded`.
 

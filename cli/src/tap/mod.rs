@@ -2,6 +2,7 @@ mod tap_agent;
 mod tap_bind;
 mod tap_common;
 mod tap_create_agent;
+mod tap_create_skill_artifact;
 mod tap_default_target;
 mod tap_dry_run;
 mod tap_execute;
@@ -74,6 +75,7 @@ use {
         schedule_policy_from_cli,
     },
     tap_create_agent::create_agent,
+    tap_create_skill_artifact::{create_skill_artifact, ArtifactPaymentMode},
     tap_default_target::show_default_target,
     tap_dry_run::dry_run_skill,
     tap_execute::execute_agent_dag_skill,
@@ -84,6 +86,7 @@ use {
         agent_save_result_json,
         bind_result_json,
         create_agent_result_json,
+        create_skill_artifact_result_json,
         default_target_result_json,
         dry_run_result_json,
         payment_resolve_result_json,
@@ -164,6 +167,54 @@ pub(crate) enum TapCommand {
         out: Option<PathBuf>,
         #[command(flatten)]
         gas: GasArgs,
+    },
+    #[command(
+        about = "Create a TAP skill publish artifact from explicit inputs and fetched DAG data."
+    )]
+    CreateSkillArtifact {
+        #[arg(
+            long,
+            help = "Skill name recorded in the artifact.",
+            value_name = "NAME"
+        )]
+        skill_name: String,
+        #[arg(long, help = "Published DAG object ID.", value_name = "OBJECT_ID")]
+        dag_id: sui::types::Address,
+        #[arg(long, help = "Skill interface revision.", value_name = "U64")]
+        interface_revision: u64,
+        #[arg(
+            long = "payment-mode",
+            value_enum,
+            help = "Skill payment policy mode.",
+            value_name = "MODE"
+        )]
+        payment_mode: ArtifactPaymentMode,
+        #[arg(
+            long = "agent-funded-max-budget",
+            help = "Maximum budget for agent-funded skills.",
+            value_name = "AMOUNT"
+        )]
+        agent_funded_max_budget: Option<u64>,
+        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
+        recurrence_kind: String,
+        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
+        min_interval_ms: u64,
+        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
+        max_occurrences: u64,
+        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
+        allow_recursive: bool,
+        #[arg(
+            long = "fixed-tool",
+            help = "Fixed tool requirement as <TOOL_REGISTRY_ID>=<TOOL_FQN>. Repeatable.",
+            value_name = "REGISTRY=FQN"
+        )]
+        fixed_tool: Vec<String>,
+        #[arg(
+            long,
+            help = "Write the publish artifact JSON to this path.",
+            value_parser = ValueParser::from(expand_tilde)
+        )]
+        out: PathBuf,
     },
     #[command(about = "Create a standard Talus agent.")]
     CreateAgent {
@@ -681,6 +732,34 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::PublishSkill { config, out, gas } => {
             publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
+        TapCommand::CreateSkillArtifact {
+            skill_name,
+            dag_id,
+            interface_revision,
+            payment_mode,
+            agent_funded_max_budget,
+            recurrence_kind,
+            min_interval_ms,
+            max_occurrences,
+            allow_recursive,
+            fixed_tool,
+            out,
+        } => {
+            create_skill_artifact(
+                skill_name,
+                dag_id,
+                interface_revision,
+                payment_mode,
+                agent_funded_max_budget,
+                recurrence_kind,
+                min_interval_ms,
+                max_occurrences,
+                allow_recursive,
+                fixed_tool,
+                out,
+            )
+            .await
+        }
         TapCommand::CreateAgent { gas } => create_agent(gas.sui_gas_coin, gas.sui_gas_budget).await,
         TapCommand::RegisterSkill {
             artifact,
@@ -946,40 +1025,8 @@ mod tests {
             interface_revision: InterfaceRevision(1),
         };
 
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("valid artifact")
-    }
-
-    async fn publish_skill_artifact(
-        config_path: PathBuf,
-        dag_id: sui::types::Address,
-        tap_package_id: sui::types::Address,
-        out: Option<PathBuf>,
-    ) -> AnyResult<(), NexusCliError> {
-        let config = validate_skill(config_path).await?;
-        command_title!("Creating TAP publish artifact");
-
-        let artifact = TapPublishArtifact::from_config(&config, dag_id, tap_package_id)
-            .map_err(NexusCliError::Any)?;
-        let artifact_json =
-            serde_json::to_string_pretty(&artifact).map_err(|e| NexusCliError::Any(e.into()))?;
-
-        if let Some(out) = out {
-            if let Some(parent) = out.parent() {
-                create_dir_all(parent).await.map_err(NexusCliError::Io)?;
-            }
-            tokio::fs::write(&out, artifact_json.as_bytes())
-                .await
-                .map_err(NexusCliError::Io)?;
-            notify_success!("Wrote TAP publish artifact to {}", out.display());
-        }
-
-        json_output(&artifact)?;
-        Ok(())
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("valid artifact")
     }
 
     #[tokio::test]
@@ -1012,6 +1059,26 @@ mod tests {
         .await
         .expect_err("publish dispatch reaches missing RPC");
         assert!(publish_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
+
+        let dispatch_artifact_path = root.join("dispatch-skill-artifact.json");
+        let create_artifact_error = handle(TapCommand::CreateSkillArtifact {
+            skill_name: "weather skill".to_string(),
+            dag_id: sui::types::Address::from_static("0xd"),
+            interface_revision: 1,
+            payment_mode: ArtifactPaymentMode::UserFunded,
+            agent_funded_max_budget: None,
+            recurrence_kind: "once".to_string(),
+            min_interval_ms: 0,
+            max_occurrences: 1,
+            allow_recursive: false,
+            fixed_tool: Vec::new(),
+            out: dispatch_artifact_path,
+        })
+        .await
+        .expect_err("create-skill-artifact dispatch reaches missing RPC");
+        assert!(create_artifact_error
             .to_string()
             .contains("Sui RPC URL is not configured"));
 
@@ -1263,33 +1330,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn publish_artifact_flow_writes_revision_metadata() {
+    #[serial_test::serial]
+    async fn create_skill_artifact_aborts_before_write_when_dag_cannot_be_fetched() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::without_sui_credentials(temp_home.path());
         let tempdir = tempfile::tempdir().unwrap().keep();
+        let artifact_path = tempdir.join("artifact.json");
 
-        scaffold_tap_skill("weather skill".to_string(), tempdir.clone())
-            .await
-            .expect("scaffold succeeds");
-
-        let root = tempdir.join("weather-skill");
-        let config_path = root.join("skill.tap.json");
-        let artifact_path = root.join("artifact-with-endpoint.json");
-        publish_skill_artifact(
-            config_path,
+        let error = create_skill_artifact(
+            "weather skill".to_string(),
             sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-            Some(artifact_path.clone()),
+            1,
+            ArtifactPaymentMode::UserFunded,
+            None,
+            "once".to_string(),
+            0,
+            1,
+            false,
+            Vec::new(),
+            artifact_path.clone(),
         )
         .await
-        .expect("artifact generation succeeds");
+        .expect_err("missing RPC aborts before writing");
 
-        let artifact_text = tokio::fs::read_to_string(artifact_path).await.unwrap();
-        let artifact: TapPublishArtifact = serde_json::from_str(&artifact_text).unwrap();
-        assert_eq!(artifact.dag_id, sui::types::Address::from_static("0xd"));
-        assert_eq!(
-            artifact.tap_package_id,
-            sui::types::Address::from_static("0xe")
+        assert!(
+            error.to_string().contains("Sui RPC URL is not configured"),
+            "unexpected error: {error}"
         );
-        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert!(!artifact_path.exists());
     }
 
     #[test]
@@ -1307,12 +1375,9 @@ mod tests {
             },
             interface_revision: InterfaceRevision(1),
         };
-        let artifact = TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("valid artifact");
+        let artifact =
+            TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+                .expect("valid artifact");
         let output = update_skill_result_json(
             &artifact,
             &UpdateSkillResult {
@@ -1670,12 +1735,9 @@ public struct WeatherSkill has drop {}
             },
             interface_revision: InterfaceRevision(1),
         };
-        let artifact = TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .unwrap();
+        let artifact =
+            TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+                .unwrap();
         tokio::fs::write(&artifact_path, serde_json::to_string(&artifact).unwrap())
             .await
             .unwrap();

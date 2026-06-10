@@ -15,7 +15,7 @@ nexus tap publish-skill \
     --config skill.tap.json \
     --out artifact.json \
     --sui-gas-budget 500000000 \
-    --json
+    --json | tee publish-skill.json
 ```
 
 What `publish-skill` does in a single transaction:
@@ -23,8 +23,8 @@ What `publish-skill` does in a single transaction:
 - Builds and publishes `tap/` as a new Move package.
 - Publishes the DAG in `dag.json` on chain, getting back a `dag_id`.
 - Computes the substituted requirements from `skill.tap.json` (in this guide there is nothing to substitute because `fixed_tools` is empty).
-- Computes the endpoint config digest from the substituted requirements, shared objects, and interface revision.
-- Writes a `TapPublishArtifact` JSON to `--out`. Downstream `tap register-skill` / `tap bind` / `tap announce` all consume this file.
+- Builds a `TapPublishArtifact` from the DAG id, interface revision, and simplified requirements.
+- Writes a `TapPublishArtifact` JSON to `--out`. Downstream `tap register-skill`, `tap bind`, and `tap update-skill` consume this file.
 
 The JSON output gives you the two IDs you'll keep referring to:
 
@@ -43,8 +43,8 @@ The JSON output gives you the two IDs you'll keep referring to:
 Capture them as shell variables for the rest of the page:
 
 ```bash
-PKG=$(jq -r '.tap_package_id' artifact.json)
-DAG=$(jq -r '.dag_id'         artifact.json)
+PKG=$(jq -r '.tap_package_id' publish-skill.json)
+DAG=$(jq -r '.dag_id'         publish-skill.json)
 ```
 
 ## 2. Find the freshly-published TutorialState id
@@ -95,12 +95,11 @@ The JSON output includes the derived `tool_id`, `tool_gas_id`, and the decoded s
 
 ## 4. Create the agent and register the skill
 
-`nexus tap bind` does this in a single PTB: it calls `tap::create_agent` and then `tap::register_skill` (the plain entry point, because our `vertex_authorization_schema` is at its scaffold default — empty `fixed_tools`, `requires_payment: false`).
+`nexus tap bind` does this in a single PTB: it calls `tap::create_agent` and then `tap::register_skill` with the artifact's DAG id, input commitment, payment policy, schedule policy, and empty fixed-tool requirement.
 
 ```bash
 nexus tap bind \
     --artifact artifact.json \
-    --operator "$(sui client active-address)" \
     --sui-gas-budget 500000000 \
     --json
 ```
@@ -112,8 +111,7 @@ Output:
   "function":            "bind_agent_skill",
   "agent_id":            "0x31984f6acbb08ffa1dc053659c9e4af5327459b1ba2ca723ae04ca72dae98cf3",
   "skill_id":            0,
-  "tap_package_id":      "0x556e5acd093ff4ba407cd5677abf27a72a7cf7e3023ae862806260d0ccfd54b2",
-  "config_digest_hex":   "...",
+  "dag_id":              "0xcf1ce804f37973437354784683895736304727e9e6a19bbe467cd1f2a8fa2267",
   ...
 }
 ```
@@ -123,7 +121,6 @@ Output:
 ```bash
 nexus tap bind \
     --artifact artifact.json \
-    --operator "$(sui client active-address)" \
     --sui-gas-budget 500000000 \
     --json > bind.json
 
@@ -141,13 +138,13 @@ nexus tap registry show --json | jq --arg agent "$AGENT" '{
 }'
 ```
 
-You should see exactly one agent entry with your `agent_id` + `operator`, and one skill entry with `skill_id: 0` and `dag_id` matching the value you captured from `publish-skill`. The skill's stored requirements carry an empty `fixed_tools` list.
+You should see exactly one agent entry with your `agent_id`, and one skill entry with `skill_id: 0`, `current_interface_revision: 1`, and a DAG binding matching the value you captured from `publish-skill`. The skill's stored requirements carry an empty `fixed_tools` list.
 
 `nexus tap default-target show` is unaffected — that's the registry-managed default executor, not your new agent.
 
 ## What you have now
 
-- A published TAP Move package and DAG. Their ids are in `artifact.json`.
+- A published TAP Move package and DAG. Their ids are in `publish-skill.json`; the reusable skill artifact is in `artifact.json`.
 - A registered on-chain transfer vertex tool through the plain (non-cap-gated) entry point.
 - A new Talus agent with one skill bound to it. The skill's `skill_id` is `0` (skills are numbered per-agent starting at 0).
 

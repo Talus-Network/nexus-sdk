@@ -337,9 +337,8 @@ impl TapActions {
 
         let tap_package = self.publish_tap_package(package_options).await?;
         let dag = self.client.workflow().publish(dag).await?;
-        let artifact =
-            TapPublishArtifact::from_config(config, dag.dag_object_id, tap_package.package_id)
-                .map_err(NexusError::TransactionBuilding)?;
+        let artifact = TapPublishArtifact::from_config(config, dag.dag_object_id)
+            .map_err(NexusError::TransactionBuilding)?;
 
         Ok(PublishSkillResult {
             tap_package,
@@ -2065,12 +2064,8 @@ mod tests {
             interface_revision: InterfaceRevision(1),
         };
 
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xc"),
-        )
-        .expect("artifact")
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("artifact")
     }
 
     #[tokio::test]

@@ -79,12 +79,8 @@ mod tests {
             interface_revision: nexus_sdk::types::InterfaceRevision(1),
         };
 
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("artifact")
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("artifact")
     }
 
     #[tokio::test]
