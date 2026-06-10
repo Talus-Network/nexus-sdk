@@ -161,3 +161,11 @@ fun init(ctx: &mut TxContext) {
 
     public_share_object(guy);
 }
+
+/// Mutator used only by the creation-checkpoint e2e test to bump `Guy`'s
+/// version past creation. Each invocation produces a new on-chain version of
+/// the shared `Guy`, so the LATEST `previous_transaction` is guaranteed to
+/// differ from the creation tx digest.
+public fun bump_age(guy: &mut Guy) {
+    guy.age = guy.age + 1;
+}

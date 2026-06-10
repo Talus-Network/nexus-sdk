@@ -68,20 +68,62 @@ pub(crate) fn validate_tap_package_manifest(
         );
     }
 
-    let addresses = manifest
-        .get("addresses")
+    // Require the new-style 2024 layout. Old-style manifests cannot resolve
+    // their dependency graph against new-style published Nexus packages.
+    let package_table = manifest
+        .get("package")
         .and_then(toml::Value::as_table)
         .ok_or_else(|| {
             anyhow!(
-                "TAP package manifest '{}' is missing [addresses]",
+                "TAP package manifest '{}' is missing the [package] table",
                 manifest_path.display()
             )
         })?;
-    if !addresses.contains_key(&config.tap_package_name) {
+    if !package_table.contains_key("version") {
         bail!(
-            "TAP package manifest '{}' must define [addresses].{}",
-            manifest_path.display(),
-            config.tap_package_name
+            "TAP package manifest '{}' is missing [package].version — required \
+             by the new-style 2024 Sui Move package format. Add `version = \"1.0.0\"` \
+             (or your own version) to the [package] table.",
+            manifest_path.display()
+        );
+    }
+    let edition = package_table
+        .get("edition")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "TAP package manifest '{}' is missing [package].edition",
+                manifest_path.display()
+            )
+        })?;
+    if edition != "2024" {
+        bail!(
+            "TAP package manifest '{}' uses edition = \"{edition}\" — the new-style \
+             2024 Sui Move package format requires edition = \"2024\" (drop any \
+             `.beta` suffix).",
+            manifest_path.display()
+        );
+    }
+    if manifest.get("addresses").is_some() {
+        bail!(
+            "TAP package manifest '{}' declares an [addresses] table, which marks \
+             the package as old-style. New-style 2024 packages must omit [addresses] \
+             and rely on per-environment `Published.toml` files instead.",
+            manifest_path.display()
+        );
+    }
+    if manifest
+        .get("environments")
+        .and_then(toml::Value::as_table)
+        .is_none()
+    {
+        bail!(
+            "TAP package manifest '{}' is missing an [environments] table. New-style \
+             2024 packages need at least one `<env_alias> = \"<chain-id>\"` entry so \
+             Sui can pick the right `Published.toml` for each dep. Run \
+             `sui client chain-identifier` while your target env is active to get \
+             the chain id.",
+            manifest_path.display()
         );
     }
 
@@ -172,15 +214,11 @@ pub(crate) fn validate_tap_package_sources(
 
 pub(crate) async fn validate_skill(
     config_path: PathBuf,
-    tap_package_override: Option<PathBuf>,
 ) -> AnyResult<TapSkillConfig, NexusCliError> {
     command_title!("Validating TAP skill config '{}'", config_path.display());
 
     let handle = loading!("Validating TAP skill config...");
-    let mut config = read_skill_config(&config_path).await?;
-    if let Some(path) = tap_package_override {
-        config.tap_package_path = path;
-    }
+    let config = read_skill_config(&config_path).await?;
 
     config
         .validate()

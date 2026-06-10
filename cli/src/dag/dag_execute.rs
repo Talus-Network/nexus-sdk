@@ -138,7 +138,7 @@ pub(crate) async fn execute_dag(
     );
 
     if inspect {
-        inspect_dag_execution(result.execution_object_id, result.tx_checkpoint).await?;
+        inspect_dag_execution(result.execution_object_id).await?;
     } else {
         json_output(&json!({
             "execution_id": result.execution_object_id,

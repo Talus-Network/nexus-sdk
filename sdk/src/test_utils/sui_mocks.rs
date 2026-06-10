@@ -464,6 +464,81 @@ pub mod grpc {
             });
     }
 
+    /// Set up the three-RPC chain consumed by
+    /// [`crate::nexus::crawler::Crawler::get_object_creation_checkpoint`]:
+    ///
+    /// 1. `get_object` (no version) → returns `Owner::Shared(initial_shared_version)`.
+    /// 2. `get_object` (version=`initial_shared_version`) → returns an object whose
+    ///    `previous_transaction` is `creation_tx_digest`.
+    /// 3. `batch_get_transactions` (one digest) → returns one tx whose
+    ///    `checkpoint` is `creation_checkpoint`.
+    ///
+    /// The two `expect_get_object` calls are registered in order; mockall
+    /// matches FIFO, so the first inspect call gets the metadata response and
+    /// the second the version-pinned one.
+    pub fn mock_object_creation_checkpoint(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        initial_shared_version: u64,
+        creation_tx_digest: sui::types::Digest,
+        creation_checkpoint: u64,
+    ) {
+        // Both `expect_get_object` closures move from `object_ref`; clone for
+        // each registration so neither hits an E0382.
+        let metadata_object_ref = object_ref.clone();
+        let version_object_id = *object_ref.object_id();
+
+        // (1) Current metadata fetch: Owner::Shared carries the initial version.
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
+                    initial_shared_version,
+                )));
+                grpc_object.set_digest(*metadata_object_ref.digest());
+                grpc_object.set_object_id(*metadata_object_ref.object_id());
+                grpc_object.set_version(metadata_object_ref.version());
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+
+        // (2) Time-travelled fetch at the initial shared version: must carry
+        // `previous_transaction` so the crawler can chase the creation digest.
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
+                    initial_shared_version,
+                )));
+                grpc_object.set_object_id(version_object_id);
+                grpc_object.set_version(initial_shared_version);
+                grpc_object.set_previous_transaction(creation_tx_digest.to_string());
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+
+        // (3) Resolve the digest's checkpoint via batch_get_transactions.
+        ledger_service
+            .expect_batch_get_transactions()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+                let mut result = sui::grpc::GetTransactionResult::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(creation_tx_digest);
+                transaction.set_checkpoint(creation_checkpoint);
+                result.set_transaction(transaction);
+                response.set_transactions(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
     pub fn mock_get_objects_metadata(
         ledger_service: &mut MockLedgerService,
         objects: Vec<(sui::types::ObjectReference, sui::types::Owner, Option<u64>)>,

@@ -41,11 +41,12 @@ fn terminal_err_eval_duplicate_suffix(event: &NexusEventKind) -> &'static str {
     }
 }
 
-/// Inspect a Nexus DAG execution process based on the provided object ID and
-/// execution digest.
+/// Inspect a Nexus DAG execution process. The SDK derives the starting
+/// checkpoint from the DAGExecution object's creation transaction (see
+/// [`nexus_sdk::nexus::crawler::Crawler::get_object_creation_checkpoint`]),
+/// so callers no longer need to thread it through.
 pub(crate) async fn inspect_dag_execution(
     dag_execution_id: sui::types::Address,
-    execution_checkpoint: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
@@ -53,7 +54,7 @@ pub(crate) async fn inspect_dag_execution(
 
     let mut result = nexus_client
         .workflow()
-        .inspect_execution(dag_execution_id, execution_checkpoint, None)
+        .inspect_execution(dag_execution_id, None)
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -209,9 +210,25 @@ pub(crate) async fn inspect_dag_execution(
         }
     }
 
+    await_poller_outcome(result.poller).await?;
+
     json_output(&json_trace)?;
 
     Ok(())
+}
+
+/// Drain the SDK's event-poller `JoinHandle` after the CLI's inspection
+/// loop ends and surface any error it reported.
+pub(crate) async fn await_poller_outcome(
+    poller: tokio::task::JoinHandle<Result<(), nexus_sdk::nexus::error::NexusError>>,
+) -> Result<(), NexusCliError> {
+    let outcome = poller.await.map_err(|join_err| {
+        NexusCliError::Any(anyhow!(
+            "DAG execution inspection task failed to join: {join_err}"
+        ))
+    })?;
+
+    outcome.map_err(NexusCliError::Nexus)
 }
 
 #[cfg(test)]
@@ -286,5 +303,75 @@ mod tests {
 
         assert!(terminal_err_eval_duplicate_suffix(&duplicate).contains("Duplicate submission"));
         assert_eq!(terminal_err_eval_duplicate_suffix(&first), "");
+    }
+
+    /// Happy path: the SDK poller returned `Ok(())` (it saw
+    /// `ExecutionFinished` and shut down cleanly). The CLI's
+    /// `await_poller_outcome` must return `Ok(())` so the json trace is
+    /// emitted to stdout.
+    #[tokio::test]
+    async fn await_poller_outcome_passes_through_ok_terminal() {
+        let handle = tokio::spawn(async { Ok::<(), nexus_sdk::nexus::error::NexusError>(()) });
+        let result = await_poller_outcome(handle).await;
+        assert!(
+            result.is_ok(),
+            "successful poller termination must not surface as a CLI error: {result:?}"
+        );
+    }
+
+    /// Pruned-checkpoint regression: when the SDK's catch-up loop hits a
+    /// gRPC `NotFound` for a checkpoint and surfaces a
+    /// `NexusError::Channel(...)` via `send_page`, the inspection task
+    /// terminates with `Err(...)`. Without this propagation the CLI would
+    /// just print `[]` and exit 0 — exactly the silent-empty-trace bug we
+    /// hit on the TAP development guide walkthrough. Asserts the failure
+    /// is bubbled up to `NexusCliError::Nexus` with the original message
+    /// intact.
+    #[tokio::test]
+    async fn await_poller_outcome_surfaces_nexus_error_when_poller_fails() {
+        let original = "Error fetching events: GRPC error: Failed to fetch checkpoint 108515 \
+             during catch-up: code: 'Some requested entity was not found'";
+        let original_owned = original.to_string();
+        let handle = tokio::spawn(async move {
+            Err::<(), nexus_sdk::nexus::error::NexusError>(
+                nexus_sdk::nexus::error::NexusError::Channel(anyhow!(original_owned)),
+            )
+        });
+
+        let err = await_poller_outcome(handle)
+            .await
+            .expect_err("poller error must reach the CLI caller");
+
+        let rendered = format!("{err}");
+        assert!(
+            rendered.contains("Channel error"),
+            "expected NexusCliError::Nexus(Channel(...)), got: {rendered}"
+        );
+        assert!(
+            rendered.contains("Checkpoint 108515 not found")
+                || rendered.contains("108515 during catch-up"),
+            "underlying RPC reason must be preserved in the surfaced error: {rendered}"
+        );
+    }
+
+    /// Sanity-check that a panicked poller task (not just an `Err`)
+    /// surfaces as a clear join-failure error instead of being misrendered
+    /// as a "no events" result.
+    #[tokio::test]
+    async fn await_poller_outcome_surfaces_join_error_when_task_panics() {
+        let handle = tokio::spawn(async {
+            panic!("simulated poller panic");
+            #[allow(unreachable_code)]
+            Ok::<(), nexus_sdk::nexus::error::NexusError>(())
+        });
+
+        let err = await_poller_outcome(handle)
+            .await
+            .expect_err("panicked poller must produce a CLI error");
+        let rendered = format!("{err}");
+        assert!(
+            rendered.contains("failed to join"),
+            "expected join-failure message, got: {rendered}"
+        );
     }
 }

@@ -1015,20 +1015,30 @@ impl WorkflowActions {
         })
     }
 
-    /// Inspect a DAG execution based on the provided execution object ID and
-    /// transaction digest.
+    /// Inspect a DAG execution given its shared object ID.
     ///
-    /// Channel sender will drop once we find an `ExecutionFinished` event or
-    /// timeout occurs.
+    /// The starting checkpoint is derived from the object's creation
+    /// transaction via [`Crawler::get_object_creation_checkpoint`], so
+    /// callers do not need to track it themselves. Channel sender drops
+    /// once we observe an `ExecutionFinished` event or the timeout elapses.
     ///
     /// The poller task is also returned so that the user can ensure its
     /// completion.
     pub async fn inspect_execution(
         &self,
         dag_execution_id: sui::types::Address,
-        execution_checkpoint: u64,
         timeout: Option<Duration>,
     ) -> Result<InspectExecutionResult, NexusError> {
+        // Derive the checkpoint that contains the DAGExecution's creation
+        // transaction so the poller catches up over the smallest possible
+        // window without the caller having to plumb it through.
+        let execution_checkpoint = self
+            .client
+            .crawler()
+            .get_object_creation_checkpoint(dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
         // Setup MSPC channel.
         let (tx, rx) = unbounded_channel::<NexusEvent>();
 
@@ -1095,17 +1105,16 @@ impl WorkflowActions {
     }
 
     /// Inspect a DAG execution until completion and return a structured summary
-    /// with resolved end-state data.
+    /// with resolved end-state data. The starting checkpoint is derived from
+    /// the execution object's creation transaction; see
+    /// [`Self::inspect_execution`] for details.
     pub async fn inspect_execution_until_completion(
         &self,
         dag_execution_id: sui::types::Address,
-        execution_checkpoint: u64,
         timeout: Option<Duration>,
         storage_conf: &StorageConf,
     ) -> Result<InspectExecutionCompletionResult, NexusError> {
-        let mut inspection = self
-            .inspect_execution(dag_execution_id, execution_checkpoint, timeout)
-            .await?;
+        let mut inspection = self.inspect_execution(dag_execution_id, timeout).await?;
 
         let mut events = Vec::new();
 
@@ -2195,6 +2204,17 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_object_creation_checkpoint(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                execution_object_id,
+                42,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            42,
+            sui::types::Digest::generate(&mut rng),
+            1,
+        );
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: dag_object_id,
@@ -2248,11 +2268,7 @@ mod tests {
 
         let mut result = client
             .workflow()
-            .inspect_execution(
-                execution_object_id,
-                1,
-                Some(std::time::Duration::from_secs(5)),
-            )
+            .inspect_execution(execution_object_id, Some(std::time::Duration::from_secs(5)))
             .await
             .expect("Failed to setup channel");
 
@@ -2289,6 +2305,17 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_object_creation_checkpoint(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                execution_object_id,
+                42,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            42,
+            sui::types::Digest::generate(&mut rng),
+            1,
+        );
 
         sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
 
@@ -2309,11 +2336,7 @@ mod tests {
 
         let mut result = client
             .workflow()
-            .inspect_execution(
-                execution_object_id,
-                1,
-                Some(std::time::Duration::from_secs(3)),
-            )
+            .inspect_execution(execution_object_id, Some(std::time::Duration::from_secs(3)))
             .await
             .expect("Failed to setup channel");
 
@@ -2341,6 +2364,17 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_object_creation_checkpoint(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                execution_object_id,
+                42,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            42,
+            sui::types::Digest::generate(&mut rng),
+            1,
+        );
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: dag_object_id,
@@ -2407,7 +2441,6 @@ mod tests {
             .workflow()
             .inspect_execution_until_completion(
                 execution_object_id,
-                1,
                 Some(std::time::Duration::from_secs(5)),
                 &StorageConf::default(),
             )
@@ -2434,13 +2467,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution_until_completion_timeout() {
+        let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_object_id = sui::types::Address::generate(rand::thread_rng());
+        let execution_object_id = sui::types::Address::generate(&mut rng);
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_object_creation_checkpoint(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                execution_object_id,
+                42,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            42,
+            sui::types::Digest::generate(&mut rng),
+            1,
+        );
         sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
         sui_mocks::grpc::mock_events_get_checkpoint(
             &mut ledger_service_mock,
@@ -2461,7 +2506,6 @@ mod tests {
             .workflow()
             .inspect_execution_until_completion(
                 execution_object_id,
-                1,
                 Some(std::time::Duration::from_secs(3)),
                 &StorageConf::default(),
             )

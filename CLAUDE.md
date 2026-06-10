@@ -53,7 +53,7 @@ nexus-sdk/                  cargo workspace root
 └── CHANGELOG.md            keep-a-changelog, per-crate sections
 ```
 
-Adjacent repos under `/home/kouks/Code/talus/`:
+Sibling repos checked out next to this one (paths depend on local layout):
 
 - `nexus-next/` — on-chain Move packages (`sui/primitives`, `sui/interface`,
   `sui/registry`, `sui/workflow`), example TAPs (`sui/examples/demo_tap`),
@@ -136,11 +136,21 @@ Adjacent repos under `/home/kouks/Code/talus/`:
 - **JSON-shape tests** for `*_result_json` helpers assert each documented
   top-level key with `assert_eq!(json["x"], …)`.
 
+## Comment patterns
+
+- Avoid unnecessary and extraneous comments around self explanatory code. Code
+  should be written in such a way that it doesn't require a sea of comments in
+  the first place.
+- Add `//!` brief module descriptions to each module. Highlighting what the
+  responsibility and purpose of that module is. Update this comment after any
+  changes made to each module.
+- Prefer doc-comments `///` to inline comments `//` where possible
+- Only use inline comments to clarify potentially confusing logic within
+  functions. These comments should be concise (1-2 lines maximum).
+- `///` doc comments can be more verbose if the struct or the function require it.
+
 ## Step-by-step: adding a new feature
 
-1. **Plan in a scratch file under `/home/kouks/.claude/plans/`** if the
-   change spans more than one module. Capture the SDK additions, CLI
-   additions, JSON contract, tests, and verification steps.
 1. **Add the SDK primitive** under `sdk/src/nexus/<area>.rs`:
    - Define the params and result structs near the existing ones.
    - Add the `impl <Area>Actions { pub async fn … }` method.
@@ -175,17 +185,17 @@ style and the`{% hint style="info" %}…{% endhint %}` callouts.
 1. **Verify** (in this order):
 
    ```bash
-   cargo +stable check --all-features --package nexus-sdk
-   cargo +stable check --package nexus-cli
-   cargo +stable test --all-features --package nexus-sdk
-   cargo +stable test --package nexus-cli
-   cargo +"$(cat .nightly-version)" fmt --all --check
+   just pre-commit cargo-check          # cargo check --locked --workspace --bins --examples
+   just pre-commit cargo-nextest-run    # cargo nextest run --locked --fail-fast … (needs docker)
+   just pre-commit cargo-clippy         # cargo clippy --locked --all-targets --all-features
+   just pre-commit cargo-nightly-fmt    # cargo +<nightly> fmt --all --check
    ```
 
    The fmt step is **required**: `rustfmt.toml` uses several unstable
    options (`imports_granularity`, `group_imports`, `reorder_impl_items`,
-   …) that the stable rustfmt rejects. The pinned nightly lives in
-   `.nightly-version` (currently `nightly-2025-01-06`); install it with
+   …) that the stable rustfmt rejects. `cargo-nightly-fmt` resolves the
+   pinned nightly from `.nightly-version` (currently `nightly-2025-01-06`)
+   automatically; install it with
    `rustup toolchain install "$(cat .nightly-version)" --component rustfmt`
    if you don't have it yet.
 

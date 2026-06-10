@@ -197,6 +197,28 @@ impl Crawler {
             .await
     }
 
+    /// Fetch the connected RPC's chain identifier in the 8-hex-char form
+    /// Sui's Move builder uses for `[environments]` lookups (the same value
+    /// `sui client chain-identifier` prints). The gRPC service-info call
+    /// returns the genesis checkpoint digest base58-encoded; we decode it
+    /// and hex-encode the first four bytes to derive the short identifier.
+    pub async fn get_chain_id(&self) -> anyhow::Result<String> {
+        let mut client = self.client.lock().await;
+        let response = client
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .map_err(|e| anyhow!("failed to fetch service info from the connected RPC: {e}"))?;
+        let base58 = response
+            .into_inner()
+            .chain_id
+            .ok_or_else(|| anyhow!("connected RPC did not return a chain id in service info"))?;
+        let digest = sui::types::Digest::from_base58(&base58).map_err(|e| {
+            anyhow!("connected RPC returned an unparsable chain id '{base58}': {e}")
+        })?;
+        Ok(hex::encode(&digest.as_bytes()[..4]))
+    }
+
     /// Fetch an object's metadata only, omitting its content.
     pub async fn get_object_metadata(
         &self,
@@ -221,6 +243,96 @@ impl Crawler {
             digest,
             balance,
         })
+    }
+
+    /// Resolve the checkpoint sequence number of the transaction that created
+    /// `object_id`. Used by event-replay flows (e.g. `WorkflowActions::
+    /// inspect_execution`) so callers do not need to pass an explicit
+    /// "start from this checkpoint" argument.
+    ///
+    /// Three RPCs are chained:
+    /// 1. `GetObject` for current metadata → reads the owner's
+    ///    `initial_shared_version` (the version at which the object was first
+    ///    made shared — its creation version on chain).
+    /// 2. `GetObject` time-travelled to that version with mask
+    ///    `[previous_transaction]` → returns the digest of the transaction
+    ///    that produced that version, i.e. the creation tx.
+    /// 3. `BatchGetTransactions` (single digest) with mask `[checkpoint]` →
+    ///    returns the checkpoint sequence number the creation tx was sealed
+    ///    in.
+    ///
+    /// Only shared objects are supported because owned objects can be created
+    /// in transactions whose initial lamport version is not deterministic
+    /// without an extra owner lookup; the inspect flow this powers always
+    /// receives a shared `DAGExecution`.
+    pub async fn get_object_creation_checkpoint(
+        &self,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<u64> {
+        // Step 1: current metadata → initial_shared_version.
+        let metadata = self.get_object_metadata(object_id).await?;
+        let sui::types::Owner::Shared(initial_version) = metadata.owner else {
+            bail!(
+                "Object '{object_id}' is not shared; cannot resolve a creation checkpoint via \
+                 initial_shared_version"
+            );
+        };
+
+        // Step 2: time-travel to the initial version, read previous_transaction.
+        let mut client = self.client.lock().await;
+        let request = sui::grpc::GetObjectRequest::default()
+            .with_object_id(object_id)
+            .with_version(initial_version)
+            .with_read_mask(sui::grpc::FieldMask::from_paths(["previous_transaction"]));
+        let response = client
+            .ledger_client()
+            .get_object(request)
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| {
+                anyhow!(
+                    "Could not fetch object '{object_id}' at version {initial_version} to derive \
+                     its creation checkpoint: {e}"
+                )
+            })?;
+        let creation_digest = response
+            .object
+            .and_then(|object| object.previous_transaction_opt().map(|s| s.to_string()))
+            .ok_or_else(|| {
+                anyhow!(
+                    "Object '{object_id}' has no previous_transaction at version \
+                     {initial_version}; cannot derive its creation checkpoint"
+                )
+            })?;
+
+        // Step 3: read the creation tx's checkpoint via batch_get_transactions
+        // (one entry) so the call shares the existing tx-fetch surface.
+        let tx_request = sui::grpc::BatchGetTransactionsRequest::default()
+            .with_digests(vec![creation_digest.clone()])
+            .with_read_mask(sui::grpc::FieldMask::from_paths(["checkpoint"]));
+        let tx_response = client
+            .ledger_client()
+            .batch_get_transactions(tx_request)
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| {
+                anyhow!(
+                    "Could not fetch creation transaction '{creation_digest}' for object \
+                     '{object_id}': {e}"
+                )
+            })?;
+        let checkpoint = tx_response
+            .transactions
+            .first()
+            .and_then(|tx_result| tx_result.transaction().checkpoint_opt())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Creation transaction '{creation_digest}' for object '{object_id}' has no \
+                     checkpoint field set"
+                )
+            })?;
+
+        Ok(checkpoint)
     }
 
     /// Fetch many objects' metadata only in batch, omitting their content.
@@ -1943,6 +2055,82 @@ mod tests {
                 (Some("test::First".to_string()), TestValue { value: 3 }),
                 (Some("test::Second".to_string()), TestValue { value: 5 }),
             ]
+        );
+    }
+
+    /// `get_object_creation_checkpoint` walks
+    /// `current metadata → initial_shared_version → version-pinned previous_transaction → transaction checkpoint`.
+    /// Verify the happy path returns the checkpoint mocked at the end of the
+    /// chain and that the helper is wired against the right three gRPC calls.
+    #[tokio::test]
+    async fn get_object_creation_checkpoint_resolves_via_initial_shared_version() {
+        let mut rng = rand::thread_rng();
+        let object_id = sui::types::Address::generate(&mut rng);
+        let object_ref =
+            sui::types::ObjectReference::new(object_id, 42, sui::types::Digest::generate(&mut rng));
+        let creation_tx_digest = sui::types::Digest::generate(&mut rng);
+        let creation_checkpoint = 4096_u64;
+        let initial_shared_version = 17_u64;
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_object_creation_checkpoint(
+            &mut ledger_service_mock,
+            object_ref,
+            initial_shared_version,
+            creation_tx_digest,
+            creation_checkpoint,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let checkpoint = crawler
+            .get_object_creation_checkpoint(object_id)
+            .await
+            .expect("creation checkpoint resolves");
+
+        assert_eq!(checkpoint, creation_checkpoint);
+    }
+
+    /// Non-shared objects are out of scope: their creation version is not
+    /// recoverable via `Owner::Shared(initial_shared_version)`. The helper
+    /// must reject them with a clear error before issuing the
+    /// version-pinned fetch.
+    #[tokio::test]
+    async fn get_object_creation_checkpoint_rejects_owned_objects() {
+        let mut rng = rand::thread_rng();
+        let object_id = sui::types::Address::generate(&mut rng);
+        let owner_address = sui::types::Address::generate(&mut rng);
+        let object_ref =
+            sui::types::ObjectReference::new(object_id, 5, sui::types::Digest::generate(&mut rng));
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            object_ref,
+            sui::types::Owner::Address(owner_address),
+            None,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let error = crawler
+            .get_object_creation_checkpoint(object_id)
+            .await
+            .expect_err("owned object must not derive a creation checkpoint");
+
+        assert!(
+            error.to_string().contains("not shared"),
+            "unexpected error: {error}"
         );
     }
 }

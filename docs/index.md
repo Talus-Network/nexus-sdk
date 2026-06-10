@@ -29,6 +29,7 @@ Docs:
 
 - [Nexus CLI](cli.md)
 - [DAG Construction Guide](guides/dag-construction.md)
+- [TAP Development Guide](guides/1-tap-development.md)
 - [Nexus Client (Rust)](client.md)
 
 ## Toolkit

@@ -177,6 +177,10 @@ pub struct ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
 pub struct TapPackagePublishOptions {
     pub package_path: PathBuf,
     pub named_address_overrides: Vec<(String, sui::types::Address)>,
+    /// Build environment to feed into Sui's Move builder. New-style 2024
+    /// packages need this so dependency `Published.toml` files resolve to
+    /// the right addresses for the connected network.
+    pub environment: Option<crate::sui::build::Environment>,
 }
 
 /// Result returned after publishing a TAP Move package.
@@ -294,8 +298,12 @@ impl TapActions {
         &self,
         options: TapPackagePublishOptions,
     ) -> Result<TapPackagePublishResult, NexusError> {
-        let package = build_move_package(&options.package_path, &options.named_address_overrides)
-            .map_err(NexusError::TransactionBuilding)?;
+        let package = build_move_package(
+            &options.package_path,
+            &options.named_address_overrides,
+            options.environment.clone(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let address = self.client.signer.get_active_address();
         let mut tx = sui::tx::TransactionBuilder::new();
         let upgrade_cap = tx.publish(
@@ -451,26 +459,54 @@ impl TapActions {
             true,
         ));
 
-        tap_tx::register_skill(
-            &mut tx,
-            nexus_objects,
-            registry,
-            agent,
-            artifact.dag_id,
-            artifact.requirements.workflow_commitment.clone(),
-            artifact.requirements.input_schema_commitment.clone(),
-            artifact.requirements.metadata_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
-            artifact.requirements.schedule_policy.clone(),
-            artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            artifact.shared_objects.clone(),
-            config_digest,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
+        if artifact
+            .requirements
+            .vertex_authorization_schema
+            .is_default()
+        {
+            tap_tx::register_skill(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                artifact.shared_objects.clone(),
+                config_digest,
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        } else {
+            tap_tx::register_skill_with_vertex_authorization_schema(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                &artifact.requirements.vertex_authorization_schema,
+                artifact.shared_objects.clone(),
+                config_digest,
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        }
 
         let response = self.submit_tap_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
@@ -1092,26 +1128,54 @@ impl TapActions {
         let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
             .map_err(NexusError::TransactionBuilding)?;
 
-        tap_tx::register_skill(
-            &mut tx,
-            nexus_objects,
-            registry,
-            agent,
-            artifact.dag_id,
-            artifact.requirements.workflow_commitment.clone(),
-            artifact.requirements.input_schema_commitment.clone(),
-            artifact.requirements.metadata_commitment.clone(),
-            artifact.requirements.payment_policy.clone(),
-            artifact.requirements.schedule_policy.clone(),
-            artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            artifact.shared_objects.clone(),
-            config_digest.clone(),
-        )
-        .map_err(NexusError::TransactionBuilding)?;
+        if artifact
+            .requirements
+            .vertex_authorization_schema
+            .is_default()
+        {
+            tap_tx::register_skill(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                artifact.shared_objects.clone(),
+                config_digest.clone(),
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        } else {
+            tap_tx::register_skill_with_vertex_authorization_schema(
+                &mut tx,
+                nexus_objects,
+                registry,
+                agent,
+                artifact.dag_id,
+                artifact.requirements.workflow_commitment.clone(),
+                artifact.requirements.input_schema_commitment.clone(),
+                artifact.requirements.metadata_commitment.clone(),
+                artifact.requirements.payment_policy.clone(),
+                artifact.requirements.schedule_policy.clone(),
+                artifact
+                    .requirements
+                    .vertex_authorization_schema
+                    .schema_commitment
+                    .clone(),
+                &artifact.requirements.vertex_authorization_schema,
+                artifact.shared_objects.clone(),
+                config_digest.clone(),
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+        }
 
         tx.move_call(
             sui::tx::Function::new(
@@ -1282,6 +1346,7 @@ where
 fn build_move_package(
     package_path: &std::path::Path,
     named_address_overrides: &[(String, sui::types::Address)],
+    environment: Option<crate::sui::build::Environment>,
 ) -> anyhow::Result<CompiledPackage> {
     let mut build_config = crate::sui::build::BuildConfig::new_for_testing_replace_addresses(
         named_address_overrides
@@ -1290,6 +1355,9 @@ fn build_move_package(
             .collect::<Vec<_>>(),
     );
     build_config.print_diags_to_stderr = false;
+    if let Some(env) = environment {
+        build_config.environment = env;
+    }
     build_config.build(package_path)
 }
 
@@ -2386,6 +2454,297 @@ mod tests {
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
         assert_eq!(result.tx_digest, digest);
+    }
+
+    /// Build an artifact with a non-default vertex authorization schema. This
+    /// pushes [`TapVertexAuthorizationSchema::is_default`] to `false` so the
+    /// SDK branches into `register_skill_with_vertex_authorization_schema`
+    /// instead of the simpler `register_skill`. The shape must include the
+    /// 0x0-sentinel fixed tool to keep the digest stable across the
+    /// [`TapPublishArtifact::from_config`] substitution path.
+    fn cap_gated_artifact() -> TapPublishArtifact {
+        let config = TapSkillConfig {
+            name: "cap-gated weather".to_string(),
+            tap_package_name: "weather_tap".to_string(),
+            dag_path: std::path::PathBuf::from("dag.json"),
+            tap_package_path: std::path::PathBuf::from("tap"),
+            requirements: TapSkillRequirements {
+                input_schema_commitment: vec![1],
+                workflow_commitment: vec![2],
+                metadata_commitment: vec![3],
+                payment_policy: TapPaymentPolicy::default(),
+                schedule_policy: TapSchedulePolicy::default(),
+                vertex_authorization_schema: TapVertexAuthorizationSchema {
+                    schema_commitment: vec![9],
+                    fixed_tools: vec![crate::types::TapAuthorizedTool {
+                        package_id: sui::types::Address::ZERO,
+                        module: "weather_tap".to_string(),
+                        function: "execute".to_string(),
+                        operation_commitment: vec![],
+                    }],
+                    requires_payment: false,
+                },
+            },
+            shared_objects: vec![TapSharedObjectRef::immutable(
+                sui::types::Address::from_static("0xe"),
+            )],
+            interface_revision: InterfaceRevision(1),
+        };
+
+        TapPublishArtifact::from_config(
+            &config,
+            sui::types::Address::from_static("0xd"),
+            sui::types::Address::from_static("0xc"),
+        )
+        .expect("cap-gated artifact")
+    }
+
+    #[tokio::test]
+    async fn tap_actions_register_skill_routes_through_cap_gated_entrypoint_when_schema_non_default(
+    ) {
+        // When `TapVertexAuthorizationSchema::is_default` is false the SDK
+        // must route through `register_skill_with_vertex_authorization_schema`
+        // — the on-chain digest assertion would otherwise reject the artifact
+        // because the cap-gated chain entrypoint reconstructs the
+        // requirements digest with the full schema baked in. We mock the
+        // submitted PTB and assert the move-call shape; the simpler
+        // `register_skill` entry must not appear in the tx.
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xa"),
+            3,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let artifact = cap_gated_artifact();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref.clone(),
+            sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        let expected_registry_pkg_id = nexus_objects.registry_pkg_id;
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![wrapped_event(
+                &nexus_objects,
+                nexus_objects.interface_pkg_id,
+                "tap",
+                "SkillRegisteredEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: events::SkillRegisteredEvent {
+                        agent_id: *agent_ref.object_id(),
+                        skill_id: 11,
+                        dag_id: artifact.dag_id,
+                        dag_binding: TapDagBinding::pinned(artifact.dag_id),
+                        workflow_commitment: artifact.requirements.workflow_commitment.clone(),
+                        requirements_commitment: artifact
+                            .requirements
+                            .input_schema_commitment
+                            .clone(),
+                        capability_schema_commitment: artifact
+                            .requirements
+                            .vertex_authorization_schema
+                            .schema_commitment
+                            .clone(),
+                    },
+                })
+                .unwrap(),
+            )],
+            move |request| {
+                let transaction = request.transaction.as_ref().expect("submitted transaction");
+                let transaction = sui::types::Transaction::try_from(transaction)
+                    .expect("submitted transaction decodes");
+                let sui::types::TransactionKind::ProgrammableTransaction(
+                    sui::types::ProgrammableTransaction { commands, .. },
+                ) = &transaction.kind
+                else {
+                    panic!("expected programmable transaction");
+                };
+                let mut saw_cap_gated = false;
+                let mut saw_plain = false;
+                for command in commands {
+                    if let sui::types::Command::MoveCall(call) = command {
+                        if call.package == expected_registry_pkg_id {
+                            if call.function
+                                == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA
+                                    .name
+                            {
+                                saw_cap_gated = true;
+                            } else if call.function == AgentRegistry::REGISTER_SKILL.name {
+                                saw_plain = true;
+                            }
+                        }
+                    }
+                }
+                assert!(
+                    saw_cap_gated,
+                    "cap-gated artifact must route through register_skill_with_vertex_authorization_schema"
+                );
+                assert!(
+                    !saw_plain,
+                    "cap-gated artifact must not also call the simpler register_skill"
+                );
+            },
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .register_skill(*agent_ref.object_id(), &artifact)
+            .await
+            .expect("cap-gated register skill succeeds");
+
+        assert_eq!(result.agent_id, *agent_ref.object_id());
+        assert_eq!(result.skill_id, 11);
+        assert_eq!(result.tx_digest, digest);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_bind_agent_skill_extracts_agent_and_skill_events() {
+        // Default-schema happy path for `bind_agent_skill`: a single PTB
+        // creates the agent, registers the skill (default branch), and
+        // shares the Agent object. The mock returns both AgentCreatedEvent
+        // and SkillRegisteredEvent plus the shared Agent object so the
+        // helper can recover the agent ref. A regression that drops the
+        // share call or events would fail the assertions below.
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let artifact = artifact();
+
+        let agent_addr = sui::types::Address::from_static("0xa");
+        let agent_ref =
+            sui::types::ObjectReference::new(agent_addr, 1, sui::types::Digest::generate(&mut rng));
+        let agent_object = sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(
+                    sui::types::StructTag::new(
+                        nexus_objects.interface_pkg_id,
+                        crate::idents::tap::STANDARD_TAP_MODULE,
+                        sui::types::Identifier::from_static("Agent"),
+                        vec![],
+                    ),
+                    true,
+                    agent_ref.version(),
+                    agent_ref.object_id().as_bytes().to_vec(),
+                )
+                .expect("agent object contents"),
+            ),
+            sui::types::Owner::Shared(agent_ref.version()),
+            digest,
+            0,
+        );
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            digest,
+            gas_coin_ref,
+            vec![agent_object],
+            vec![],
+            vec![
+                wrapped_event(
+                    &nexus_objects,
+                    nexus_objects.interface_pkg_id,
+                    "tap",
+                    "AgentCreatedEvent",
+                    bcs::to_bytes(&Wrapper {
+                        event: events::AgentCreatedEvent {
+                            agent_id: agent_addr,
+                            vault_id: sui::types::Address::from_static("0xb"),
+                            owner: sui::types::Address::from_static("0x1"),
+                            operator: sui::types::Address::from_static("0x2"),
+                        },
+                    })
+                    .unwrap(),
+                ),
+                wrapped_event(
+                    &nexus_objects,
+                    nexus_objects.interface_pkg_id,
+                    "tap",
+                    "SkillRegisteredEvent",
+                    bcs::to_bytes(&Wrapper {
+                        event: events::SkillRegisteredEvent {
+                            agent_id: agent_addr,
+                            skill_id: 17,
+                            dag_id: artifact.dag_id,
+                            dag_binding: TapDagBinding::pinned(artifact.dag_id),
+                            workflow_commitment: artifact.requirements.workflow_commitment.clone(),
+                            requirements_commitment: artifact
+                                .requirements
+                                .input_schema_commitment
+                                .clone(),
+                            capability_schema_commitment: artifact
+                                .requirements
+                                .vertex_authorization_schema
+                                .schema_commitment
+                                .clone(),
+                        },
+                    })
+                    .unwrap(),
+                ),
+            ],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tap()
+            .bind_agent_skill(BindAgentSkillParams {
+                operator: sui::types::Address::from_static("0x2"),
+                artifact: artifact.clone(),
+            })
+            .await
+            .expect("bind agent + skill");
+
+        assert_eq!(result.agent_id, agent_addr);
+        assert_eq!(result.skill_id, 17);
+        assert_eq!(result.agent_object.object_id(), &agent_addr);
+        assert_eq!(result.tx_digest, digest);
+        // The bind result carries the digest input used to compute the
+        // config_digest, so callers can re-derive it for evidence.
+        assert_eq!(
+            result.config_digest_input,
+            artifact.endpoint_config_digest_input()
+        );
+        let expected_digest = result
+            .config_digest_input
+            .digest()
+            .expect("recompute config digest");
+        assert_eq!(result.config_digest, expected_digest);
     }
 
     #[tokio::test]

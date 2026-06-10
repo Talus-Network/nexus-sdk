@@ -6,11 +6,13 @@ use crate::{
         InterfaceRevision,
         NexusObjects,
         SkillId,
+        TapAuthorizedTool,
         TapPaymentPolicy,
         TapSchedulePolicy,
         TapScheduledAuthorizationGrantTemplate,
         TapScheduledOccurrenceFinalState,
         TapSharedObjectRef,
+        TapVertexAuthorizationSchema,
     },
 };
 
@@ -163,6 +165,116 @@ pub fn register_skill(
         tx,
         objects,
         AgentRegistry::REGISTER_SKILL,
+        args,
+    ))
+}
+
+/// Build a `tap::TapAuthorizedTool` Move value from a typed entry.
+pub fn authorized_tool_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool: &TapAuthorizedTool,
+) -> anyhow::Result<sui::types::Argument> {
+    let package_id = tx.input(pure_arg(&tool.package_id)?);
+    let module_name = move_std::Ascii::ascii_string_from_str(tx, tool.module.as_str())?;
+    let function_name = move_std::Ascii::ascii_string_from_str(tx, tool.function.as_str())?;
+    let operation_commitment = tx.input(pure_arg(&tool.operation_commitment)?);
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::AUTHORIZED_TOOL,
+        vec![package_id, module_name, function_name, operation_commitment],
+    ))
+}
+
+/// Build a `tap::TapVertexAuthorizationSchema` Move value with each `TapAuthorizedTool`
+/// individually constructed and pushed into the on-chain `vector`.
+pub fn vertex_authorization_schema_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    schema: &TapVertexAuthorizationSchema,
+) -> anyhow::Result<sui::types::Argument> {
+    let schema_commitment = tx.input(pure_arg(&schema.schema_commitment)?);
+    let authorized_tool_type =
+        crate::idents::tap::tap_authorized_tool_type(objects.interface_pkg_id);
+    let fixed_tools = tx.move_call(
+        sui::tx::Function::new(
+            move_std::PACKAGE_ID,
+            move_std::Vector::EMPTY.module,
+            move_std::Vector::EMPTY.name,
+            vec![authorized_tool_type.clone()],
+        ),
+        vec![],
+    );
+    // `vector::push_back` mutates by reference and returns nothing — keep the
+    // original `fixed_tools` Argument and drop the move-call result.
+    for tool in &schema.fixed_tools {
+        let tool_arg = authorized_tool_arg(tx, objects, tool)?;
+        tx.move_call(
+            sui::tx::Function::new(
+                move_std::PACKAGE_ID,
+                move_std::Vector::PUSH_BACK.module,
+                move_std::Vector::PUSH_BACK.name,
+                vec![authorized_tool_type.clone()],
+            ),
+            vec![fixed_tools, tool_arg],
+        );
+    }
+    let requires_payment = tx.input(pure_arg(&schema.requires_payment)?);
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::VERTEX_AUTHORIZATION_SCHEMA,
+        vec![schema_commitment, fixed_tools, requires_payment],
+    ))
+}
+
+/// Variant of `register_skill` that passes the full `TapVertexAuthorizationSchema`.
+/// Required when the skill is cap-gated (non-empty `fixed_tools` or
+/// `requires_payment = true`); the chain reconstructs the requirements digest with
+/// the schema baked in, so the simpler `register_skill` would fail the config
+/// digest assertion.
+#[allow(clippy::too_many_arguments)]
+pub fn register_skill_with_vertex_authorization_schema(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    dag_id: sui::types::Address,
+    workflow_commitment: Vec<u8>,
+    requirements_commitment: Vec<u8>,
+    metadata_commitment: Vec<u8>,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+    capability_schema_commitment: Vec<u8>,
+    vertex_authorization_schema: &TapVertexAuthorizationSchema,
+    shared_objects: Vec<TapSharedObjectRef>,
+    config_digest: Vec<u8>,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let shared_objects = shared_object_refs_arg(tx, objects, &shared_objects)?;
+    let vertex_authorization_schema =
+        vertex_authorization_schema_arg(tx, objects, vertex_authorization_schema)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.input(pure_arg(&dag_id)?),
+        tx.input(pure_arg(&workflow_commitment)?),
+        tx.input(pure_arg(&requirements_commitment)?),
+        tx.input(pure_arg(&metadata_commitment)?),
+        payment_policy,
+        schedule_policy,
+        tx.input(pure_arg(&capability_schema_commitment)?),
+        vertex_authorization_schema,
+        shared_objects,
+        tx.input(pure_arg(&config_digest)?),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA,
         args,
     ))
 }
@@ -1612,6 +1724,232 @@ mod tests {
         assert!(
             function_names.contains(&TapStandard::PAYMENT_MODE_AGENT_FUNDED.name),
             "missing agent-funded payment mode constructor"
+        );
+    }
+
+    fn authorized_tool_fixture() -> TapAuthorizedTool {
+        TapAuthorizedTool {
+            package_id: sui::types::Address::from_static("0x42"),
+            module: "tap_demo".to_string(),
+            function: "execute_authorized".to_string(),
+            operation_commitment: vec![1, 2, 3],
+        }
+    }
+
+    #[test]
+    fn authorized_tool_arg_targets_tap_authorized_tool_constructor() {
+        // The cap-gated register path needs to construct a Move
+        // `TapAuthorizedTool` value from a typed entry before assembling the
+        // schema. Verify the helper emits exactly one move call to
+        // `tap::authorized_tool` on the interface package and passes the four
+        // expected arguments — a regression that drops one of these would
+        // mismatch the requirements digest on chain.
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let tool = authorized_tool_fixture();
+        authorized_tool_arg(&mut tx, &objects, &tool).expect("authorized tool arg");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let authorized_call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .find(|call| {
+                call.package == objects.interface_pkg_id
+                    && call.module == TapStandard::AUTHORIZED_TOOL.module
+                    && call.function == TapStandard::AUTHORIZED_TOOL.name
+            })
+            .expect("authorized_tool call");
+        // (package_id, module_name, function_name, operation_commitment).
+        assert_eq!(authorized_call.arguments.len(), 4);
+    }
+
+    #[test]
+    fn vertex_authorization_schema_arg_builds_fixed_tools_vector_in_order() {
+        // The schema helper must build the `fixed_tools` vector with one
+        // `vector::push_back` per entry and a single trailing
+        // `tap::vertex_authorization_schema` call. We assert the count of
+        // both move calls so a refactor that drops a push or collapses the
+        // vector into a pure input is caught — the on-chain digest binds the
+        // exact construction sequence, so any drift breaks register_skill.
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let schema = TapVertexAuthorizationSchema {
+            schema_commitment: vec![9],
+            fixed_tools: vec![authorized_tool_fixture(), authorized_tool_fixture()],
+            requires_payment: true,
+        };
+
+        vertex_authorization_schema_arg(&mut tx, &objects, &schema).expect("schema arg");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let move_calls: Vec<&sui::types::MoveCall> = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+
+        let empty_calls = move_calls
+            .iter()
+            .filter(|call| call.function == move_std::Vector::EMPTY.name)
+            .count();
+        let push_back_calls = move_calls
+            .iter()
+            .filter(|call| call.function == move_std::Vector::PUSH_BACK.name)
+            .count();
+        let schema_calls = move_calls
+            .iter()
+            .filter(|call| {
+                call.package == objects.interface_pkg_id
+                    && call.function == TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name
+            })
+            .count();
+        let authorized_tool_calls = move_calls
+            .iter()
+            .filter(|call| call.function == TapStandard::AUTHORIZED_TOOL.name)
+            .count();
+
+        assert_eq!(empty_calls, 1, "exactly one vector::empty for fixed_tools");
+        assert_eq!(push_back_calls, 2, "one push_back per fixed_tool");
+        assert_eq!(authorized_tool_calls, 2, "one authorized_tool per entry");
+        assert_eq!(
+            schema_calls, 1,
+            "one trailing vertex_authorization_schema call"
+        );
+    }
+
+    #[test]
+    fn vertex_authorization_schema_arg_empty_fixed_tools_skips_push_back() {
+        // The default/empty schema produces a `vector::empty` followed
+        // immediately by the `vertex_authorization_schema` constructor; no
+        // push_back calls should run. This is the shape the SDK passes when
+        // the higher-level `is_default` check is true and the caller chose
+        // the cap-gated path anyway (e.g. `requires_payment = true` with no
+        // fixed tools).
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let schema = TapVertexAuthorizationSchema {
+            schema_commitment: Vec::new(),
+            fixed_tools: Vec::new(),
+            requires_payment: true,
+        };
+
+        vertex_authorization_schema_arg(&mut tx, &objects, &schema).expect("empty schema arg");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let push_back_calls = inspector
+            .commands()
+            .iter()
+            .filter(|command| {
+                matches!(
+                    command,
+                    sui::types::Command::MoveCall(call)
+                        if call.function == move_std::Vector::PUSH_BACK.name
+                )
+            })
+            .count();
+        assert_eq!(push_back_calls, 0);
+    }
+
+    #[test]
+    fn register_skill_with_vertex_authorization_schema_routes_through_cap_gated_entrypoint() {
+        // The cap-gated registration path must route through
+        // `register_skill_with_vertex_authorization_schema` on the registry
+        // package — never the simpler `register_skill`. Routing through the
+        // wrong entrypoint causes an on-chain digest mismatch because the
+        // chain reconstructs requirements with the full schema. We assert
+        // the right registry call and that the schema sub-builder is
+        // invoked (one `vertex_authorization_schema` interface call).
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = tx.input(pure_arg(&1_u64).unwrap());
+        let agent = tx.input(sui::tx::Input::shared(
+            sui::types::Address::from_static("0xa"),
+            1,
+            true,
+        ));
+        let schema = TapVertexAuthorizationSchema {
+            schema_commitment: vec![1, 2],
+            fixed_tools: vec![authorized_tool_fixture()],
+            requires_payment: false,
+        };
+
+        register_skill_with_vertex_authorization_schema(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0xd"),
+            vec![1],
+            vec![2],
+            vec![3],
+            TapPaymentPolicy {
+                mode: TapPaymentMode::UserFunded,
+                max_budget: 100,
+                token_type_commitment: Vec::new(),
+                refund_mode: 0,
+            },
+            TapSchedulePolicy::default(),
+            vec![4],
+            &schema,
+            vec![TapSharedObjectRef::immutable(
+                sui::types::Address::from_static("0x10"),
+            )],
+            vec![6],
+        )
+        .expect("cap-gated register builder succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let move_calls: Vec<&sui::types::MoveCall> = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+
+        let cap_gated_register = move_calls
+            .iter()
+            .find(|call| {
+                call.package == objects.registry_pkg_id
+                    && call.module
+                        == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA.module
+                    && call.function
+                        == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA.name
+            })
+            .expect("cap-gated register call");
+        // (registry, agent, dag_id, workflow_commitment, requirements_commitment,
+        //  metadata_commitment, payment_policy, schedule_policy,
+        //  capability_schema_commitment, vertex_authorization_schema,
+        //  shared_objects, config_digest)
+        assert_eq!(cap_gated_register.arguments.len(), 12);
+
+        // Verify the schema sub-builder also ran (no regression collapsing it
+        // into a bare input).
+        let schema_call_present = move_calls.iter().any(|call| {
+            call.package == objects.interface_pkg_id
+                && call.function == TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name
+        });
+        assert!(
+            schema_call_present,
+            "vertex_authorization_schema constructor must run inside cap-gated register"
+        );
+
+        // The simpler register_skill entrypoint must NOT have been called.
+        let non_cap_gated_register = move_calls.iter().any(|call| {
+            call.package == objects.registry_pkg_id
+                && call.function == AgentRegistry::REGISTER_SKILL.name
+        });
+        assert!(
+            !non_cap_gated_register,
+            "cap-gated path must not fall back to plain register_skill"
         );
     }
 }
