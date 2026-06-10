@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "1.0.1"
+version = "2.0.0-rc.2"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -90,7 +90,7 @@ strip = "debuginfo"
 # Exit process with SIGABRT when any thread panics
 panic = "abort"
 
-# Sui still depends on core2 which is yanked, use git 
+# Sui still depends on core2 which is yanked, use git
 # for tentative workround
 [patch.crates-io]
 core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }

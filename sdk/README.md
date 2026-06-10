@@ -12,7 +12,7 @@ However, if you specifically require direct access to internal helper functions,
 ```toml
 [dependencies.nexus-sdk]
 git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v1.0.1"
+tag = "v2.0.0-rc.2"
 package = "nexus-sdk"
 ```
 

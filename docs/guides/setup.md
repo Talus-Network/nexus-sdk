@@ -38,7 +38,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v1.0.1 \
+  --tag v2.0.0-rc.2 \
   --locked
 ```
 
@@ -54,7 +54,7 @@ nexus --version
 {% tab title="Testnet" %}
 
 ```bash
-wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-talus-sui-objects/v1.0.0/objects.testnet.toml
+wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-talus-sui-objects/v2.0.0-rc.2/objects.testnet.toml
 ```
 
 {% endtab %}
@@ -62,7 +62,7 @@ wget -O ~/.nexus/objects.testnet.toml https://storage.googleapis.com/production-
 {% tab title="Mainnet" %}
 
 ```bash
-wget -O ~/.nexus/objects.mainnet.toml https://storage.googleapis.com/production-talus-sui-objects/v1.0.0/objects.mainnet.toml
+wget -O ~/.nexus/objects.mainnet.toml https://storage.googleapis.com/production-talus-sui-objects/v1.0.1/objects.mainnet.toml
 ```
 
 {% endtab %}
