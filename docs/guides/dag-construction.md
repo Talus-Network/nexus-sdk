@@ -165,8 +165,8 @@ Configures how to verify requests from leaders:
 ```json
 {
   "leader_verifier": {
-    "mode": "leader_registered_key",  // Verification mode
-    "method": "signed_http_v1"        // Verification method
+    "mode": "leader_registered_key", // Verification mode
+    "method": "signed_http_v1" // Verification method
   }
 }
 ```
@@ -178,8 +178,8 @@ Configures how to verify responses from tools:
 ```json
 {
   "tool_verifier": {
-    "mode": "tool_verifier_contract",  // Verification mode
-    "method": "demo_verifier_v1"       // Verification method
+    "mode": "tool_verifier_contract", // Verification mode
+    "method": "demo_verifier_v1" // Verification method
   }
 }
 ```
@@ -283,6 +283,6 @@ For examples of invalid DAGs and common mistakes to avoid (especially regarding 
 <!-- List of references -->
 
 [nexus-next-workflow]: ../../nexus-next/packages/workflow.md
-[example-dags]: https://github.com/Talus-Network/nexus-sdk/tree/v1.0.0/sdk/src/dag/_dags
+[example-dags]: https://github.com/Talus-Network/nexus-sdk/tree/v2.0.0-rc.2/sdk/src/dag/_dags
 [nexus-cli]: ../cli.md
 [looping]: ../../nexus-next/flow-controls/looping.md

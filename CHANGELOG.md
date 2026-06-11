@@ -4,15 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
+## `Uncommitted`
 ### `nexus-cli`
 
 #### Added
 
-- Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
 - `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
-- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
+- 
+### `nexus-sdk`
+
+#### Added
+
+- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+
+## [`2.0.0-rc.2`] - 2026-06-10
+
+### `nexus-cli`
+
+#### Added
 - `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
 - `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, interface revision, config-digest hex, shared objects, and skill requirements — into one JSON document.
 - `tap payments show` command that reads a `TapExecutionPayment` object and emits a flat JSON of all payment fields plus a computed `terminal` flag.
@@ -30,10 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
-- On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it.
-- Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
 - `tap scaffold` now writes a `tap/Move.toml` that declares all four published Nexus dependencies (`nexus_primitives`, `nexus_interface`, `nexus_registry`, `nexus_workflow`). The previous scaffold omitted `nexus_registry`, forcing authors to add it by hand before the package would compile against the TAP development guide's recommended template.
 - `tap validate-skill` and `tap publish-skill` no longer accept `--tap-package`. The flag was a redundant override of `tap_package_path` from the skill config; relying on it from a parent directory produced confusing double-prefixed paths (`tutorial-transfer/tutorial-transfer/tap/Move.toml does not exist`). Both commands now resolve the TAP package strictly from the config's `tap_package_path` (resolved relative to the config file's directory).
 - `dag inspect-execution` no longer accepts `--execution-checkpoint`. The SDK now derives the starting checkpoint from the `DAGExecution` object's creation transaction (via `Crawler::get_object_creation_checkpoint`).
@@ -41,7 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - `tap publish-skill --out`, `tap scaffold`, and `tool new` now write generated files with `tokio::fs::write` instead of `File::create` + `write_all`. A dropped `tokio::fs::File` does not flush its internal buffer, so under load a reader (or the next command in a pipeline) could observe a truncated or empty artifact/scaffold file — surfacing as an intermittent `EOF while parsing a value` failure (e.g. the flaky `publish_artifact_flow_writes_revision_metadata` test).
-- `tool register onchain` now correctly disambiguates `OwnerCap<OverTool>` vs `OwnerCap<OverGas>` in the post-registration response. `OverTool` is defined in the registry package (`nexus_registry::tool_registry::OverTool`) while `OverGas` lives in the workflow package (`nexus_workflow::gas::OverGas`), so the inner type's address differs per cap; the previous filter rejected the `OverTool` cap by comparing both inners against `workflow_pkg_id` and surfaced a misleading "Could not find the OwnerCap<OverTool> object ID in the transaction response" error after a successful registration.
+- `tool register onchain` now correctly disambiguates `OwnerCap<OverTool>` vs `OwnerCap<OverGas>` in the post-registration response.
 
 ### `nexus-sdk`
 
@@ -56,6 +63,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `transactions::tap::register_skill_with_vertex_authorization_schema` PTB builder, plus `authorized_tool_arg` and `vertex_authorization_schema_arg` helpers, so cap-gated skills can register through the agent registry with a non-default `TapVertexAuthorizationSchema`. `TapActions::register_skill` and `TapActions::bind_agent_skill` auto-detect the schema and route through this builder when `TapVertexAuthorizationSchema::is_default()` returns `false`, falling back to the simpler `register_skill` call when both `fixed_tools` is empty and `requires_payment` is `false`.
 - `TapVertexAuthorizationSchema::is_default()` predicate so callers can introspect whether a schema needs to be sent through the cap-gated registration entry point.
 - `TapPublishArtifact::from_config` now substitutes the `0x0` sentinel in any `fixed_tools[].package_id` with the just-published `tap_package_id` before computing the artifact's config digest. Authors can declare a self-referential on-chain tool entry without knowing the package id ahead of time.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+
+#### Changed
+
+- `WorkflowActions::inspect_execution` and `WorkflowActions::inspect_execution_until_completion` no longer take an `execution_checkpoint: u64` argument. The starting checkpoint is now derived internally by the SDK from the `DAGExecution` object's creation transaction via the new `Crawler::get_object_creation_checkpoint` helper (chain: current `Owner::Shared(initial_shared_version)` → version-pinned `previous_transaction` → transaction `checkpoint`). Callers should drop the second positional argument.
+- Added `max_transaction_budget` to `LeaderRegistry` model
+
+### `docs`
+
+#### Added
+
+- Six-page **TAP development** guide series under `docs/guides/` walking an entry-level standard TAP skill end-to-end.
+
+## [`2.0.0-rc.1`] - 2026-06-01
+
+### `nexus-cli`
+
+#### Added
+
+- Terminal `_err_eval` event handling in DAG execution inspection, including failure class, post-failure action, reason, duplicate-submission status, and `_err_eval` hash output.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, computes endpoint revision metadata and config digest, and writes a complete endpoint-revision artifact for operator handoff.
+
+#### Changed
+
+- DAG execution inspection now includes terminal `_err_eval` trace entries in JSON output and highlights duplicate terminal submissions in human-readable output.
+- On-chain tool registration config persistence is now covered by a serialized test to avoid cross-test config interference.
+- Generated standard fixed-tool templates now include the hidden `VertexAuthorizationCheckCap` plus workflow worksheet arguments expected by endpoint-declared authorization-aware fixed tools.
+
+### `nexus-sdk`
+
+#### Added
+
 - `PaymentLockUpdateEvent` parsing is now allowed from public workflow/TAP calls emitted through non-Nexus caller packages, with regression coverage for the wrapped event shape used by cap-gated standard TAP executions.
 - SDK models now expose scheduled TAP task and occurrence context from `DAGExecution`, so execution inspection and payment recovery can identify the scheduled task that funded a walk.
 - `ExecutionCostResult` now reports the standard TAP payment object, locked budget, consumed amount, outstanding vertex locks, and terminal accomplishment/refund status from execution-owned payment state.
@@ -79,12 +118,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Durable scheduled TAP models, events, fetch helpers, and transaction builders for address-funded and agent-vault-funded scheduled prepayment, scheduled occurrence payment conversion, scheduled occurrence completion, and scheduler-task link attachment.
 - SDK-level `fetch_task_tap_scheduled_task_link` and `fetch_tap_scheduled_skill_task` helpers so leaders can recover on-chain scheduled task state without local-only BCS parsing.
 - Default-DAG-executor address-funded scheduling action and PTB builder that omit `agent_id`/`skill_id` arguments and resolve the registry-owned default executor through `TapRegistry`.
-- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
-- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 
 #### Changed
 
-- `WorkflowActions::inspect_execution` and `WorkflowActions::inspect_execution_until_completion` no longer take an `execution_checkpoint: u64` argument. The starting checkpoint is now derived internally by the SDK from the `DAGExecution` object's creation transaction via the new `Crawler::get_object_creation_checkpoint` helper (chain: current `Owner::Shared(initial_shared_version)` → version-pinned `previous_transaction` → transaction `checkpoint`). Callers should drop the second positional argument.
 - Workflow object decoding now treats the standard TAP execution context as complete only when agent, skill, endpoint revision, payment, selected DAG, authorization plan, and scheduled occurrence fields are consistent.
 - `VertexAuthorizationGrantCreatedEvent` and `WorkflowVertexAuthorizationGrant` now use `execution_id`, matching the current Move object/event layout.
 - Default DAG execution helpers prefer the configured `default_tap_target` when it resolves to a runtime-selected active skill, then fall back to registry recovery.
@@ -102,7 +138,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Walrus file downloads now flush the destination file before returning.
 - On-chain DAG transaction helpers now use the single typed `submit_on_chain_tool_result_for_walk_v1` surface and no longer expose the stale BCS-envelope or split success/failure helper API.
 - Signed HTTP response signing now steers low-level callers to `sign_invoke_response_with_body_v1`; the deprecated status-only helper rejects 2xx responses because `_err_eval` outcome derivation depends on the response body.
-- Added `max_transaction_budget` to `LeaderRegistry` model
 
 #### Fixed
 
@@ -145,10 +180,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Six-page **TAP development** guide series under `docs/guides/` walking an entry-level standard TAP skill end-to-end: scaffold and write a TAP package with a SUI treasury and a per-vertex witness, write the on-chain transfer vertex tool, wire the DAG plus a scaffold-default `skill.tap.json` (no `fixed_tools`, `requires_payment: false`), publish + register the on-chain tool through the plain entry point + bind the agent, and execute via `nexus tap execute`. The guide intentionally leaves per-call authorization off so it can focus on the workflow lifecycle; a closing callout calls out that the flow is unauthorized and points at the follow-up cap-gated guide (`VertexAuthorizationCheckCap`, `WorkflowVertexAuthorizationGrant`, `fixed_tools` with `requires_payment: true`, `--workflow-authorization-cap-first`) as the production pattern.
 - Comprehensive DAG construction guide sections for `post_failure_action`, `leader_verifier`, and `tool_verifier` configuration at both DAG and vertex levels
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
 - Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
+
+## [`1.0.1`] - 2025-06-09
+
+### `nexus-cli`
+
+#### Fixed
+
+- `nexus tool list` breaking if any tool is registered with invalid FQN
 
 ## [`1.0.0`] - 2026-04-23
 
