@@ -1180,6 +1180,13 @@ pub struct Leader;
 const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
 
 impl Leader {
+    /// Activate a leader and claim ownership of its `Active` state with a fresh token.
+    ///
+    /// `nexus_workflow::leader::activate_and_claim`
+    pub const ACTIVATE_AND_CLAIM: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("activate_and_claim"),
+    };
     /// Allow an address to request leader capabilities.
     ///
     /// `nexus_workflow::leader::allow_address`
@@ -1263,6 +1270,13 @@ impl Leader {
     pub const STATUS_SUSPENDED: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("status_suspended"),
+    };
+    /// Suspend a leader only if the caller still holds the on-record claim token.
+    ///
+    /// `nexus_workflow::leader::suspend_if_token`
+    pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("suspend_if_token"),
     };
 }
 
