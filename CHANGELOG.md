@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, derives the current skill artifact, and writes the agent/skill binding data needed for follow-up execution.
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
-- Unify naming to default agent or `DefautDAGExecutor` for object inside AgentRegistry.
+- Unify naming to default agent or `DefaultDAGExecutor` for object inside AgentRegistry.
 
 #### Changed
 
