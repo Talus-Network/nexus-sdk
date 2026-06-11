@@ -47,7 +47,7 @@ Expected: `100000000`.
 
 `nexus tap execute` submits one transaction that:
 
-- Locks a standard TAP `ExecutionPayment` (paid out of the wallet's coins).
+- Locks a Talus agent `ExecutionPayment` (paid out of the wallet's coins).
 - Initialises the `DAGExecution` object and shares it.
 - Calls the workflow's `request_network_to_execute_walks`, which emits a `RequestWalkExecutionEvent` for the `transfer_vertex` walk. The leader picks the event up, runs `transfer_vertex::execute(worksheet, state, recipient)` on chain, and marks the walk `Successful`. Your wallet sees `consumed` MIST debited from the payment object; the recipient receives whatever was in the treasury.
 
@@ -154,7 +154,7 @@ If you want to block until the payment object lands in a terminal state, `nexus 
 
 ## 5. Cost summary
 
-`nexus dag execution-cost` rolls up the standard TAP payment consumption:
+`nexus dag execution-cost` rolls up the Talus agent payment consumption:
 
 ```bash
 nexus dag execution-cost --dag-execution-id "$EXEC" --json
@@ -180,7 +180,7 @@ Re-running just means funding the treasury again and calling `tap execute` again
 
 ## Next steps
 
-The CLI surface for the rest of standard TAP is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
+The CLI surface for the rest of TAP package and Talus agent operation is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
 
 - **`nexus tap vault deposit`** to pre-fund a payment vault on the agent instead of paying per-call.
 - **`nexus tap schedule-from-vault`**, **`nexus tap schedule-address-funded`**, and **`nexus tap schedule-default-address-funded`** to drive scheduled executions tied to a scheduler task.

@@ -1,12 +1,12 @@
-# TAP Development
+# Custom TAP Package Development
 
-This series teaches how to build, register, and operate a **standard TAP skill** end-to-end. Each page is short and self-contained; together they take you from an empty directory to a working agent that calls an on-chain Move tool which transfers SUI to a recipient address.
+This series teaches how to build, register, and operate a **custom TAP package skill** end-to-end. Each page is short and self-contained; together they take you from an empty directory to a working agent that calls an on-chain Move tool which transfers SUI to a recipient address.
 
 > **Prereqs.** You should already be comfortable with the [Setup guide](setup.md) (CLI install, Sui wallet, `nexus conf set`) and have read the [Onchain Tool Development guide](onchain-tool-development.md) for Move tool fundamentals (witness types, `TaggedOutput`, registration mechanics).
 
-## What a TAP skill is
+## What a TAP package skill is
 
-A standard Talus Agent Protocol (TAP) **skill** wraps up to three things behind one registry identity:
+A custom TAP package skill combines up to three things behind one registry identity:
 
 1. A **TAP Move package** — your custom Move code: shared state objects, the witness type that ties a vertex tool to your package, and any business-logic helpers the tool needs (e.g. coin custody). At the protocol level this is optional: `register_skill` itself doesn't take a package id, so a skill whose DAG uses only off-chain HTTP tools and no on-chain state doesn't need one. This tutorial's skill uses an on-chain transfer tool, so the package contents below are required.
 1. A **DAG** — the workflow definition the leader executes when the skill runs. For this tutorial the DAG has a single vertex that calls one on-chain Move tool.
@@ -55,7 +55,7 @@ nexus tap bind            →  creates an agent + registers the skill atomically
 fund the treasury         →  one-shot Move call that deposits SUI into state
         │
         ▼
-nexus tap execute         →  submits the TAP execution (payment, DAG inputs)
+nexus tap execute         →  submits the agent skill execution (payment, DAG inputs)
         │
         ▼
 verify recipient balance  →  the treasury arrived in the destination wallet
@@ -73,7 +73,7 @@ Each arrow is one `nexus` command and one short stop on the way. The next five p
 
 ## What this guide does **not** cover
 
-The TAP CLI surface is broader than what one tutorial can show. After you finish the series, the [CLI reference](../cli.md) covers:
+The TAP package CLI surface is broader than what one tutorial can show. After you finish the series, the [CLI reference](../cli.md) covers:
 
 - Vault funding and vault-funded scheduling (`nexus tap vault deposit`, `nexus tap schedule-from-vault`).
 - Address-funded scheduling and the default-agent variant (`nexus tap schedule-address-funded`, `nexus tap schedule-default-address-funded`).

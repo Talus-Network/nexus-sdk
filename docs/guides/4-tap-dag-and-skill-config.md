@@ -3,7 +3,7 @@
 The Move package now compiles and exposes `transfer_vertex::execute`. Before we publish, we need to teach the workflow about it. That happens in two files:
 
 - `dag.json` — the workflow definition. We tell it about the on-chain vertex, its FQN, and which entry ports we'll feed at execute time.
-- `skill.tap.json` — the standard TAP skill manifest. We point it at the DAG and the TAP package and keep the rest of the requirements at scaffold defaults.
+- `skill.tap.json` — the TAP package skill manifest. We point it at the DAG and the TAP package and keep the rest of the requirements at scaffold defaults.
 
 Both files were created by `nexus tap scaffold` with off-chain-tool defaults. We're going to overwrite them.
 
@@ -64,10 +64,10 @@ Field by field:
 - **`tap_package_name`** must match the Move package name (`tutorial_transfer`) — `publish-skill` uses it as the named-address override when it compiles the package.
 - **`dag_path` / `tap_package_path`** are relative to this file. The scaffold wires both for you and we keep them as-is.
 - **`requirements.input_schema_commitment`** is an opaque byte vector that identifies the expected input shape. The JSON above encodes the ASCII string `tutorial-input`; anything reproducible works because downstream tooling treats it as an identifier.
-- **`payment_policy: "UserFunded"`** means the wallet calling `nexus tap execute` supplies the SUI for the standard TAP payment. The alternative shape is `{"AgentFunded": {"max_budget": <MIST>}}`, which draws from the agent's payment vault and caps the requested budget.
+- **`payment_policy: "UserFunded"`** means the wallet calling `nexus tap execute` supplies the SUI for the Talus agent execution payment. The alternative shape is `{"AgentFunded": {"max_budget": <MIST>}}`, which draws from the agent's payment vault and caps the requested budget.
 - **`schedule_policy.recurrence = "Once"`** keeps the demo synchronous. Recursive schedules use `{"Recursive": {"min_interval_ms": <MS>, "max_occurrences": <COUNT or null>}}` and must set `allow_recursive: true`.
 - **`fixed_tools: []`** means this skill does not preserve any registry-verified fixed tools in its DAG. Fixed tools are a DAG preservation requirement, not an authorization grant list.
-- **`interface_revision: 1`** is the standard TAP interface generation; bump it only when the on-chain TAP interface ships a new revision.
+- **`interface_revision: 1`** is the current Talus agent skill interface generation; bump it only when the on-chain interface ships a new revision.
 
 ## 3. Dry-run
 

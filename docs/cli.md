@@ -273,9 +273,9 @@ Supported remote storage providers are:
 
 - Walrus
 
-Standard TAP execution payment is supplied via two optional flags:
+Talus agent execution payment is supplied via two optional flags:
 
-- `--payment-coin <OBJECT_ID>` — SUI coin to lock as the execution payment. When omitted, the execution is recorded with no TAP payment context.
+- `--payment-coin <OBJECT_ID>` — SUI coin to lock as the execution payment. When omitted, the execution is recorded with no Talus agent payment context.
 - `--payment-budget <MIST>` — optional cap on the payment budget. Defaults to the full balance of `--payment-coin` when omitted.
 
 {% hint style="info" %}
@@ -292,7 +292,7 @@ Inspects a DAG execution process from its `DAGExecution` object ID. The SDK deri
 
 **`nexus dag execution-cost --dag-execution-id <OBJECT_ID>`**
 
-Shows the standard TAP execution payment consumed by a DAG execution. Decodes `DAGExecution.standard_tap_context` to find the linked `TapExecutionPayment` object and emits its `payment_id`, `max_budget`, `locked_budget`, `consumed`, `outstanding_locks`, `accomplished`, and `refunded` fields as stable JSON. Pair with `nexus tap payments wait --payment-id <ID>` to drive settlement to a terminal state.
+Shows the Talus agent execution payment consumed by a DAG execution. Decodes `DAGExecution.standard_tap_context` to find the linked `TapExecutionPayment` object and emits its `payment_id`, `max_budget`, `locked_budget`, `consumed`, `outstanding_locks`, `accomplished`, and `refunded` fields as stable JSON. Pair with `nexus tap payments wait --payment-id <ID>` to drive settlement to a terminal state.
 
 ---
 
@@ -396,7 +396,7 @@ This command requires that a wallet is connected to the CLI and holds sufficient
 Set of commands to manage Nexus gas ticket extensions (expiry tickets and limited-invocations tickets) for off-chain tools.
 
 {% hint style="info" %}
-Standard TAP execution payments are managed through `nexus dag execute --payment-coin`, `nexus tap execute --payment-*` flags, `nexus dag execution-cost`, and `nexus tap payments`. The commands below are for the tool-side gas ticket extensions that off-chain tool owners can enable for their tools.
+Talus agent execution payments are managed through `nexus dag execute --payment-coin`, `nexus tap execute --payment-*` flags, `nexus dag execution-cost`, and `nexus tap payments`. The commands below are for the tool-side gas ticket extensions that off-chain tool owners can enable for their tools.
 {% endhint %}
 
 ---
@@ -483,7 +483,7 @@ This command requires that a wallet is connected to the CLI...
 
 ### `nexus tap`
 
-Commands for authoring, publishing, registering, executing, scheduling, and inspecting standard TAP (Talus Agent Protocol) packages. The TAP surface covers the full lifecycle from scaffolding a new skill locally through publishing it on-chain, binding it to an agent, updating the current skill revision, and inspecting registry/payment/scheduled-task state.
+Commands for authoring, publishing, registering, executing, scheduling, and inspecting custom TAP packages and Talus agent skills. The TAP package surface covers the full lifecycle from scaffolding a new skill locally through publishing it on-chain, binding it to an agent, updating the current skill revision, and inspecting registry/payment/scheduled-task state.
 
 A typical lifecycle looks like:
 
@@ -544,7 +544,7 @@ Creates a skill `TapPublishArtifact` file from explicit skill inputs and a read-
 
 **`nexus tap create-agent`**
 
-Creates a standard Talus agent through the configured TAP registry and shares the agent object. Mutable custody of the `Agent` object is the lifecycle authorization handle. JSON output includes the new `agent_id` and the transaction digest/checkpoint.
+Creates a Talus agent through the configured Agent Registry and shares the agent object. Mutable custody of the `Agent` object is the lifecycle authorization handle. JSON output includes the new `agent_id` and the transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -554,7 +554,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap bind --artifact <ARTIFACT_JSON>`**
 
-Composes `tap::create_agent` and `tap::register_skill` into a single PTB, returning the new agent and skill bound together in one transaction. Use this when an agent has not been created yet and the operator wants the standard "create + register first skill" flow in one round-trip.
+Composes `tap::create_agent` and `tap::register_skill` into a single PTB, returning the new agent and skill bound together in one transaction. Use this when an agent has not been created yet and the operator wants the "create + register first skill" flow in one round-trip.
 
 The artifact JSON is the one produced by `nexus tap publish-skill` — it carries DAG id, TAP package id, interface revision, and simplified requirements.
 
@@ -610,13 +610,13 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap registry show`**
 
-Reads the configured TAP registry and prints its full contents as JSON: a `standard_tap` flag, the registry `id`, the configured `default_executor`, all agent records, and each skill's active flag, DAG binding, current interface revision, requirements, and scheduled-task count. This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
+Reads the configured Agent Registry and prints its full contents as JSON: a `standard_tap` flag, the registry `id`, the configured `default_executor`, all agent records, and each skill's active flag, DAG binding, current interface revision, requirements, and scheduled-task count. This replaces ad-hoc `sui client object --json` walks of the registry's dynamic fields.
 
 ---
 
 **`nexus tap default-agent show`**
 
-Resolves the configured standard TAP default agent through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the DAG binding, active interface revision, and published skill requirements. Useful for scripts that want to drive the network's default agent without hard-coding ids.
+Resolves the configured default agent through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the DAG binding, active interface revision, and published skill requirements. Useful for scripts that want to drive the network's default agent without hard-coding ids.
 
 ---
 
@@ -630,13 +630,13 @@ Fetches the live skill requirements from the TAP registry for a given agent/skil
 
 **`nexus tap vault balance [--alias <NAME> | --agent-id <OBJECT_ID>]`**
 
-Reads the standard Talus agent payment vault (a dynamic-object child of the agent object) and reports its current SUI balance. The agent can be supplied either as a saved alias or as an explicit object id; the two flags are mutually exclusive.
+Reads the Talus agent payment vault (a dynamic-object child of the agent object) and reports its current SUI balance. The agent can be supplied either as a saved alias or as an explicit object id; the two flags are mutually exclusive.
 
 ---
 
 **`nexus tap vault deposit --amount <AMOUNT> [--alias <NAME> | --agent-id <OBJECT_ID>]`**
 
-Deposits MIST into a standard Talus agent payment vault by splitting `--amount` MIST from the signer's gas coin and submitting `tap::deposit_agent_payment_vault`. The agent can be supplied either as a saved alias or as an explicit object id; the two flags are mutually exclusive. JSON output includes the agent id, deposited amount, transaction digest, and tx checkpoint.
+Deposits MIST into a Talus agent payment vault by splitting `--amount` MIST from the signer's gas coin and submitting `tap::deposit_agent_payment_vault`. The agent can be supplied either as a saved alias or as an explicit object id; the two flags are mutually exclusive. JSON output includes the agent id, deposited amount, transaction digest, and tx checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
@@ -646,7 +646,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap payments show --payment-id <OBJECT_ID>`**
 
-Reads a standard `TapExecutionPayment` object and emits a flat JSON of its fields: payment/execution/agent/skill ids, interface revision, payer, mode/source kind/source identity, locked budget, consumed amount, `accomplished`/`refunded` booleans, raw `final_state`, computed `terminal` flag, and the list of currently-locked vertices. Replaces shell-side BCS decoding of payment object internals.
+Reads a `TapExecutionPayment` object and emits a flat JSON of its fields: payment/execution/agent/skill ids, interface revision, payer, mode/source kind/source identity, locked budget, consumed amount, `accomplished`/`refunded` booleans, raw `final_state`, computed `terminal` flag, and the list of currently-locked vertices. Replaces shell-side BCS decoding of payment object internals.
 
 ---
 
@@ -666,7 +666,7 @@ Lists wallet-owned `ExecutionPaymentReceipt` objects and, when an agent is suppl
 
 **`nexus tap payments resolve --execution-id <OBJECT_ID> [--alias <NAME> | --agent-id <OBJECT_ID>]`**
 
-Settles the standard TAP payment linked to a shared `DAGExecution` so it moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`).
+Settles the Talus agent payment linked to a shared `DAGExecution` so it moves to its `Accomplished` final state. Useful when the off-chain leader has not (yet) submitted the settlement transaction itself but the execution has reached a state that the on-chain assertions accept (`assert_execution_can_accomplish_tap_payment` + `assert_matches_tap_payment`).
 
 Two on-chain entrypoints are wrapped depending on the funding source:
 
@@ -685,10 +685,10 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap execute --agent-id <OBJECT_ID> --skill-id <U64> --input-json <DATA> [--entry-group <NAME>] [--remote vertex.port,...] [--priority-fee-per-gas-unit <MIST>] [--payment-source-hex <HEX>] [--payment-max-budget <AMOUNT>] [--authorization-plan-hash-hex <HEX>]`**
 
-Executes a standard TAP skill through its current registry skill revision and DAG binding. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the standard TAP execution payment:
+Executes a Talus agent skill through its current registry skill revision and DAG binding. Input JSON follows the same `{vertex: {port: data}}` shape as `nexus dag execute`. `--remote` forces named ports to be uploaded to the configured remote storage instead of being inlined on-chain. Payment options select the payment source for the Talus agent execution payment:
 
 - `--payment-source-hex` provides typed payment-source bytes (invoker-funded vs agent-vault-funded). Empty defaults to the invoker.
-- `--payment-max-budget` caps the standard TAP payment.
+- `--payment-max-budget` caps the Talus agent execution payment.
 - `--authorization-plan-hash-hex` optionally supplies an authorization-plan commitment for cap-gated tools.
 
 JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active skill revision key, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
@@ -703,7 +703,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap schedule --agent-id <OBJECT_ID> --skill-id <U64> --long-term-gas-coin-id <OBJECT_ID> [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--first-after-ms <MS>]`**
 
-Schedules a standard TAP skill execution by attaching a durable, long-term gas coin to the configured TAP registry's scheduler. The `--recurrence-kind` (default `once`), `--min-interval-ms`, `--max-occurrences` (default `1`), and `--first-after-ms` parameters define the schedule shape; `--refill-policy-hex` and `--schedule-entries-commitment-hex` supply the on-chain policy commitments. JSON output includes the `scheduled_task_id`, agent and skill ids, and the transaction digest/checkpoint.
+Schedules a Talus agent skill execution by attaching a durable, long-term gas coin to the configured Agent Registry scheduler. The `--recurrence-kind` (default `once`), `--min-interval-ms`, `--max-occurrences` (default `1`), and `--first-after-ms` parameters define the schedule shape; `--refill-policy-hex` and `--schedule-entries-commitment-hex` supply the on-chain policy commitments. JSON output includes the `scheduled_task_id`, agent and skill ids, and the transaction digest/checkpoint.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
