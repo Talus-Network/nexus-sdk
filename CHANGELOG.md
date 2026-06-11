@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## `Uncommitted`
+
 ### `nexus-cli`
 
 #### Added
 
 - `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
-- 
+-
+
 ### `nexus-sdk`
 
 #### Added
@@ -23,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### `nexus-cli`
 
 #### Added
+
 - `tap registry show` command that prints the full standard TAP agent registry contents (id, default executor, agents, skills, endpoint revisions) as stable JSON.
 - `tap default-target show` command that flattens the configured standard TAP default DAG executor — agent id, skill id, dag id, interface revision, config-digest hex, shared objects, and skill requirements — into one JSON document.
 - `tap payments show` command that reads a `TapExecutionPayment` object and emits a flat JSON of all payment fields plus a computed `terminal` flag.
