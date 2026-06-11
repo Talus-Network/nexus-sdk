@@ -6,7 +6,9 @@ use {
         nexus::crawler::{DynamicMap, Map, Set},
         sui,
         types::{
+            parse_runtime_vertex_value,
             parse_string_value,
+            parse_u64_value,
             strip_fields_owned,
             AgentId,
             InterfaceRevision,
@@ -72,6 +74,8 @@ pub struct DagExecution {
     #[serde(default = "empty_move_option")]
     #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
     pub tap_scheduled_occurrence_index: MoveOption<u64>,
+    #[serde(default)]
+    pub walks: Vec<DagExecutionWalk>,
 }
 
 impl DagExecution {
@@ -125,6 +129,139 @@ impl DagExecution {
             scheduled_occurrence_index: self.tap_scheduled_occurrence_index.0,
         }))
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub enum DagExecutionWalk {
+    Active {
+        next_vertex: crate::types::RuntimeVertex,
+        timeout_ms: u64,
+        requires_vertex_authorization_grant: bool,
+        created_at: u64,
+    },
+    Successful,
+    Failed,
+    Consumed {
+        at_vertex: crate::types::RuntimeVertex,
+    },
+    PendingAbort {
+        at_vertex: crate::types::RuntimeVertex,
+    },
+    Aborted {
+        at_vertex: crate::types::RuntimeVertex,
+    },
+    Cancelled,
+}
+
+impl DagExecutionWalk {
+    pub fn expired_active_vertex(&self, clock_ms: u64) -> Option<&crate::types::RuntimeVertex> {
+        match self {
+            Self::Active {
+                next_vertex,
+                timeout_ms,
+                created_at,
+                ..
+            } if clock_ms >= created_at.saturating_add(timeout_ms.saturating_mul(2)) => {
+                Some(next_vertex)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DagExecutionWalk {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        let value = strip_fields_owned(value);
+        let object = value
+            .as_object()
+            .ok_or_else(|| serde::de::Error::custom("DAGWalk must be an object or enum"))?;
+
+        let (variant, fields) = if let Some(Value::String(variant)) = object
+            .get("_variant_name")
+            .or_else(|| object.get("@variant"))
+            .or_else(|| object.get("variant"))
+        {
+            (variant.as_str(), Some(&value))
+        } else if object.len() == 1 {
+            let (variant, fields) = object.iter().next().expect("single entry exists");
+            (variant.as_str(), Some(fields))
+        } else {
+            return Err(serde::de::Error::custom("DAGWalk missing variant"));
+        };
+
+        let fields = fields.map(strip_fields_ref).unwrap_or(&value);
+        match variant {
+            "Active" => {
+                let fields = fields
+                    .as_object()
+                    .ok_or_else(|| serde::de::Error::custom("Active DAGWalk fields missing"))?;
+                let next_vertex =
+                    parse_runtime_vertex_value(fields.get("next_vertex").ok_or_else(|| {
+                        serde::de::Error::custom("Active DAGWalk missing next_vertex")
+                    })?)
+                    .map_err(serde::de::Error::custom)?
+                    .ok_or_else(|| {
+                        serde::de::Error::custom("Active DAGWalk missing next_vertex")
+                    })?;
+                let timeout_ms = parse_u64_value(fields.get("timeout_ms").ok_or_else(|| {
+                    serde::de::Error::custom("Active DAGWalk missing timeout_ms")
+                })?)
+                .map_err(serde::de::Error::custom)?
+                .ok_or_else(|| serde::de::Error::custom("Active DAGWalk missing timeout_ms"))?;
+                let created_at = parse_u64_value(fields.get("created_at").ok_or_else(|| {
+                    serde::de::Error::custom("Active DAGWalk missing created_at")
+                })?)
+                .map_err(serde::de::Error::custom)?
+                .ok_or_else(|| serde::de::Error::custom("Active DAGWalk missing created_at"))?;
+                let requires_vertex_authorization_grant = fields
+                    .get("requires_vertex_authorization_grant")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                Ok(Self::Active {
+                    next_vertex,
+                    timeout_ms,
+                    requires_vertex_authorization_grant,
+                    created_at,
+                })
+            }
+            "Successful" => Ok(Self::Successful),
+            "Failed" => Ok(Self::Failed),
+            "Cancelled" => Ok(Self::Cancelled),
+            "Consumed" | "PendingAbort" | "Aborted" => {
+                let fields = fields
+                    .as_object()
+                    .ok_or_else(|| serde::de::Error::custom("terminal DAGWalk fields missing"))?;
+                let at_vertex =
+                    parse_runtime_vertex_value(fields.get("at_vertex").ok_or_else(|| {
+                        serde::de::Error::custom("terminal DAGWalk missing at_vertex")
+                    })?)
+                    .map_err(serde::de::Error::custom)?
+                    .ok_or_else(|| {
+                        serde::de::Error::custom("terminal DAGWalk missing at_vertex")
+                    })?;
+                match variant {
+                    "Consumed" => Ok(Self::Consumed { at_vertex }),
+                    "PendingAbort" => Ok(Self::PendingAbort { at_vertex }),
+                    "Aborted" => Ok(Self::Aborted { at_vertex }),
+                    _ => unreachable!(),
+                }
+            }
+            _ => Err(serde::de::Error::custom(format!(
+                "unsupported DAGWalk variant {variant}"
+            ))),
+        }
+    }
+}
+
+fn strip_fields_ref(value: &Value) -> &Value {
+    value
+        .as_object()
+        .and_then(|object| object.get("fields"))
+        .unwrap_or(value)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -525,7 +662,11 @@ pub struct DagOutputVariantPort {
 mod tests {
     use {
         super::*,
-        crate::{events::RequestWalkStandardTapContext, fqn, types::InterfaceRevision},
+        crate::{
+            events::RequestWalkStandardTapContext,
+            fqn,
+            types::{InterfaceRevision, RuntimeVertex},
+        },
         serde_json::json,
         std::str::FromStr,
     };
@@ -715,6 +856,7 @@ mod tests {
             tap_authorization_plan: Vec::new(),
             tap_scheduled_task_id: MoveOption(Some(sui::types::Address::from_static("0xf"))),
             tap_scheduled_occurrence_index: MoveOption(Some(2)),
+            walks: Vec::new(),
         };
 
         let context = execution
@@ -749,6 +891,184 @@ mod tests {
 
         assert_eq!(execution.tap_skill_id.0, Some(11));
         assert_eq!(execution.tap_scheduled_occurrence_index.0, Some(2));
+    }
+
+    #[test]
+    fn dag_execution_decodes_active_and_pending_abort_walks() {
+        let execution: DagExecution = serde_json::from_value(json!({
+            "invoker": "0x1",
+            "walks": [
+                {
+                    "Active": {
+                        "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
+                        "timeout_ms": "30000",
+                        "requires_vertex_authorization_grant": true,
+                        "created_at": "7"
+                    }
+                },
+                {
+                    "_variant_name": "PendingAbort",
+                    "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
+                }
+            ]
+        }))
+        .expect("walks should decode from Move JSON");
+
+        assert_eq!(
+            execution.walks[0],
+            DagExecutionWalk::Active {
+                next_vertex: RuntimeVertex::plain("payable"),
+                timeout_ms: 30_000,
+                requires_vertex_authorization_grant: true,
+                created_at: 7,
+            }
+        );
+        assert_eq!(
+            execution.walks[1],
+            DagExecutionWalk::PendingAbort {
+                at_vertex: RuntimeVertex::plain("payable")
+            }
+        );
+        assert_eq!(
+            execution.walks[0].expired_active_vertex(60_007),
+            Some(&RuntimeVertex::plain("payable"))
+        );
+        assert_eq!(execution.walks[0].expired_active_vertex(60_006), None);
+    }
+
+    #[test]
+    fn dag_execution_walk_rejects_missing_and_unknown_variants() {
+        let missing_variant = serde_json::from_value::<DagExecutionWalk>(json!({
+            "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
+            "timeout_ms": "30000"
+        }))
+        .expect_err("walk without a variant should fail");
+        assert!(missing_variant.to_string().contains("missing variant"));
+
+        let unsupported_variant = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Paused": {
+                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
+            }
+        }))
+        .expect_err("unknown walk variant should fail");
+        assert!(unsupported_variant
+            .to_string()
+            .contains("unsupported DAGWalk variant Paused"));
+    }
+
+    #[test]
+    fn dag_execution_walk_requires_active_and_terminal_fields() {
+        let missing_next_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Active": {
+                "timeout_ms": "30000",
+                "created_at": "7"
+            }
+        }))
+        .expect_err("active walk without next_vertex should fail");
+        assert!(missing_next_vertex
+            .to_string()
+            .contains("missing next_vertex"));
+
+        let missing_timeout = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Active": {
+                "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
+                "created_at": "7"
+            }
+        }))
+        .expect_err("active walk without timeout_ms should fail");
+        assert!(missing_timeout.to_string().contains("missing timeout_ms"));
+
+        let missing_created_at = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Active": {
+                "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
+                "timeout_ms": "30000"
+            }
+        }))
+        .expect_err("active walk without created_at should fail");
+        assert!(missing_created_at
+            .to_string()
+            .contains("missing created_at"));
+
+        let missing_at_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Aborted": {}
+        }))
+        .expect_err("terminal walk without at_vertex should fail");
+        assert!(missing_at_vertex.to_string().contains("missing at_vertex"));
+
+        let null_next_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Active": {
+                "next_vertex": null,
+                "timeout_ms": "30000",
+                "created_at": "7"
+            }
+        }))
+        .expect_err("active walk with null next_vertex should fail");
+        assert!(null_next_vertex.to_string().contains("missing next_vertex"));
+
+        let null_at_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
+            "PendingAbort": {
+                "at_vertex": null
+            }
+        }))
+        .expect_err("terminal walk with null at_vertex should fail");
+        assert!(null_at_vertex.to_string().contains("missing at_vertex"));
+    }
+
+    #[test]
+    fn dag_execution_walk_decodes_terminal_variants_and_saturating_expiry() {
+        let consumed = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Consumed": {
+                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
+            }
+        }))
+        .expect("consumed walk should decode");
+        let failed = serde_json::from_value::<DagExecutionWalk>(json!("Failed"))
+            .expect_err("bare strings are not accepted Move JSON objects");
+        let successful = serde_json::from_value::<DagExecutionWalk>(json!({
+            "_variant_name": "Successful"
+        }))
+        .expect("successful walk should decode");
+        let failed_object = serde_json::from_value::<DagExecutionWalk>(json!({
+            "_variant_name": "Failed"
+        }))
+        .expect("failed walk should decode");
+        let cancelled = serde_json::from_value::<DagExecutionWalk>(json!({
+            "_variant_name": "Cancelled"
+        }))
+        .expect("cancelled walk should decode");
+        let aborted = serde_json::from_value::<DagExecutionWalk>(json!({
+            "Aborted": {
+                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
+            }
+        }))
+        .expect("aborted walk should decode");
+        let saturating_active = DagExecutionWalk::Active {
+            next_vertex: RuntimeVertex::plain("payable"),
+            timeout_ms: u64::MAX,
+            requires_vertex_authorization_grant: false,
+            created_at: u64::MAX,
+        };
+
+        assert_eq!(
+            consumed,
+            DagExecutionWalk::Consumed {
+                at_vertex: RuntimeVertex::plain("payable")
+            }
+        );
+        assert!(failed.to_string().contains("must be an object"));
+        assert_eq!(successful, DagExecutionWalk::Successful);
+        assert_eq!(failed_object, DagExecutionWalk::Failed);
+        assert_eq!(cancelled, DagExecutionWalk::Cancelled);
+        assert_eq!(
+            aborted,
+            DagExecutionWalk::Aborted {
+                at_vertex: RuntimeVertex::plain("payable")
+            }
+        );
+        assert_eq!(
+            saturating_active.expired_active_vertex(u64::MAX),
+            Some(&RuntimeVertex::plain("payable"))
+        );
     }
 
     #[test]
@@ -791,6 +1111,7 @@ mod tests {
             tap_authorization_plan: Vec::new(),
             tap_scheduled_task_id: MoveOption(None),
             tap_scheduled_occurrence_index: MoveOption(None),
+            walks: Vec::new(),
         };
 
         let error = execution
@@ -811,6 +1132,7 @@ mod tests {
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
+                    walks: Vec::new(),
                 },
                 "missing tap_interface_revision",
             ),
@@ -826,6 +1148,7 @@ mod tests {
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
+                    walks: Vec::new(),
                 },
                 "missing tap_payment_id",
             ),
@@ -841,6 +1164,7 @@ mod tests {
                     tap_authorization_plan: Vec::new(),
                     tap_scheduled_task_id: MoveOption(None),
                     tap_scheduled_occurrence_index: MoveOption(None),
+                    walks: Vec::new(),
                 },
                 "missing tap_selected_dag_id",
             ),
