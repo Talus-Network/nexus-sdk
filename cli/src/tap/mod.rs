@@ -3,7 +3,7 @@ mod tap_bind;
 mod tap_common;
 mod tap_create_agent;
 mod tap_create_skill_artifact;
-mod tap_default_target;
+mod tap_default_agent;
 mod tap_dry_run;
 mod tap_execute;
 mod tap_output;
@@ -76,7 +76,7 @@ use {
     },
     tap_create_agent::create_agent,
     tap_create_skill_artifact::{create_skill_artifact, ArtifactPaymentMode},
-    tap_default_target::show_default_target,
+    tap_default_agent::show_default_agent,
     tap_dry_run::dry_run_skill,
     tap_execute::execute_agent_dag_skill,
     tap_output::{
@@ -87,7 +87,7 @@ use {
         bind_result_json,
         create_agent_result_json,
         create_skill_artifact_result_json,
-        default_target_result_json,
+        default_agent_result_json,
         dry_run_result_json,
         payment_resolve_result_json,
         payment_show_result_json,
@@ -260,11 +260,8 @@ pub(crate) enum TapCommand {
     Payments(PaymentsCommand),
     #[command(subcommand, about = "Inspect the agent registry.")]
     Registry(RegistryCommand),
-    #[command(
-        subcommand,
-        about = "Inspect the standard TAP default DAG executor metadata."
-    )]
-    DefaultTarget(DefaultTargetCommand),
+    #[command(subcommand, about = "Inspect the standard TAP default agent metadata.")]
+    DefaultAgent(DefaultAgentCommand),
     #[command(about = "Create a Talus agent and register its first skill atomically.")]
     Bind {
         #[arg(
@@ -474,7 +471,7 @@ pub(crate) enum TapCommand {
         gas: GasArgs,
     },
     #[command(
-        about = "Schedule the default DAG executor's TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
+        about = "Schedule the default agent's TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
     )]
     ScheduleDefaultAddressFunded {
         #[arg(
@@ -630,8 +627,8 @@ pub(crate) enum RegistryCommand {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum DefaultTargetCommand {
-    #[command(about = "Print the configured standard TAP default DAG executor as JSON.")]
+pub(crate) enum DefaultAgentCommand {
+    #[command(about = "Print the configured standard TAP default agent as JSON.")]
     Show,
 }
 
@@ -785,7 +782,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::Vault(command) => handle_vault_command(command).await,
         TapCommand::Payments(command) => handle_payments_command(command).await,
         TapCommand::Registry(RegistryCommand::Show) => show_registry().await,
-        TapCommand::DefaultTarget(DefaultTargetCommand::Show) => show_default_target().await,
+        TapCommand::DefaultAgent(DefaultAgentCommand::Show) => show_default_agent().await,
         TapCommand::Bind { artifact, gas } => {
             bind_agent_skill(artifact, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
@@ -1178,6 +1175,13 @@ mod tests {
                 .contains("No Talus agent alias"),
             "unexpected error: {resolve_vault_error}"
         );
+
+        let default_agent_error = handle(TapCommand::DefaultAgent(DefaultAgentCommand::Show))
+            .await
+            .expect_err("default-agent dispatch reaches missing RPC");
+        assert!(default_agent_error
+            .to_string()
+            .contains("Sui RPC URL is not configured"));
 
         let requirements_error = handle(TapCommand::Requirements {
             agent_id: sui::types::Address::from_static("0xa"),

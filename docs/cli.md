@@ -494,7 +494,7 @@ A typical lifecycle looks like:
 1. `tap create-agent` (or `tap bind` to do create+register in one PTB) — get an on-chain agent identity.
 1. `tap register-skill` and `tap update-skill` — bind the skill to the agent and move future executions to a new current skill revision when the DAG or policies change.
 1. `tap execute` / `tap schedule` — run the skill once or schedule recurring/queued executions.
-1. `tap registry show`, `tap default-target show`, `tap requirements`, `tap payments show`/`wait`, `tap vault balance`, and `tap payments list` — inspect on-chain state and drive settlement.
+1. `tap registry show`, `tap default-agent show`, `tap requirements`, `tap payments show`/`wait`, `tap vault balance`, and `tap payments list` — inspect on-chain state and drive settlement.
 
 All commands accept `--json` for stable machine-readable output.
 
@@ -604,7 +604,7 @@ Updates an existing skill from a publish artifact. The current CLI path refreshe
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
-#### Registry and default-target inspection
+#### Registry and default-agent inspection
 
 ---
 
@@ -614,9 +614,9 @@ Reads the configured TAP registry and prints its full contents as JSON: a `stand
 
 ---
 
-**`nexus tap default-target show`**
+**`nexus tap default-agent show`**
 
-Resolves the configured standard TAP default DAG executor through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the DAG binding, active interface revision, and published skill requirements. Useful for scripts that want to drive the network's default agent without hard-coding ids.
+Resolves the configured standard TAP default agent through the registry and prints a flat JSON containing a `standard_tap` flag, the default `agent_id` and `skill_id`, the DAG binding, active interface revision, and published skill requirements. Useful for scripts that want to drive the network's default agent without hard-coding ids.
 
 ---
 
@@ -735,7 +735,7 @@ This command requires that a wallet is connected to the CLI...
 
 **`nexus tap schedule-default-address-funded --scheduler-task-id <OBJECT_ID> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
 
-Creates a durable address-funded `ScheduledSkillTask` tied to the registry-owned default DAG executor, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. Unlike `tap schedule-address-funded`, no `--agent-id`/`--skill-id` flags are required: the configured default executor is used. JSON output mirrors `tap schedule-address-funded`.
+Creates a durable address-funded `ScheduledSkillTask` tied to the registry-owned default agent, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. Unlike `tap schedule-address-funded`, no `--agent-id`/`--skill-id` flags are required: the configured default agent is used. JSON output mirrors `tap schedule-address-funded`.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

@@ -168,7 +168,7 @@ pub(crate) async fn schedule_default_address_funded(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Scheduling default-executor TAP skill attached to task '{scheduler_task_id}'");
+    command_title!("Scheduling default-agent TAP skill attached to task '{scheduler_task_id}'");
 
     let refill_policy_commitment = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
     let schedule_entries_commitment =
@@ -205,7 +205,7 @@ pub(crate) async fn schedule_default_address_funded(
         .map_err(NexusCliError::Nexus)?;
 
     notify_success!(
-        "Scheduled default-executor TAP task {scheduled_task_id} (digest {digest})",
+        "Scheduled default-agent TAP task {scheduled_task_id} (digest {digest})",
         scheduled_task_id = result
             .scheduled_task_id
             .to_string()

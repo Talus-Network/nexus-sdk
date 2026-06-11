@@ -64,7 +64,7 @@ fn nexus_objects() -> NexusObjects {
         verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
         agent_registry: object_ref("0xc", 1, 12),
-        default_tap_executor: DefaultDagExecutor {
+        default_dag_executor: DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,
         },
@@ -249,7 +249,7 @@ fn nexus_objects_carries_agent_registry_metadata() {
     let objects = nexus_objects();
     assert_eq!(*objects.agent_registry.object_id(), addr("0xc"));
     assert_eq!(
-        objects.default_tap_executor,
+        objects.default_dag_executor,
         DefaultDagExecutor {
             agent_id: addr("0xa1"),
             skill_id: 177,

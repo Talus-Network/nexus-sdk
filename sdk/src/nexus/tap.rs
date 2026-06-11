@@ -1016,7 +1016,7 @@ impl TapActions {
         })
         .ok_or_else(|| {
             NexusError::Parsing(anyhow::anyhow!(
-                "ScheduledSkillExecutionCreatedEvent not found in default TAP schedule response"
+                "ScheduledSkillExecutionCreatedEvent not found in default-agent schedule response"
             ))
         })?;
 
@@ -1412,7 +1412,7 @@ pub async fn fetch_configured_active_tap_skill_execution_target(
     Ok(registry_response_with_data(registry, target))
 }
 
-/// Resolve the configured default TAP DAG executor from the configured registry.
+/// Resolve the configured default agent from the configured registry.
 pub async fn fetch_configured_default_tap_dag_executor(
     crawler: &Crawler,
     objects: &NexusObjects,
@@ -1929,7 +1929,7 @@ mod tests {
     #[test]
     fn configured_default_executor_reads_nexus_objects_metadata() {
         let objects = NexusObjects {
-            default_tap_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             },
@@ -1937,7 +1937,7 @@ mod tests {
         };
 
         assert_eq!(
-            objects.default_tap_executor,
+            objects.default_dag_executor,
             DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,

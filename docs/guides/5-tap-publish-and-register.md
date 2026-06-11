@@ -140,7 +140,7 @@ nexus tap registry show --json | jq --arg agent "$AGENT" '{
 
 You should see exactly one agent entry with your `agent_id`, and one skill entry with `skill_id: 0`, `current_interface_revision: 1`, and a DAG binding matching the value you captured from `publish-skill`. The skill's stored requirements carry an empty `fixed_tools` list.
 
-`nexus tap default-target show` is unaffected — that's the registry-managed default executor, not your new agent.
+`nexus tap default-agent show` is unaffected — that's the registry-managed default agent, not your new agent.
 
 ## What you have now
 

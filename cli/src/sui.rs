@@ -359,7 +359,7 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [default_tap_executor]
+                [default_dag_executor]
                 agent_id = "0xa1"
                 skill_id = 177
 
@@ -429,10 +429,10 @@ mod tests {
             sui::types::Address::from_static("0x70")
         );
         assert_eq!(
-            objects.default_tap_executor.agent_id,
+            objects.default_dag_executor.agent_id,
             sui::types::Address::from_static("0xa1")
         );
-        assert_eq!(objects.default_tap_executor.skill_id, 177);
+        assert_eq!(objects.default_dag_executor.skill_id, 177);
         assert_eq!(
             *objects.gas_service.object_id(),
             sui::types::Address::from_static("0x8")

@@ -108,7 +108,7 @@ fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &TapRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
-    let configured = objects.default_tap_executor;
+    let configured = objects.default_dag_executor;
     if let Ok(target) = resolve_active_tap_skill_execution_target(
         registry,
         configured.agent_id,
@@ -543,7 +543,7 @@ impl WorkflowActions {
         })
     }
 
-    /// Execute a published DAG through the configured standard default TAP DAG executor.
+    /// Execute a published DAG through the configured standard default agent.
     ///
     /// The `entry_data` [`HashMap`] already holds information about the storage
     /// kind for each port.
@@ -583,7 +583,7 @@ impl WorkflowActions {
         .await
     }
 
-    /// Execute a published DAG through the configured standard default TAP DAG executor
+    /// Execute a published DAG through the configured standard default agent
     /// with explicit standard payment options.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_default_agent_dag(
@@ -773,7 +773,7 @@ impl WorkflowActions {
     /// Execute the active agent skill for `(agent_id, skill_id)`.
     ///
     /// This resolves the registered DAG from the configured TAP registry, then
-    /// calls the explicit agent workflow entry instead of the legacy default TAP entry.
+    /// calls the explicit agent workflow entry instead of the legacy default-agent entry.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_agent_dag(
         &self,
@@ -1476,7 +1476,7 @@ mod tests {
             1,
             sui::types::Digest::generate(&mut rng),
         );
-        nexus_objects.default_tap_executor = DefaultDagExecutor {
+        nexus_objects.default_dag_executor = DefaultDagExecutor {
             agent_id: default_agent,
             skill_id: default_skill_id,
         };

@@ -974,7 +974,7 @@ impl TapRegistry {
 
     pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
         self.default_executor
-            .ok_or_else(|| anyhow::anyhow!("AgentRegistry missing default TAP DAG executor"))
+            .ok_or_else(|| anyhow::anyhow!("AgentRegistry missing default agent"))
     }
 }
 
@@ -2060,7 +2060,7 @@ pub fn resolve_active_tap_skill_execution_target(
     })
 }
 
-/// Resolve the configured default TAP DAG executor from registry state.
+/// Resolve the configured default agent from registry state.
 pub fn resolve_default_tap_dag_executor(
     registry: &TapRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
@@ -2070,7 +2070,7 @@ pub fn resolve_default_tap_dag_executor(
 
     if execution_target.skill.dag_binding != TapDagBinding::RuntimeSelected {
         anyhow::bail!(
-            "default TAP skill {} for agent {} is not runtime-DAG selected",
+            "default agent skill {} for agent {} is not runtime-DAG selected",
             target.skill_id,
             target.agent_id
         );

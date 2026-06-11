@@ -31,7 +31,7 @@ pub struct NexusObjects {
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub agent_registry: sui::types::ObjectReference,
-    pub default_tap_executor: DefaultDagExecutor,
+    pub default_dag_executor: DefaultDagExecutor,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -300,7 +300,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            default_tap_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutor {
                 agent_id: sui::types::Address::generate(&mut rng),
                 skill_id: 1,
             },

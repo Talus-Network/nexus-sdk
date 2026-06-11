@@ -333,7 +333,7 @@ pub(crate) fn payment_resolve_result_json(
 }
 
 // ============================================================================
-// Registry + default-target inspection
+// Registry + default-agent inspection
 // ============================================================================
 
 pub(crate) fn registry_show_result_json(registry: &TapRegistry) -> serde_json::Value {
@@ -345,7 +345,7 @@ pub(crate) fn registry_show_result_json(registry: &TapRegistry) -> serde_json::V
     })
 }
 
-pub(crate) fn default_target_result_json(record: &DefaultDagExecutorRecord) -> serde_json::Value {
+pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> serde_json::Value {
     json!({
         "standard_tap": true,
         "agent_id": record.target.agent_id,
@@ -423,12 +423,16 @@ mod tests {
                 workflow::{PublishResult, TapExecutionSubmitMetadata},
             },
             types::{
+                DefaultDagExecutor,
                 InterfaceRevision,
+                TapDagBinding,
                 TapPaymentMode,
                 TapPaymentPolicy,
                 TapSchedulePolicy,
+                TapSkillRecord,
                 TapSkillRequirements,
                 TapSkillRevisionKey,
+                TapSkillRevisionRecord,
                 TapVertexAuthorizationPlan,
             },
         },
@@ -746,6 +750,54 @@ mod tests {
             json["agent_id"],
             serde_json::json!(sui::types::Address::from_static("0xa").to_string())
         );
+    }
+
+    // ---- registry + default-agent inspection ----
+
+    #[test]
+    fn default_agent_result_json_keeps_flat_agent_schema() {
+        let agent_id = sui::types::Address::from_static("0xad");
+        let dag_id = sui::types::Address::from_static("0xd");
+        let requirements = TapSkillRequirements {
+            input_schema_commitment: vec![1, 2, 3],
+            payment_policy: TapPaymentPolicy::default(),
+            schedule_policy: TapSchedulePolicy::default(),
+            fixed_tools: Vec::new(),
+        };
+        let record = DefaultDagExecutorRecord {
+            target: DefaultDagExecutor {
+                agent_id,
+                skill_id: 7,
+            },
+            skill: TapSkillRecord {
+                agent_id: Some(agent_id),
+                skill_id: Some(7),
+                description: b"default agent".to_vec(),
+                active: true,
+                dag_binding: TapDagBinding::pinned(dag_id),
+                requirements: requirements.clone(),
+                current_interface_revision: InterfaceRevision(3),
+                scheduled_task_count: 0,
+            },
+            skill_revision: TapSkillRevisionRecord {
+                key: TapSkillRevisionKey {
+                    agent_id,
+                    skill_id: 7,
+                    interface_revision: InterfaceRevision(3),
+                },
+                requirements,
+            },
+        };
+
+        let json = default_agent_result_json(&record);
+
+        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert_eq!(json["agent_id"], serde_json::json!(agent_id.to_string()));
+        assert_eq!(json["skill_id"], serde_json::json!(7));
+        assert_eq!(json["dag_id"], serde_json::json!(dag_id.to_string()));
+        assert_eq!(json["interface_revision"], serde_json::json!(3));
+        assert!(json.get("requirements").is_some());
+        assert!(json.get("target").is_none());
     }
 
     // ---- agent aliases ----
