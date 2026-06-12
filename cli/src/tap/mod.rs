@@ -13,8 +13,8 @@ mod tap_register_skill;
 mod tap_registry;
 mod tap_requirements;
 mod tap_scaffold;
-mod tap_schedule;
-mod tap_schedule_address_funded;
+mod tap_schedule_task;
+mod tap_scheduled_task;
 mod tap_update_skill;
 mod tap_validate_skill;
 mod tap_vault;
@@ -43,13 +43,12 @@ use {
         nexus::{
             error::NexusError,
             tap::{
+                fetch_agent_payment_vault_for_agent,
                 fetch_execution_payment_history,
-                fetch_tap_agent_payment_vault_for_agent,
                 CreateAgentResult,
                 GetSkillRequirementsResult,
                 PublishSkillResult,
                 RegisterSkillResult,
-                ScheduleSkillExecutionResult,
                 TapPackagePublishOptions,
                 UpdateSkillResult,
             },
@@ -57,10 +56,10 @@ use {
         },
         types::{
             Dag as JsonDag,
+            ExecutionPaymentReceipt,
+            SkillConfig,
             SkillId,
-            TapExecutionPaymentReceipt,
             TapPublishArtifact,
-            TapSkillConfig,
             DEFAULT_ENTRY_GROUP,
         },
     },
@@ -70,7 +69,8 @@ use {
     tap_common::{
         agent_execute_options_from_cli,
         agent_id_from_alias_or_arg,
-        decode_hex_arg,
+        ensure_cli_agent_owner,
+        ensure_cli_mutable_agent,
         read_artifact,
         schedule_policy_from_cli,
     },
@@ -98,10 +98,7 @@ use {
         registry_show_result_json,
         requirements_result_json,
         scaffold_result_json,
-        schedule_address_funded_result_json,
-        schedule_default_address_funded_result_json,
-        schedule_from_vault_result_json,
-        schedule_result_json,
+        schedule_task_result_json,
         update_skill_result_json,
         validate_skill_result_json,
         vault_balance_result_json,
@@ -113,12 +110,8 @@ use {
     tap_registry::show_registry,
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
-    tap_schedule::schedule_skill_execution,
-    tap_schedule_address_funded::{
-        schedule_address_funded,
-        schedule_default_address_funded,
-        schedule_from_vault,
-    },
+    tap_schedule_task::{schedule_tap_task, TapTaskPaymentSourceArg},
+    tap_scheduled_task::{set_scheduled_task_state, ScheduledTaskStateRequest},
     tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
@@ -341,230 +334,108 @@ pub(crate) enum TapCommand {
             default_value_t = 0u64
         )]
         payment_max_budget: u64,
-        #[arg(
-            long = "authorization-plan-hash-hex",
-            help = "Optional authorization-plan hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        authorization_plan_commitment_hex: Option<String>,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(
-        about = "Schedule a standard TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
-    )]
-    ScheduleAddressFunded {
-        #[arg(
-            long = "scheduler-task-id",
-            help = "Scheduler task object ID to attach the scheduled TAP task to.",
-            value_name = "OBJECT_ID"
-        )]
-        scheduler_task_id: sui::types::Address,
-        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
+    #[command(about = "Create a scheduled task for a TAP skill and attach TAP payment.")]
+    ScheduleTask {
+        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
         agent_id: sui::types::Address,
         #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
         skill_id: u64,
         #[arg(
-            long = "prepay-amount",
-            help = "MIST to prepay into the scheduled task.",
-            value_name = "AMOUNT"
+            long = "entry-group",
+            short = 'e',
+            help = "DAG entry group to invoke.",
+            value_name = "NAME",
+            default_value = DEFAULT_ENTRY_GROUP,
         )]
-        prepay_amount: u64,
+        entry_group: String,
         #[arg(
-            long = "refund-recipient",
-            help = "Address that receives unspent prepayment. Defaults to the signer.",
-            value_name = "ADDRESS"
+            long = "input-json",
+            short = 'i',
+            help = "Initial DAG input data as a JSON object.",
+            value_parser = ValueParser::from(parse_json_string),
+            value_name = "DATA"
         )]
+        input_json: Option<serde_json::Value>,
+        #[arg(
+            long = "remote",
+            short = 'r',
+            help = "Comma-separated {vertex}.{port} inputs to store remotely.",
+            value_delimiter = ',',
+            value_name = "VERTEX.PORT"
+        )]
+        remote: Vec<String>,
+        #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
+        metadata: Vec<String>,
+        #[arg(
+            long = "execution-priority-fee-per-gas-unit",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        execution_priority_fee_per_gas_unit: u64,
+        #[command(flatten)]
+        schedule_start: crate::scheduler::task::ScheduleStartOptions,
+        #[command(flatten)]
+        schedule_deadline: crate::scheduler::task::ScheduleDeadlineOptions,
+        #[arg(
+            long = "schedule-priority-fee-per-gas-unit",
+            value_name = "AMOUNT",
+            default_value_t = 0u64
+        )]
+        schedule_priority_fee_per_gas_unit: u64,
+        #[arg(
+            long = "generator",
+            value_enum,
+            default_value_t = crate::scheduler::task::TaskGeneratorArg::Queue,
+            value_name = "KIND"
+        )]
+        generator: crate::scheduler::task::TaskGeneratorArg,
+        #[arg(long = "payment-source", value_enum, value_name = "SOURCE")]
+        payment_source: TapTaskPaymentSourceArg,
+        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
+        prepay_amount: u64,
+        #[arg(long = "refund-recipient", value_name = "ADDRESS")]
         refund_recipient: Option<sui::types::Address>,
-        #[arg(
-            long = "occurrence-budget",
-            help = "Per-occurrence budget in MIST.",
-            value_name = "AMOUNT"
-        )]
+        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
         occurrence_budget: u64,
-        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
-        recurrence_kind: String,
-        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
-        min_interval_ms: u64,
-        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
-        max_occurrences: u64,
-        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
-        allow_recursive: bool,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Refill policy bytes as hex.",
-            value_name = "HEX"
-        )]
-        refill_policy_hex: String,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Schedule entries hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        schedule_entries_commitment_hex: String,
-        #[arg(
-            long,
-            default_value_t = 0,
-            help = "First scheduled time offset in milliseconds."
-        )]
-        first_after_ms: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
     #[command(
-        about = "Schedule a standard TAP skill, prepaid from the agent's vault, and attach it to an existing scheduler task."
+        subcommand,
+        about = "Operate an existing explicit-agent TAP scheduled task."
     )]
-    ScheduleFromVault {
-        #[arg(
-            long = "scheduler-task-id",
-            help = "Scheduler task object ID to attach the scheduled TAP task to.",
-            value_name = "OBJECT_ID"
-        )]
-        scheduler_task_id: sui::types::Address,
-        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
+    ScheduledTask(ScheduledTaskCommand),
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ScheduledTaskCommand {
+    #[command(about = "Pause a TAP scheduled task.")]
+    Pause {
+        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
+        task_id: sui::types::Address,
+        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
         agent_id: sui::types::Address,
-        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
-        skill_id: u64,
-        #[arg(
-            long = "prepay-amount",
-            help = "MIST drawn from the agent vault per occurrence prepayment.",
-            value_name = "AMOUNT"
-        )]
-        prepay_amount: u64,
-        #[arg(
-            long = "occurrence-budget",
-            help = "Per-occurrence budget in MIST.",
-            value_name = "AMOUNT"
-        )]
-        occurrence_budget: u64,
-        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
-        recurrence_kind: String,
-        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
-        min_interval_ms: u64,
-        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
-        max_occurrences: u64,
-        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
-        allow_recursive: bool,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Refill policy bytes as hex.",
-            value_name = "HEX"
-        )]
-        refill_policy_hex: String,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Schedule entries hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        schedule_entries_commitment_hex: String,
-        #[arg(
-            long,
-            default_value_t = 0,
-            help = "First scheduled time offset in milliseconds."
-        )]
-        first_after_ms: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(
-        about = "Schedule the default agent's TAP skill, prepaid from the signer's coins, and attach it to an existing scheduler task."
-    )]
-    ScheduleDefaultAddressFunded {
-        #[arg(
-            long = "scheduler-task-id",
-            help = "Scheduler task object ID to attach the scheduled TAP task to.",
-            value_name = "OBJECT_ID"
-        )]
-        scheduler_task_id: sui::types::Address,
-        #[arg(
-            long = "prepay-amount",
-            help = "MIST to prepay into the scheduled task.",
-            value_name = "AMOUNT"
-        )]
-        prepay_amount: u64,
-        #[arg(
-            long = "refund-recipient",
-            help = "Address that receives unspent prepayment. Defaults to the signer.",
-            value_name = "ADDRESS"
-        )]
-        refund_recipient: Option<sui::types::Address>,
-        #[arg(
-            long = "occurrence-budget",
-            help = "Per-occurrence budget in MIST.",
-            value_name = "AMOUNT"
-        )]
-        occurrence_budget: u64,
-        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
-        recurrence_kind: String,
-        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
-        min_interval_ms: u64,
-        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
-        max_occurrences: u64,
-        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
-        allow_recursive: bool,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Refill policy bytes as hex.",
-            value_name = "HEX"
-        )]
-        refill_policy_hex: String,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Schedule entries hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        schedule_entries_commitment_hex: String,
-        #[arg(
-            long,
-            default_value_t = 0,
-            help = "First scheduled time offset in milliseconds."
-        )]
-        first_after_ms: u64,
+    #[command(about = "Resume a TAP scheduled task.")]
+    Resume {
+        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
+        task_id: sui::types::Address,
+        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
+        agent_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Schedule a standard TAP skill execution.")]
-    Schedule {
-        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
+    #[command(about = "Cancel a TAP scheduled task.")]
+    Cancel {
+        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
+        task_id: sui::types::Address,
+        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
         agent_id: sui::types::Address,
-        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
-        skill_id: u64,
-        #[arg(long, help = "Long-term gas coin ID.", value_name = "OBJECT_ID")]
-        long_term_gas_coin_id: sui::types::Address,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Refill policy bytes as hex.",
-            value_name = "HEX"
-        )]
-        refill_policy_hex: String,
-        #[arg(
-            long,
-            default_value = "",
-            help = "Schedule entries hash bytes as hex.",
-            value_name = "HEX"
-        )]
-        schedule_entries_commitment_hex: String,
-        #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
-        recurrence_kind: String,
-        #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
-        min_interval_ms: u64,
-        #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
-        max_occurrences: u64,
-        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
-        allow_recursive: bool,
-        #[arg(
-            long,
-            default_value_t = 0,
-            help = "First scheduled time offset in milliseconds."
-        )]
-        first_after_ms: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -799,7 +670,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             priority_fee_per_gas_unit,
             payment_source_hex,
             payment_max_budget,
-            authorization_plan_commitment_hex,
             gas,
         } => {
             execute_agent_dag_skill(
@@ -811,140 +681,84 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 priority_fee_per_gas_unit,
                 payment_source_hex,
                 payment_max_budget,
-                authorization_plan_commitment_hex,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
             .await
         }
-        TapCommand::Schedule {
+        TapCommand::ScheduleTask {
             agent_id,
             skill_id,
-            long_term_gas_coin_id,
-            refill_policy_hex,
-            schedule_entries_commitment_hex,
-            recurrence_kind,
-            min_interval_ms,
-            max_occurrences,
-            allow_recursive,
-            first_after_ms,
-            gas,
-        } => {
-            schedule_skill_execution(
-                agent_id,
-                skill_id,
-                long_term_gas_coin_id,
-                refill_policy_hex,
-                schedule_entries_commitment_hex,
-                recurrence_kind,
-                min_interval_ms,
-                max_occurrences,
-                allow_recursive,
-                first_after_ms,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
-        TapCommand::ScheduleAddressFunded {
-            scheduler_task_id,
-            agent_id,
-            skill_id,
+            entry_group,
+            input_json,
+            remote,
+            metadata,
+            execution_priority_fee_per_gas_unit,
+            schedule_start,
+            schedule_deadline,
+            schedule_priority_fee_per_gas_unit,
+            generator,
+            payment_source,
             prepay_amount,
             refund_recipient,
             occurrence_budget,
-            recurrence_kind,
-            min_interval_ms,
-            max_occurrences,
-            allow_recursive,
-            refill_policy_hex,
-            schedule_entries_commitment_hex,
-            first_after_ms,
             gas,
         } => {
-            schedule_address_funded(
-                scheduler_task_id,
+            let crate::scheduler::task::ScheduleStartOptions {
+                schedule_start_ms,
+                schedule_start_offset_ms,
+            } = schedule_start;
+            let crate::scheduler::task::ScheduleDeadlineOptions {
+                schedule_deadline_offset_ms,
+            } = schedule_deadline;
+            schedule_tap_task(
                 agent_id,
                 skill_id,
+                entry_group,
+                input_json,
+                remote,
+                metadata,
+                execution_priority_fee_per_gas_unit,
+                schedule_start_ms,
+                schedule_start_offset_ms,
+                schedule_deadline_offset_ms,
+                schedule_priority_fee_per_gas_unit,
+                generator.into(),
+                payment_source,
                 prepay_amount,
                 refund_recipient,
                 occurrence_budget,
-                recurrence_kind,
-                min_interval_ms,
-                max_occurrences,
-                allow_recursive,
-                refill_policy_hex,
-                schedule_entries_commitment_hex,
-                first_after_ms,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
             .await
         }
-        TapCommand::ScheduleFromVault {
-            scheduler_task_id,
-            agent_id,
-            skill_id,
-            prepay_amount,
-            occurrence_budget,
-            recurrence_kind,
-            min_interval_ms,
-            max_occurrences,
-            allow_recursive,
-            refill_policy_hex,
-            schedule_entries_commitment_hex,
-            first_after_ms,
-            gas,
-        } => {
-            schedule_from_vault(
-                scheduler_task_id,
+        TapCommand::ScheduledTask(command) => match command {
+            ScheduledTaskCommand::Pause {
+                task_id,
                 agent_id,
-                skill_id,
-                prepay_amount,
-                occurrence_budget,
-                recurrence_kind,
-                min_interval_ms,
-                max_occurrences,
-                allow_recursive,
-                refill_policy_hex,
-                schedule_entries_commitment_hex,
-                first_after_ms,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
-        TapCommand::ScheduleDefaultAddressFunded {
-            scheduler_task_id,
-            prepay_amount,
-            refund_recipient,
-            occurrence_budget,
-            recurrence_kind,
-            min_interval_ms,
-            max_occurrences,
-            allow_recursive,
-            refill_policy_hex,
-            schedule_entries_commitment_hex,
-            first_after_ms,
-            gas,
-        } => {
-            schedule_default_address_funded(
-                scheduler_task_id,
-                prepay_amount,
-                refund_recipient,
-                occurrence_budget,
-                recurrence_kind,
-                min_interval_ms,
-                max_occurrences,
-                allow_recursive,
-                refill_policy_hex,
-                schedule_entries_commitment_hex,
-                first_after_ms,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
+                gas,
+            } => {
+                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Pause)
+                    .await
+            }
+            ScheduledTaskCommand::Resume {
+                task_id,
+                agent_id,
+                gas,
+            } => {
+                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Resume)
+                    .await
+            }
+            ScheduledTaskCommand::Cancel {
+                task_id,
+                agent_id,
+                gas,
+            } => {
+                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Cancel)
+                    .await
+            }
+        },
     }
 }
 
@@ -956,9 +770,9 @@ mod tests {
         assert_matches::assert_matches,
         nexus_sdk::types::{
             InterfaceRevision,
-            TapPaymentPolicy,
-            TapSchedulePolicy,
-            TapSkillRequirements,
+            SkillPaymentPolicy,
+            SkillRequirements,
+            SkillSchedulePolicy,
         },
         std::ffi::OsString,
     };
@@ -1008,15 +822,13 @@ mod tests {
     }
 
     fn test_artifact() -> TapPublishArtifact {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(1),
@@ -1208,7 +1020,6 @@ mod tests {
             priority_fee_per_gas_unit: 0,
             payment_source_hex: "0xinvalid".to_string(),
             payment_max_budget: 0,
-            authorization_plan_commitment_hex: None,
             gas: gas_args(),
         })
         .await
@@ -1216,25 +1027,6 @@ mod tests {
         assert!(execute_error
             .to_string()
             .contains("invalid payment-source hex"));
-
-        let schedule_error = handle(TapCommand::Schedule {
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            long_term_gas_coin_id: sui::types::Address::from_static("0xc"),
-            refill_policy_hex: String::new(),
-            schedule_entries_commitment_hex: String::new(),
-            recurrence_kind: "once".to_string(),
-            min_interval_ms: 0,
-            max_occurrences: 1,
-            allow_recursive: false,
-            first_after_ms: 0,
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("schedule dispatch reaches missing RPC");
-        assert!(schedule_error
-            .to_string()
-            .contains("Sui RPC URL is not configured"));
 
         let vault_deposit_error = handle(TapCommand::Vault(VaultCommand::Deposit {
             alias: None,
@@ -1245,69 +1037,6 @@ mod tests {
         .await
         .expect_err("vault deposit dispatch reaches missing RPC");
         assert!(vault_deposit_error
-            .to_string()
-            .contains("Sui RPC URL is not configured"));
-
-        let schedule_address_funded_error = handle(TapCommand::ScheduleAddressFunded {
-            scheduler_task_id: sui::types::Address::from_static("0x66"),
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            prepay_amount: 100,
-            refund_recipient: None,
-            occurrence_budget: 100,
-            recurrence_kind: "once".to_string(),
-            min_interval_ms: 0,
-            max_occurrences: 1,
-            allow_recursive: false,
-            refill_policy_hex: String::new(),
-            schedule_entries_commitment_hex: String::new(),
-            first_after_ms: 0,
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("schedule-address-funded dispatch reaches missing RPC");
-        assert!(schedule_address_funded_error
-            .to_string()
-            .contains("Sui RPC URL is not configured"));
-
-        let schedule_from_vault_error = handle(TapCommand::ScheduleFromVault {
-            scheduler_task_id: sui::types::Address::from_static("0x66"),
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            prepay_amount: 100,
-            occurrence_budget: 100,
-            recurrence_kind: "once".to_string(),
-            min_interval_ms: 0,
-            max_occurrences: 1,
-            allow_recursive: false,
-            refill_policy_hex: String::new(),
-            schedule_entries_commitment_hex: String::new(),
-            first_after_ms: 0,
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("schedule-from-vault dispatch reaches missing RPC");
-        assert!(schedule_from_vault_error
-            .to_string()
-            .contains("Sui RPC URL is not configured"));
-
-        let schedule_default_error = handle(TapCommand::ScheduleDefaultAddressFunded {
-            scheduler_task_id: sui::types::Address::from_static("0x66"),
-            prepay_amount: 100,
-            refund_recipient: None,
-            occurrence_budget: 100,
-            recurrence_kind: "once".to_string(),
-            min_interval_ms: 0,
-            max_occurrences: 1,
-            allow_recursive: false,
-            refill_policy_hex: String::new(),
-            schedule_entries_commitment_hex: String::new(),
-            first_after_ms: 0,
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("schedule-default-address-funded dispatch reaches missing RPC");
-        assert!(schedule_default_error
             .to_string()
             .contains("Sui RPC URL is not configured"));
     }
@@ -1366,15 +1095,13 @@ mod tests {
 
     #[test]
     fn update_skill_result_exposes_skill_update_revision() {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(1),
@@ -1390,7 +1117,7 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 current_interface_revision: InterfaceRevision(3),
-                dag_binding: nexus_sdk::types::TapDagBinding::pinned(artifact.dag_id),
+                dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
                 requirements: artifact.requirements.clone(),
             },
         );
@@ -1403,15 +1130,13 @@ mod tests {
     #[tokio::test]
     async fn validate_skill_rejects_missing_tap_package() {
         let tempdir = tempfile::tempdir().unwrap().keep();
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "bad".to_string(),
-            tap_package_name: "bad_tap".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("missing-tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(1),
@@ -1465,15 +1190,16 @@ mod tests {
             root.join("tap/Move.toml"),
             r#"[package]
 name = "other_tap"
-edition = "2024.beta"
+version = "1.0.0"
+edition = "2024"
 
 [dependencies]
 nexus_interface = { local = "../../nexus/sui/interface" }
 nexus_workflow = { local = "../../nexus/sui/workflow" }
 nexus_primitives = { local = "../../nexus/sui/primitives" }
 
-[addresses]
-weather_skill = "0x0"
+[environments]
+testnet = "00000000"
 "#,
         )
         .await
@@ -1483,7 +1209,9 @@ weather_skill = "0x0"
             .await
             .expect_err("package name mismatch must fail validation");
         assert!(
-            error.to_string().contains("package.name='other_tap'"),
+            error.to_string().contains(
+                "TAP package 'other_tap' has no source file declaring `module other_tap::...;`"
+            ),
             "unexpected error: {error}"
         );
     }
@@ -1569,17 +1297,9 @@ public struct WeatherSkill has drop {}
     #[test]
     fn validate_tap_package_manifest_rejects_unreadable_and_invalid_inputs() {
         let tempdir = tempfile::tempdir().unwrap().keep();
-        let config = TapSkillConfig {
-            name: "weather skill".to_string(),
-            tap_package_name: "weather_skill".to_string(),
-            dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements::default(),
-            interface_revision: InterfaceRevision(1),
-        };
 
         let missing = tempdir.join("missing/Move.toml");
-        let error = validate_tap_package_manifest(&missing, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&missing).unwrap_err();
         assert!(
             error
                 .to_string()
@@ -1589,7 +1309,7 @@ public struct WeatherSkill has drop {}
 
         let invalid = tempdir.join("invalid.toml");
         std::fs::write(&invalid, "[package\n").unwrap();
-        let error = validate_tap_package_manifest(&invalid, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&invalid).unwrap_err();
         assert!(
             error
                 .to_string()
@@ -1599,7 +1319,7 @@ public struct WeatherSkill has drop {}
 
         let no_package_name = tempdir.join("no-name.toml");
         std::fs::write(&no_package_name, "[package]\nedition = \"2024\"\n").unwrap();
-        let error = validate_tap_package_manifest(&no_package_name, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&no_package_name).unwrap_err();
         assert!(
             error.to_string().contains("missing [package].name"),
             "unexpected error: {error}"
@@ -1614,7 +1334,7 @@ public struct WeatherSkill has drop {}
             "[package]\nname = \"weather_skill\"\nedition = \"2024\"\n[environments]\nlocalnet = \"6c457631\"\n",
         )
         .unwrap();
-        let error = validate_tap_package_manifest(&no_version, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&no_version).unwrap_err();
         assert!(
             error.to_string().contains("[package].version"),
             "unexpected error: {error}"
@@ -1628,7 +1348,7 @@ public struct WeatherSkill has drop {}
             "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024.beta\"\n[environments]\nlocalnet = \"6c457631\"\n",
         )
         .unwrap();
-        let error = validate_tap_package_manifest(&beta_edition, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&beta_edition).unwrap_err();
         assert!(
             error.to_string().contains("edition = \"2024.beta\""),
             "unexpected error: {error}"
@@ -1642,7 +1362,7 @@ public struct WeatherSkill has drop {}
             "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[addresses]\nweather_skill = \"0x0\"\n[environments]\nlocalnet = \"6c457631\"\n",
         )
         .unwrap();
-        let error = validate_tap_package_manifest(&with_addresses, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&with_addresses).unwrap_err();
         assert!(
             error.to_string().contains("[addresses]"),
             "unexpected error: {error}"
@@ -1656,7 +1376,7 @@ public struct WeatherSkill has drop {}
             "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n",
         )
         .unwrap();
-        let error = validate_tap_package_manifest(&no_environments, &config).unwrap_err();
+        let error = validate_tap_package_manifest(&no_environments).unwrap_err();
         assert!(
             error.to_string().contains("[environments]"),
             "unexpected error: {error}"
@@ -1669,21 +1389,15 @@ public struct WeatherSkill has drop {}
             "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[environments]\nlocalnet = \"6c457631\"\n",
         )
         .unwrap();
-        validate_tap_package_manifest(&valid, &config)
+        let package_name = validate_tap_package_manifest(&valid)
             .expect("complete new-style manifest must validate");
+        assert_eq!(package_name, "weather_skill");
     }
 
     #[test]
     fn collect_and_validate_tap_package_sources_cover_directory_edges() {
         let tempdir = tempfile::tempdir().unwrap().keep();
-        let config = TapSkillConfig {
-            name: "weather skill".to_string(),
-            tap_package_name: "weather_skill".to_string(),
-            dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements::default(),
-            interface_revision: InterfaceRevision(1),
-        };
+        let package_name = "weather_skill";
 
         let missing_root = tempdir.join("missing");
         let error = collect_move_source_files(&missing_root).unwrap_err();
@@ -1695,7 +1409,7 @@ public struct WeatherSkill has drop {}
         );
 
         let tap_package = tempdir.join("tap");
-        let error = validate_tap_package_sources(&tap_package, &config).unwrap_err();
+        let error = validate_tap_package_sources(&tap_package, package_name).unwrap_err();
         assert!(
             error.to_string().contains("does not exist"),
             "unexpected error: {error}"
@@ -1704,7 +1418,7 @@ public struct WeatherSkill has drop {}
         let sources = tap_package.join("sources");
         std::fs::create_dir_all(sources.join("nested")).unwrap();
         std::fs::write(sources.join("README.md"), "not move").unwrap();
-        let error = validate_tap_package_sources(&tap_package, &config).unwrap_err();
+        let error = validate_tap_package_sources(&tap_package, package_name).unwrap_err();
         assert!(
             error.to_string().contains("has no Move source files"),
             "unexpected error: {error}"
@@ -1719,22 +1433,20 @@ public struct WeatherSkill has drop {}
         assert!(files
             .iter()
             .any(|path| path.ends_with("nested/weather.move")));
-        validate_tap_package_sources(&tap_package, &config).unwrap();
+        validate_tap_package_sources(&tap_package, package_name).unwrap();
     }
 
     #[tokio::test]
     async fn read_artifact_and_agent_alias_helpers_cover_success_and_errors() {
         let tempdir = tempfile::tempdir().unwrap().keep();
         let artifact_path = tempdir.join("artifact.json");
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(1),
@@ -1792,22 +1504,18 @@ public struct WeatherSkill has drop {}
     }
 
     #[test]
-    fn agent_execute_options_decode_payment_and_authorization_args() {
+    fn agent_execute_options_decode_payment_args() {
         let options =
-            agent_execute_options_from_cli("0x0102".to_string(), 99, Some("0x0908".to_string()))
-                .expect("valid options");
+            agent_execute_options_from_cli("0x0102".to_string(), 99).expect("valid options");
 
         assert_eq!(options.payment_source, vec![1, 2]);
         assert_eq!(options.payment_max_budget, 99);
-        assert_eq!(options.authorization_plan_commitment, Some(vec![9, 8]));
     }
 
     #[test]
-    fn agent_execute_options_accept_empty_optional_authorization_hash() {
-        let options = agent_execute_options_from_cli(String::new(), 0, Some(String::new()))
-            .expect("valid defaults");
+    fn agent_execute_options_accept_empty_payment_source() {
+        let options = agent_execute_options_from_cli(String::new(), 0).expect("valid defaults");
 
         assert_eq!(options.payment_source, Vec::<u8>::new());
-        assert_eq!(options.authorization_plan_commitment, None);
     }
 }

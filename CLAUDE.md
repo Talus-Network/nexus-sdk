@@ -67,7 +67,7 @@ Sibling repos checked out next to this one (paths depend on local layout):
 - **High-level actions** live in `sdk/src/nexus/<area>.rs`. Each action takes
   `&self` on the `*Actions` struct (held by `NexusClient`), submits via the
   shared signer/gas/crawler, and returns a typed `*Result` struct. Free-
-  function `fetch_*` helpers (e.g. `fetch_tap_registry`) live in the same
+  function `fetch_*` helpers (e.g. `fetch_registry`) live in the same
   file when they're useful without a full client.
 - **PTB builders** live in `sdk/src/transactions/<area>.rs` and take
   `&mut TransactionBuilder` plus `&NexusObjects`. They never read from the
@@ -85,6 +85,7 @@ Sibling repos checked out next to this one (paths depend on local layout):
 - **ID derivation** uses `derive_tool_id`, `derive_tool_gas_id`,
   `derive_walk_execution_event_task_id`, etc. Never reimplement the
   ascii-string / BCS-blake2b derivation in shell or Python.
+- **Struct reuse comes before new structs.** Before adding any new Rust struct, inspect the existing structs in the related SDK/CLI/type module and confirm that none of them, and no reasonable modification of them, can satisfy the new purpose. If a new struct is still necessary, add a short doc comment or nearby comment that states exactly what is missing from the closest existing struct and why modifying that existing struct would be wrong.
 
 ## CLI conventions
 

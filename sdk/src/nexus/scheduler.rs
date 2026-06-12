@@ -3,7 +3,7 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::{scheduler, sui_framework, workflow},
+        idents::{scheduler, sui_framework, tap, workflow},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, DynamicMap, Response},
@@ -14,8 +14,8 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{
             deserialize_sui_u64,
-            AgentExecutionConfig,
             AgentId,
+            AgentVertexAuthorizationTemplate,
             DagExecutionConfig,
             DataStorage,
             MoveFields,
@@ -23,7 +23,6 @@ use {
             NexusObjects,
             PolicySymbol,
             SkillId,
-            TapScheduledTaskLink,
             Task,
             TransitionConfigKey,
         },
@@ -35,7 +34,7 @@ use {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ScheduledAgentExecutionConfig {
     Default(DagExecutionConfig),
-    Registered(AgentExecutionConfig),
+    Registered(DagExecutionConfig),
 }
 
 impl ScheduledAgentExecutionConfig {
@@ -53,7 +52,7 @@ pub struct SchedulerActions {
     pub(super) client: NexusClient,
 }
 
-/// Supported generator types for a scheduler task.
+/// Supported generator types for a scheduled task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GeneratorKind {
     Queue,
@@ -69,7 +68,7 @@ impl From<GeneratorKind> for scheduler_tx::OccurrenceGenerator {
     }
 }
 
-/// Parameters required to create a scheduler task.
+/// Parameters required to create a scheduled task.
 pub struct CreateTaskParams {
     pub dag_id: sui::types::Address,
     pub entry_group: String,
@@ -85,13 +84,45 @@ pub struct CreateTaskParams {
     /// neither; supplying just one is rejected with `NexusError::Configuration`.
     pub agent_id: Option<AgentId>,
     pub skill_id: Option<SkillId>,
+    pub tap_payment: Option<CreateTaskTapPayment>,
 }
 
-/// Result returned after creating a scheduler task.
+#[derive(Clone, Debug)]
+pub enum CreateTaskTapPayment {
+    AddressFunded {
+        prepay_amount: u64,
+        refund_recipient: Option<sui::types::Address>,
+        occurrence_budget: u64,
+        selected_dag: Option<sui::types::Address>,
+        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
+    },
+    AgentVault {
+        prepay_amount: u64,
+        occurrence_budget: u64,
+        selected_dag: Option<sui::types::Address>,
+        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
+    },
+    DefaultAddressFunded {
+        prepay_amount: u64,
+        refund_recipient: Option<sui::types::Address>,
+        occurrence_budget: u64,
+    },
+}
+
+/// Result returned after creating a scheduled task.
 pub struct CreateTaskResult {
     pub tx_digest: sui::types::Digest,
     pub task_id: sui::types::Address,
     pub initial_schedule: Option<ScheduleExecutionResult>,
+    pub tap_payment: Option<CreateTaskTapPaymentResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CreateTaskTapPaymentResult {
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub prepay_amount: u64,
+    pub occurrence_budget: u64,
 }
 
 /// Result returned after enqueuing an occurrence.
@@ -173,49 +204,64 @@ pub struct TaskStateResult {
     pub state: TaskStateAction,
 }
 
-/// Fetch the TAP scheduled-task link stored under a scheduler task data bag.
-///
-/// This is the SDK-owned decode boundary used by the leader during scheduled
-/// occurrence recovery. Callers should not parse the task data bag locally.
-pub async fn fetch_task_tap_scheduled_task_link(
-    crawler: &Crawler,
-    task: &Response<Task>,
-) -> anyhow::Result<TapScheduledTaskLink> {
-    let mut links = select_tap_scheduled_task_links(
-        crawler
-            .get_dynamic_field_values_bcs::<TapScheduledTaskLink>(task.data.data.id())
-            .await?,
-    );
-    match links.len() {
-        1 => Ok(links.remove(0)),
-        0 => bail!(
-            "scheduler task '{}' has no TAP scheduled-task link",
-            task.object_id
-        ),
-        count => bail!(
-            "scheduler task '{}' has {count} TAP scheduled-task links",
-            task.object_id
-        ),
+fn create_task_payment_result(
+    tap_payment: &Option<CreateTaskTapPayment>,
+    agent_binding: Option<(AgentId, SkillId)>,
+    objects: &NexusObjects,
+) -> Result<Option<CreateTaskTapPaymentResult>, NexusError> {
+    let Some(tap_payment) = tap_payment else {
+        return Ok(None);
+    };
+
+    match tap_payment {
+        CreateTaskTapPayment::AddressFunded {
+            prepay_amount,
+            occurrence_budget,
+            ..
+        }
+        | CreateTaskTapPayment::AgentVault {
+            prepay_amount,
+            occurrence_budget,
+            ..
+        } => {
+            let Some((agent_id, skill_id)) = agent_binding else {
+                return Err(NexusError::Configuration(
+                    "agent scheduled payment requires both scheduled task agent_id and skill_id"
+                        .into(),
+                ));
+            };
+
+            Ok(Some(CreateTaskTapPaymentResult {
+                agent_id,
+                skill_id,
+                prepay_amount: *prepay_amount,
+                occurrence_budget: *occurrence_budget,
+            }))
+        }
+        CreateTaskTapPayment::DefaultAddressFunded {
+            prepay_amount,
+            occurrence_budget,
+            ..
+        } => {
+            if agent_binding.is_some() {
+                return Err(NexusError::Configuration(
+                    "default scheduled payment cannot be used with scheduled task agent_id or skill_id"
+                        .into(),
+                ));
+            }
+
+            Ok(Some(CreateTaskTapPaymentResult {
+                agent_id: objects.default_dag_executor.agent_id,
+                skill_id: objects.default_dag_executor.skill_id,
+                prepay_amount: *prepay_amount,
+                occurrence_budget: *occurrence_budget,
+            }))
+        }
     }
 }
 
-fn select_tap_scheduled_task_links(
-    values: Vec<(Option<String>, TapScheduledTaskLink)>,
-) -> Vec<TapScheduledTaskLink> {
-    values
-        .into_iter()
-        .filter_map(|(value_type, link)| {
-            let is_link = value_type
-                .as_deref()
-                .map(|value_type| value_type.ends_with("::scheduler::TapScheduledTaskLink"))
-                .unwrap_or(true);
-            is_link.then_some(link)
-        })
-        .collect()
-}
-
 impl SchedulerActions {
-    /// Create a scheduler task and optionally enqueue its first occurrence.
+    /// Create a scheduled task and optionally enqueue its first occurrence.
     pub async fn create_task(
         &self,
         params: CreateTaskParams,
@@ -230,20 +276,80 @@ impl SchedulerActions {
             generator,
             agent_id,
             skill_id,
+            tap_payment,
         } = params;
         let agent_binding = match (agent_id, skill_id) {
             (Some(agent_id), Some(skill_id)) => Some((agent_id, skill_id)),
             (None, None) => None,
             _ => {
                 return Err(NexusError::Configuration(
-                    "Scheduler task agent_id and skill_id must both be set or both be unset".into(),
+                    "Scheduled task agent_id and skill_id must both be set or both be unset".into(),
                 ));
             }
         };
+        if let Some((agent_id, skill_id)) = agent_binding {
+            let payment = match tap_payment {
+                Some(CreateTaskTapPayment::AddressFunded {
+                    prepay_amount,
+                    refund_recipient,
+                    occurrence_budget,
+                    selected_dag,
+                    authorization_templates,
+                }) => crate::nexus::tap::AgentTaskPayment::AddressFunded {
+                    prepay_amount,
+                    refund_recipient,
+                    occurrence_budget,
+                    selected_dag,
+                    authorization_templates,
+                },
+                Some(CreateTaskTapPayment::AgentVault {
+                    prepay_amount,
+                    occurrence_budget,
+                    selected_dag,
+                    authorization_templates,
+                }) => crate::nexus::tap::AgentTaskPayment::AgentVault {
+                    prepay_amount,
+                    occurrence_budget,
+                    selected_dag,
+                    authorization_templates,
+                },
+                Some(CreateTaskTapPayment::DefaultAddressFunded { .. }) => {
+                    return Err(NexusError::Configuration(
+                        "default scheduled payment cannot be used with scheduled task agent_id or skill_id"
+                            .into(),
+                    ));
+                }
+                None => {
+                    return Err(NexusError::Configuration(
+                        "agent-bound scheduled tasks require an invoker-funded or agent-funded scheduled payment"
+                            .into(),
+                    ));
+                }
+            };
+
+            return self
+                .client
+                .tap()
+                .create_agent_task(crate::nexus::tap::CreateAgentTaskParams {
+                    dag_id,
+                    entry_group,
+                    input_data,
+                    metadata,
+                    execution_priority_fee_per_gas_unit,
+                    initial_schedule: initial_schedule_request,
+                    generator,
+                    agent_id,
+                    skill_id,
+                    payment,
+                })
+                .await;
+        }
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let tap_payment_result =
+            create_task_payment_result(&tap_payment, agent_binding, &self.client.nexus_objects)?;
 
         let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
             .map_err(NexusError::TransactionBuilding)?;
@@ -262,8 +368,6 @@ impl SchedulerActions {
                 &input_data,
                 agent_id,
                 skill_id,
-                None,
-                &[],
             )
             .map_err(NexusError::TransactionBuilding)?
         } else {
@@ -278,13 +382,60 @@ impl SchedulerActions {
             .map_err(NexusError::TransactionBuilding)?
         };
 
-        let task = scheduler_tx::new_task(
-            &mut tx,
-            objects,
-            metadata_arg,
-            constraints_arg,
-            execution_arg,
-        )
+        let registry = tx.object(sui::tx::ObjectInput::shared(
+            *objects.agent_registry.object_id(),
+            objects.agent_registry.version(),
+            true,
+        ));
+        let task = match &tap_payment {
+            Some(CreateTaskTapPayment::DefaultAddressFunded {
+                prepay_amount,
+                occurrence_budget,
+                ..
+            }) => {
+                let prepay_amount = tx.pure(prepay_amount);
+                let gas = tx.gas();
+                let prepayment_coin = tx
+                    .split_coins(gas, vec![prepay_amount])
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| {
+                        NexusError::TransactionBuilding(anyhow!(
+                            "failed to split default scheduled prepayment coin"
+                        ))
+                    })?;
+                scheduler_tx::new_invoker_funded_default_agent_task(
+                    &mut tx,
+                    objects,
+                    metadata_arg,
+                    constraints_arg,
+                    execution_arg,
+                    registry,
+                    prepayment_coin,
+                    *occurrence_budget,
+                )
+            }
+            Some(CreateTaskTapPayment::AddressFunded { .. }) => {
+                return Err(NexusError::Configuration(
+                    "address-funded scheduled payment requires both scheduled task agent_id and skill_id"
+                        .into(),
+                ));
+            }
+            Some(CreateTaskTapPayment::AgentVault { .. }) => {
+                return Err(NexusError::Configuration(
+                    "agent-vault scheduled payment requires both scheduled task agent_id and skill_id"
+                        .into(),
+                ));
+            }
+            None => scheduler_tx::new_default_agent_task(
+                &mut tx,
+                objects,
+                metadata_arg,
+                constraints_arg,
+                execution_arg,
+                registry,
+            ),
+        }
         .map_err(NexusError::TransactionBuilding)?;
 
         let task_type =
@@ -347,6 +498,7 @@ impl SchedulerActions {
             tx_digest: response.digest,
             task_id,
             initial_schedule: initial_schedule_result,
+            tap_payment: tap_payment_result,
         })
     }
 
@@ -574,7 +726,7 @@ impl SchedulerActions {
         })
     }
 
-    async fn enqueue_occurrence(
+    pub(crate) async fn enqueue_occurrence(
         &self,
         task: &Response<Task>,
         request: OccurrenceRequest,
@@ -641,7 +793,10 @@ impl SchedulerActions {
         })
     }
 
-    async fn fetch_task(&self, task_id: sui::types::Address) -> Result<Response<Task>, NexusError> {
+    pub(crate) async fn fetch_task(
+        &self,
+        task_id: sui::types::Address,
+    ) -> Result<Response<Task>, NexusError> {
         self.client
             .crawler()
             .get_object::<Task>(task_id)
@@ -769,7 +924,7 @@ fn extract_scheduled_agent_execution_config(
     }
 
     let expected_config =
-        workflow::Dag::AGENT_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
+        tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(objects.interface_pkg_id);
     let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
@@ -788,19 +943,25 @@ fn extract_scheduled_agent_execution_config(
         );
     };
 
-    let MoveFields(config): MoveFields<AgentExecutionConfig> = serde_json::from_value(value)?;
+    let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
     Ok(ScheduledAgentExecutionConfig::Registered(config))
 }
 
-fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address, NexusError> {
+pub(crate) fn extract_task_id(
+    response: &ExecutedTransaction,
+) -> Result<sui::types::Address, NexusError> {
     response
         .events
         .iter()
         .find_map(|event| match &event.data {
-            NexusEventKind::TaskCreated(e) => Some(e.task),
+            NexusEventKind::ScheduledSkillExecutionCreated(e) => Some(e.task),
             _ => None,
         })
-        .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreatedEvent not found in response")))
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow!(
+                "ScheduledSkillExecutionCreatedEvent not found in response"
+            ))
+        })
 }
 
 fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEventKind> {
@@ -886,7 +1047,7 @@ mod tests {
                 NexusEventKind,
                 OccurrenceScheduledEvent,
                 RequestScheduledOccurrenceEvent,
-                TaskCreatedEvent,
+                ScheduledSkillExecutionCreatedEvent,
             },
             nexus::{
                 client::NexusClient,
@@ -990,6 +1151,9 @@ mod tests {
         let task = Task {
             id: task_id,
             owner,
+            agent_id: sui::types::Address::from_static("0xa11ce"),
+            skill_id: 7,
+            interface_version: crate::types::InterfaceRevision(1),
             metadata,
             constraints,
             execution,
@@ -1093,10 +1257,18 @@ mod tests {
             NexusEventKind::OccurrenceScheduled(ev) => {
                 bcs::to_bytes(&Wrapper { event: ev }).unwrap()
             }
-            NexusEventKind::TaskCreated(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
-            NexusEventKind::TaskPaused(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
-            NexusEventKind::TaskResumed(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
-            NexusEventKind::TaskCanceled(ev) => bcs::to_bytes(&Wrapper { event: ev }).unwrap(),
+            NexusEventKind::ScheduledSkillExecutionCreated(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
+            NexusEventKind::ScheduledSkillExecutionPaused(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
+            NexusEventKind::ScheduledSkillExecutionResumed(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
+            NexusEventKind::ScheduledSkillExecutionCanceled(ev) => {
+                bcs::to_bytes(&Wrapper { event: ev }).unwrap()
+            }
             _ => bcs::to_bytes(&Wrapper { event: &kind }).unwrap(),
         };
 
@@ -1203,7 +1375,7 @@ mod tests {
         let events = vec![event_bcs(
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
-            NexusEventKind::TaskCreated(TaskCreatedEvent {
+            NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: task_id,
                 owner,
             }),
@@ -1238,6 +1410,7 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
+            tap_payment: None,
         };
 
         let result = nexus_client
@@ -1272,7 +1445,7 @@ mod tests {
         let creation_events = vec![event_bcs(
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
-            NexusEventKind::TaskCreated(TaskCreatedEvent {
+            NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: task_id,
                 owner,
             }),
@@ -1352,6 +1525,7 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
+            tap_payment: None,
         };
 
         let result = nexus_client
@@ -1371,17 +1545,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_agent_bound_branch_builds_through_agent_execution_policy() {
-        // Happy path for the agent-bound branch of `create_task`. When both
-        // `agent_id` and `skill_id` are supplied, the PTB must route through
-        // `transactions::scheduler::new_agent_execution_policy` (which embeds
-        // a `BeginAgentExecutionWitness` symbol) rather than the default
-        // DAG-bound `new_execution_policy`. The mock server is configured to
-        // accept exactly one `execute_transaction` round-trip with a forged
-        // `TaskCreatedEvent`; if the SDK builds an invalid PTB or fails to
-        // call `new_agent_execution_policy`, finish/sign fails before the
-        // mock is hit and the test errors out instead of returning the
-        // expected `task_id`.
+    async fn create_task_agent_bound_branch_delegates_to_tap_action() {
+        // Compatibility path for agent-bound task creation. The scheduler
+        // action delegates explicit-agent requests to the TAP action, which
+        // owns the agent/skill/payment creation semantics.
         let mut rng = rand::thread_rng();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -1397,16 +1564,24 @@ mod tests {
         let task_id = sui::types::Address::generate(&mut rng);
         let dag_id = sui::types::Address::generate(&mut rng);
         let agent_id = sui::types::Address::generate(&mut rng);
+        let agent_ref =
+            sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
 
         let events = vec![event_bcs(
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
-            NexusEventKind::TaskCreated(TaskCreatedEvent {
+            NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: task_id,
                 owner,
             }),
         )];
 
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            agent_ref,
+            sui::types::Owner::Shared(2),
+            None,
+        );
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
@@ -1436,6 +1611,13 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: Some(agent_id),
             skill_id: Some(3),
+            tap_payment: Some(CreateTaskTapPayment::AddressFunded {
+                prepay_amount: 100,
+                refund_recipient: None,
+                occurrence_budget: 25,
+                selected_dag: None,
+                authorization_templates: vec![],
+            }),
         };
 
         let result = nexus_client
@@ -1447,6 +1629,15 @@ mod tests {
         assert_eq!(result.task_id, task_id);
         assert_eq!(result.tx_digest, digest);
         assert!(result.initial_schedule.is_none());
+        assert_eq!(
+            result.tap_payment,
+            Some(CreateTaskTapPaymentResult {
+                agent_id,
+                skill_id: 3,
+                prepay_amount: 100,
+                occurrence_budget: 25,
+            })
+        );
     }
 
     #[tokio::test]
@@ -1482,6 +1673,7 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: Some(sui::types::Address::generate(&mut rng)),
             skill_id: None,
+            tap_payment: None,
         };
         let result = nexus_client.scheduler().create_task(agent_only).await;
         let Err(err) = result else {
@@ -1500,6 +1692,7 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: Some(0),
+            tap_payment: None,
         };
         let result = nexus_client.scheduler().create_task(skill_only).await;
         let Err(err) = result else {
@@ -1534,7 +1727,6 @@ mod tests {
             sui::types::Owner::Address(owner),
             task_object_json,
         );
-
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
@@ -1964,37 +2156,5 @@ mod tests {
 
         let empty = dummy_executed_transaction(vec![]);
         assert!(extract_occurrence_event(&empty).is_none());
-    }
-
-    #[test]
-    fn scheduler_tap_link_selector_filters_dynamic_field_values() {
-        let mut rng = thread_rng();
-        let link = TapScheduledTaskLink {
-            scheduled_task_id: sui::types::Address::generate(&mut rng),
-            agent_id: sui::types::Address::generate(&mut rng),
-            skill_id: 7,
-            source_kind: crate::types::TapPaymentSourceKind::Invoker,
-        };
-
-        let selected = select_tap_scheduled_task_links(vec![
-            (
-                Some("0x2::bag::Bag".to_string()),
-                TapScheduledTaskLink {
-                    scheduled_task_id: sui::types::Address::ZERO,
-                    agent_id: sui::types::Address::ZERO,
-                    skill_id: 0,
-                    source_kind: crate::types::TapPaymentSourceKind::AgentVault,
-                },
-            ),
-            (
-                Some(format!(
-                    "{}::scheduler::TapScheduledTaskLink",
-                    sui::types::Address::generate(&mut rng)
-                )),
-                link.clone(),
-            ),
-        ]);
-
-        assert_eq!(selected, vec![link]);
     }
 }

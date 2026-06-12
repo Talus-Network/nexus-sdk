@@ -38,26 +38,23 @@ use {
         types::{
             derive_tool_gas_id,
             deserialize_sui_u64,
+            payment_source_from_address,
             resolve_active_tap_skill_execution_target,
             resolve_default_tap_dag_executor,
-            tap_payment_source_for_address,
-            validate_authorization_plan,
-            validate_standard_tap_payment_options,
+            validate_execution_payment_options,
             AgentId,
+            AgentRegistry,
             Dag as JsonDag,
             DataStorage,
             DefaultDagExecutorRecord,
+            ExecutionPayment,
+            ExecutionPaymentVertexLock,
             PortsData,
             RuntimeVertex,
+            SkillDagBinding,
             SkillId,
+            SkillRevisionKey,
             StorageConf,
-            TapDagBinding,
-            TapExecutionPayment,
-            TapExecutionPaymentVertexLock,
-            TapRegistry,
-            TapSkillRevisionKey,
-            TapVertexAuthorizationPlan,
-            TapVertexAuthorizationPlanEntry,
             VerifierConfig,
             VerifierMode,
             WorkflowFailureClass,
@@ -93,10 +90,8 @@ pub struct TapExecutionSubmitMetadata {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
-    pub skill_revision_key: TapSkillRevisionKey,
+    pub skill_revision_key: SkillRevisionKey,
     pub payment_max_budget: u64,
-    pub authorization_plan_commitment: Option<Vec<u8>>,
-    pub authorization_plan: TapVertexAuthorizationPlan,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,13 +129,11 @@ pub struct AgentDagExecuteOptions {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
-    pub authorization_plan_commitment: Option<Vec<u8>>,
-    pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
 }
 
 fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
-    registry: &TapRegistry,
+    registry: &AgentRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
     let configured = objects.default_dag_executor;
     if let Ok(target) = resolve_active_tap_skill_execution_target(
@@ -148,7 +141,7 @@ fn resolve_default_agent_dag_executor(
         configured.agent_id,
         configured.skill_id,
     ) {
-        if target.skill.dag_binding == TapDagBinding::RuntimeSelected {
+        if target.skill.dag_binding == SkillDagBinding::RuntimeSelected {
             return Ok(DefaultDagExecutorRecord {
                 target: configured,
                 skill: target.skill,
@@ -605,13 +598,11 @@ impl WorkflowActions {
             entry_group,
             storage_conf,
             AgentDagExecuteOptions {
-                payment_source: tap_payment_source_for_address(address)
+                payment_source: payment_source_from_address(address)
                     .map_err(NexusError::TransactionBuilding)?,
                 payment_coin: None,
                 payment_coin_balance: None,
                 payment_max_budget: self.client.gas.get_budget(),
-                authorization_plan_commitment: None,
-                authorization_plan: Vec::new(),
             },
         )
         .await
@@ -661,7 +652,7 @@ impl WorkflowActions {
             .map_err(NexusError::Parsing)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        validate_standard_tap_payment_options(
+        validate_execution_payment_options(
             default_executor.target.agent_id,
             &default_executor.skill_revision.requirements.payment_policy,
             &options.payment_source,
@@ -677,33 +668,15 @@ impl WorkflowActions {
                 )));
             }
         }
-        let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
-        if !authorization_plan.is_empty() || options.authorization_plan_commitment.is_some() {
-            validate_authorization_plan(
-                &default_executor.skill_revision.requirements,
-                &authorization_plan,
-                options.authorization_plan_commitment.as_deref(),
-            )
-            .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
-        }
-        let authorization_plan_commitment = if authorization_plan.is_empty() {
-            options.authorization_plan_commitment.clone()
-        } else {
-            Some(
-                authorization_plan
-                    .hash()
-                    .map_err(NexusError::TransactionBuilding)?,
-            )
-        };
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id: default_executor.target.agent_id,
             skill_id: default_executor.target.skill_id,
+            selected_dag: None,
+            authorization_templates: Vec::new(),
             payment_source: options.payment_source,
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
-            authorization_plan_commitment: authorization_plan_commitment.clone(),
-            authorization_plan: authorization_plan.0.clone(),
         };
 
         if let Err(e) = dag::execute_default_agent_dag(
@@ -798,8 +771,6 @@ impl WorkflowActions {
                 dag_id: dag.object_id,
                 skill_revision_key: default_executor.skill_revision.key,
                 payment_max_budget: options.payment_max_budget,
-                authorization_plan_commitment,
-                authorization_plan,
             }),
         })
     }
@@ -842,8 +813,8 @@ impl WorkflowActions {
         .data;
 
         let dag_id = match target.skill.dag_binding {
-            TapDagBinding::Pinned { dag_id } => dag_id,
-            TapDagBinding::RuntimeSelected => {
+            SkillDagBinding::Pinned { dag_id } => dag_id,
+            SkillDagBinding::RuntimeSelected => {
                 return Err(NexusError::Parsing(anyhow!(
                     "runtime-selected skill {agent_id}:{skill_id} requires an explicit DAG selection; use WorkflowActions::execute or `nexus dag execute`"
                 )));
@@ -866,23 +837,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?;
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
-        validate_authorization_plan(
-            &target.skill_revision.requirements,
-            &authorization_plan,
-            options.authorization_plan_commitment.as_deref(),
-        )
-        .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
-        let authorization_plan_commitment = if authorization_plan.is_empty() {
-            options.authorization_plan_commitment.clone()
-        } else {
-            Some(
-                authorization_plan
-                    .hash()
-                    .map_err(NexusError::TransactionBuilding)?,
-            )
-        };
-        validate_standard_tap_payment_options(
+        validate_execution_payment_options(
             agent_id,
             &target.skill_revision.requirements.payment_policy,
             &options.payment_source,
@@ -901,19 +856,20 @@ impl WorkflowActions {
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id,
             skill_id,
+            selected_dag: None,
+            authorization_templates: Vec::new(),
             payment_source: options.payment_source,
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
-            authorization_plan_commitment: authorization_plan_commitment.clone(),
-            authorization_plan: authorization_plan.0.clone(),
         };
 
         if let Err(e) = dag::execute_agent_dag(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
-            &agent_object.object_ref(),
+            tap::agent_input_from_metadata(&agent_object)
+                .map_err(NexusError::TransactionBuilding)?,
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &input_data,
@@ -1000,8 +956,6 @@ impl WorkflowActions {
                 dag_id,
                 skill_revision_key: target.skill_revision.key,
                 payment_max_budget: options.payment_max_budget,
-                authorization_plan_commitment,
-                authorization_plan,
             }),
         })
     }
@@ -1135,15 +1089,16 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let context = execution
-            .standard_tap_context()
+        if execution
+            .to_context()
             .map_err(NexusError::Parsing)?
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow!(
-                    "DAG execution '{dag_execution_id}' has no TAP payment context"
-                ))
-            })?;
-        let payment = tap::fetch_tap_execution_payment(crawler, context.payment_id)
+            .is_none()
+        {
+            return Err(NexusError::Parsing(anyhow!(
+                "DAG execution '{dag_execution_id}' has no TAP payment context"
+            )));
+        }
+        let payment = tap::fetch_execution_payment_for_execution(crawler, dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -1165,16 +1120,8 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let context = execution
-            .standard_tap_context()
-            .map_err(NexusError::Parsing)?
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow!(
-                    "DAG execution '{dag_execution_id}' has no TAP payment context"
-                ))
-            })?;
         let dag = crawler
-            .get_object::<Dag>(context.selected_dag_id)
+            .get_object::<Dag>(execution.dag_id)
             .await
             .map_err(NexusError::Rpc)?;
         let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
@@ -1185,7 +1132,8 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let payment = tap::fetch_tap_execution_payment(crawler, context.payment_id)
+
+        let payment = tap::fetch_execution_payment_for_execution(crawler, dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -1225,17 +1173,8 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let context = execution
-            .standard_tap_context()
-            .map_err(NexusError::Parsing)?
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow!(
-                    "DAG execution '{dag_execution_id}' has no TAP payment context"
-                ))
-            })?;
-        let dag_id = context.selected_dag_id;
         let dag_ref = crawler
-            .get_object_metadata(dag_id)
+            .get_object_metadata(execution.dag_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -1282,7 +1221,7 @@ impl WorkflowActions {
         Ok(AbortExpiredExecutionResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            dag_id,
+            dag_id: execution.dag_id,
             dag_execution_id,
             selected_candidate,
         })
@@ -1312,13 +1251,13 @@ fn select_tool_gas_abort_candidate(
 }
 
 impl ExecutionCostResult {
-    fn from_payment(payment: TapExecutionPayment) -> Self {
+    fn from_payment(payment: ExecutionPayment) -> Self {
         Self {
             payment_id: payment.payment_id(),
             max_budget: payment.max_budget,
             locked_budget: payment.locked_budget,
             consumed: payment.consumed,
-            outstanding_locks: payment.outstanding_locks(),
+            outstanding_locks: payment.locks(),
             accomplished: payment.accomplished,
             refunded: payment.refunded,
         }
@@ -1342,7 +1281,7 @@ fn filter_tool_gas_abort_candidate_walks(
     execution_id: sui::types::Address,
     vertices: &HashMap<crate::types::TypeName, DagVertexInfo>,
     walks: &[DagExecutionWalk],
-    locks: &[TapExecutionPaymentVertexLock],
+    locks: &[ExecutionPaymentVertexLock],
     clock_ms: u64,
 ) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>> {
     let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>::new();
@@ -1421,6 +1360,10 @@ mod tests {
             test_utils::{nexus_mocks, sui_mocks},
             types::{
                 derive_tool_gas_id,
+                AgentRecord,
+                AgentRegistry,
+                AgentRegistryObject,
+                DagExecutionPaymentFieldKey,
                 DefaultDagExecutor,
                 DefaultDagExecutorFieldKey,
                 DefaultDagExecutorValue,
@@ -1429,19 +1372,16 @@ mod tests {
                 NexusData,
                 PostFailureAction,
                 RuntimeVertex,
+                SkillDagBinding,
+                SkillPaymentPolicy,
+                SkillRecord,
+                SkillRequirements,
+                SkillSchedulePolicy,
                 Storable,
-                TapAgentRecord,
-                TapDagBinding,
-                TapPaymentPolicy,
-                TapRegistry,
-                TapRegistryObject,
-                TapSchedulePolicy,
-                TapSkillRecord,
-                TapSkillRequirements,
-                TapVertexExecutionPaymentSettlementKind,
                 TypeName,
                 VerifierConfig,
                 VerifierMode,
+                VertexExecutionPaymentSettlementKind,
                 WorkflowFailureClass,
             },
         },
@@ -1451,16 +1391,16 @@ mod tests {
 
     #[derive(Clone)]
     struct RegistryObjectMock {
-        registry_object: TapRegistryObject,
+        registry_object: AgentRegistryObject,
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
         default_executor_field_ref: Option<sui::types::ObjectReference>,
         default_executor_value: Option<DefaultDagExecutorValue>,
-        agent_record: TapAgentRecord,
-        skill_record: TapSkillRecord,
+        agent_record: AgentRecord,
+        skill_record: SkillRecord,
     }
 
-    fn registry_object_mock(registry: &TapRegistry) -> RegistryObjectMock {
+    fn registry_object_mock(registry: &AgentRegistry) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
         let agent = registry.agents[0].clone();
@@ -1472,7 +1412,7 @@ mod tests {
             registry
                 .default_executor
                 .map(|default_executor| DefaultDagExecutorValue {
-                    agent: crate::types::TapAgentObject {
+                    agent: crate::types::Agent {
                         id: default_executor.agent_id,
                         next_skill_id: 1,
                         registry_id: Some(registry.id).into(),
@@ -1481,7 +1421,7 @@ mod tests {
                 });
 
         RegistryObjectMock {
-            registry_object: TapRegistryObject {
+            registry_object: AgentRegistryObject {
                 id: registry.id,
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
             },
@@ -1498,7 +1438,7 @@ mod tests {
         ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
         state_service_mock: &mut sui_mocks::grpc::MockStateService,
         nexus_objects: &crate::types::NexusObjects,
-        registry: &TapRegistry,
+        registry: &AgentRegistry,
     ) {
         let mock = registry_object_mock(registry);
         sui_mocks::grpc::mock_get_object_bcs_for(
@@ -1508,7 +1448,7 @@ mod tests {
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
             sui::types::StructTag::new(
                 nexus_objects.registry_pkg_id,
-                crate::idents::tap::STANDARD_TAP_MODULE,
+                crate::idents::registry::AGENT_REGISTRY_MODULE,
                 sui::types::Identifier::from_static("AgentRegistry"),
                 vec![],
             ),
@@ -1750,24 +1690,24 @@ mod tests {
             skill_id: default_skill_id,
         };
 
-        let requirements = TapSkillRequirements {
+        let requirements = SkillRequirements {
             input_schema_commitment: vec![1],
-            payment_policy: TapPaymentPolicy::default(),
-            schedule_policy: TapSchedulePolicy::default(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
-        let agent_registry = TapRegistry {
+        let agent_registry = AgentRegistry {
             id: *nexus_objects.agent_registry.object_id(),
-            agents: vec![TapAgentRecord {
+            agents: vec![AgentRecord {
                 active: true,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
-            skills: vec![TapSkillRecord {
+            skills: vec![SkillRecord {
                 agent_id: Some(default_agent),
                 skill_id: Some(default_skill_id),
                 description: vec![3],
                 active: true,
-                dag_binding: TapDagBinding::runtime_selected(),
+                dag_binding: SkillDagBinding::runtime_selected(),
                 requirements: requirements.clone(),
                 current_interface_revision: InterfaceRevision(1),
                 scheduled_task_count: 0,
@@ -1939,24 +1879,24 @@ mod tests {
         let skill_id = 22;
         let agent_ref =
             sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
-        let requirements = TapSkillRequirements {
+        let requirements = SkillRequirements {
             input_schema_commitment: vec![1],
-            payment_policy: TapPaymentPolicy::default(),
-            schedule_policy: TapSchedulePolicy::default(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
-        let agent_registry = TapRegistry {
+        let agent_registry = AgentRegistry {
             id: *nexus_objects.agent_registry.object_id(),
-            agents: vec![TapAgentRecord {
+            agents: vec![AgentRecord {
                 active: true,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
-            skills: vec![TapSkillRecord {
+            skills: vec![SkillRecord {
                 agent_id: Some(agent_id),
                 skill_id: Some(skill_id),
                 description: vec![3],
                 active: true,
-                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
+                dag_binding: SkillDagBinding::pinned(*dag_ref.object_id()),
                 requirements: requirements.clone(),
                 current_interface_revision: InterfaceRevision(1),
                 scheduled_task_count: 0,
@@ -2089,7 +2029,6 @@ mod tests {
         assert_eq!(metadata.skill_id, skill_id);
         assert_eq!(metadata.dag_id, *dag_ref.object_id());
         assert_eq!(metadata.payment_max_budget, 100);
-        assert!(metadata.authorization_plan.is_empty());
     }
 
     #[tokio::test]
@@ -2560,6 +2499,7 @@ mod tests {
         let execution_id = *execution_ref.object_id();
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
@@ -2571,45 +2511,59 @@ mod tests {
             sui::types::Owner::Shared(0),
             json!({
                 "invoker": "0x1",
-                "tap_agent_id": { "vec": ["0xa"] },
-                "tap_skill_id": { "vec": ["11"] },
-                "tap_interface_revision": { "vec": ["7"] },
-                "tap_payment_id": { "vec": [payment_id.to_string()] },
-                "tap_selected_dag_id": { "vec": ["0xe"] },
-                "tap_authorization_plan_commitment": { "vec": [] },
-                "tap_authorization_plan": [],
-                "tap_scheduled_task_id": { "vec": [] },
-                "tap_scheduled_occurrence_index": { "vec": [] }
+                "dag": "0xd",
+                "agent_id": "0xa",
+                "skill_id": "11",
+                "interface_version": "7",
+                "scheduled_task_id": { "vec": [] },
+                "scheduled_occurrence_index": { "vec": [] }
             }),
         );
 
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(
+                DagExecutionPaymentFieldKey {},
+                sui::types::Address::from_static("0xdf"),
+                payment_id,
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            json!({
-                "id": payment_ref.object_id().to_string(),
-                "execution_id": execution_id.to_string(),
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_revision": "7",
-                "payer": "0x1",
-                "payment_mode": "user_funded",
-                "source_kind": "invoker",
-                "source_identity": "0x1",
-                "max_budget": "100000",
-                "locked_budget": "100000",
-                "consumed": "42000",
-                "payment_source_hash": [],
-                "accomplished": true,
-                "refunded": false,
-                "final_state": "accomplished",
-                "locked_vertices": []
-            }),
+            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+                id: payment_id,
+                execution_id,
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+                interface_revision: crate::types::InterfaceRevision(7),
+                payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
+                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                    user: sui::types::Address::from_static("0x1"),
+                },
+                max_budget: 100_000,
+                locked_budget: 100_000,
+                funds: sui::types::SuiBalance { value: 58_000 },
+                consumed: 42_000,
+                accomplished: true,
+                refunded: false,
+                final_state: crate::types::CurrentExecutionPaymentFinalState::Accomplished,
+                tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
+                locked_vertices: vec![],
+            })
+            .expect("execution payment bcs"),
+            sui::types::StructTag::new(
+                nexus_objects.interface_pkg_id,
+                crate::idents::tap::STANDARD_PAYMENT_MODULE,
+                sui::types::Identifier::from_static("ExecutionPayment"),
+                vec![],
+            ),
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
 
@@ -2655,15 +2609,12 @@ mod tests {
             sui::types::Owner::Shared(0),
             json!({
                 "invoker": "0x1",
-                "tap_agent_id": { "vec": ["0xa"] },
-                "tap_skill_id": { "vec": ["11"] },
-                "tap_interface_revision": { "vec": ["7"] },
-                "tap_payment_id": { "vec": [payment_ref.object_id().to_string()] },
-                "tap_selected_dag_id": { "vec": [dag_ref.object_id().to_string()] },
-                "tap_authorization_plan_commitment": { "vec": [] },
-                "tap_authorization_plan": [],
-                "tap_scheduled_task_id": { "vec": [] },
-                "tap_scheduled_occurrence_index": { "vec": [] },
+                "dag": dag_ref.object_id().to_string(),
+                "agent_id": "0xa",
+                "skill_id": "11",
+                "interface_version": "7",
+                "scheduled_task_id": { "vec": [] },
+                "scheduled_occurrence_index": { "vec": [] },
                 "walks": []
             }),
         );
@@ -2688,30 +2639,45 @@ mod tests {
             sui::types::Owner::Shared(1),
             json!({ "timestamp_ms": "61000" }),
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(
+                DagExecutionPaymentFieldKey {},
+                sui::types::Address::from_static("0xdf"),
+                *payment_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            json!({
-                "id": payment_ref.object_id().to_string(),
-                "execution_id": execution_ref.object_id().to_string(),
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_revision": "7",
-                "payer": "0x1",
-                "payment_mode": "user_funded",
-                "source_kind": "invoker",
-                "source_identity": "0x1",
-                "max_budget": "100000",
-                "locked_budget": "0",
-                "consumed": "0",
-                "refund_mode": 0,
-                "payment_source_hash": [],
-                "accomplished": false,
-                "refunded": false,
-                "final_state": "pending",
-                "locked_vertices": []
-            }),
+            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+                id: *payment_ref.object_id(),
+                execution_id: *execution_ref.object_id(),
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+                interface_revision: InterfaceRevision(7),
+                payment_policy: SkillPaymentPolicy::UserFunded,
+                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                    user: sui::types::Address::from_static("0x1"),
+                },
+                max_budget: 100_000,
+                locked_budget: 0,
+                funds: sui::types::SuiBalance { value: 100_000 },
+                consumed: 0,
+                accomplished: false,
+                refunded: false,
+                final_state: crate::types::CurrentExecutionPaymentFinalState::Pending,
+                tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
+                locked_vertices: vec![],
+            })
+            .expect("execution payment bcs"),
+            sui::types::StructTag::new(
+                nexus_objects.interface_pkg_id,
+                crate::idents::tap::STANDARD_PAYMENT_MODULE,
+                sui::types::Identifier::from_static("ExecutionPayment"),
+                vec![],
+            ),
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -2755,15 +2721,12 @@ mod tests {
         };
         let execution_json = json!({
             "invoker": "0x1",
-            "tap_agent_id": { "vec": ["0xa"] },
-            "tap_skill_id": { "vec": ["11"] },
-            "tap_interface_revision": { "vec": ["7"] },
-            "tap_payment_id": { "vec": [payment_ref.object_id().to_string()] },
-            "tap_selected_dag_id": { "vec": [dag_ref.object_id().to_string()] },
-            "tap_authorization_plan_commitment": { "vec": [] },
-            "tap_authorization_plan": [],
-            "tap_scheduled_task_id": { "vec": [] },
-            "tap_scheduled_occurrence_index": { "vec": [] },
+            "dag": dag_ref.object_id().to_string(),
+            "agent_id": "0xa",
+            "skill_id": "11",
+            "interface_version": "7",
+            "scheduled_task_id": { "vec": [] },
+            "scheduled_occurrence_index": { "vec": [] },
             "walks": [{
                 "Active": {
                     "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
@@ -2774,33 +2737,12 @@ mod tests {
         });
         let payment_vertex_key =
             payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
-        let locked_vertices = serde_json::to_value(vec![TapExecutionPaymentVertexLock {
+        let current_locked_vertices = vec![crate::types::CurrentExecutionPaymentVertexLock {
             vertex_key: payment_vertex_key.clone(),
             tool_fqn: tool_fqn.to_string().into_bytes(),
             amount: 10,
-            settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
-        }])
-        .expect("payment lock should serialize");
-        let payment_json = json!({
-            "id": payment_ref.object_id().to_string(),
-            "execution_id": execution_ref.object_id().to_string(),
-            "agent_id": "0xa",
-            "skill_id": "11",
-            "interface_revision": "7",
-            "payer": "0x1",
-            "payment_mode": "user_funded",
-            "source_kind": "invoker",
-            "source_identity": "0x1",
-            "max_budget": "100000",
-            "locked_budget": "10",
-            "consumed": "0",
-            "refund_mode": 0,
-            "payment_source_hash": [],
-            "accomplished": false,
-            "refunded": false,
-            "final_state": "pending",
-            "locked_vertices": locked_vertices
-        });
+            settlement_kind: crate::types::CurrentVertexExecutionPaymentSettlementKind::Paid,
+        }];
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -2861,11 +2803,45 @@ mod tests {
             sui::types::Owner::Shared(1),
             json!({ "timestamp_ms": "61000" }),
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(
+                DagExecutionPaymentFieldKey {},
+                sui::types::Address::from_static("0xdf"),
+                *payment_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            payment_json,
+            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+                id: *payment_ref.object_id(),
+                execution_id: *execution_ref.object_id(),
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+                interface_revision: InterfaceRevision(7),
+                payment_policy: SkillPaymentPolicy::UserFunded,
+                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                    user: sui::types::Address::from_static("0x1"),
+                },
+                max_budget: 100_000,
+                locked_budget: 10,
+                funds: sui::types::SuiBalance { value: 100_000 },
+                consumed: 0,
+                accomplished: false,
+                refunded: false,
+                final_state: crate::types::CurrentExecutionPaymentFinalState::Pending,
+                tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
+                locked_vertices: current_locked_vertices,
+            })
+            .expect("execution payment bcs"),
+            sui::types::StructTag::new(
+                nexus_objects.interface_pkg_id,
+                crate::idents::tap::STANDARD_PAYMENT_MODULE,
+                sui::types::Identifier::from_static("ExecutionPayment"),
+                vec![],
+            ),
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -3091,11 +3067,11 @@ mod tests {
                 at_vertex: RuntimeVertex::plain("already_pending"),
             },
         ];
-        let locks = vec![TapExecutionPaymentVertexLock {
+        let locks = vec![ExecutionPaymentVertexLock {
             vertex_key: matching_key.clone(),
             tool_fqn: tool_fqn.to_string().into_bytes(),
             amount: 10,
-            settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+            settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
         }];
 
         let candidates =
@@ -3138,17 +3114,17 @@ mod tests {
             created_at: 1_000,
         }];
         let locks = vec![
-            TapExecutionPaymentVertexLock {
+            ExecutionPaymentVertexLock {
                 vertex_key: matching_key,
                 tool_fqn: other_tool_fqn.to_string().into_bytes(),
                 amount: 10,
-                settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
             },
-            TapExecutionPaymentVertexLock {
+            ExecutionPaymentVertexLock {
                 vertex_key: vec![1, 2, 3],
                 tool_fqn: tool_fqn.to_string().into_bytes(),
                 amount: 10,
-                settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
             },
         ];
 

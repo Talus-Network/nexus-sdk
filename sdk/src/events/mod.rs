@@ -144,16 +144,19 @@ events! {
     DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
     SkillActiveRevisionUpdatedEvent => SkillActiveRevisionUpdated, "SkillActiveRevisionUpdatedEvent",
     AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
-    VertexAuthorizationGrantCreatedEvent => VertexAuthorizationGrantCreated, "VertexAuthorizationGrantCreatedEvent",
-    VertexAuthorizationGrantRequiredEvent => VertexAuthorizationGrantRequired, "VertexAuthorizationGrantRequiredEvent",
-    ScheduledAuthorizationGrantCreatedEvent => ScheduledAuthorizationGrantCreated, "ScheduledAuthorizationGrantCreatedEvent",
-    ScheduledAuthorizationGrantMaterializedEvent => ScheduledAuthorizationGrantMaterialized, "ScheduledAuthorizationGrantMaterializedEvent",
+    AgentVertexAuthorizationRequiredEvent => AgentVertexAuthorizationRequired, "AgentVertexAuthorizationRequiredEvent",
     AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
+    ExecutionPaymentReceiptCreatedEvent => ExecutionPaymentReceiptCreated, "ExecutionPaymentReceiptCreatedEvent",
+    ExecutionPaymentReceiptResolvedEvent => ExecutionPaymentReceiptResolved, "ExecutionPaymentReceiptResolvedEvent",
+    ScheduledPaymentReserveReceiptCreatedEvent => ScheduledPaymentReserveReceiptCreated, "ScheduledPaymentReserveReceiptCreatedEvent",
     GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
     ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
     ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
     ScheduledSkillExecutionCreatedEvent => ScheduledSkillExecutionCreated, "ScheduledSkillExecutionCreatedEvent",
     ScheduledSkillExecutionTriggeredEvent => ScheduledSkillExecutionTriggered, "ScheduledSkillExecutionTriggeredEvent",
+    ScheduledSkillExecutionPausedEvent => ScheduledSkillExecutionPaused, "ScheduledSkillExecutionPausedEvent",
+    ScheduledSkillExecutionResumedEvent => ScheduledSkillExecutionResumed, "ScheduledSkillExecutionResumedEvent",
+    ScheduledSkillExecutionCanceledEvent => ScheduledSkillExecutionCanceled, "ScheduledSkillExecutionCanceledEvent",
     ScheduledSkillExecutionCompletedEvent => ScheduledSkillExecutionCompleted, "ScheduledSkillExecutionCompletedEvent",
     ScheduledSkillPaymentRefilledEvent => ScheduledSkillPaymentRefilled, "ScheduledSkillPaymentRefilledEvent",
     ScheduledOccurrencePaymentCreatedEvent => ScheduledOccurrencePaymentCreated, "ScheduledOccurrencePaymentCreatedEvent",
@@ -170,10 +173,6 @@ events! {
     EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
     ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
     MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
-    TaskCreatedEvent => TaskCreated, "TaskCreatedEvent",
-    TaskPausedEvent => TaskPaused, "TaskPausedEvent",
-    TaskResumedEvent => TaskResumed, "TaskResumedEvent",
-    TaskCanceledEvent => TaskCanceled, "TaskCanceledEvent",
     OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
@@ -216,6 +215,28 @@ where
     })
 }
 
+fn deserialize_move_option_u64<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return deserialize_move_option(deserializer);
+    }
+
+    MoveOption::<serde_json::Value>::deserialize(deserializer).and_then(|value| {
+        value
+            .0
+            .map(|value| {
+                parse_u64_value(&value)
+                    .map_err(D::Error::custom)?
+                    .ok_or_else(|| D::Error::custom("missing TAP u64"))
+            })
+            .transpose()
+    })
+}
+
 // == Event definitions ==
 
 /// Fired by the on-chain part of Nexus when a DAG vertex execution is
@@ -228,83 +249,41 @@ pub struct RequestWalkExecutionEvent {
     pub walk_index: u64,
     pub next_vertex: RuntimeVertex,
     pub evaluations: sui::types::Address,
-    /// Standard Talus agent identity. Absent for legacy witness executions.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_agent_id: Option<AgentId>,
-    /// Standard TAP skill identity. Absent for legacy witness executions.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_skill_id",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_skill_id: Option<SkillId>,
-    /// Standard TAP skill interface revision pinned for this execution.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_interface_revision: Option<InterfaceRevision>,
-    /// Standard TAP payment object bound to this execution.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_payment_id: Option<sui::types::Address>,
-    /// Selected DAG identity for runtime-selected standard TAP executions.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_selected_dag_id: Option<sui::types::Address>,
-    /// Optional standard TAP authorization plan hash.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub tap_authorization_plan_commitment: Option<Vec<u8>>,
-    /// Recoverable standard TAP per-vertex authorization grant mapping.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
+    /// Talus agent identity pinned for this execution.
+    pub agent_id: AgentId,
+    /// Agent-local skill identity pinned for this execution.
+    #[serde(deserialize_with = "deserialize_sui_u64")]
+    pub skill_id: SkillId,
+    /// Skill interface version pinned for this execution.
+    pub interface_version: InterfaceRevision,
     /// TAP scheduled task that funded this execution, absent for immediate runs.
     #[serde(
         default,
         deserialize_with = "deserialize_move_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub tap_scheduled_task_id: Option<sui::types::Address>,
+    pub scheduled_task_id: Option<sui::types::Address>,
     /// TAP scheduled occurrence index, absent for immediate runs.
     #[serde(
         default,
-        deserialize_with = "deserialize_move_option",
+        deserialize_with = "deserialize_move_option_u64",
         skip_serializing_if = "Option::is_none"
     )]
-    pub tap_scheduled_occurrence_index: Option<u64>,
+    pub scheduled_occurrence_index: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RequestWalkStandardTapContext {
+pub struct RequestWalkContext {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
-    pub payment_id: sui::types::Address,
-    pub selected_dag_id: sui::types::Address,
-    pub authorization_plan_commitment: Option<Vec<u8>>,
-    pub authorization_plan: TapVertexAuthorizationPlan,
     pub scheduled_task_id: Option<sui::types::Address>,
     pub scheduled_occurrence_index: Option<u64>,
 }
 
-impl RequestWalkStandardTapContext {
-    pub fn skill_revision_key(&self) -> TapSkillRevisionKey {
-        TapSkillRevisionKey {
+impl RequestWalkContext {
+    pub fn skill_revision_key(&self) -> SkillRevisionKey {
+        SkillRevisionKey {
             agent_id: self.agent_id,
             skill_id: self.skill_id,
             interface_revision: self.interface_revision,
@@ -313,69 +292,27 @@ impl RequestWalkStandardTapContext {
 }
 
 impl RequestWalkExecutionEvent {
-    pub fn skill_revision_key(&self) -> Option<TapSkillRevisionKey> {
-        Some(TapSkillRevisionKey {
-            agent_id: self.tap_agent_id?,
-            skill_id: self.tap_skill_id?,
-            interface_revision: self.tap_interface_revision?,
+    pub fn skill_revision_key(&self) -> Option<SkillRevisionKey> {
+        Some(SkillRevisionKey {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_version,
         })
     }
 
-    pub fn standard_tap_context(&self) -> Result<Option<RequestWalkStandardTapContext>> {
-        if self.tap_agent_id.is_none()
-            && self.tap_skill_id.is_none()
-            && self.tap_interface_revision.is_none()
-            && self.tap_payment_id.is_none()
-            && self.tap_selected_dag_id.is_none()
-            && self.tap_authorization_plan_commitment.is_none()
-            && self.tap_authorization_plan.is_empty()
-            && self.tap_scheduled_task_id.is_none()
-            && self.tap_scheduled_occurrence_index.is_none()
-        {
-            return Ok(None);
-        }
-
-        let Some(agent_id) = self.tap_agent_id else {
-            bail!(
-                "RequestWalkExecutionEvent has partial standard TAP context: missing tap_agent_id"
-            );
-        };
-        let Some(skill_id) = self.tap_skill_id else {
-            bail!(
-                "RequestWalkExecutionEvent has partial standard TAP context: missing tap_skill_id"
-            );
-        };
-        let Some(interface_revision) = self.tap_interface_revision else {
-            bail!(
-                "RequestWalkExecutionEvent has partial standard TAP context: missing tap_interface_revision"
-            );
-        };
-        let Some(payment_id) = self.tap_payment_id else {
-            bail!("RequestWalkExecutionEvent has partial standard TAP context: missing tap_payment_id");
-        };
-        let Some(selected_dag_id) = self.tap_selected_dag_id else {
-            bail!(
-                "RequestWalkExecutionEvent has partial standard TAP context: missing tap_selected_dag_id"
-            );
-        };
-
-        Ok(Some(RequestWalkStandardTapContext {
-            agent_id,
-            skill_id,
-            interface_revision,
-            payment_id,
-            selected_dag_id,
-            authorization_plan_commitment: self.tap_authorization_plan_commitment.clone(),
-            authorization_plan: TapVertexAuthorizationPlan(self.tap_authorization_plan.clone()),
-            scheduled_task_id: self.tap_scheduled_task_id,
-            scheduled_occurrence_index: self.tap_scheduled_occurrence_index,
+    pub fn to_context(&self) -> Result<Option<RequestWalkContext>> {
+        Ok(Some(RequestWalkContext {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_version,
+            scheduled_task_id: self.scheduled_task_id,
+            scheduled_occurrence_index: self.scheduled_occurrence_index,
         }))
     }
 }
 
 /// Fired via the Nexus `interface` package when a new agent is registered.
-/// Provides the agent's interface so that we can invoke
-/// `confirm_tool_eval_for_walk` on it.
+/// Provides the agent's interface package and shared objects for SDK callers.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AnnounceInterfacePackageEvent {
     pub shared_objects: Vec<SharedObjectRef>,
@@ -394,7 +331,7 @@ pub struct SkillRegisteredEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
-    pub dag_binding: TapDagBinding,
+    pub dag_binding: SkillDagBinding,
 }
 
 /// Fired when a skill's current execution contract is revisioned.
@@ -403,8 +340,8 @@ pub struct SkillContractRevisionedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub current_interface_revision: InterfaceRevision,
-    pub dag_binding: TapDagBinding,
-    pub requirements: TapSkillRequirements,
+    pub dag_binding: SkillDagBinding,
+    pub requirements: SkillRequirements,
 }
 
 /// Fired when the network default standard TAP DAG executor changes.
@@ -434,14 +371,7 @@ pub struct AgentSkillExecutionRequestedEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationGrantCreatedEvent {
-    pub grant_id: sui::types::Address,
-    pub execution_id: sui::types::Address,
-    pub vertex: RuntimeVertex,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct VertexAuthorizationGrantRequiredEvent {
+pub struct AgentVertexAuthorizationRequiredEvent {
     pub dag: sui::types::Address,
     pub execution: sui::types::Address,
     pub walk_index: u64,
@@ -463,30 +393,6 @@ pub struct VertexAuthorizationGrantRequiredEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ScheduledAuthorizationGrantCreatedEvent {
-    pub scheduled_grant_id: sui::types::Address,
-    pub scheduled_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub dag_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_bytes_to_string")]
-    pub vertex: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ScheduledAuthorizationGrantMaterializedEvent {
-    pub scheduled_grant_id: sui::types::Address,
-    pub scheduled_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub dag_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_bytes_to_string")]
-    pub vertex: String,
-    pub execution_id: sui::types::Address,
-    pub grant_id: sui::types::Address,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentSkillPaymentCreatedEvent {
     pub payment_id: sui::types::Address,
     pub execution_id: sui::types::Address,
@@ -494,10 +400,44 @@ pub struct AgentSkillPaymentCreatedEvent {
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
     pub payer: sui::types::Address,
-    pub source_kind: TapPaymentSourceKind,
+    pub source_kind: PaymentSourceKind,
     pub source_identity: sui::types::Address,
     pub max_budget: u64,
     pub locked_budget: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExecutionPaymentReceiptCreatedEvent {
+    pub receipt_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
+    pub payment_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub source_kind: CurrentPaymentSourceKind,
+    pub stored_under_agent: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExecutionPaymentReceiptResolvedEvent {
+    pub receipt_id: sui::types::Address,
+    pub execution_id: sui::types::Address,
+    pub payment_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub final_state: CurrentExecutionPaymentFinalState,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ScheduledPaymentReserveReceiptCreatedEvent {
+    pub receipt_id: sui::types::Address,
+    pub scheduled_task_id: sui::types::Address,
+    pub reserve_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceRevision,
+    pub source_kind: CurrentPaymentSourceKind,
+    pub prepaid_amount: u64,
+    pub occurrence_budget: u64,
+    pub stored_under_agent: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -531,22 +471,6 @@ pub struct ExecutionRefundedEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ScheduledSkillExecutionCreatedEvent {
-    pub scheduled_task_id: sui::types::Address,
-    pub scheduler_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub long_term_gas_coin_id: sui::types::Address,
-    pub schedule_entries_commitment: Vec<u8>,
-    pub first_after_ms: u64,
-    pub max_occurrences: u64,
-    pub source_kind: TapPaymentSourceKind,
-    pub source_identity: sui::types::Address,
-    pub prepaid_amount: u64,
-    pub occurrence_budget: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScheduledSkillExecutionTriggeredEvent {
     pub scheduled_task_id: sui::types::Address,
     pub execution_id: sui::types::Address,
@@ -567,45 +491,55 @@ pub struct ScheduledSkillExecutionCompletedEvent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScheduledSkillPaymentRefilledEvent {
     pub scheduled_task_id: sui::types::Address,
-    pub source_kind: TapPaymentSourceKind,
-    pub source_identity: sui::types::Address,
-    pub added_amount: u64,
-    pub remaining_amount: u64,
+    pub reserve_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceRevision,
+    pub source_kind: CurrentPaymentSourceKind,
+    pub refill_amount: u64,
+    pub occurrence_budget: u64,
+    pub remaining_funds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScheduledOccurrencePaymentCreatedEvent {
     pub scheduled_task_id: sui::types::Address,
-    pub scheduler_task_id: sui::types::Address,
+    pub reserve_id: sui::types::Address,
     pub occurrence_index: u64,
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-    pub occurrence_budget: u64,
-    pub remaining_prepaid_amount: u64,
+    pub interface_version: InterfaceRevision,
+    pub source_kind: CurrentPaymentSourceKind,
+    pub budget: u64,
+    pub remaining_funds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScheduledSkillPaymentCanceledEvent {
     pub scheduled_task_id: sui::types::Address,
-    pub scheduler_task_id: sui::types::Address,
-    pub source_kind: TapPaymentSourceKind,
-    pub source_identity: sui::types::Address,
+    pub reserve_id: sui::types::Address,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceRevision,
+    pub source_kind: CurrentPaymentSourceKind,
     pub refunded_amount: u64,
-    pub in_flight_occurrences: u64,
+    pub remaining_funds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScheduledOccurrencePaymentFinalizedEvent {
     pub scheduled_task_id: sui::types::Address,
+    pub reserve_id: sui::types::Address,
     pub occurrence_index: u64,
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
-    pub final_state: TapScheduledOccurrenceFinalState,
-    pub continue_recurring: bool,
-    pub next_after_ms: u64,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceRevision,
+    pub final_state: CurrentScheduledOccurrenceFinalState,
+    pub remaining_funds: u64,
 }
 
 /// Fired by the Nexus Workflow when a new tool is registered so that the Leader
@@ -801,28 +735,28 @@ pub struct MissedOccurrenceEvent {
     pub generator: PolicySymbol,
 }
 
-/// Emitted after a scheduler task object is created.
+/// Emitted after a scheduled skill execution task object is created.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TaskCreatedEvent {
+pub struct ScheduledSkillExecutionCreatedEvent {
     pub task: sui::types::Address,
     pub owner: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is paused.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TaskPausedEvent {
+pub struct ScheduledSkillExecutionPausedEvent {
     pub task: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is resumed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TaskResumedEvent {
+pub struct ScheduledSkillExecutionResumedEvent {
     pub task: sui::types::Address,
 }
 
 /// Emitted when scheduling for a task is canceled.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TaskCanceledEvent {
+pub struct ScheduledSkillExecutionCanceledEvent {
     pub task: sui::types::Address,
 }
 
@@ -1165,13 +1099,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bcs_standard_tap_events() {
+    fn test_parse_bcs_tap_events() {
         let skill_event = Wrapper {
             event: SkillRegisteredEvent {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xc"),
-                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xc")),
+                dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0xc")),
             },
         };
         let bytes = bcs::to_bytes(&skill_event).unwrap();
@@ -1184,7 +1118,7 @@ mod tests {
                 assert_eq!(parsed.skill_id, skill_event.event.skill_id);
                 assert_eq!(
                     parsed.dag_binding,
-                    TapDagBinding::pinned(sui::types::Address::from_static("0xc"))
+                    SkillDagBinding::pinned(sui::types::Address::from_static("0xc"))
                 );
             }
             _ => panic!("Expected SkillRegistered variant"),
@@ -1214,8 +1148,8 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 current_interface_revision: InterfaceRevision(3),
-                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xd")),
-                requirements: TapSkillRequirements::default(),
+                dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0xd")),
+                requirements: SkillRequirements::default(),
             },
         };
 

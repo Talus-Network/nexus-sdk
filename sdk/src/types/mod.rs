@@ -1,3 +1,4 @@
+mod authorization;
 mod derive;
 mod interface_package_config;
 mod interface_version;
@@ -9,6 +10,7 @@ mod network_auth;
 mod nexus_data;
 mod nexus_data_parser;
 mod nexus_objects;
+mod payment;
 mod ports_data;
 mod runtime_vertex;
 mod scheduler;
@@ -24,6 +26,7 @@ mod type_name;
 mod workflow;
 
 pub use {
+    authorization::*,
     derive::*,
     interface_package_config::InterfacePackageConfig,
     interface_version::*,
@@ -34,6 +37,7 @@ pub use {
     network_auth::*,
     nexus_data::*,
     nexus_objects::NexusObjects,
+    payment::*,
     ports_data::PortsData,
     runtime_vertex::RuntimeVertex,
     scheduler::*,

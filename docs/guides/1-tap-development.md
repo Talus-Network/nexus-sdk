@@ -75,7 +75,7 @@ Each arrow is one `nexus` command and one short stop on the way. The next five p
 
 The TAP package CLI surface is broader than what one tutorial can show. After you finish the series, the [CLI reference](../cli.md) covers:
 
-- Vault funding and vault-funded scheduling (`nexus tap vault deposit`, `nexus tap schedule-from-vault`).
-- Address-funded scheduling and the default-agent variant (`nexus tap schedule-address-funded`, `nexus tap schedule-default-address-funded`).
+- Vault funding and vault-funded scheduling (`nexus tap vault deposit`, `nexus tap schedule-task --payment-source agent-vault`).
+- Address-funded scheduling (`nexus tap schedule-task --payment-source address-funded`).
 - Current skill updates for already-bound skills (`nexus tap update-skill`).
 - Inspecting payment receipts and execution costs (`nexus tap payments list`, `nexus dag execution-cost`).

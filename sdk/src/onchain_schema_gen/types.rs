@@ -177,13 +177,10 @@ pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -
         && struct_tag.name().as_str() == "TxContext")
         || (struct_tag.module().as_str() == "proof_of_uid"
             && struct_tag.name().as_str() == "ProofOfUID")
-        || (struct_tag.module().as_str() == "dag"
-            && struct_tag.name().as_str() == "VertexAuthorizationCheckCap")
+        || is_agent_vertex_authorization_proof_struct(&struct_tag)
 }
 
-pub fn is_workflow_vertex_authorization_cap_param(
-    move_type: &sui::grpc::OpenSignatureBody,
-) -> bool {
+pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };
@@ -192,8 +189,20 @@ pub fn is_workflow_vertex_authorization_cap_param(
         return false;
     };
 
-    struct_tag.module().as_str() == "dag"
-        && struct_tag.name().as_str() == "VertexAuthorizationCheckCap"
+    is_agent_vertex_authorization_proof_struct(&struct_tag)
+}
+
+fn is_agent_vertex_authorization_proof_struct(struct_tag: &sui::types::StructTag) -> bool {
+    if struct_tag.module().as_str() != "authorization"
+        || struct_tag.name().as_str() != "ProvenValue"
+    {
+        return false;
+    }
+    let Some(sui::types::TypeTag::Struct(inner)) = struct_tag.type_params().first() else {
+        return false;
+    };
+    inner.module().as_str() == "authorization"
+        && inner.name().as_str() == "AgentVertexAuthorization"
 }
 
 pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
@@ -324,16 +333,15 @@ mod tests {
             "proof_of_uid",
             "ProofOfUID"
         )));
-        assert!(is_hidden_internal_tool_param(&make_struct(
-            "0x44",
-            "dag",
-            "VertexAuthorizationCheckCap"
-        )));
-        assert!(is_workflow_vertex_authorization_cap_param(&make_struct(
-            "0x44",
-            "dag",
-            "VertexAuthorizationCheckCap"
-        )));
+        let authorization_proof = sui::grpc::OpenSignatureBody::default()
+            .with_type(Type::Datatype)
+            .with_type_name(
+                "0x42::authorization::ProvenValue<0x43::authorization::AgentVertexAuthorization>",
+            );
+        assert!(is_hidden_internal_tool_param(&authorization_proof));
+        assert!(is_agent_vertex_authorization_proof_param(
+            &authorization_proof
+        ));
         assert!(!is_hidden_internal_tool_param(&make_struct(
             "0x45",
             "counter",

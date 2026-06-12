@@ -10,8 +10,8 @@
 use {
     super::*,
     nexus_sdk::{
-        idents::registry::AgentRegistry,
         nexus::{
+            scheduler::CreateTaskResult,
             tap::{
                 AccomplishExecutionPaymentResult,
                 BindAgentSkillResult,
@@ -22,11 +22,11 @@ use {
         },
         types::{
             AgentId,
+            AgentPaymentVault,
+            AgentRegistry,
             DefaultDagExecutorRecord,
-            TapAgentPaymentVault,
-            TapExecutionPayment,
-            TapRegistry,
-            TapSkillConfig,
+            ExecutionPayment,
+            SkillConfig,
         },
     },
 };
@@ -39,16 +39,15 @@ pub(crate) fn scaffold_result_json(root: &std::path::Path) -> serde_json::Value 
     json!({ "path": root })
 }
 
-pub(crate) fn validate_skill_result_json(config: &TapSkillConfig) -> serde_json::Value {
+pub(crate) fn validate_skill_result_json(config: &SkillConfig) -> serde_json::Value {
     json!({
         "valid": true,
         "skill_name": config.name,
-        "tap_package_name": config.tap_package_name,
         "interface_revision": config.interface_revision,
     })
 }
 
-pub(crate) fn dry_run_result_json(config: &TapSkillConfig) -> serde_json::Value {
+pub(crate) fn dry_run_result_json(config: &SkillConfig) -> serde_json::Value {
     json!({
         "dry_run": true,
         "valid": true,
@@ -70,7 +69,6 @@ pub(crate) fn create_skill_artifact_result_json(
 
 pub(crate) fn create_agent_result_json(result: &CreateAgentResult) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": TapStandard::CREATE_AGENT.name.to_string(),
         "agent_id": result.agent_id,
         "digest": result.tx_digest,
@@ -80,7 +78,6 @@ pub(crate) fn create_agent_result_json(result: &CreateAgentResult) -> serde_json
 
 pub(crate) fn publish_skill_result_json(result: &PublishSkillResult) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": "publish_skill",
         "tap_package_id": result.tap_package.package_id,
         "tap_package_digest": result.tap_package.tx_digest,
@@ -97,7 +94,6 @@ pub(crate) fn register_skill_result_json(
     result: &RegisterSkillResult,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": TapStandard::REGISTER_SKILL.name.to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -112,7 +108,6 @@ pub(crate) fn bind_result_json(
     result: &BindAgentSkillResult,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": "bind_agent_skill",
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -129,7 +124,6 @@ pub(crate) fn update_skill_result_json(
     result: &UpdateSkillResult,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": "update_skill",
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -164,14 +158,12 @@ pub(crate) fn agent_execute_result_json(
             "dag_id": submit.dag_id,
             "skill_revision_key": submit.skill_revision_key,
             "payment_max_budget": submit.payment_max_budget,
-            "authorization_plan_commitment": submit.authorization_plan_commitment,
         }))
     })
 }
 
 pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": TapStandard::GET_SKILL_REQUIREMENTS.name.to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
@@ -180,83 +172,29 @@ pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> s
     })
 }
 
-// ============================================================================
-// Scheduling
-// ============================================================================
-
-pub(crate) fn schedule_result_json(
-    long_term_gas_coin_id: sui::types::Address,
-    result: &ScheduleSkillExecutionResult,
+pub(crate) fn schedule_task_result_json(
+    result: &CreateTaskResult,
+    agent_id: sui::types::Address,
+    skill_id: SkillId,
+    dag_id: sui::types::Address,
 ) -> serde_json::Value {
     json!({
-        "standard_tap": true,
-        "function": TapStandard::SCHEDULE_SKILL_EXECUTION.name.to_string(),
+        "function": "schedule_task",
         "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "long_term_gas_coin_id": long_term_gas_coin_id,
-    })
-}
-
-pub(crate) fn schedule_address_funded_result_json(
-    scheduler_task_id: sui::types::Address,
-    prepay_amount: u64,
-    occurrence_budget: u64,
-    result: &ScheduleSkillExecutionResult,
-) -> serde_json::Value {
-    json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
-    })
-}
-
-pub(crate) fn schedule_from_vault_result_json(
-    scheduler_task_id: sui::types::Address,
-    prepay_amount: u64,
-    occurrence_budget: u64,
-    result: &ScheduleSkillExecutionResult,
-) -> serde_json::Value {
-    json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
-    })
-}
-
-pub(crate) fn schedule_default_address_funded_result_json(
-    scheduler_task_id: sui::types::Address,
-    prepay_amount: u64,
-    occurrence_budget: u64,
-    result: &ScheduleSkillExecutionResult,
-) -> serde_json::Value {
-    json!({
-        "standard_tap": true,
-        "function": AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name.to_string(),
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "scheduled_task_id": result.scheduled_task_id,
-        "scheduler_task_id": scheduler_task_id,
-        "agent_id": result.agent_id,
-        "skill_id": result.skill_id,
-        "prepay_amount": prepay_amount,
-        "occurrence_budget": occurrence_budget,
+        "scheduled_task_id": result.task_id,
+        "agent_id": agent_id,
+        "skill_id": skill_id,
+        "dag_id": dag_id,
+        "tap_payment": result.tap_payment.as_ref().map(|payment| json!({
+            "agent_id": payment.agent_id,
+            "skill_id": payment.skill_id,
+            "prepay_amount": payment.prepay_amount,
+            "occurrence_budget": payment.occurrence_budget,
+        })),
+        "initial_schedule": result.initial_schedule.as_ref().map(|schedule| json!({
+            "digest": schedule.tx_digest,
+            "event": schedule.event,
+        })),
     })
 }
 
@@ -264,9 +202,8 @@ pub(crate) fn schedule_default_address_funded_result_json(
 // Payments: show, wait, list
 // ============================================================================
 
-pub(crate) fn payment_show_result_json(payment: &TapExecutionPayment) -> serde_json::Value {
+pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "payment_id": payment.id,
         "execution_id": payment.execution_id,
         "agent_id": payment.agent_id,
@@ -299,8 +236,8 @@ pub(crate) fn payment_wait_result_json(result: &WaitForPaymentResult) -> serde_j
 pub(crate) fn payments_list_result_json(
     owner: sui::types::Address,
     agent_id: Option<sui::types::Address>,
-    wallet_receipts: &[TapExecutionPaymentReceipt],
-    vault_receipts: &[TapExecutionPaymentReceipt],
+    wallet_receipts: &[ExecutionPaymentReceipt],
+    vault_receipts: &[ExecutionPaymentReceipt],
     unresolved_execution_ids: &[sui::types::Address],
     resolved_execution_ids: &[sui::types::Address],
 ) -> serde_json::Value {
@@ -323,7 +260,6 @@ pub(crate) fn payment_resolve_result_json(
         "accomplish_tap_execution_payment"
     };
     json!({
-        "standard_tap": true,
         "function": function,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -336,7 +272,7 @@ pub(crate) fn payment_resolve_result_json(
 // Registry + default-agent inspection
 // ============================================================================
 
-pub(crate) fn registry_show_result_json(registry: &TapRegistry) -> serde_json::Value {
+pub(crate) fn registry_show_result_json(registry: &AgentRegistry) -> serde_json::Value {
     json!({
         "id": registry.id,
         "default_executor": registry.default_executor,
@@ -347,7 +283,6 @@ pub(crate) fn registry_show_result_json(registry: &TapRegistry) -> serde_json::V
 
 pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "agent_id": record.target.agent_id,
         "skill_id": record.target.skill_id,
         "dag_binding": record.skill.dag_binding,
@@ -363,7 +298,7 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
 
 pub(crate) fn vault_balance_result_json(
     agent_id: AgentId,
-    vault: &nexus_sdk::nexus::crawler::Response<TapAgentPaymentVault>,
+    vault: &nexus_sdk::nexus::crawler::Response<AgentPaymentVault>,
 ) -> serde_json::Value {
     json!({
         "agent_id": agent_id,
@@ -376,7 +311,6 @@ pub(crate) fn vault_balance_result_json(
 
 pub(crate) fn vault_deposit_result_json(result: &DepositAgentVaultResult) -> serde_json::Value {
     json!({
-        "standard_tap": true,
         "function": TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name.to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -425,15 +359,14 @@ mod tests {
             types::{
                 DefaultDagExecutor,
                 InterfaceRevision,
-                TapDagBinding,
-                TapPaymentMode,
-                TapPaymentPolicy,
-                TapSchedulePolicy,
-                TapSkillRecord,
-                TapSkillRequirements,
-                TapSkillRevisionKey,
-                TapSkillRevisionRecord,
-                TapVertexAuthorizationPlan,
+                PaymentMode,
+                SkillDagBinding,
+                SkillPaymentPolicy,
+                SkillRecord,
+                SkillRequirements,
+                SkillRevisionKey,
+                SkillRevisionRecord,
+                SkillSchedulePolicy,
             },
         },
     };
@@ -441,15 +374,13 @@ mod tests {
     // ---- shared fixtures ----
 
     fn fixture_artifact() -> TapPublishArtifact {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(1),
@@ -458,15 +389,15 @@ mod tests {
             .expect("artifact builds")
     }
 
-    fn fixture_payment(accomplished: bool, refunded: bool) -> TapExecutionPayment {
-        TapExecutionPayment {
+    fn fixture_payment(accomplished: bool, refunded: bool) -> ExecutionPayment {
+        ExecutionPayment {
             id: sui::types::Address::from_static("0xaa"),
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: sui::types::Address::from_static("0xcc"),
             skill_id: 11,
             interface_revision: InterfaceRevision(2),
             payer: sui::types::Address::from_static("0xee"),
-            payment_mode: TapPaymentMode::UserFunded,
+            payment_mode: PaymentMode::UserFunded,
             source_kind: None,
             source_identity: None,
             max_budget: 1_000,
@@ -582,7 +513,7 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa1"),
             skill_id: 7,
             current_interface_revision: InterfaceRevision(2),
-            dag_binding: nexus_sdk::types::TapDagBinding::pinned(artifact.dag_id),
+            dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
             requirements: artifact.requirements.clone(),
         };
         let json = update_skill_result_json(&artifact, &result);
@@ -604,14 +535,12 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xd"),
-                skill_revision_key: TapSkillRevisionKey {
+                skill_revision_key: SkillRevisionKey {
                     agent_id: sui::types::Address::from_static("0xa"),
                     skill_id: 11,
                     interface_revision: InterfaceRevision(3),
                 },
                 payment_max_budget: 99,
-                authorization_plan_commitment: Some(vec![1, 2, 3]),
-                authorization_plan: TapVertexAuthorizationPlan::default(),
             }),
         };
 
@@ -634,25 +563,21 @@ mod tests {
             output["submit"]["payment_max_budget"],
             serde_json::json!(99)
         );
-        assert_eq!(
-            output["submit"]["authorization_plan_commitment"],
-            serde_json::json!([1, 2, 3])
-        );
     }
 
     #[test]
-    fn tap_requirements_and_schedule_json_helpers_expose_live_state() {
-        let requirements = TapSkillRequirements {
+    fn tap_requirements_json_helper_exposes_live_state() {
+        let requirements = SkillRequirements {
             input_schema_commitment: vec![1],
-            payment_policy: TapPaymentPolicy::default(),
-            schedule_policy: TapSchedulePolicy::default(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
 
         let requirements_output = requirements_result_json(&GetSkillRequirementsResult {
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            active_skill_revision_key: TapSkillRevisionKey {
+            active_skill_revision_key: SkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(3),
@@ -667,22 +592,47 @@ mod tests {
             requirements_output["requirements"]["input_schema_commitment"],
             serde_json::json!([1])
         );
+    }
 
-        let schedule_output = schedule_result_json(
-            sui::types::Address::from_static("0xc"),
-            &ScheduleSkillExecutionResult {
-                tx_digest: sui::types::Digest::from([9; 32]),
-                tx_checkpoint: 13,
-                scheduled_task_id: sui::types::Address::from_static("0xd"),
+    #[test]
+    fn schedule_task_result_json_is_schedule_output_replacement() {
+        let result = CreateTaskResult {
+            tx_digest: sui::types::Digest::from([8; 32]),
+            task_id: sui::types::Address::from_static("0x77"),
+            initial_schedule: None,
+            tap_payment: Some(nexus_sdk::nexus::scheduler::CreateTaskTapPaymentResult {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-            },
+                prepay_amount: 500,
+                occurrence_budget: 50,
+            }),
+        };
+
+        let output = schedule_task_result_json(
+            &result,
+            sui::types::Address::from_static("0xa"),
+            11,
+            sui::types::Address::from_static("0xd"),
+        );
+
+        assert_eq!(output["function"], serde_json::json!("schedule_task"));
+        assert_eq!(
+            output["scheduled_task_id"],
+            serde_json::json!(sui::types::Address::from_static("0x77").to_string())
         );
         assert_eq!(
-            schedule_output["scheduled_task_id"],
+            output["dag_id"],
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
-        assert_eq!(schedule_output["tx_checkpoint"], serde_json::json!(13));
+        assert_eq!(
+            output["tap_payment"]["prepay_amount"],
+            serde_json::json!(500)
+        );
+        assert_eq!(
+            output["tap_payment"]["occurrence_budget"],
+            serde_json::json!(50)
+        );
+        assert!(output["initial_schedule"].is_null());
     }
 
     // ---- payments ----
@@ -690,7 +640,7 @@ mod tests {
     #[test]
     fn payment_show_result_json_includes_terminal_flag() {
         let json = payment_show_result_json(&fixture_payment(true, false));
-        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert!(json.get("standard_tap").is_none());
         assert_eq!(json["accomplished"], serde_json::Value::Bool(true));
         assert_eq!(json["refunded"], serde_json::Value::Bool(false));
         assert_eq!(json["terminal"], serde_json::Value::Bool(true));
@@ -720,7 +670,7 @@ mod tests {
             agent_id: None,
         };
         let json = payment_resolve_result_json(&result);
-        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert!(json.get("standard_tap").is_none());
         assert_eq!(
             json["function"],
             serde_json::json!("accomplish_tap_execution_payment")
@@ -758,10 +708,10 @@ mod tests {
     fn default_agent_result_json_keeps_flat_agent_schema() {
         let agent_id = sui::types::Address::from_static("0xad");
         let dag_id = sui::types::Address::from_static("0xd");
-        let requirements = TapSkillRequirements {
+        let requirements = SkillRequirements {
             input_schema_commitment: vec![1, 2, 3],
-            payment_policy: TapPaymentPolicy::default(),
-            schedule_policy: TapSchedulePolicy::default(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
         let record = DefaultDagExecutorRecord {
@@ -769,18 +719,18 @@ mod tests {
                 agent_id,
                 skill_id: 7,
             },
-            skill: TapSkillRecord {
+            skill: SkillRecord {
                 agent_id: Some(agent_id),
                 skill_id: Some(7),
                 description: b"default agent".to_vec(),
                 active: true,
-                dag_binding: TapDagBinding::pinned(dag_id),
+                dag_binding: SkillDagBinding::pinned(dag_id),
                 requirements: requirements.clone(),
                 current_interface_revision: InterfaceRevision(3),
                 scheduled_task_count: 0,
             },
-            skill_revision: TapSkillRevisionRecord {
-                key: TapSkillRevisionKey {
+            skill_revision: SkillRevisionRecord {
+                key: SkillRevisionKey {
                     agent_id,
                     skill_id: 7,
                     interface_revision: InterfaceRevision(3),
@@ -791,7 +741,7 @@ mod tests {
 
         let json = default_agent_result_json(&record);
 
-        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert!(json.get("standard_tap").is_none());
         assert_eq!(json["agent_id"], serde_json::json!(agent_id.to_string()));
         assert_eq!(json["skill_id"], serde_json::json!(7));
         assert_eq!(json["dag_id"], serde_json::json!(dag_id.to_string()));
@@ -831,7 +781,7 @@ mod tests {
             amount: 12345,
         };
         let json = vault_deposit_result_json(&result);
-        assert_eq!(json["standard_tap"], serde_json::Value::Bool(true));
+        assert!(json.get("standard_tap").is_none());
         assert_eq!(json["amount"], serde_json::json!(12345));
         assert_eq!(json["tx_checkpoint"], serde_json::json!(50));
     }
@@ -848,15 +798,13 @@ mod tests {
             "/tmp/tap/skill"
         );
 
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
+            requirements: SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: InterfaceRevision(7),

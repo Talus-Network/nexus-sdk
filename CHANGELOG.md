@@ -14,46 +14,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, derives the current skill artifact, and writes the agent/skill binding data needed for follow-up execution.
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
+- `tap scheduled-task pause|resume|cancel` commands for explicit-agent scheduled task state changes with required `--agent-id`.
 
 #### Changed
 
 - TAP CLI terminology now uses default agent or `DefaultDAGExecutor` for Agent Registry surfaces, including the `tap default-agent show` command replacing `tap default-target show`.
 - `tap create-agent` and `tap bind` now derive authorization from the shared agent object flow and no longer accept an explicit `--operator` argument.
 - `tap publish-skill`, `tap bind`, `tap register-skill`, `tap dry-run`, registry inspection, default-agent inspection, requirements output, execution output, payment output, and scheduling output now reflect the simplified current-skill model rather than endpoint-revision/config-digest records.
+- TAP and scheduler command outputs now use current-skill, fixed-tool, scheduled task, direct `UserFunded` and `AgentFunded`, and DAG-owned worksheet terminology, matching the current Move interface split and removing stale endpoint-revision, shared-object, refund-mode, and config-digest fields from active flows.
+- direct TAP execution and scheduled TAP execution commands now construct and report the same skill, grant, payment, worksheet, and settlement model instead of exposing attach-style scheduled compatibility state.
+- `--agent-id` command paths now validate whether the resolved agent object can be used mutably or immutably before submission, returning a local CLI error for immutable objects on mutable operations.
+- `scheduler task pause`, `scheduler task resume`, and `scheduler task cancel` now use the registry-backed default-agent task-state path without requiring a caller-supplied agent object.
 
 #### Removed
 
 - `tap announce` endpoint-revision command; use `tap update-skill` to move an existing skill to a new current revision.
 - TAP execute and schedule refund-mode flags; payment and schedule policy now come from the simplified skill requirements.
+- Replace `tap schedule` with `tap schedule-task` for explicit-agent scheduled TAP task creation and scheduler occurrence/periodic commands for timing.
 
 ### `nexus-sdk`
 
 #### Added
 
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
-- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+- `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
+- Receipt lifecycle event decoding for `ExecutionPaymentReceiptCreatedEvent`, `ExecutionPaymentReceiptResolvedEvent`, and `ScheduledPaymentReserveReceiptCreatedEvent`.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduled task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+- Scheduler PTB builders for settling finished scheduled TAP execution payments from task-owned address-funded or agent-vault reserves.
 - `TapActions::update_skill_from_artifact` and `transactions::tap` helpers for updating an existing skill's DAG binding, payment policy, schedule policy, fixed-tool requirements, and current interface revision from a `TapPublishArtifact`.
+- `transactions::agent_input::AgentInput`, a reusable transaction input type for owned, shared, and immutable agent objects with explicit mutable and immutable argument export.
 - `TapFixedTool` requirements and DAG input commitment derivation for the current skill artifact shape.
 - `LeaderClaimedEvent { registry, leader_cap_id, claim_token }` mirroring the on-chain `nexus_registry::leader::activate_and_claim` event, with its `NexusEventKind::LeaderClaimed` variant and BCS decoder generated by the `events!` macro. The leader consumes it to learn which activation claim currently owns a leader record.
+- typed authorization and payment models mirroring the split Move modules, including recipient-bound grant/cap values, direct payment-source identity, scheduled reserve state, and verifier worksheet proof shapes.
 
 #### Changed
 
 - `TapPublishArtifact` no longer carries `tap_package_id`, shared objects, or config-digest fields; reusable skill artifacts now contain only `skill_name`, `dag_id`, `interface_revision`, and simplified requirements consumed by register, bind, and update flows.
 - `TapSkillRequirements` now carries `input_schema_commitment`, `payment_policy`, `schedule_policy`, and `fixed_tools`, replacing workflow/metadata commitments and `TapVertexAuthorizationSchema`.
 - `TapPaymentPolicy` and `TapSchedulePolicy` now mirror the current on-chain enum shapes, including user-funded vs agent-funded payment policy and once vs recursive schedule recurrence.
+- `SchedulerActions::create_task` now keeps user-funded scheduled tasks sender-owned while agent-vault-funded tasks route through the mutable-agent, agent-owned scheduler constructor.
 - `transactions::tap::register_skill_with_vertex_authorization_schema` is now `transactions::tap::register_skill_with_fixed_tools`, with fixed-tool argument helpers so skills can register registry-verified `TapFixedTool` requirements without carrying a vertex authorization schema.
 - TAP registry, default-agent, active execution, and requirement resolution models now use current skill records and derived skill revisions instead of endpoint revision records.
 - TAP package publishing options now pass the selected Sui Move build environment by name.
+- SDK idents, event decoding, object models, action helpers, PTB builders, and crawler lookups now follow the split `agent`, `authorization`, `payment`, `scheduled_request`, `verifier`, registry, scheduler, and workflow Move module layout.
+- DAG and workflow builders now use DAG-owned worksheet submission and generic leader worksheet stamping, removing SDK references to registry worksheet confirmation and the dry-run-only `leader_stamp_worksheet_for_dry_run` surface.
+- scheduled execution builders now pass scheduled task identity and task-attached authorization/payment reserve state through the same execution configuration shape used by direct TAP execution, unifying occurrence preparation, settlement, and event decoding.
+- Explicit-agent scheduled task payment constructors are exposed through `transactions::tap`, while default-agent scheduled task constructors remain under `transactions::scheduler`, matching the CLI split between explicit agent TAP flows and default scheduler flows.
+- Scheduled task state decoding now mirrors the on-chain five-state lifecycle `Active`, `Paused`, `Canceled`, `Completed`, and `Failed`, while legacy `Exhausted` scheduled-state wire values decode as `Completed`.
+- Agent-object transaction builders and high-level actions now route user-supplied agent ids through `AgentInput`, so mutable calls reject immutable objects locally and immutable calls can borrow shared objects immutably.
+- Abort-expired workflow actions now read DAG metadata from `DagExecution.dag` instead of re-resolving the current active skill binding, allowing runtime-selected active bindings to recover already-created executions.
+- Scheduled task settlement builders now keep automatic occurrence settlement task+execution-only and expose whole-reserve idle agent-funded scheduled reserve collection as a task+agent operation.
+- Scheduler task-state builders and `SchedulerActions::set_task_state` now pass the agent registry so default-agent task-state calls can validate against the registry-owned default agent and guarded scheduled-count cleanup path.
+- `TapActions::set_agent_task_state` and explicit-agent scheduler task-state PTB builders now operate TAP scheduled tasks with a required agent id.
 
 #### Removed
 
 - Endpoint-revision announcement and inspection SDK surfaces, endpoint config-digest helpers, shared-object requirement plumbing, and stale `TapV1`/default-target terminology from active TAP paths.
+- stale SDK identifiers, structures, and PTB helpers for endpoint revisions, vertex authorization schemas, payment-source hashes, registry worksheet confirmation, TAP-specific leader stamps, dry-run-only workflow stamps, and attach-style scheduled occurrence entrypoints.
+- Stale attach-style and registry scheduled payment APIs, including `ScheduleSkillExecutionResult`, `ScheduleReserveFund`, `ScheduleSkillExecutionFromAgentVaultParams`, `TapActions::schedule_skill_execution`, `TapActions::schedule_skill_execution_from_agent_vault`, `TapActions::schedule_skill_execution_address_funded`, `TapActions::schedule_default_dag_executor_skill_execution_address_funded`, `transactions::tap::schedule_skill_execution`, registry `SCHEDULE_SKILL_EXECUTION*` idents, and raw registry/scheduler attachment PTB builders; use scheduled task creation with `CreateTaskTapPayment` plus occurrence and periodic APIs.
+- Per-occurrence scheduled settlement-to-agent-vault SDK builders and idents; use task+execution settlement for occurrence completion and whole-reserve collection or cancellation for agent-vault reserve exits.
+
+#### Fixed
+
+- `DagExecution` JSON decoding now accepts the on-chain `dag` field for abort-expired execution recovery paths.
+- SDK and CLI PTB helpers now use the current `sui-transaction-builder` object, pure input, function type-argument, and opaque argument APIs consistently, restoring `just sdk test` and `just cli test` under the `0.3.1` builder stack.
 
 ### `docs`
 
 #### Changed
 
-- TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled-task reserve flows.
+- TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled task reserve flows.
 - Tool communication docs now cover registered-key leader verifier proof requirements for signed HTTP DAGs.
 
 #### Changed

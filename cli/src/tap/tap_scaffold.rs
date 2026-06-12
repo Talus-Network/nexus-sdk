@@ -117,9 +117,7 @@ public fun init_for_test(): {witness} {{
             format!(
                 r#"{{
   "name": "{name}",
-  "tap_package_name": "{package_name}",
   "dag_path": "dag.json",
-  "tap_package_path": "tap",
   "requirements": {{
     "input_schema_commitment": [1],
     "payment_policy": "UserFunded",

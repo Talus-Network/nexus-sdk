@@ -2,11 +2,12 @@
 
 use {
     crate::{
-        events::RequestWalkStandardTapContext,
+        events::RequestWalkContext,
         nexus::crawler::{DynamicMap, Map, Set},
         sui,
         types::{
             deserialize_move_option_sui_u64,
+            deserialize_sui_u64,
             parse_runtime_vertex_value,
             parse_string_value,
             parse_u64_value,
@@ -17,20 +18,33 @@ use {
             MoveVecSet,
             NexusData,
             SkillId,
-            TapSkillRevisionKey,
-            TapVertexAuthorizationPlan,
-            TapVertexAuthorizationPlanEntry,
+            SkillRevisionKey,
             TypeName,
             VerifierConfig,
             VerifierMode,
         },
         ToolFqn,
     },
-    anyhow::{anyhow, bail},
-    serde::{Deserialize, Serialize},
+    anyhow::anyhow,
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
     serde_json::Value,
     std::collections::{HashMap, HashSet},
 };
+
+fn deserialize_move_option_field<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    MoveOption::<T>::deserialize(deserializer).map(|value| value.0)
+}
+
+fn deserialize_move_option_u64_field<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_move_option_sui_u64(deserializer).map(|value| value.0)
+}
 
 /// Struct holding the DAG definition from our Move code.
 ///
@@ -55,79 +69,36 @@ pub struct DagExecution {
     /// The address of the sender of the transaction to trigger this DAG
     /// execution.
     pub invoker: sui::types::Address,
-    #[serde(default = "empty_move_option")]
-    pub tap_agent_id: MoveOption<AgentId>,
-    #[serde(default = "empty_move_option")]
-    #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
-    pub tap_skill_id: MoveOption<SkillId>,
-    #[serde(default = "empty_move_option")]
-    pub tap_interface_revision: MoveOption<InterfaceRevision>,
-    #[serde(default = "empty_move_option")]
-    pub tap_payment_id: MoveOption<sui::types::Address>,
-    #[serde(default = "empty_move_option")]
-    pub tap_selected_dag_id: MoveOption<sui::types::Address>,
-    #[serde(default = "empty_move_option")]
-    pub tap_authorization_plan_commitment: MoveOption<Vec<u8>>,
-    #[serde(default)]
-    pub tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
-    #[serde(default = "empty_move_option")]
-    pub tap_scheduled_task_id: MoveOption<sui::types::Address>,
-    #[serde(default = "empty_move_option")]
-    #[serde(deserialize_with = "deserialize_move_option_sui_u64")]
-    pub tap_scheduled_occurrence_index: MoveOption<u64>,
+    #[serde(rename = "dag", alias = "dag_id")]
+    pub dag_id: sui::types::Address,
+    pub agent_id: AgentId,
+    #[serde(deserialize_with = "deserialize_sui_u64")]
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceRevision,
+    #[serde(default, deserialize_with = "deserialize_move_option_field")]
+    pub scheduled_task_id: Option<sui::types::Address>,
+    #[serde(default, deserialize_with = "deserialize_move_option_u64_field")]
+    pub scheduled_occurrence_index: Option<u64>,
     #[serde(default)]
     pub walks: Vec<DagExecutionWalk>,
 }
 
 impl DagExecution {
-    pub fn skill_revision_key(&self) -> Option<TapSkillRevisionKey> {
-        Some(TapSkillRevisionKey {
-            agent_id: self.tap_agent_id.0?,
-            skill_id: self.tap_skill_id.0?,
-            interface_revision: self.tap_interface_revision.0?,
+    pub fn skill_revision_key(&self) -> Option<SkillRevisionKey> {
+        Some(SkillRevisionKey {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_version,
         })
     }
 
-    pub fn standard_tap_context(&self) -> anyhow::Result<Option<RequestWalkStandardTapContext>> {
-        if self.tap_agent_id.0.is_none()
-            && self.tap_skill_id.0.is_none()
-            && self.tap_interface_revision.0.is_none()
-            && self.tap_payment_id.0.is_none()
-            && self.tap_selected_dag_id.0.is_none()
-            && self.tap_authorization_plan_commitment.0.is_none()
-            && self.tap_authorization_plan.is_empty()
-            && self.tap_scheduled_task_id.0.is_none()
-            && self.tap_scheduled_occurrence_index.0.is_none()
-        {
-            return Ok(None);
-        }
-
-        let Some(agent_id) = self.tap_agent_id.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_agent_id");
-        };
-        let Some(skill_id) = self.tap_skill_id.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_skill_id");
-        };
-        let Some(interface_revision) = self.tap_interface_revision.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_interface_revision");
-        };
-        let Some(payment_id) = self.tap_payment_id.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_payment_id");
-        };
-        let Some(selected_dag_id) = self.tap_selected_dag_id.0 else {
-            bail!("DAGExecution has partial standard TAP context: missing tap_selected_dag_id");
-        };
-
-        Ok(Some(RequestWalkStandardTapContext {
-            agent_id,
-            skill_id,
-            interface_revision,
-            payment_id,
-            selected_dag_id,
-            authorization_plan_commitment: self.tap_authorization_plan_commitment.0.clone(),
-            authorization_plan: TapVertexAuthorizationPlan(self.tap_authorization_plan.clone()),
-            scheduled_task_id: self.tap_scheduled_task_id.0,
-            scheduled_occurrence_index: self.tap_scheduled_occurrence_index.0,
+    pub fn to_context(&self) -> anyhow::Result<Option<RequestWalkContext>> {
+        Ok(Some(RequestWalkContext {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_version,
+            scheduled_task_id: self.scheduled_task_id,
+            scheduled_occurrence_index: self.scheduled_occurrence_index,
         }))
     }
 }
@@ -482,10 +453,6 @@ where
     MoveOption::<VerifierConfig>::deserialize(deserializer).map(|value| value.0)
 }
 
-fn empty_move_option<T>() -> MoveOption<T> {
-    MoveOption(None)
-}
-
 /// Enum distinguishing between a plain vertex and a vertex with an iterator.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "_variant_name")]
@@ -616,11 +583,7 @@ pub struct DagOutputVariantPort {
 mod tests {
     use {
         super::*,
-        crate::{
-            events::RequestWalkStandardTapContext,
-            fqn,
-            types::{InterfaceRevision, RuntimeVertex},
-        },
+        crate::{events::RequestWalkContext, fqn, types::InterfaceRevision},
         serde_json::json,
         std::str::FromStr,
     };
@@ -798,36 +761,29 @@ mod tests {
     }
 
     #[test]
-    fn dag_execution_standard_tap_context_requires_complete_fields() {
+    fn dag_execution_context_uses_required_agent_fields() {
         let execution = DagExecution {
             invoker: sui::types::Address::from_static("0x1"),
-            tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-            tap_skill_id: MoveOption(Some(11)),
-            tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-            tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
-            tap_selected_dag_id: MoveOption(Some(sui::types::Address::from_static("0xe"))),
-            tap_authorization_plan_commitment: MoveOption(Some(vec![1, 2, 3])),
-            tap_authorization_plan: Vec::new(),
-            tap_scheduled_task_id: MoveOption(Some(sui::types::Address::from_static("0xf"))),
-            tap_scheduled_occurrence_index: MoveOption(Some(2)),
+            dag_id: sui::types::Address::from_static("0xd"),
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            interface_version: InterfaceRevision(7),
+            scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
+            scheduled_occurrence_index: Some(2),
             walks: Vec::new(),
         };
 
         let context = execution
-            .standard_tap_context()
-            .expect("complete standard context should parse")
-            .expect("context should be present");
+            .to_context()
+            .expect("current agent context should parse")
+            .expect("context is always present for active executions");
 
         assert_eq!(
             context,
-            RequestWalkStandardTapContext {
+            RequestWalkContext {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(7),
-                payment_id: sui::types::Address::from_static("0xd"),
-                selected_dag_id: sui::types::Address::from_static("0xe"),
-                authorization_plan_commitment: Some(vec![1, 2, 3]),
-                authorization_plan: TapVertexAuthorizationPlan::default(),
                 scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
                 scheduled_occurrence_index: Some(2),
             }
@@ -835,323 +791,24 @@ mod tests {
     }
 
     #[test]
-    fn dag_execution_scheduled_occurrence_index_accepts_sui_move_json_string_option() {
+    fn dag_execution_scheduled_occurrence_index_accepts_plain_option_json() {
         let execution: DagExecution = serde_json::from_value(serde_json::json!({
             "invoker": "0x1",
-            "tap_skill_id": { "vec": ["11"] },
-            "tap_scheduled_occurrence_index": { "vec": ["2"] }
+            "dag": "0xd",
+            "agent_id": "0xa",
+            "skill_id": "11",
+            "interface_version": "7",
+            "scheduled_task_id": { "vec": ["0xf"] },
+            "scheduled_occurrence_index": { "vec": ["2"] }
         }))
-        .expect("DAGExecution should parse Move JSON option-u64 strings");
+        .expect("DAGExecution should parse current Move JSON fields");
 
-        assert_eq!(execution.tap_skill_id.0, Some(11));
-        assert_eq!(execution.tap_scheduled_occurrence_index.0, Some(2));
-    }
-
-    #[test]
-    fn dag_execution_decodes_active_and_pending_abort_walks() {
-        let execution: DagExecution = serde_json::from_value(json!({
-            "invoker": "0x1",
-            "walks": [
-                {
-                    "Active": {
-                        "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
-                        "timeout_ms": "30000",
-                        "requires_vertex_authorization_grant": true,
-                        "created_at": "7"
-                    }
-                },
-                {
-                    "_variant_name": "PendingAbort",
-                    "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
-                }
-            ]
-        }))
-        .expect("walks should decode from Move JSON");
-
+        assert_eq!(execution.skill_id, 11);
+        assert_eq!(execution.dag_id, sui::types::Address::from_static("0xd"));
         assert_eq!(
-            execution.walks[0],
-            DagExecutionWalk::Active {
-                next_vertex: RuntimeVertex::plain("payable"),
-                timeout_ms: 30_000,
-                requires_vertex_authorization_grant: true,
-                created_at: 7,
-            }
+            execution.scheduled_task_id,
+            Some(sui::types::Address::from_static("0xf"))
         );
-        assert_eq!(
-            execution.walks[1],
-            DagExecutionWalk::PendingAbort {
-                at_vertex: RuntimeVertex::plain("payable")
-            }
-        );
-        assert_eq!(
-            execution.walks[0].expired_active_vertex(60_007),
-            Some(&RuntimeVertex::plain("payable"))
-        );
-        assert_eq!(execution.walks[0].expired_active_vertex(60_006), None);
-    }
-
-    #[test]
-    fn dag_execution_walk_rejects_missing_and_unknown_variants() {
-        let missing_variant = serde_json::from_value::<DagExecutionWalk>(json!({
-            "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
-            "timeout_ms": "30000"
-        }))
-        .expect_err("walk without a variant should fail");
-        assert!(missing_variant.to_string().contains("missing variant"));
-
-        let unsupported_variant = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Paused": {
-                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
-            }
-        }))
-        .expect_err("unknown walk variant should fail");
-        assert!(unsupported_variant
-            .to_string()
-            .contains("unsupported DAGWalk variant Paused"));
-    }
-
-    #[test]
-    fn dag_execution_walk_requires_active_and_terminal_fields() {
-        let missing_next_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Active": {
-                "timeout_ms": "30000",
-                "created_at": "7"
-            }
-        }))
-        .expect_err("active walk without next_vertex should fail");
-        assert!(missing_next_vertex
-            .to_string()
-            .contains("missing next_vertex"));
-
-        let missing_timeout = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Active": {
-                "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
-                "created_at": "7"
-            }
-        }))
-        .expect_err("active walk without timeout_ms should fail");
-        assert!(missing_timeout.to_string().contains("missing timeout_ms"));
-
-        let missing_created_at = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Active": {
-                "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
-                "timeout_ms": "30000"
-            }
-        }))
-        .expect_err("active walk without created_at should fail");
-        assert!(missing_created_at
-            .to_string()
-            .contains("missing created_at"));
-
-        let missing_at_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Aborted": {}
-        }))
-        .expect_err("terminal walk without at_vertex should fail");
-        assert!(missing_at_vertex.to_string().contains("missing at_vertex"));
-
-        let null_next_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Active": {
-                "next_vertex": null,
-                "timeout_ms": "30000",
-                "created_at": "7"
-            }
-        }))
-        .expect_err("active walk with null next_vertex should fail");
-        assert!(null_next_vertex.to_string().contains("missing next_vertex"));
-
-        let null_at_vertex = serde_json::from_value::<DagExecutionWalk>(json!({
-            "PendingAbort": {
-                "at_vertex": null
-            }
-        }))
-        .expect_err("terminal walk with null at_vertex should fail");
-        assert!(null_at_vertex.to_string().contains("missing at_vertex"));
-    }
-
-    #[test]
-    fn dag_execution_walk_decodes_terminal_variants_and_saturating_expiry() {
-        let consumed = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Consumed": {
-                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
-            }
-        }))
-        .expect("consumed walk should decode");
-        let failed = serde_json::from_value::<DagExecutionWalk>(json!("Failed"))
-            .expect_err("bare strings are not accepted Move JSON objects");
-        let successful = serde_json::from_value::<DagExecutionWalk>(json!({
-            "_variant_name": "Successful"
-        }))
-        .expect("successful walk should decode");
-        let failed_object = serde_json::from_value::<DagExecutionWalk>(json!({
-            "_variant_name": "Failed"
-        }))
-        .expect("failed walk should decode");
-        let cancelled = serde_json::from_value::<DagExecutionWalk>(json!({
-            "_variant_name": "Cancelled"
-        }))
-        .expect("cancelled walk should decode");
-        let aborted = serde_json::from_value::<DagExecutionWalk>(json!({
-            "Aborted": {
-                "at_vertex": { "Plain": { "vertex": { "name": "payable" } } }
-            }
-        }))
-        .expect("aborted walk should decode");
-        let saturating_active = DagExecutionWalk::Active {
-            next_vertex: RuntimeVertex::plain("payable"),
-            timeout_ms: u64::MAX,
-            requires_vertex_authorization_grant: false,
-            created_at: u64::MAX,
-        };
-
-        assert_eq!(
-            consumed,
-            DagExecutionWalk::Consumed {
-                at_vertex: RuntimeVertex::plain("payable")
-            }
-        );
-        assert!(failed.to_string().contains("must be an object"));
-        assert_eq!(successful, DagExecutionWalk::Successful);
-        assert_eq!(failed_object, DagExecutionWalk::Failed);
-        assert_eq!(cancelled, DagExecutionWalk::Cancelled);
-        assert_eq!(
-            aborted,
-            DagExecutionWalk::Aborted {
-                at_vertex: RuntimeVertex::plain("payable")
-            }
-        );
-        assert_eq!(
-            saturating_active.expired_active_vertex(u64::MAX),
-            Some(&RuntimeVertex::plain("payable"))
-        );
-    }
-
-    #[test]
-    fn dag_execution_option_u64_accepts_move_json_shapes_and_rejects_invalid_values() {
-        for (value, expected) in [
-            (json!(null), None),
-            (json!(7), Some(7)),
-            (json!({ "some": 8 }), Some(8)),
-            (json!({ "Some": "9" }), Some(9)),
-            (json!({ "none": {} }), None),
-            (json!({ "Vec": [] }), None),
-        ] {
-            let execution: DagExecution = serde_json::from_value(json!({
-                "invoker": "0x1",
-                "tap_skill_id": value,
-            }))
-            .expect("option u64 shape should parse");
-            assert_eq!(execution.tap_skill_id.0, expected);
-        }
-
-        for value in [json!(-1), json!({ "bad": 1 }), json!(true)] {
-            assert!(serde_json::from_value::<DagExecution>(json!({
-                "invoker": "0x1",
-                "tap_skill_id": value,
-            }))
-            .is_err());
-        }
-    }
-
-    #[test]
-    fn dag_execution_standard_tap_context_rejects_partial_fields() {
-        let execution = DagExecution {
-            invoker: sui::types::Address::from_static("0x1"),
-            tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-            tap_skill_id: MoveOption(None),
-            tap_interface_revision: MoveOption(None),
-            tap_payment_id: MoveOption(None),
-            tap_selected_dag_id: MoveOption(None),
-            tap_authorization_plan_commitment: MoveOption(None),
-            tap_authorization_plan: Vec::new(),
-            tap_scheduled_task_id: MoveOption(None),
-            tap_scheduled_occurrence_index: MoveOption(None),
-            walks: Vec::new(),
-        };
-
-        let error = execution
-            .standard_tap_context()
-            .expect_err("partial standard context should error");
-        assert!(error.to_string().contains("missing tap_skill_id"));
-
-        for (execution, expected) in [
-            (
-                DagExecution {
-                    invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-                    tap_skill_id: MoveOption(Some(11)),
-                    tap_interface_revision: MoveOption(None),
-                    tap_payment_id: MoveOption(None),
-                    tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_commitment: MoveOption(None),
-                    tap_authorization_plan: Vec::new(),
-                    tap_scheduled_task_id: MoveOption(None),
-                    tap_scheduled_occurrence_index: MoveOption(None),
-                    walks: Vec::new(),
-                },
-                "missing tap_interface_revision",
-            ),
-            (
-                DagExecution {
-                    invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-                    tap_skill_id: MoveOption(Some(11)),
-                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-                    tap_payment_id: MoveOption(None),
-                    tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_commitment: MoveOption(None),
-                    tap_authorization_plan: Vec::new(),
-                    tap_scheduled_task_id: MoveOption(None),
-                    tap_scheduled_occurrence_index: MoveOption(None),
-                    walks: Vec::new(),
-                },
-                "missing tap_payment_id",
-            ),
-            (
-                DagExecution {
-                    invoker: sui::types::Address::from_static("0x1"),
-                    tap_agent_id: MoveOption(Some(sui::types::Address::from_static("0xa"))),
-                    tap_skill_id: MoveOption(Some(11)),
-                    tap_interface_revision: MoveOption(Some(InterfaceRevision(7))),
-                    tap_payment_id: MoveOption(Some(sui::types::Address::from_static("0xd"))),
-                    tap_selected_dag_id: MoveOption(None),
-                    tap_authorization_plan_commitment: MoveOption(None),
-                    tap_authorization_plan: Vec::new(),
-                    tap_scheduled_task_id: MoveOption(None),
-                    tap_scheduled_occurrence_index: MoveOption(None),
-                    walks: Vec::new(),
-                },
-                "missing tap_selected_dag_id",
-            ),
-        ] {
-            let error = execution.standard_tap_context().unwrap_err();
-            assert!(
-                error.to_string().contains(expected),
-                "expected {expected:?}, got {error}"
-            );
-        }
-    }
-
-    #[test]
-    fn dag_execution_missing_standard_tap_fields_default_to_none() {
-        let execution: DagExecution = serde_json::from_value(json!({
-            "invoker": "0x1"
-        }))
-        .expect("missing standard TAP fields should default to none");
-
-        assert_eq!(execution.tap_agent_id.0, None);
-        assert_eq!(execution.tap_skill_id.0, None);
-        assert_eq!(execution.tap_interface_revision.0, None);
-        assert_eq!(execution.tap_payment_id.0, None);
-        assert_eq!(execution.tap_selected_dag_id.0, None);
-        assert_eq!(execution.tap_authorization_plan_commitment.0, None);
-        assert!(execution.tap_authorization_plan.is_empty());
-        assert_eq!(execution.tap_scheduled_task_id.0, None);
-        assert_eq!(execution.tap_scheduled_occurrence_index.0, None);
-        assert_eq!(
-            execution
-                .standard_tap_context()
-                .expect("empty standard TAP context should parse"),
-            None
-        );
+        assert_eq!(execution.scheduled_occurrence_index, Some(2));
     }
 }

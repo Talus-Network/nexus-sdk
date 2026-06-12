@@ -12,7 +12,7 @@ use {
     anyhow::anyhow,
     nexus_sdk::{
         nexus::{error::NexusError, workflow::AgentDagExecuteOptions},
-        types::tap_payment_source_for_address,
+        types::payment_source_from_address,
     },
 };
 
@@ -81,12 +81,10 @@ pub(crate) async fn execute_dag(
     let input_data =
         workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
     let agent_dag_options = AgentDagExecuteOptions {
-        payment_source: tap_payment_source_for_address(owner).map_err(NexusCliError::Any)?,
+        payment_source: payment_source_from_address(owner).map_err(NexusCliError::Any)?,
         payment_coin: Some(payment_coin),
         payment_coin_balance: Some(balance),
         payment_max_budget: budget,
-        authorization_plan_commitment: None,
-        authorization_plan: Vec::new(),
     };
 
     let tx_handle = loading!("Crafting and executing transaction...");

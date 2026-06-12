@@ -37,7 +37,7 @@ Relevant helpers include:
 
 - `tap_payment_source_for_address(...)` for direct `create_agent_skill_payment` source bytes accepted by the Move policy.
 - `TapPaymentSource::invoker(...)` and `TapPaymentSource::agent_vault(...)` for typed payment-source payloads used by SDK models and non-direct policy surfaces.
-- `TapAgentPaymentVault` plus `fetch_tap_agent_payment_vault(...)`.
+- `TapAgentPaymentVault` plus `fetch_agent_payment_vault(...)`.
 - `tap::deposit_agent_payment_vault(...)` and `tap::withdraw_agent_payment_vault(...)` PTB builders.
 - `gas::add_agent_budget(...)` for standard Talus agent-scoped gas funding.
 

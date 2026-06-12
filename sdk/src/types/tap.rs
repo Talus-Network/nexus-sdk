@@ -1,7 +1,7 @@
 //! Standard TAP models shared by SDK, CLI, leader, and future Move surfaces.
 
 use {
-    super::{MoveOption, MoveTable, RuntimeVertex},
+    super::{MoveOption, MoveTable},
     crate::sui,
     serde::{de::Error as _, Deserialize, Serialize},
     sha2::{Digest as _, Sha256},
@@ -39,40 +39,6 @@ where
         .ok_or_else(|| D::Error::custom("missing TAP u64 value"))
 }
 
-fn deserialize_tap_u64_value_or_default<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return u64::deserialize(deserializer);
-    }
-
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(super::parse_u64_value(&value)
-        .map_err(D::Error::custom)?
-        .unwrap_or_default())
-}
-
-fn deserialize_tap_address_value_or_default<'de, D>(
-    deserializer: D,
-) -> Result<sui::types::Address, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return sui::types::Address::deserialize(deserializer);
-    }
-
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(super::parse_address_value(&value)
-        .map_err(D::Error::custom)?
-        .unwrap_or(sui::types::Address::ZERO))
-}
-
-fn default_tap_address() -> sui::types::Address {
-    sui::types::Address::ZERO
-}
-
 fn deserialize_move_option_tap_address<'de, D>(
     deserializer: D,
 ) -> Result<Option<sui::types::Address>, D::Error>
@@ -82,53 +48,13 @@ where
     MoveOption::<sui::types::Address>::deserialize(deserializer).map(|value| value.0)
 }
 
-fn deserialize_move_option_interface_revision<'de, D>(
-    deserializer: D,
-) -> Result<Option<InterfaceRevision>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    MoveOption::<InterfaceRevision>::deserialize(deserializer).map(|value| value.0)
-}
-
 fn deserialize_move_option_payment_source_kind<'de, D>(
     deserializer: D,
-) -> Result<Option<TapPaymentSourceKind>, D::Error>
+) -> Result<Option<PaymentSourceKind>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    MoveOption::<TapPaymentSourceKind>::deserialize(deserializer).map(|value| value.0)
-}
-
-fn deserialize_tap_byte_string<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        let bytes = Vec::<u8>::deserialize(deserializer)?;
-        return String::from_utf8(bytes).map_err(D::Error::custom);
-    }
-
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(bytes) = super::parse_byte_vector_value(&value).map_err(D::Error::custom)? {
-        return String::from_utf8(bytes).map_err(D::Error::custom);
-    }
-
-    let text = super::parse_string_value(&value)
-        .map_err(D::Error::custom)?
-        .ok_or_else(|| D::Error::custom("missing TAP byte-string value"))?;
-
-    if let Some(hex) = text.strip_prefix("0x") {
-        if hex.len() % 2 == 0 && hex.as_bytes().iter().all(u8::is_ascii_hexdigit) {
-            if let Ok(bytes) = hex::decode(hex) {
-                if let Ok(decoded) = String::from_utf8(bytes) {
-                    return Ok(decoded);
-                }
-            }
-        }
-    }
-
-    Ok(text)
+    MoveOption::<PaymentSourceKind>::deserialize(deserializer).map(|value| value.0)
 }
 
 fn deserialize_tap_byte_vector<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -145,26 +71,6 @@ where
         .ok_or_else(|| D::Error::custom("missing TAP byte-vector value"))
 }
 
-fn deserialize_tap_runtime_vertex<'de, D>(deserializer: D) -> Result<RuntimeVertex, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return RuntimeVertex::deserialize(deserializer);
-    }
-
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(vertex) = super::parse_runtime_vertex_value(&value).map_err(D::Error::custom)? {
-        return Ok(vertex);
-    }
-
-    if let Some(name) = super::parse_string_value(&value).map_err(D::Error::custom)? {
-        return Ok(RuntimeVertex::plain(&name));
-    }
-
-    Err(D::Error::custom("missing TAP runtime vertex value"))
-}
-
 /// On-chain generated standard Talus agent ID.
 pub type AgentId = sui::types::Address;
 
@@ -179,6 +85,9 @@ pub const fn skill_id(value: u64) -> SkillId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[serde(transparent)]
 pub struct InterfaceRevision(pub u64);
+
+/// Canonical name for `nexus_interface::version::InterfaceVersion`.
+pub type InterfaceVersion = InterfaceRevision;
 
 impl<'de> Deserialize<'de> for InterfaceRevision {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -197,14 +106,14 @@ impl fmt::Display for InterfaceRevision {
 
 /// Key for a pinned skill interface revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapSkillRevisionKey {
+pub struct SkillRevisionKey {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceRevision,
 }
 
-impl fmt::Display for TapSkillRevisionKey {
+impl fmt::Display for SkillRevisionKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -216,13 +125,13 @@ impl fmt::Display for TapSkillRevisionKey {
 
 /// Key for fresh worksheet and active-revision lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapWorksheetKey {
+pub struct WorksheetKey {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
 
-impl fmt::Display for TapWorksheetKey {
+impl fmt::Display for WorksheetKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.agent_id, self.skill_id)
     }
@@ -231,12 +140,12 @@ impl fmt::Display for TapWorksheetKey {
 /// Payment source policy for an agent skill.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapPaymentMode {
+pub enum PaymentMode {
     UserFunded,
     AgentFunded,
 }
 
-impl<'de> Deserialize<'de> for TapPaymentMode {
+impl<'de> Deserialize<'de> for PaymentMode {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -256,16 +165,16 @@ impl<'de> Deserialize<'de> for TapPaymentMode {
         }
 
         let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_payment_mode_value(&value)
+        deserialize_payment_mode_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP payment mode value"))
     }
 }
 
-fn deserialize_tap_payment_mode_value(value: &serde_json::Value) -> Option<TapPaymentMode> {
-    fn from_text(text: &str) -> Option<TapPaymentMode> {
+fn deserialize_payment_mode_value(value: &serde_json::Value) -> Option<PaymentMode> {
+    fn from_text(text: &str) -> Option<PaymentMode> {
         match text {
-            "user_funded" | "UserFunded" | "userFunded" => Some(TapPaymentMode::UserFunded),
-            "agent_funded" | "AgentFunded" | "agentFunded" => Some(TapPaymentMode::AgentFunded),
+            "user_funded" | "UserFunded" | "userFunded" => Some(PaymentMode::UserFunded),
+            "agent_funded" | "AgentFunded" | "agentFunded" => Some(PaymentMode::AgentFunded),
             _ => None,
         }
     }
@@ -282,7 +191,7 @@ fn deserialize_tap_payment_mode_value(value: &serde_json::Value) -> Option<TapPa
             }
 
             if let Some(fields) = object.get("fields") {
-                if let Some(mode) = deserialize_tap_payment_mode_value(fields) {
+                if let Some(mode) = deserialize_payment_mode_value(fields) {
                     return Some(mode);
                 }
             }
@@ -295,12 +204,12 @@ fn deserialize_tap_payment_mode_value(value: &serde_json::Value) -> Option<TapPa
 
 /// TAP-facing payment policy summary used by config digest and dry-run checks.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub enum TapPaymentPolicy {
+pub enum SkillPaymentPolicy {
     UserFunded,
     AgentFunded { max_budget: u64 },
 }
 
-impl<'de> Deserialize<'de> for TapPaymentPolicy {
+impl<'de> Deserialize<'de> for SkillPaymentPolicy {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -313,44 +222,44 @@ impl<'de> Deserialize<'de> for TapPaymentPolicy {
             }
 
             return RawTapPaymentPolicy::deserialize(deserializer).map(|raw| match raw {
-                RawTapPaymentPolicy::UserFunded => TapPaymentPolicy::UserFunded,
+                RawTapPaymentPolicy::UserFunded => SkillPaymentPolicy::UserFunded,
                 RawTapPaymentPolicy::AgentFunded { max_budget } => {
-                    TapPaymentPolicy::AgentFunded { max_budget }
+                    SkillPaymentPolicy::AgentFunded { max_budget }
                 }
             });
         }
 
         let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_payment_policy_value(&value)
+        deserialize_payment_policy_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP payment policy value"))
     }
 }
 
-fn deserialize_tap_payment_policy_value(value: &serde_json::Value) -> Option<TapPaymentPolicy> {
+fn deserialize_payment_policy_value(value: &serde_json::Value) -> Option<SkillPaymentPolicy> {
     fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
         ["@variant", "variant", "type"]
             .into_iter()
             .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
     }
 
-    fn parse_agent_funded(fields: Option<&serde_json::Value>) -> Option<TapPaymentPolicy> {
+    fn parse_agent_funded(fields: Option<&serde_json::Value>) -> Option<SkillPaymentPolicy> {
         let max_budget = fields
             .and_then(|fields| match fields {
                 serde_json::Value::Object(object) => object.get("max_budget"),
                 other => Some(other),
             })
             .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
-        Some(TapPaymentPolicy::AgentFunded { max_budget })
+        Some(SkillPaymentPolicy::AgentFunded { max_budget })
     }
 
     match value {
         serde_json::Value::String(text) if text == "UserFunded" || text == "user_funded" => {
-            Some(TapPaymentPolicy::UserFunded)
+            Some(SkillPaymentPolicy::UserFunded)
         }
         serde_json::Value::Object(object) => {
             if let Some(text) = variant_text(object) {
                 return match text {
-                    "UserFunded" | "user_funded" => Some(TapPaymentPolicy::UserFunded),
+                    "UserFunded" | "user_funded" => Some(SkillPaymentPolicy::UserFunded),
                     "AgentFunded" | "agent_funded" => {
                         parse_agent_funded(object.get("fields").or(Some(value)))
                     }
@@ -359,7 +268,7 @@ fn deserialize_tap_payment_policy_value(value: &serde_json::Value) -> Option<Tap
             }
 
             if object.contains_key("UserFunded") {
-                return Some(TapPaymentPolicy::UserFunded);
+                return Some(SkillPaymentPolicy::UserFunded);
             }
             if let Some(fields) = object.get("AgentFunded") {
                 return parse_agent_funded(Some(fields));
@@ -373,7 +282,7 @@ fn deserialize_tap_payment_policy_value(value: &serde_json::Value) -> Option<Tap
     }
 }
 
-impl TapPaymentPolicy {
+impl SkillPaymentPolicy {
     pub fn user_funded() -> Self {
         Self::UserFunded
     }
@@ -382,10 +291,10 @@ impl TapPaymentPolicy {
         Self::AgentFunded { max_budget }
     }
 
-    pub fn mode(&self) -> TapPaymentMode {
+    pub fn mode(&self) -> PaymentMode {
         match self {
-            Self::UserFunded => TapPaymentMode::UserFunded,
-            Self::AgentFunded { .. } => TapPaymentMode::AgentFunded,
+            Self::UserFunded => PaymentMode::UserFunded,
+            Self::AgentFunded { .. } => PaymentMode::AgentFunded,
         }
     }
 
@@ -400,12 +309,12 @@ impl TapPaymentPolicy {
 /// Source kind for standard TAP execution payment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapPaymentSourceKind {
+pub enum PaymentSourceKind {
     Invoker,
     AgentVault,
 }
 
-impl TapPaymentSourceKind {
+impl PaymentSourceKind {
     pub fn as_u8(self) -> u8 {
         match self {
             Self::Invoker => TAP_PAYMENT_SOURCE_KIND_INVOKER,
@@ -425,7 +334,7 @@ impl TapPaymentSourceKind {
 /// Long-lived payment source recorded on a scheduled TAP task.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum TapScheduledPaymentSource {
+pub enum ScheduledPaymentSource {
     Address {
         #[serde(deserialize_with = "deserialize_tap_address_value")]
         refund_recipient: sui::types::Address,
@@ -435,7 +344,7 @@ pub enum TapScheduledPaymentSource {
     },
 }
 
-impl<'de> Deserialize<'de> for TapScheduledPaymentSource {
+impl<'de> Deserialize<'de> for ScheduledPaymentSource {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -465,7 +374,7 @@ impl<'de> Deserialize<'de> for TapScheduledPaymentSource {
 
 fn deserialize_tap_scheduled_payment_source_value(
     value: &serde_json::Value,
-) -> Option<TapScheduledPaymentSource> {
+) -> Option<ScheduledPaymentSource> {
     let unwrapped = super::strip_fields_owned(value.clone());
     let value = if &unwrapped != value {
         &unwrapped
@@ -481,7 +390,7 @@ fn deserialize_tap_scheduled_payment_source_value(
         let refund_recipient = address
             .get("refund_recipient")
             .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-        return Some(TapScheduledPaymentSource::Address { refund_recipient });
+        return Some(ScheduledPaymentSource::Address { refund_recipient });
     }
 
     if let Some(vault) = object
@@ -493,7 +402,7 @@ fn deserialize_tap_scheduled_payment_source_value(
         let agent_id = vault
             .get("agent_id")
             .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-        return Some(TapScheduledPaymentSource::AgentVault { agent_id });
+        return Some(ScheduledPaymentSource::AgentVault { agent_id });
     }
 
     let variant = object
@@ -506,23 +415,23 @@ fn deserialize_tap_scheduled_payment_source_value(
             let refund_recipient = object
                 .get("refund_recipient")
                 .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-            Some(TapScheduledPaymentSource::Address { refund_recipient })
+            Some(ScheduledPaymentSource::Address { refund_recipient })
         }
         Some("AgentVault") | Some("agent_vault") | Some("agentVault") => {
             let agent_id = object
                 .get("agent_id")
                 .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-            Some(TapScheduledPaymentSource::AgentVault { agent_id })
+            Some(ScheduledPaymentSource::AgentVault { agent_id })
         }
         _ => None,
     }
 }
 
-impl TapScheduledPaymentSource {
-    pub fn source_kind(&self) -> TapPaymentSourceKind {
+impl ScheduledPaymentSource {
+    pub fn source_kind(&self) -> PaymentSourceKind {
         match self {
-            Self::Address { .. } => TapPaymentSourceKind::Invoker,
-            Self::AgentVault { .. } => TapPaymentSourceKind::AgentVault,
+            Self::Address { .. } => PaymentSourceKind::Invoker,
+            Self::AgentVault { .. } => PaymentSourceKind::AgentVault,
         }
     }
 
@@ -534,18 +443,7 @@ impl TapScheduledPaymentSource {
     }
 }
 
-/// TAP scheduled-task link stored in `nexus_scheduler::scheduler::Task.data`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapScheduledTaskLink {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub scheduled_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    pub source_kind: TapPaymentSourceKind,
-}
-
-impl<'de> Deserialize<'de> for TapPaymentSourceKind {
+impl<'de> Deserialize<'de> for PaymentSourceKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -556,18 +454,16 @@ impl<'de> Deserialize<'de> for TapPaymentSourceKind {
         }
 
         let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_payment_source_kind_value(&value)
+        deserialize_payment_source_kind_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP payment source kind value"))
     }
 }
 
-fn deserialize_tap_payment_source_kind_value(
-    value: &serde_json::Value,
-) -> Option<TapPaymentSourceKind> {
-    fn from_text(text: &str) -> Option<TapPaymentSourceKind> {
+fn deserialize_payment_source_kind_value(value: &serde_json::Value) -> Option<PaymentSourceKind> {
+    fn from_text(text: &str) -> Option<PaymentSourceKind> {
         match text {
-            "invoker" | "Invoker" => Some(TapPaymentSourceKind::Invoker),
-            "agent_vault" | "AgentVault" | "agentVault" => Some(TapPaymentSourceKind::AgentVault),
+            "invoker" | "Invoker" => Some(PaymentSourceKind::Invoker),
+            "agent_vault" | "AgentVault" | "agentVault" => Some(PaymentSourceKind::AgentVault),
             _ => None,
         }
     }
@@ -577,7 +473,7 @@ fn deserialize_tap_payment_source_kind_value(
         serde_json::Value::Number(number) => number.as_u64().and_then(|value| {
             u8::try_from(value)
                 .ok()
-                .and_then(|value| TapPaymentSourceKind::from_u8(value).ok())
+                .and_then(|value| PaymentSourceKind::from_u8(value).ok())
         }),
         serde_json::Value::Object(object) => {
             for key in ["@variant", "variant", "type"] {
@@ -589,7 +485,7 @@ fn deserialize_tap_payment_source_kind_value(
             }
 
             if let Some(fields) = object.get("fields") {
-                if let Some(kind) = deserialize_tap_payment_source_kind_value(fields) {
+                if let Some(kind) = deserialize_payment_source_kind_value(fields) {
                     return Some(kind);
                 }
             }
@@ -606,22 +502,22 @@ fn deserialize_tap_payment_source_kind_value(
 /// settlement from agent-vault-funded settlement. Legacy address-only BCS
 /// sources remain accepted by validation for backward compatibility.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapPaymentSource {
-    pub kind: TapPaymentSourceKind,
+pub struct PaymentSource {
+    pub kind: PaymentSourceKind,
     pub identity: sui::types::Address,
 }
 
-impl TapPaymentSource {
+impl PaymentSource {
     pub fn invoker(invoker: sui::types::Address) -> Self {
         Self {
-            kind: TapPaymentSourceKind::Invoker,
+            kind: PaymentSourceKind::Invoker,
             identity: invoker,
         }
     }
 
     pub fn agent_vault(agent_id: AgentId) -> Self {
         Self {
-            kind: TapPaymentSourceKind::AgentVault,
+            kind: PaymentSourceKind::AgentVault,
             identity: agent_id,
         }
     }
@@ -633,13 +529,13 @@ impl TapPaymentSource {
     pub fn from_bcs_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         let (kind, identity): (u8, sui::types::Address) = bcs::from_bytes(bytes)?;
         Ok(Self {
-            kind: TapPaymentSourceKind::from_u8(kind)?,
+            kind: PaymentSourceKind::from_u8(kind)?,
             identity,
         })
     }
 }
 
-impl Default for TapPaymentPolicy {
+impl Default for SkillPaymentPolicy {
     fn default() -> Self {
         Self::UserFunded
     }
@@ -647,12 +543,12 @@ impl Default for TapPaymentPolicy {
 
 /// DAG binding mode for a registered TAP skill.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TapDagBinding {
+pub enum SkillDagBinding {
     Pinned { dag_id: sui::types::Address },
     RuntimeSelected,
 }
 
-impl TapDagBinding {
+impl SkillDagBinding {
     pub fn pinned(dag_id: sui::types::Address) -> Self {
         Self::Pinned { dag_id }
     }
@@ -671,7 +567,7 @@ impl TapDagBinding {
 
 /// TAP-facing recurrence mode for a scheduled skill.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub enum TapRecurrenceKind {
+pub enum RecurrenceKind {
     Once,
     Recursive {
         min_interval_ms: u64,
@@ -679,7 +575,7 @@ pub enum TapRecurrenceKind {
     },
 }
 
-impl<'de> Deserialize<'de> for TapRecurrenceKind {
+impl<'de> Deserialize<'de> for RecurrenceKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -695,11 +591,11 @@ impl<'de> Deserialize<'de> for TapRecurrenceKind {
             }
 
             return RawTapRecurrenceKind::deserialize(deserializer).map(|raw| match raw {
-                RawTapRecurrenceKind::Once => TapRecurrenceKind::Once,
+                RawTapRecurrenceKind::Once => RecurrenceKind::Once,
                 RawTapRecurrenceKind::Recursive {
                     min_interval_ms,
                     max_occurrences,
-                } => TapRecurrenceKind::Recursive {
+                } => RecurrenceKind::Recursive {
                     min_interval_ms,
                     max_occurrences,
                 },
@@ -712,14 +608,14 @@ impl<'de> Deserialize<'de> for TapRecurrenceKind {
     }
 }
 
-fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<TapRecurrenceKind> {
+fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<RecurrenceKind> {
     fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
         ["@variant", "variant", "type"]
             .into_iter()
             .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
     }
 
-    fn parse_recursive(fields: Option<&serde_json::Value>) -> Option<TapRecurrenceKind> {
+    fn parse_recursive(fields: Option<&serde_json::Value>) -> Option<RecurrenceKind> {
         let serde_json::Value::Object(object) = fields? else {
             return None;
         };
@@ -734,7 +630,7 @@ fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<Ta
                     .map(|value| value.0)
             })
             .flatten();
-        Some(TapRecurrenceKind::Recursive {
+        Some(RecurrenceKind::Recursive {
             min_interval_ms,
             max_occurrences,
         })
@@ -742,12 +638,12 @@ fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<Ta
 
     match value {
         serde_json::Value::String(text) if text == "Once" || text == "once" => {
-            Some(TapRecurrenceKind::Once)
+            Some(RecurrenceKind::Once)
         }
         serde_json::Value::Object(object) => {
             if let Some(text) = variant_text(object) {
                 return match text {
-                    "Once" | "once" => Some(TapRecurrenceKind::Once),
+                    "Once" | "once" => Some(RecurrenceKind::Once),
                     "Recursive" | "recursive" => {
                         parse_recursive(object.get("fields").or(Some(value)))
                     }
@@ -756,7 +652,7 @@ fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<Ta
             }
 
             if object.contains_key("Once") {
-                return Some(TapRecurrenceKind::Once);
+                return Some(RecurrenceKind::Once);
             }
             if let Some(fields) = object.get("Recursive") {
                 return parse_recursive(Some(fields));
@@ -772,15 +668,15 @@ fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<Ta
 
 /// TAP-facing schedule policy summary used by dry-run checks.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapSchedulePolicy {
-    pub recurrence: TapRecurrenceKind,
+pub struct SkillSchedulePolicy {
+    pub recurrence: RecurrenceKind,
     pub allow_recursive: bool,
 }
 
-impl Default for TapSchedulePolicy {
+impl Default for SkillSchedulePolicy {
     fn default() -> Self {
         Self {
-            recurrence: TapRecurrenceKind::Once,
+            recurrence: RecurrenceKind::Once,
             allow_recursive: false,
         }
     }
@@ -788,7 +684,7 @@ impl Default for TapSchedulePolicy {
 
 /// Fixed tool that must be preserved by a skill DAG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapFixedTool {
+pub struct FixedTool {
     pub tool_registry_id: sui::types::Address,
     #[serde(
         alias = "fqn",
@@ -800,25 +696,28 @@ pub struct TapFixedTool {
 
 /// User-facing skill requirements fetched before dry-run or execution.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapSkillRequirements {
+pub struct SkillRequirements {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub input_schema_commitment: Vec<u8>,
-    pub payment_policy: TapPaymentPolicy,
-    pub schedule_policy: TapSchedulePolicy,
+    pub payment_policy: SkillPaymentPolicy,
+    pub schedule_policy: SkillSchedulePolicy,
     #[serde(default)]
-    pub fixed_tools: Vec<TapFixedTool>,
+    pub fixed_tools: Vec<FixedTool>,
 }
+
+/// Canonical core skill requirement name.
+pub type SkillRequirement = SkillRequirements;
 
 /// Stored `nexus_registry::agent_registry::AgentRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapAgentRecord {
+pub struct AgentRecord {
     pub active: bool,
-    pub skills: MoveTable<SkillId, TapSkillRecord>,
+    pub skills: MoveTable<SkillId, SkillRecord>,
 }
 
 /// Stored `nexus_interface::tap::SkillRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapSkillRecord {
+pub struct SkillRecord {
     /// SDK-expanded dynamic table context. This is not part of the on-chain `SkillRecord`.
     #[serde(skip)]
     pub agent_id: Option<AgentId>,
@@ -828,8 +727,8 @@ pub struct TapSkillRecord {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub description: Vec<u8>,
     pub active: bool,
-    pub dag_binding: TapDagBinding,
-    pub requirements: TapSkillRequirements,
+    pub dag_binding: SkillDagBinding,
+    pub requirements: SkillRequirements,
     pub current_interface_revision: InterfaceRevision,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub scheduled_task_count: u64,
@@ -851,7 +750,7 @@ pub struct DefaultDagExecutorFieldKey {}
 /// the default agent on chain; SDK callers only expose its public target IDs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultDagExecutorValue {
-    pub agent: TapAgentObject,
+    pub agent: Agent,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
@@ -867,7 +766,7 @@ impl DefaultDagExecutorValue {
 
 /// Stored `nexus_interface::tap::Agent` object shape.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapAgentObject {
+pub struct Agent {
     pub id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub next_skill_id: u64,
@@ -876,27 +775,27 @@ pub struct TapAgentObject {
 
 /// Raw shared `nexus_registry::agent_registry::AgentRegistry` object contents.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapRegistryObject {
+pub struct AgentRegistryObject {
     pub id: sui::types::Address,
-    pub agents: MoveTable<sui::types::Address, TapAgentRecord>,
+    pub agents: MoveTable<sui::types::Address, AgentRecord>,
 }
 
 /// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapRegistry {
+pub struct AgentRegistry {
     pub id: sui::types::Address,
-    pub agents: Vec<TapAgentRecord>,
-    pub skills: Vec<TapSkillRecord>,
+    pub agents: Vec<AgentRecord>,
+    pub skills: Vec<SkillRecord>,
     #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
 }
 
-impl TapRegistry {
+impl AgentRegistry {
     /// Convert current skill revisions into leader-facing skill revision records.
-    pub fn skill_revision_records(&self) -> anyhow::Result<Vec<TapSkillRevisionRecord>> {
+    pub fn skill_revision_records(&self) -> anyhow::Result<Vec<SkillRevisionRecord>> {
         self.skills
             .iter()
-            .filter_map(TapSkillRevisionRecord::from_skill_record)
+            .filter_map(SkillRevisionRecord::from_skill_record)
             .map(|record| {
                 record.validate()?;
                 Ok(record)
@@ -906,8 +805,8 @@ impl TapRegistry {
 
     pub fn skill_revision_record(
         &self,
-        key: TapSkillRevisionKey,
-    ) -> anyhow::Result<TapSkillRevisionRecord> {
+        key: SkillRevisionKey,
+    ) -> anyhow::Result<SkillRevisionRecord> {
         let matches = self
             .skill_revision_records()?
             .into_iter()
@@ -925,7 +824,7 @@ impl TapRegistry {
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
-    ) -> anyhow::Result<TapSkillRevisionRecord> {
+    ) -> anyhow::Result<SkillRevisionRecord> {
         let skills = self
             .skills
             .iter()
@@ -936,7 +835,7 @@ impl TapRegistry {
 
         let skill = match skills.as_slice() {
             [] => {
-                return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
+                return Err(SkillRevisionResolutionError::MissingActiveRevision {
                     agent_id,
                     skill_id,
                 }
@@ -944,14 +843,14 @@ impl TapRegistry {
             }
             [skill] if skill.active => *skill,
             [_] => {
-                return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
+                return Err(SkillRevisionResolutionError::MissingActiveRevision {
                     agent_id,
                     skill_id,
                 }
                 .into())
             }
             _ => {
-                return Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
+                return Err(SkillRevisionResolutionError::DuplicateActiveRevision {
                     agent_id,
                     skill_id,
                     count: skills.len(),
@@ -960,8 +859,8 @@ impl TapRegistry {
             }
         };
 
-        let skill_revision = TapSkillRevisionRecord {
-            key: TapSkillRevisionKey {
+        let skill_revision = SkillRevisionRecord {
+            key: SkillRevisionKey {
                 agent_id,
                 skill_id,
                 interface_revision: skill.current_interface_revision,
@@ -980,17 +879,17 @@ impl TapRegistry {
 
 /// Active or pinned skill revision record returned to leader and SDK callers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapSkillRevisionRecord {
-    pub key: TapSkillRevisionKey,
-    pub requirements: TapSkillRequirements,
+pub struct SkillRevisionRecord {
+    pub key: SkillRevisionKey,
+    pub requirements: SkillRequirements,
 }
 
-impl TapSkillRevisionRecord {
-    fn from_skill_record(skill: &TapSkillRecord) -> Option<Self> {
+impl SkillRevisionRecord {
+    fn from_skill_record(skill: &SkillRecord) -> Option<Self> {
         let agent_id = skill.agent_id?;
         let skill_id = skill.skill_id?;
         Some(Self {
-            key: TapSkillRevisionKey {
+            key: SkillRevisionKey {
                 agent_id,
                 skill_id,
                 interface_revision: skill.current_interface_revision,
@@ -999,8 +898,8 @@ impl TapSkillRevisionRecord {
         })
     }
 
-    pub fn worksheet_key(&self) -> TapWorksheetKey {
-        TapWorksheetKey {
+    pub fn worksheet_key(&self) -> WorksheetKey {
+        WorksheetKey {
             agent_id: self.key.agent_id,
             skill_id: self.key.skill_id,
         }
@@ -1015,7 +914,7 @@ impl TapSkillRevisionRecord {
 
 /// Execution-linked payment object model used by leader recovery.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapExecutionPayment {
+pub struct ExecutionPayment {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -1026,12 +925,12 @@ pub struct TapExecutionPayment {
     pub interface_revision: InterfaceRevision,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub payer: sui::types::Address,
-    pub payment_mode: TapPaymentMode,
+    pub payment_mode: PaymentMode,
     #[serde(
         default,
         deserialize_with = "deserialize_move_option_payment_source_kind"
     )]
-    pub source_kind: Option<TapPaymentSourceKind>,
+    pub source_kind: Option<PaymentSourceKind>,
     #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
     pub source_identity: Option<sui::types::Address>,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -1045,32 +944,35 @@ pub struct TapExecutionPayment {
     pub accomplished: bool,
     pub refunded: bool,
     #[serde(default)]
-    pub final_state: Option<TapExecutionPaymentFinalState>,
+    pub final_state: Option<ExecutionPaymentFinalState>,
     #[serde(default)]
-    pub locked_vertices: Vec<TapExecutionPaymentVertexLock>,
+    pub locked_vertices: Vec<ExecutionPaymentVertexLock>,
 }
 
-impl TapExecutionPayment {
+impl ExecutionPayment {
     pub fn payment_id(&self) -> sui::types::Address {
         self.id
     }
 
-    pub fn skill_revision_key(&self) -> TapSkillRevisionKey {
-        TapSkillRevisionKey {
+    pub fn skill_revision_key(&self) -> SkillRevisionKey {
+        SkillRevisionKey {
             agent_id: self.agent_id,
             skill_id: self.skill_id,
             interface_revision: self.interface_revision,
         }
     }
 
-    pub fn outstanding_locks(&self) -> u64 {
+    pub fn locks(&self) -> u64 {
         self.locked_vertices.len() as u64
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DagExecutionPaymentFieldKey {}
+
 /// Wallet- or agent-owned receipt for a standard TAP execution payment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapExecutionPaymentReceipt {
+pub struct ExecutionPaymentReceipt {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -1082,7 +984,7 @@ pub struct TapExecutionPaymentReceipt {
     pub skill_id: SkillId,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub payer: sui::types::Address,
-    pub source_kind: TapPaymentSourceKind,
+    pub source_kind: PaymentSourceKind,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub source_identity: sui::types::Address,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -1090,7 +992,7 @@ pub struct TapExecutionPaymentReceipt {
     pub resolved: bool,
 }
 
-impl TapExecutionPaymentReceipt {
+impl ExecutionPaymentReceipt {
     pub fn receipt_id(&self) -> sui::types::Address {
         self.id
     }
@@ -1098,23 +1000,23 @@ impl TapExecutionPaymentReceipt {
 
 /// Dynamic-field key for vault-owned execution payment receipts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapExecutionPaymentReceiptFieldKey {
+pub struct ExecutionPaymentReceiptFieldKey {
     pub execution_id: sui::types::Address,
 }
 
 /// Dynamic-field key for an agent's standard payment vault.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapAgentVaultFieldKey {}
+pub struct AgentVaultFieldKey {}
 
 /// Dynamic-field key for vault payment-history lists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TapExecutionPaymentHistoryFieldKey {
+pub struct ExecutionPaymentHistoryFieldKey {
     pub resolved: bool,
 }
 
 /// Agent-owned unresolved or resolved execution-payment history list.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapExecutionPaymentHistoryList {
+pub struct ExecutionPaymentHistoryList {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     pub execution_ids: Vec<sui::types::Address>,
@@ -1122,26 +1024,26 @@ pub struct TapExecutionPaymentHistoryList {
 
 /// Execution payment vertex lock decoded from TAP payment state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapExecutionPaymentVertexLock {
+pub struct ExecutionPaymentVertexLock {
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub vertex_key: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_byte_vector")]
     pub tool_fqn: Vec<u8>,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub amount: u64,
-    pub settlement_kind: TapVertexExecutionPaymentSettlementKind,
+    pub settlement_kind: VertexExecutionPaymentSettlementKind,
 }
 
 /// Tool-payment settlement class for an execution payment vertex lock.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapVertexExecutionPaymentSettlementKind {
+pub enum VertexExecutionPaymentSettlementKind {
     Free,
     Ticket,
     Paid,
 }
 
-impl<'de> Deserialize<'de> for TapVertexExecutionPaymentSettlementKind {
+impl<'de> Deserialize<'de> for VertexExecutionPaymentSettlementKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -1156,19 +1058,19 @@ impl<'de> Deserialize<'de> for TapVertexExecutionPaymentSettlementKind {
         }
 
         let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_payment_settlement_kind_value(&value)
+        deserialize_payment_settlement_kind_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP payment settlement kind value"))
     }
 }
 
-fn deserialize_tap_payment_settlement_kind_value(
+fn deserialize_payment_settlement_kind_value(
     value: &serde_json::Value,
-) -> Option<TapVertexExecutionPaymentSettlementKind> {
-    fn from_text(text: &str) -> Option<TapVertexExecutionPaymentSettlementKind> {
+) -> Option<VertexExecutionPaymentSettlementKind> {
+    fn from_text(text: &str) -> Option<VertexExecutionPaymentSettlementKind> {
         match text {
-            "free" | "Free" => Some(TapVertexExecutionPaymentSettlementKind::Free),
-            "ticket" | "Ticket" => Some(TapVertexExecutionPaymentSettlementKind::Ticket),
-            "paid" | "Paid" => Some(TapVertexExecutionPaymentSettlementKind::Paid),
+            "free" | "Free" => Some(VertexExecutionPaymentSettlementKind::Free),
+            "ticket" | "Ticket" => Some(VertexExecutionPaymentSettlementKind::Ticket),
+            "paid" | "Paid" => Some(VertexExecutionPaymentSettlementKind::Paid),
             _ => None,
         }
     }
@@ -1185,7 +1087,7 @@ fn deserialize_tap_payment_settlement_kind_value(
             }
 
             if let Some(fields) = object.get("fields") {
-                if let Some(kind) = deserialize_tap_payment_settlement_kind_value(fields) {
+                if let Some(kind) = deserialize_payment_settlement_kind_value(fields) {
                     return Some(kind);
                 }
             }
@@ -1199,13 +1101,13 @@ fn deserialize_tap_payment_settlement_kind_value(
 /// Final state for a standard TAP execution payment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapExecutionPaymentFinalState {
+pub enum ExecutionPaymentFinalState {
     Pending,
     Accomplished,
     Refunded,
 }
 
-impl<'de> Deserialize<'de> for TapExecutionPaymentFinalState {
+impl<'de> Deserialize<'de> for ExecutionPaymentFinalState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -1232,95 +1134,16 @@ impl<'de> Deserialize<'de> for TapExecutionPaymentFinalState {
     }
 }
 
-/// Lifecycle state for a durable scheduled TAP task.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TapScheduledTaskState {
-    Active,
-    Canceled,
-    Completed,
-    Exhausted,
-    Failed,
-}
-
-impl<'de> Deserialize<'de> for TapScheduledTaskState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "snake_case")]
-            enum RawState {
-                Active,
-                Canceled,
-                Completed,
-                Exhausted,
-                Failed,
-            }
-
-            return RawState::deserialize(deserializer).map(|state| match state {
-                RawState::Active => Self::Active,
-                RawState::Canceled => Self::Canceled,
-                RawState::Completed => Self::Completed,
-                RawState::Exhausted => Self::Exhausted,
-                RawState::Failed => Self::Failed,
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_scheduled_task_state_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP scheduled task state value"))
-    }
-}
-
-fn deserialize_tap_scheduled_task_state_value(
-    value: &serde_json::Value,
-) -> Option<TapScheduledTaskState> {
-    fn from_text(text: &str) -> Option<TapScheduledTaskState> {
-        match text {
-            "active" | "Active" => Some(TapScheduledTaskState::Active),
-            "canceled" | "Canceled" => Some(TapScheduledTaskState::Canceled),
-            "completed" | "Completed" => Some(TapScheduledTaskState::Completed),
-            "exhausted" | "Exhausted" => Some(TapScheduledTaskState::Exhausted),
-            "failed" | "Failed" => Some(TapScheduledTaskState::Failed),
-            _ => None,
-        }
-    }
-
-    match value {
-        serde_json::Value::String(text) => from_text(text),
-        serde_json::Value::Object(object) => {
-            for key in ["@variant", "variant", "type"] {
-                if let Some(serde_json::Value::String(text)) = object.get(key) {
-                    if let Some(state) = from_text(text) {
-                        return Some(state);
-                    }
-                }
-            }
-
-            if let Some(fields) = object.get("fields") {
-                if let Some(state) = deserialize_tap_scheduled_task_state_value(fields) {
-                    return Some(state);
-                }
-            }
-
-            object.keys().find_map(|key| from_text(key))
-        }
-        _ => None,
-    }
-}
-
 /// Final state for one scheduled occurrence.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TapScheduledOccurrenceFinalState {
+pub enum ScheduledOccurrenceFinalState {
     InFlight,
     Accomplished,
     Refunded,
 }
 
-impl<'de> Deserialize<'de> for TapScheduledOccurrenceFinalState {
+impl<'de> Deserialize<'de> for ScheduledOccurrenceFinalState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -1349,14 +1172,12 @@ impl<'de> Deserialize<'de> for TapScheduledOccurrenceFinalState {
 
 fn deserialize_tap_scheduled_occurrence_final_state_value(
     value: &serde_json::Value,
-) -> Option<TapScheduledOccurrenceFinalState> {
-    fn from_text(text: &str) -> Option<TapScheduledOccurrenceFinalState> {
+) -> Option<ScheduledOccurrenceFinalState> {
+    fn from_text(text: &str) -> Option<ScheduledOccurrenceFinalState> {
         match text {
-            "in_flight" | "inFlight" | "InFlight" => {
-                Some(TapScheduledOccurrenceFinalState::InFlight)
-            }
-            "accomplished" | "Accomplished" => Some(TapScheduledOccurrenceFinalState::Accomplished),
-            "refunded" | "Refunded" => Some(TapScheduledOccurrenceFinalState::Refunded),
+            "in_flight" | "inFlight" | "InFlight" => Some(ScheduledOccurrenceFinalState::InFlight),
+            "accomplished" | "Accomplished" => Some(ScheduledOccurrenceFinalState::Accomplished),
+            "refunded" | "Refunded" => Some(ScheduledOccurrenceFinalState::Refunded),
             _ => None,
         }
     }
@@ -1387,12 +1208,12 @@ fn deserialize_tap_scheduled_occurrence_final_state_value(
 
 fn deserialize_tap_execution_payment_final_state_value(
     value: &serde_json::Value,
-) -> Option<TapExecutionPaymentFinalState> {
-    fn from_text(text: &str) -> Option<TapExecutionPaymentFinalState> {
+) -> Option<ExecutionPaymentFinalState> {
+    fn from_text(text: &str) -> Option<ExecutionPaymentFinalState> {
         match text {
-            "pending" | "Pending" => Some(TapExecutionPaymentFinalState::Pending),
-            "accomplished" | "Accomplished" => Some(TapExecutionPaymentFinalState::Accomplished),
-            "refunded" | "Refunded" => Some(TapExecutionPaymentFinalState::Refunded),
+            "pending" | "Pending" => Some(ExecutionPaymentFinalState::Pending),
+            "accomplished" | "Accomplished" => Some(ExecutionPaymentFinalState::Accomplished),
+            "refunded" | "Refunded" => Some(ExecutionPaymentFinalState::Refunded),
             _ => None,
         }
     }
@@ -1426,7 +1247,7 @@ fn deserialize_tap_execution_payment_final_state_value(
 /// `available_balance` includes locked funds; `locked_amount` records the
 /// portion reserved by in-flight execution payments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapAgentPaymentVault {
+pub struct AgentPaymentVault {
     #[serde(deserialize_with = "deserialize_tap_address_value")]
     pub id: sui::types::Address,
     pub agent_id: AgentId,
@@ -1436,222 +1257,11 @@ pub struct TapAgentPaymentVault {
     pub locked_amount: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkflowVertexAuthorizationGrant {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub execution_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
-    pub vertex: RuntimeVertex,
-    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
-    pub scheduled_grant_id: Option<sui::types::Address>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct WorkflowVertexAuthorizationGrantFieldKey {
-    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
-    pub vertex: RuntimeVertex,
-}
+/// Backward-compatible alias for the current `nexus_interface::authorization` template.
+pub type ScheduledVertexAuthorizationTemplate = crate::types::AgentVertexAuthorizationTemplate;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkflowVertexAuthorizationGrantAccess {
-    pub grant: WorkflowVertexAuthorizationGrant,
-    pub object_ref: sui::types::ObjectReference,
-}
-
-impl WorkflowVertexAuthorizationGrantAccess {
-    pub fn grant_id(&self) -> sui::types::Address {
-        self.grant.id
-    }
-
-    pub fn object_id(&self) -> sui::types::Address {
-        *self.object_ref.object_id()
-    }
-}
-
-/// Execution-scoped authorization-plan entry that maps one runtime vertex to a concrete grant.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapVertexAuthorizationPlanEntry {
-    #[serde(deserialize_with = "deserialize_tap_runtime_vertex")]
-    pub vertex: RuntimeVertex,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub grant_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub tool_package: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_module: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_function: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_commitment: Vec<u8>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_interface_revision"
-    )]
-    pub interface_revision: Option<InterfaceRevision>,
-    #[serde(default, deserialize_with = "deserialize_move_option_tap_address")]
-    pub payment_id: Option<sui::types::Address>,
-}
-
-impl TapVertexAuthorizationPlanEntry {
-    pub fn matches_fixed_tool(&self, fixed_tool: &TapFixedTool) -> bool {
-        let module_and_function = format!("{}::{}", self.tool_module, self.tool_function);
-        fixed_tool.tool_fqn == module_and_function
-            || fixed_tool
-                .tool_fqn
-                .ends_with(&format!("::{module_and_function}"))
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TapVertexAuthorizationPlan(pub Vec<TapVertexAuthorizationPlanEntry>);
-
-impl TapVertexAuthorizationPlan {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn hash(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(Sha256::digest(bcs::to_bytes(&self.0)?).to_vec())
-    }
-
-    pub fn find_for_vertex(
-        &self,
-        vertex: &RuntimeVertex,
-    ) -> anyhow::Result<Option<&TapVertexAuthorizationPlanEntry>> {
-        let mut matches = self.0.iter().filter(|entry| &entry.vertex == vertex);
-        let first = matches.next();
-        if matches.next().is_some() {
-            anyhow::bail!("duplicate TAP authorization-plan entries for vertex {vertex:?}");
-        }
-        Ok(first)
-    }
-}
-
-/// Creation-time template for a scheduled TAP authorization grant.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapScheduledAuthorizationGrantTemplate {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub dag_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub vertex: String,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub tool_package: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_module: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_function: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_commitment: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapScheduledAuthorizationGrantRef {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub scheduled_grant_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub scheduled_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub dag_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub vertex: String,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub tool_package: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_module: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_string")]
-    pub tool_function: String,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub operation_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub constraints_commitment: Vec<u8>,
-    pub consumed: bool,
-}
-
-/// Scheduled peer of immediate skill execution.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapScheduledSkillTask {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(
-        default = "default_tap_address",
-        deserialize_with = "deserialize_tap_address_value_or_default"
-    )]
-    pub scheduler_task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_interface_revision"
-    )]
-    pub pinned_revision: Option<InterfaceRevision>,
-    /// Payment-source identity anchor from the Move scheduled-task record.
-    /// This is not spendable custody by itself; durable occurrence refill
-    /// needs an explicit custody/linking contract.
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub long_term_gas_coin_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub refill_policy_commitment: Vec<u8>,
-    pub payment_source: TapScheduledPaymentSource,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub payment_source_bytes: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub payment_source_hash: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub occurrence_budget: u64,
-    #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
-    pub remaining_funds: u64,
-    pub payment_policy: TapPaymentPolicy,
-    pub schedule_policy: TapSchedulePolicy,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub schedule_entries_commitment: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub next_after_ms: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub occurrences_spawned: u64,
-    #[serde(default, deserialize_with = "deserialize_tap_u64_value_or_default")]
-    pub occurrences_finalized: u64,
-    #[serde(default)]
-    pub in_flight: Vec<TapScheduledOccurrenceRecord>,
-    #[serde(default)]
-    pub scheduled_authorization_grants: Vec<TapScheduledAuthorizationGrantRef>,
-    pub state: TapScheduledTaskState,
-    #[serde(default, deserialize_with = "deserialize_tap_byte_vector")]
-    pub failure_reason: Vec<u8>,
-}
-
-impl TapScheduledSkillTask {
-    pub fn scheduled_task_id(&self) -> sui::types::Address {
-        self.id
-    }
-
-    pub fn source_kind(&self) -> TapPaymentSourceKind {
-        self.payment_source.source_kind()
-    }
-
-    pub fn source_identity(&self) -> sui::types::Address {
-        self.payment_source.source_identity()
-    }
-
-    pub fn can_spawn_occurrence(&self) -> bool {
-        self.state == TapScheduledTaskState::Active
-            && self.occurrence_budget > 0
-            && self.remaining_funds >= self.occurrence_budget
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapScheduledOccurrenceRecord {
+pub struct ScheduledOccurrenceRecord {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub occurrence_index: u64,
     #[serde(deserialize_with = "deserialize_tap_address_value")]
@@ -1661,48 +1271,40 @@ pub struct TapScheduledOccurrenceRecord {
     pub interface_revision: InterfaceRevision,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub budget: u64,
-    pub final_state: TapScheduledOccurrenceFinalState,
+    pub final_state: ScheduledOccurrenceFinalState,
 }
 
 /// Registered skill plus the currently active skill revision used for fresh standard execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapActiveSkillExecutionTarget {
-    pub skill: TapSkillRecord,
-    pub skill_revision: TapSkillRevisionRecord,
+pub struct ActiveSkillExecutionTarget {
+    pub skill: SkillRecord,
+    pub skill_revision: SkillRevisionRecord,
 }
 
 /// Default execution target plus active skill revision recovered for fresh default DAG execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultDagExecutorRecord {
     pub target: DefaultDagExecutor,
-    pub skill: TapSkillRecord,
-    pub skill_revision: TapSkillRevisionRecord,
+    pub skill: SkillRecord,
+    pub skill_revision: SkillRevisionRecord,
 }
 
 /// DAG-backed TAP skill config used by SDK/CLI authoring helpers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TapSkillConfig {
+pub struct SkillConfig {
     pub name: String,
-    pub tap_package_name: String,
     pub dag_path: PathBuf,
-    pub tap_package_path: PathBuf,
-    pub requirements: TapSkillRequirements,
+    pub requirements: SkillRequirements,
     pub interface_revision: InterfaceRevision,
 }
 
-impl TapSkillConfig {
+impl SkillConfig {
     pub fn validate(&self) -> Result<(), TapValidationError> {
         if self.name.trim().is_empty() {
             return Err(TapValidationError::MissingSkillName);
         }
-        if self.tap_package_name.trim().is_empty() {
-            return Err(TapValidationError::MissingTapPackageName);
-        }
         if self.dag_path.as_os_str().is_empty() {
             return Err(TapValidationError::MissingDagPath);
-        }
-        if self.tap_package_path.as_os_str().is_empty() {
-            return Err(TapValidationError::MissingTapPackagePath);
         }
 
         validate_requirements(&self.requirements)
@@ -1715,14 +1317,11 @@ pub struct TapPublishArtifact {
     pub skill_name: String,
     pub dag_id: sui::types::Address,
     pub interface_revision: InterfaceRevision,
-    pub requirements: TapSkillRequirements,
+    pub requirements: SkillRequirements,
 }
 
 impl TapPublishArtifact {
-    pub fn from_config(
-        config: &TapSkillConfig,
-        dag_id: sui::types::Address,
-    ) -> anyhow::Result<Self> {
+    pub fn from_config(config: &SkillConfig, dag_id: sui::types::Address) -> anyhow::Result<Self> {
         config.validate()?;
 
         Ok(Self {
@@ -1754,67 +1353,23 @@ where
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TapValidationError {
     MissingSkillName,
-    MissingTapPackageName,
     MissingDagPath,
-    MissingTapPackagePath,
     MissingInputCommitment,
     EmptyAuthorizedToolModule,
     EmptyAuthorizedToolFunction,
-    DuplicateAuthorizationPlanVertex,
-    AuthorizationPlanCommitmentMismatch,
-    AuthorizationPlanGrantMismatch,
-    AuthorizationPlanToolNotAuthorized,
-    AuthorizationPlanSkillRevisionMismatch,
-    AuthorizationPlanPaymentMismatch,
-    AuthorizationGrantNotShared,
 }
 
 impl fmt::Display for TapValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TapValidationError::MissingSkillName => write!(f, "skill name is required"),
-            TapValidationError::MissingTapPackageName => write!(f, "TAP package name is required"),
             TapValidationError::MissingDagPath => write!(f, "DAG path is required"),
-            TapValidationError::MissingTapPackagePath => write!(f, "TAP package path is required"),
             TapValidationError::MissingInputCommitment => write!(f, "input commitment is required"),
             TapValidationError::EmptyAuthorizedToolModule => {
                 write!(f, "authorized tool module is required")
             }
             TapValidationError::EmptyAuthorizedToolFunction => {
                 write!(f, "authorized tool function is required")
-            }
-            TapValidationError::DuplicateAuthorizationPlanVertex => {
-                write!(
-                    f,
-                    "authorization plan contains duplicate runtime-vertex entries"
-                )
-            }
-            TapValidationError::AuthorizationPlanCommitmentMismatch => {
-                write!(f, "authorization plan hash does not match plan entries")
-            }
-            TapValidationError::AuthorizationPlanGrantMismatch => {
-                write!(f, "authorization plan entry does not match fetched grant")
-            }
-            TapValidationError::AuthorizationPlanToolNotAuthorized => {
-                write!(
-                    f,
-                    "authorization plan tool is not allowed by skill revision requirements"
-                )
-            }
-            TapValidationError::AuthorizationPlanSkillRevisionMismatch => {
-                write!(
-                    f,
-                    "authorization plan skill revision does not match request context"
-                )
-            }
-            TapValidationError::AuthorizationPlanPaymentMismatch => {
-                write!(
-                    f,
-                    "authorization plan payment binding does not match request context"
-                )
-            }
-            TapValidationError::AuthorizationGrantNotShared => {
-                write!(f, "authorization grant object is not shared")
             }
         }
     }
@@ -1823,7 +1378,7 @@ impl fmt::Display for TapValidationError {
 impl std::error::Error for TapValidationError {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TapSkillRevisionResolutionError {
+pub enum SkillRevisionResolutionError {
     MissingActiveRevision {
         agent_id: AgentId,
         skill_id: SkillId,
@@ -1836,13 +1391,13 @@ pub enum TapSkillRevisionResolutionError {
     InvalidSkillRevision(TapValidationError),
 }
 
-impl fmt::Display for TapSkillRevisionResolutionError {
+impl fmt::Display for SkillRevisionResolutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TapSkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id } => {
+            SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id } => {
                 write!(f, "no active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}")
             }
-            TapSkillRevisionResolutionError::DuplicateActiveRevision {
+            SkillRevisionResolutionError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count,
@@ -1850,18 +1405,16 @@ impl fmt::Display for TapSkillRevisionResolutionError {
                 f,
                 "expected one active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}, found {count}"
             ),
-            TapSkillRevisionResolutionError::InvalidSkillRevision(error) => {
+            SkillRevisionResolutionError::InvalidSkillRevision(error) => {
                 write!(f, "invalid TAP skill revision: {error}")
             }
         }
     }
 }
 
-impl std::error::Error for TapSkillRevisionResolutionError {}
+impl std::error::Error for SkillRevisionResolutionError {}
 
-pub fn validate_requirements(
-    requirements: &TapSkillRequirements,
-) -> Result<(), TapValidationError> {
+pub fn validate_requirements(requirements: &SkillRequirements) -> Result<(), TapValidationError> {
     if requirements.input_schema_commitment.is_empty() {
         return Err(TapValidationError::MissingInputCommitment);
     }
@@ -1874,52 +1427,15 @@ pub fn validate_requirements(
     Ok(())
 }
 
-pub fn validate_authorization_plan(
-    requirements: &TapSkillRequirements,
-    plan: &TapVertexAuthorizationPlan,
-    expected_hash: Option<&[u8]>,
-) -> Result<(), TapValidationError> {
-    if plan.is_empty() {
-        return Ok(());
-    }
-
-    for (index, entry) in plan.0.iter().enumerate() {
-        if plan.0[..index]
-            .iter()
-            .any(|prior| prior.vertex == entry.vertex)
-        {
-            return Err(TapValidationError::DuplicateAuthorizationPlanVertex);
-        }
-        if !requirements
-            .fixed_tools
-            .iter()
-            .any(|tool| entry.matches_fixed_tool(tool))
-        {
-            return Err(TapValidationError::AuthorizationPlanToolNotAuthorized);
-        }
-    }
-
-    if let Some(expected_hash) = expected_hash {
-        let actual = plan
-            .hash()
-            .map_err(|_| TapValidationError::AuthorizationPlanCommitmentMismatch)?;
-        if actual.as_slice() != expected_hash {
-            return Err(TapValidationError::AuthorizationPlanCommitmentMismatch);
-        }
-    }
-
-    Ok(())
-}
-
-pub fn validate_standard_tap_payment_options(
+pub fn validate_execution_payment_options(
     agent_id: AgentId,
-    policy: &TapPaymentPolicy,
+    policy: &SkillPaymentPolicy,
     payment_source: &[u8],
     payment_max_budget: u64,
     payer: sui::types::Address,
 ) -> anyhow::Result<()> {
     match policy {
-        TapPaymentPolicy::UserFunded => {
+        SkillPaymentPolicy::UserFunded => {
             let expected = bcs::to_bytes(&payer)?;
             let source_is_valid =
                 payment_source.is_empty() || payment_source == expected.as_slice();
@@ -1929,7 +1445,7 @@ pub fn validate_standard_tap_payment_options(
                 );
             }
         }
-        TapPaymentPolicy::AgentFunded { max_budget } => {
+        SkillPaymentPolicy::AgentFunded { max_budget } => {
             if payment_max_budget == 0 || payment_max_budget > *max_budget {
                 anyhow::bail!(
                     "standard TAP agent-funded payment budget {} must be positive and no greater than skill policy max {}",
@@ -1950,25 +1466,25 @@ pub fn validate_standard_tap_payment_options(
     Ok(())
 }
 
-pub fn tap_payment_source_for_address(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
+pub fn payment_source_from_address(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
     Ok(bcs::to_bytes(&address)?)
 }
 
 pub fn tap_payment_source_for_invoker(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
-    TapPaymentSource::invoker(address).to_bcs_bytes()
+    PaymentSource::invoker(address).to_bcs_bytes()
 }
 
 pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<Vec<u8>> {
-    TapPaymentSource::agent_vault(agent_id).to_bcs_bytes()
+    PaymentSource::agent_vault(agent_id).to_bcs_bytes()
 }
 
 /// Resolve exactly one active skill revision for fresh execution.
 pub fn resolve_active_tap_skill_revision<'a>(
-    records: &'a [TapSkillRevisionRecord],
-    skills: &[TapSkillRecord],
+    records: &'a [SkillRevisionRecord],
+    skills: &[SkillRecord],
     agent_id: AgentId,
     skill_id: SkillId,
-) -> Result<&'a TapSkillRevisionRecord, TapSkillRevisionResolutionError> {
+) -> Result<&'a SkillRevisionRecord, SkillRevisionResolutionError> {
     let skill_matches = skills
         .iter()
         .filter(|skill| {
@@ -1978,20 +1494,14 @@ pub fn resolve_active_tap_skill_revision<'a>(
 
     let skill = match skill_matches.as_slice() {
         [] => {
-            return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
-                agent_id,
-                skill_id,
-            })
+            return Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id })
         }
         [skill] if skill.active => *skill,
         [_] => {
-            return Err(TapSkillRevisionResolutionError::MissingActiveRevision {
-                agent_id,
-                skill_id,
-            })
+            return Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id })
         }
         _ => {
-            return Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
+            return Err(SkillRevisionResolutionError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count: skill_matches.len(),
@@ -2009,14 +1519,14 @@ pub fn resolve_active_tap_skill_revision<'a>(
         .collect::<Vec<_>>();
 
     match active.as_slice() {
-        [] => Err(TapSkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id }),
+        [] => Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id }),
         [record] => {
             record
                 .validate()
-                .map_err(TapSkillRevisionResolutionError::InvalidSkillRevision)?;
+                .map_err(SkillRevisionResolutionError::InvalidSkillRevision)?;
             Ok(record)
         }
-        _ => Err(TapSkillRevisionResolutionError::DuplicateActiveRevision {
+        _ => Err(SkillRevisionResolutionError::DuplicateActiveRevision {
             agent_id,
             skill_id,
             count: active.len(),
@@ -2026,10 +1536,10 @@ pub fn resolve_active_tap_skill_revision<'a>(
 
 /// Resolve the unique active skill and skill revision for fresh standard execution.
 pub fn resolve_active_tap_skill_execution_target(
-    registry: &TapRegistry,
+    registry: &AgentRegistry,
     agent_id: AgentId,
     skill_id: SkillId,
-) -> anyhow::Result<TapActiveSkillExecutionTarget> {
+) -> anyhow::Result<ActiveSkillExecutionTarget> {
     let skill_matches = registry
         .skills
         .iter()
@@ -2054,7 +1564,7 @@ pub fn resolve_active_tap_skill_execution_target(
 
     let skill_revision = registry.active_skill_revision_record(agent_id, skill_id)?;
 
-    Ok(TapActiveSkillExecutionTarget {
+    Ok(ActiveSkillExecutionTarget {
         skill,
         skill_revision,
     })
@@ -2062,13 +1572,13 @@ pub fn resolve_active_tap_skill_execution_target(
 
 /// Resolve the configured default agent from registry state.
 pub fn resolve_default_tap_dag_executor(
-    registry: &TapRegistry,
+    registry: &AgentRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
     let target = registry.default_dag_executor()?;
     let execution_target =
         resolve_active_tap_skill_execution_target(registry, target.agent_id, target.skill_id)?;
 
-    if execution_target.skill.dag_binding != TapDagBinding::RuntimeSelected {
+    if execution_target.skill.dag_binding != SkillDagBinding::RuntimeSelected {
         anyhow::bail!(
             "default agent skill {} for agent {} is not runtime-DAG selected",
             target.skill_id,
@@ -2091,18 +1601,18 @@ mod tests {
         sui::types::Address::from_str(value).expect("valid address")
     }
 
-    fn requirements() -> TapSkillRequirements {
-        TapSkillRequirements {
+    fn requirements() -> SkillRequirements {
+        SkillRequirements {
             input_schema_commitment: vec![1],
-            payment_policy: TapPaymentPolicy::AgentFunded { max_budget: 100 },
-            schedule_policy: TapSchedulePolicy::default(),
+            payment_policy: SkillPaymentPolicy::AgentFunded { max_budget: 100 },
+            schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         }
     }
 
-    fn skill_revision(revision: u64) -> TapSkillRevisionRecord {
-        TapSkillRevisionRecord {
-            key: TapSkillRevisionKey {
+    fn skill_revision(revision: u64) -> SkillRevisionRecord {
+        SkillRevisionRecord {
+            key: SkillRevisionKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
@@ -2111,21 +1621,21 @@ mod tests {
         }
     }
 
-    fn skill(active: bool, current_interface_revision: u64) -> TapSkillRecord {
-        TapSkillRecord {
+    fn skill(active: bool, current_interface_revision: u64) -> SkillRecord {
+        SkillRecord {
             agent_id: Some(addr("0xa")),
             skill_id: Some(11),
             description: vec![3],
             active,
-            dag_binding: TapDagBinding::pinned(addr("0x44")),
+            dag_binding: SkillDagBinding::pinned(addr("0x44")),
             requirements: requirements(),
             current_interface_revision: InterfaceRevision(current_interface_revision),
             scheduled_task_count: 0,
         }
     }
 
-    fn registry_with_active_skill() -> TapRegistry {
-        TapRegistry {
+    fn registry_with_active_skill() -> AgentRegistry {
+        AgentRegistry {
             id: addr("0xf"),
             agents: Vec::new(),
             skills: vec![skill(true, 2)],
@@ -2175,7 +1685,7 @@ mod tests {
         let duplicate = vec![skill_revision(1), skill_revision(1)];
         assert!(matches!(
             resolve_active_tap_skill_revision(&duplicate, &skills, addr("0xa"), 11),
-            Err(TapSkillRevisionResolutionError::DuplicateActiveRevision { count: 2, .. })
+            Err(SkillRevisionResolutionError::DuplicateActiveRevision { count: 2, .. })
         ));
     }
 
@@ -2185,7 +1695,7 @@ mod tests {
         #[derive(Serialize)]
         struct RawTapRegistryObjectBcs {
             id: sui::types::Address,
-            agents: MoveTable<sui::types::Address, TapAgentRecord>,
+            agents: MoveTable<sui::types::Address, AgentRecord>,
         }
 
         let raw = RawTapRegistryObjectBcs {
@@ -2193,7 +1703,7 @@ mod tests {
             agents: MoveTable::new(addr("0x90"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
-        let decoded: TapRegistryObject =
+        let decoded: AgentRegistryObject =
             bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
         assert_eq!(decoded.id, addr("0xf"));
@@ -2202,11 +1712,9 @@ mod tests {
 
     #[test]
     fn publish_artifact_contains_skill_artifact_fields() {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
-            tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
             interface_revision: InterfaceRevision(1),
         };
@@ -2220,11 +1728,9 @@ mod tests {
 
     #[test]
     fn publish_artifact_preserves_current_skill_inputs() {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather".to_string(),
-            tap_package_name: "weather_tap".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
-            tap_package_path: PathBuf::from("tap"),
             requirements: requirements(),
             interface_revision: InterfaceRevision(1),
         };
@@ -2251,49 +1757,41 @@ mod tests {
     }
 
     #[test]
-    fn validate_standard_tap_payment_options_enforces_user_funded_policy() {
+    fn validate_execution_payment_options_enforces_user_funded_policy() {
         let agent = addr("0xa");
         let payer = addr("0x1");
-        let explicit_source = tap_payment_source_for_address(payer).expect("payer source");
+        let explicit_source = payment_source_from_address(payer).expect("payer source");
         let typed_source = tap_payment_source_for_invoker(payer).expect("typed payer source");
-        let other_source = tap_payment_source_for_address(addr("0x2")).expect("other source");
-        let policy = TapPaymentPolicy::UserFunded;
+        let other_source = payment_source_from_address(addr("0x2")).expect("other source");
+        let policy = SkillPaymentPolicy::UserFunded;
 
-        validate_standard_tap_payment_options(agent, &policy, &[], 100, payer)
+        validate_execution_payment_options(agent, &policy, &[], 100, payer)
             .expect("implicit payer source");
-        validate_standard_tap_payment_options(agent, &policy, &explicit_source, 100, payer)
+        validate_execution_payment_options(agent, &policy, &explicit_source, 100, payer)
             .expect("explicit payer source");
         assert!(
-            validate_standard_tap_payment_options(agent, &policy, &typed_source, 100, payer,)
-                .is_err(),
+            validate_execution_payment_options(agent, &policy, &typed_source, 100, payer,).is_err(),
             "typed invoker sources are not accepted by Move direct user-funded policy"
         );
         assert!(
-            validate_standard_tap_payment_options(agent, &policy, &other_source, 100, payer,)
-                .is_err()
+            validate_execution_payment_options(agent, &policy, &other_source, 100, payer,).is_err()
         );
     }
 
     #[test]
-    fn validate_standard_tap_payment_options_enforces_source_modes() {
+    fn validate_execution_payment_options_enforces_source_modes() {
         let agent = addr("0xa");
         let payer = addr("0x1");
-        let legacy_agent_source = tap_payment_source_for_address(agent).expect("agent source");
+        let legacy_agent_source = payment_source_from_address(agent).expect("agent source");
         let agent_source = tap_payment_source_for_agent_vault(agent).expect("agent vault source");
 
-        let agent_funded = TapPaymentPolicy::AgentFunded { max_budget: 100 };
-        validate_standard_tap_payment_options(
-            agent,
-            &agent_funded,
-            &legacy_agent_source,
-            100,
-            payer,
-        )
-        .expect("agent-funded source at policy cap");
+        let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
+        validate_execution_payment_options(agent, &agent_funded, &legacy_agent_source, 100, payer)
+            .expect("agent-funded source at policy cap");
         assert!(
-            validate_standard_tap_payment_options(agent, &agent_funded, &[], 100, payer,).is_err()
+            validate_execution_payment_options(agent, &agent_funded, &[], 100, payer,).is_err()
         );
-        assert!(validate_standard_tap_payment_options(
+        assert!(validate_execution_payment_options(
             agent,
             &agent_funded,
             &agent_source,
@@ -2301,7 +1799,7 @@ mod tests {
             payer,
         )
         .is_err());
-        assert!(validate_standard_tap_payment_options(
+        assert!(validate_execution_payment_options(
             agent,
             &agent_funded,
             &legacy_agent_source,
@@ -2312,101 +1810,94 @@ mod tests {
     }
 
     #[test]
-    fn removed_tap_payment_modes_do_not_deserialize() {
+    fn removed_payment_modes_do_not_deserialize() {
         for mode in ["hybrid", "Hybrid", "sponsored", "Sponsored"] {
             let value = serde_json::json!(mode);
-            assert!(serde_json::from_value::<TapPaymentMode>(value).is_err());
+            assert!(serde_json::from_value::<PaymentMode>(value).is_err());
         }
     }
 
     #[test]
     fn tap_enum_deserializers_accept_move_json_forms() {
         assert_eq!(
-            serde_json::from_value::<TapPaymentMode>(serde_json::json!({
+            serde_json::from_value::<PaymentMode>(serde_json::json!({
                 "fields": { "variant": "agentFunded" }
             }))
             .expect("nested payment mode"),
-            TapPaymentMode::AgentFunded
+            PaymentMode::AgentFunded
         );
         assert_eq!(
-            serde_json::from_value::<TapPaymentMode>(serde_json::json!({
+            serde_json::from_value::<PaymentMode>(serde_json::json!({
                 "UserFunded": {}
             }))
             .expect("keyed payment mode"),
-            TapPaymentMode::UserFunded
+            PaymentMode::UserFunded
         );
         assert_eq!(
-            serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!(1))
+            serde_json::from_value::<PaymentSourceKind>(serde_json::json!(1))
                 .expect("numeric payment source kind"),
-            TapPaymentSourceKind::AgentVault
+            PaymentSourceKind::AgentVault
         );
         assert_eq!(
-            serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!({
+            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
                 "fields": { "@variant": "invoker" }
             }))
             .expect("nested payment source kind"),
-            TapPaymentSourceKind::Invoker
+            PaymentSourceKind::Invoker
         );
-        assert!(serde_json::from_value::<TapPaymentSourceKind>(serde_json::json!(7)).is_err());
+        assert!(serde_json::from_value::<PaymentSourceKind>(serde_json::json!(7)).is_err());
 
         assert_eq!(
-            serde_json::from_value::<TapVertexExecutionPaymentSettlementKind>(serde_json::json!({
+            serde_json::from_value::<VertexExecutionPaymentSettlementKind>(serde_json::json!({
                 "Paid": {}
             }))
             .expect("keyed settlement kind"),
-            TapVertexExecutionPaymentSettlementKind::Paid
+            VertexExecutionPaymentSettlementKind::Paid
         );
         assert_eq!(
-            serde_json::from_value::<TapVertexExecutionPaymentSettlementKind>(serde_json::json!({
+            serde_json::from_value::<VertexExecutionPaymentSettlementKind>(serde_json::json!({
                 "fields": { "type": "Ticket" }
             }))
             .expect("nested settlement kind"),
-            TapVertexExecutionPaymentSettlementKind::Ticket
+            VertexExecutionPaymentSettlementKind::Ticket
         );
         assert_eq!(
-            bcs::from_bytes::<TapVertexExecutionPaymentSettlementKind>(
+            bcs::from_bytes::<VertexExecutionPaymentSettlementKind>(
                 &bcs::to_bytes(&9_u8).expect("raw settlement kind")
             )
             .expect("unknown raw settlement kind falls back"),
-            TapVertexExecutionPaymentSettlementKind::Paid
+            VertexExecutionPaymentSettlementKind::Paid
         );
 
         assert_eq!(
-            serde_json::from_value::<TapExecutionPaymentFinalState>(serde_json::json!({
+            serde_json::from_value::<ExecutionPaymentFinalState>(serde_json::json!({
                 "fields": { "variant": "Accomplished" }
             }))
             .expect("nested payment final state"),
-            TapExecutionPaymentFinalState::Accomplished
+            ExecutionPaymentFinalState::Accomplished
         );
         assert_eq!(
-            serde_json::from_value::<TapScheduledTaskState>(serde_json::json!({
-                "Exhausted": {}
-            }))
-            .expect("keyed scheduled task state"),
-            TapScheduledTaskState::Exhausted
-        );
-        assert_eq!(
-            serde_json::from_value::<TapScheduledOccurrenceFinalState>(serde_json::json!({
+            serde_json::from_value::<ScheduledOccurrenceFinalState>(serde_json::json!({
                 "fields": { "@variant": "inFlight" }
             }))
             .expect("nested scheduled occurrence state"),
-            TapScheduledOccurrenceFinalState::InFlight
+            ScheduledOccurrenceFinalState::InFlight
         );
     }
 
     #[test]
     fn scheduled_payment_source_deserializes_supported_shapes() {
-        let address_source: TapScheduledPaymentSource = serde_json::from_value(serde_json::json!({
+        let address_source: ScheduledPaymentSource = serde_json::from_value(serde_json::json!({
             "fields": {
                 "@variant": "address",
                 "refund_recipient": "0xee"
             }
         }))
         .expect("variant address source");
-        assert_eq!(address_source.source_kind(), TapPaymentSourceKind::Invoker);
+        assert_eq!(address_source.source_kind(), PaymentSourceKind::Invoker);
         assert_eq!(address_source.source_identity(), addr("0xee"));
 
-        let vault_source: TapScheduledPaymentSource = serde_json::from_value(serde_json::json!({
+        let vault_source: ScheduledPaymentSource = serde_json::from_value(serde_json::json!({
             "agentVault": {
                 "fields": {
                     "agent_id": "0xaa"
@@ -2414,11 +1905,11 @@ mod tests {
             }
         }))
         .expect("nested vault source");
-        assert_eq!(vault_source.source_kind(), TapPaymentSourceKind::AgentVault);
+        assert_eq!(vault_source.source_kind(), PaymentSourceKind::AgentVault);
         assert_eq!(vault_source.source_identity(), addr("0xaa"));
 
         assert!(
-            serde_json::from_value::<TapScheduledPaymentSource>(serde_json::json!({
+            serde_json::from_value::<ScheduledPaymentSource>(serde_json::json!({
                 "fields": { "@variant": "agentVault" }
             }))
             .is_err()
@@ -2427,32 +1918,25 @@ mod tests {
 
     #[test]
     fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
-        let entry: TapVertexAuthorizationPlanEntry = serde_json::from_value(serde_json::json!({
-            "vertex": [101, 110, 116, 114, 121],
-            "grant_id": "0xaa",
-            "tool_package": "0x14",
-            "tool_module": "0x746f6f6c",
-            "tool_function": "0x72756e",
-            "operation_commitment": [1, 2],
-            "constraints_commitment": [3, 4]
-        }))
-        .expect("hex byte strings decode as UTF-8");
+        let template: ScheduledVertexAuthorizationTemplate =
+            serde_json::from_value(serde_json::json!({
+                "skill_id": "7",
+                "vertex": "0x656e747279",
+                "recipient_id": "0xda6"
+            }))
+            .expect("hex byte strings decode as UTF-8");
 
-        assert_eq!(entry.tool_module, "tool");
-        assert_eq!(entry.tool_function, "run");
+        assert_eq!(template.vertex, "entry");
 
-        let entry: TapVertexAuthorizationPlanEntry = serde_json::from_value(serde_json::json!({
-            "vertex": [101, 110, 116, 114, 121],
-            "grant_id": "0xaa",
-            "tool_package": "0x14",
-            "tool_module": "0xnothex",
-            "tool_function": "run",
-            "operation_commitment": [1, 2],
-            "constraints_commitment": [3, 4]
-        }))
-        .expect("plain byte string remains text");
+        let template: ScheduledVertexAuthorizationTemplate =
+            serde_json::from_value(serde_json::json!({
+                "skill_id": "7",
+                "vertex": "0xnothex",
+                "recipient_id": "0xda6"
+            }))
+            .expect("plain byte string remains text");
 
-        assert_eq!(entry.tool_module, "0xnothex");
+        assert_eq!(template.vertex, "0xnothex");
     }
 
     #[test]
@@ -2460,7 +1944,7 @@ mod tests {
         use base64::Engine as _;
 
         let source_hash = Sha256::digest(b"payer").to_vec();
-        let payment: TapExecutionPayment = serde_json::from_value(serde_json::json!({
+        let payment: ExecutionPayment = serde_json::from_value(serde_json::json!({
             "id": "0x10",
             "execution_id": "0x11",
             "agent_id": "0x12",
@@ -2495,27 +1979,27 @@ mod tests {
         .expect("payment parses base64 and hex byte-vector forms");
 
         assert_eq!(payment.payment_source_hash, source_hash);
-        assert_eq!(payment.source_kind, Some(TapPaymentSourceKind::AgentVault));
+        assert_eq!(payment.source_kind, Some(PaymentSourceKind::AgentVault));
         assert_eq!(payment.source_identity, Some(addr("0x12")));
         assert_eq!(payment.locked_budget, 80);
         assert_eq!(
             payment.final_state,
-            Some(TapExecutionPaymentFinalState::Pending)
+            Some(ExecutionPaymentFinalState::Pending)
         );
-        assert_eq!(payment.outstanding_locks(), 2);
+        assert_eq!(payment.locks(), 2);
         assert_eq!(
             payment.locked_vertices[0].settlement_kind,
-            TapVertexExecutionPaymentSettlementKind::Paid
+            VertexExecutionPaymentSettlementKind::Paid
         );
         assert_eq!(
             payment.locked_vertices[1].settlement_kind,
-            TapVertexExecutionPaymentSettlementKind::Ticket
+            VertexExecutionPaymentSettlementKind::Ticket
         );
     }
 
     #[test]
     fn tap_execution_payment_deserializes_move_json_payment_mode() {
-        let payment: TapExecutionPayment = serde_json::from_value(serde_json::json!({
+        let payment: ExecutionPayment = serde_json::from_value(serde_json::json!({
             "id": "0x10",
             "execution_id": "0x11",
             "agent_id": "0x12",
@@ -2531,96 +2015,29 @@ mod tests {
         }))
         .expect("payment parses Move enum JSON form");
 
-        assert_eq!(payment.payment_mode, TapPaymentMode::UserFunded);
+        assert_eq!(payment.payment_mode, PaymentMode::UserFunded);
     }
 
     #[test]
     fn tap_payment_source_bcs_roundtrips_and_rejects_unknown_kind() {
         let invoker = addr("0x21");
-        let typed = TapPaymentSource::from_bcs_bytes(
+        let typed = PaymentSource::from_bcs_bytes(
             &tap_payment_source_for_invoker(invoker).expect("typed invoker source"),
         )
         .expect("typed invoker source decodes");
-        assert_eq!(typed.kind, TapPaymentSourceKind::Invoker);
+        assert_eq!(typed.kind, PaymentSourceKind::Invoker);
         assert_eq!(typed.identity, invoker);
 
         let agent = addr("0x22");
-        let typed = TapPaymentSource::from_bcs_bytes(
+        let typed = PaymentSource::from_bcs_bytes(
             &tap_payment_source_for_agent_vault(agent).expect("typed vault source"),
         )
         .expect("typed vault source decodes");
-        assert_eq!(typed.kind, TapPaymentSourceKind::AgentVault);
+        assert_eq!(typed.kind, PaymentSourceKind::AgentVault);
         assert_eq!(typed.identity, agent);
 
         let invalid = bcs::to_bytes(&(9_u8, invoker)).expect("invalid source kind bytes");
-        assert!(TapPaymentSource::from_bcs_bytes(&invalid).is_err());
-    }
-
-    fn authorization_plan_entry(vertex: RuntimeVertex) -> TapVertexAuthorizationPlanEntry {
-        TapVertexAuthorizationPlanEntry {
-            vertex,
-            grant_id: addr("0x30"),
-            tool_package: addr("0x40"),
-            tool_module: "tool".to_string(),
-            tool_function: "run".to_string(),
-            operation_commitment: vec![7],
-            constraints_commitment: vec![8],
-            interface_revision: Some(InterfaceRevision(2)),
-            payment_id: Some(addr("0x60")),
-        }
-    }
-
-    #[test]
-    fn authorization_plan_commitment_and_lookup_are_stable() {
-        let vertex = RuntimeVertex::plain("entry");
-        let entry = authorization_plan_entry(vertex.clone());
-        let plan = TapVertexAuthorizationPlan(vec![entry.clone()]);
-
-        assert_eq!(plan.find_for_vertex(&vertex).unwrap(), Some(&entry));
-        assert!(plan
-            .find_for_vertex(&RuntimeVertex::plain("other"))
-            .unwrap()
-            .is_none());
-        assert_eq!(plan.hash().unwrap(), plan.hash().unwrap());
-    }
-
-    #[test]
-    fn authorization_plan_validation_rejects_duplicate_and_unlisted_tools() {
-        let vertex = RuntimeVertex::plain("entry");
-        let entry = authorization_plan_entry(vertex.clone());
-        let mut fixed_tool_requirements = requirements();
-        fixed_tool_requirements.fixed_tools = vec![TapFixedTool {
-            tool_registry_id: addr("0x6"),
-            tool_fqn: "demo::tool::run".to_string(),
-        }];
-        let plan = TapVertexAuthorizationPlan(vec![entry.clone()]);
-        let hash = plan.hash().unwrap();
-
-        validate_authorization_plan(&fixed_tool_requirements, &plan, Some(&hash))
-            .expect("valid plan");
-        assert_eq!(
-            validate_authorization_plan(&fixed_tool_requirements, &plan, Some(&[0])).unwrap_err(),
-            TapValidationError::AuthorizationPlanCommitmentMismatch
-        );
-        validate_authorization_plan(
-            &fixed_tool_requirements,
-            &TapVertexAuthorizationPlan::default(),
-            Some(&[9, 8]),
-        )
-        .expect("hash-only contexts without concrete plan entries remain tolerated");
-        assert_eq!(
-            validate_authorization_plan(
-                &fixed_tool_requirements,
-                &TapVertexAuthorizationPlan(vec![entry.clone(), entry.clone()]),
-                None,
-            )
-            .unwrap_err(),
-            TapValidationError::DuplicateAuthorizationPlanVertex
-        );
-        assert_eq!(
-            validate_authorization_plan(&requirements(), &plan, None).unwrap_err(),
-            TapValidationError::AuthorizationPlanToolNotAuthorized
-        );
+        assert!(PaymentSource::from_bcs_bytes(&invalid).is_err());
     }
 
     #[test]
@@ -2631,7 +2048,7 @@ mod tests {
 
         assert_eq!(
             resolved.skill.dag_binding,
-            TapDagBinding::pinned(addr("0x44"))
+            SkillDagBinding::pinned(addr("0x44"))
         );
         assert_eq!(
             resolved.skill_revision.key.interface_revision,
@@ -2651,7 +2068,7 @@ mod tests {
             .expect_err("pinned skill cannot be default runtime target");
         assert!(error.to_string().contains("is not runtime-DAG selected"));
 
-        registry.skills[0].dag_binding = TapDagBinding::runtime_selected();
+        registry.skills[0].dag_binding = SkillDagBinding::runtime_selected();
         let target = resolve_default_tap_dag_executor(&registry)
             .expect("runtime-selected default skill resolves");
 
@@ -2662,7 +2079,7 @@ mod tests {
                 skill_id: 11,
             }
         );
-        assert_eq!(target.skill.dag_binding, TapDagBinding::RuntimeSelected);
+        assert_eq!(target.skill.dag_binding, SkillDagBinding::RuntimeSelected);
     }
 
     #[test]
@@ -2671,134 +2088,5 @@ mod tests {
         registry.skills.clear();
 
         assert!(resolve_active_tap_skill_execution_target(&registry, addr("0xa"), 11).is_err());
-    }
-
-    #[test]
-    fn workflow_vertex_authorization_grant_model_matches_live_object_shape() {
-        let grant: WorkflowVertexAuthorizationGrant = serde_json::from_value(serde_json::json!({
-            "id": "0xaa",
-            "execution_id": "0xff",
-            "vertex": [101, 110, 116, 114, 121],
-            "scheduled_grant_id": { "fields": { "vec": ["0x77"] } }
-        }))
-        .expect("grant should deserialize");
-
-        assert_eq!(grant.id, addr("0xaa"));
-        assert_eq!(grant.execution_id, addr("0xff"));
-        assert_eq!(grant.vertex, RuntimeVertex::plain("entry"));
-        assert_eq!(grant.scheduled_grant_id, Some(addr("0x77")));
-    }
-
-    #[test]
-    fn scheduled_skill_task_model_matches_live_object_shape() {
-        let source_hash = Sha256::digest(bcs::to_bytes(&addr("0xee")).unwrap()).to_vec();
-        let task: TapScheduledSkillTask = serde_json::from_value(serde_json::json!({
-            "id": "0xaa",
-            "scheduler_task_id": "0xab",
-            "agent_id": "0xbb",
-            "skill_id": "204",
-            "pinned_revision": { "fields": { "vec": [{ "fields": { "value": "9" } }] } },
-            "long_term_gas_coin_id": "0xee",
-            "refill_policy_commitment": [3, 4],
-            "payment_source": { "Address": { "refund_recipient": "0xee" } },
-            "payment_source_bytes": bcs::to_bytes(&addr("0xee")).unwrap(),
-            "payment_source_hash": source_hash,
-            "occurrence_budget": "25",
-            "remaining_funds": { "value": "50" },
-            "payment_policy": "UserFunded",
-            "schedule_policy": {
-                "recurrence": "Once",
-                "allow_recursive": false
-            },
-            "schedule_entries_commitment": [7, 8],
-            "next_after_ms": "11",
-            "occurrences_spawned": "2",
-            "occurrences_finalized": "1",
-            "in_flight": [{
-                "occurrence_index": "1",
-                "execution_id": "0xf1",
-                "payment_id": "0xf2",
-                "interface_revision": "9",
-                "budget": "25",
-                "final_state": "refunded"
-            }],
-            "scheduled_authorization_grants": [{
-                "scheduled_grant_id": "0x91",
-                "scheduled_task_id": "0xaa",
-                "agent_id": "0xbb",
-                "skill_id": "204",
-                "dag_id": "0xda6",
-                "vertex": [101, 110, 116, 114, 121],
-                "tool_package": "0x1234",
-                "tool_module": [116, 111, 111, 108],
-                "tool_function": [101, 120, 101, 99, 117, 116, 101],
-                "operation_commitment": [1, 2],
-                "constraints_commitment": [],
-                "consumed": false
-            }],
-            "state": "active",
-            "active": true
-        }))
-        .expect("scheduled task should deserialize");
-
-        assert_eq!(task.scheduled_task_id(), addr("0xaa"));
-        assert_eq!(task.scheduler_task_id, addr("0xab"));
-        assert_eq!(task.agent_id, addr("0xbb"));
-        assert_eq!(task.skill_id, 204);
-        assert_eq!(task.pinned_revision, Some(InterfaceRevision(9)));
-        assert_eq!(task.source_kind(), TapPaymentSourceKind::Invoker);
-        assert_eq!(task.source_identity(), addr("0xee"));
-        assert_eq!(task.occurrence_budget, 25);
-        assert_eq!(task.remaining_funds, 50);
-        assert_eq!(task.occurrences_finalized, 1);
-        assert_eq!(task.in_flight.len(), 1);
-        assert_eq!(
-            task.in_flight[0].final_state,
-            TapScheduledOccurrenceFinalState::Refunded
-        );
-        assert_eq!(task.scheduled_authorization_grants.len(), 1);
-        assert_eq!(
-            task.scheduled_authorization_grants[0].scheduled_grant_id,
-            addr("0x91")
-        );
-        assert_eq!(task.scheduled_authorization_grants[0].vertex, "entry");
-        assert_eq!(task.scheduled_authorization_grants[0].tool_module, "tool");
-        assert!(task.can_spawn_occurrence());
-        assert_eq!(task.next_after_ms, 11);
-        assert_eq!(task.occurrences_spawned, 2);
-        assert_eq!(task.state, TapScheduledTaskState::Active);
-    }
-
-    #[test]
-    fn scheduled_skill_task_defaults_and_spawn_checks_are_conservative() {
-        let task: TapScheduledSkillTask = serde_json::from_value(serde_json::json!({
-            "id": "0xaa",
-            "agent_id": "0xbb",
-            "skill_id": "204",
-            "long_term_gas_coin_id": "0xee",
-            "refill_policy_commitment": [3, 4],
-            "payment_source": { "agent_vault": { "agent_id": "0xbb" } },
-            "payment_source_bytes": [9],
-            "payment_source_hash": [8],
-            "occurrence_budget": "25",
-            "payment_policy": { "AgentFunded": { "max_budget": "100" } },
-            "schedule_policy": {
-                "recurrence": "Once",
-                "allow_recursive": false
-            },
-            "schedule_entries_commitment": [7, 8],
-            "next_after_ms": "11",
-            "occurrences_spawned": "2",
-            "state": { "Completed": {} },
-            "active": true
-        }))
-        .expect("scheduled task with defaults should deserialize");
-
-        assert_eq!(task.scheduler_task_id, sui::types::Address::ZERO);
-        assert_eq!(task.remaining_funds, 0);
-        assert_eq!(task.occurrences_finalized, 0);
-        assert_eq!(task.source_kind(), TapPaymentSourceKind::AgentVault);
-        assert_eq!(task.source_identity(), addr("0xbb"));
-        assert!(!task.can_spawn_occurrence());
     }
 }

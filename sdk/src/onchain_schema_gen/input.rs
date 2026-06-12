@@ -17,7 +17,7 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips internal parameters such as `ProofOfUID`, `VertexAuthorizationCheckCap`,
+/// skips internal parameters such as `ProofOfUID`, `ProvenValue<AgentVertexAuthorization>`,
 /// and `TxContext`.
 pub async fn generate_input_schema(
     client: Arc<Mutex<sui::grpc::Client>>,

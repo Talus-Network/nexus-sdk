@@ -503,17 +503,14 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
         // Historical V1 interface announcements remain decodable for replay
         // and migration tooling.
         "AnnounceInterfacePackageEvent"
-            // Standard TAP and workflow grant events can be emitted by public
+            // Standard TAP and authorization-required events can be emitted by public
             // Nexus functions invoked from a package-owned PTB.
             | "AgentSkillExecutionRequestedEvent"
             | "AgentSkillPaymentCreatedEvent"
+            | "AgentVertexAuthorizationRequiredEvent"
             | "PaymentLockUpdateEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
-            | "ScheduledAuthorizationGrantCreatedEvent"
-            | "ScheduledAuthorizationGrantMaterializedEvent"
-            | "VertexAuthorizationGrantCreatedEvent"
-            | "VertexAuthorizationGrantRequiredEvent"
     )
 }
 
@@ -537,14 +534,15 @@ mod tests {
             test_utils::sui_mocks,
             types::{
                 AgentId,
+                CurrentPaymentSourceKind,
+                CurrentScheduledOccurrenceFinalState,
                 InterfaceRevision,
                 PostFailureAction,
                 RuntimeVertex,
                 SharedObjectRef,
+                SkillDagBinding,
                 SkillId,
-                TapDagBinding,
-                TapSkillRequirements,
-                TapVertexAuthorizationPlanEntry,
+                SkillRequirements,
                 WorkflowFailureClass,
             },
         },
@@ -656,15 +654,11 @@ mod tests {
         walk_index: u64,
         next_vertex: RuntimeVertex,
         evaluations: sui::types::Address,
-        tap_agent_id: MoveOptionBcs<AgentId>,
-        tap_skill_id: MoveOptionBcs<SkillId>,
-        tap_interface_revision: MoveOptionBcs<InterfaceRevision>,
-        tap_payment_id: MoveOptionBcs<sui::types::Address>,
-        tap_selected_dag_id: MoveOptionBcs<sui::types::Address>,
-        tap_authorization_plan_commitment: MoveOptionBcs<Vec<u8>>,
-        tap_authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
-        tap_scheduled_task_id: MoveOptionBcs<sui::types::Address>,
-        tap_scheduled_occurrence_index: MoveOptionBcs<u64>,
+        agent_id: AgentId,
+        skill_id: SkillId,
+        interface_version: InterfaceRevision,
+        scheduled_task_id: MoveOptionBcs<sui::types::Address>,
+        scheduled_occurrence_index: MoveOptionBcs<u64>,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -1152,7 +1146,7 @@ mod tests {
                 skill_id: 2,
                 interface_revision: InterfaceRevision(9),
                 payer: sui::types::Address::from_static("0x38"),
-                source_kind: TapPaymentSourceKind::AgentVault,
+                source_kind: PaymentSourceKind::AgentVault,
                 source_identity: sui::types::Address::from_static("0x1"),
                 max_budget: 10_000,
                 locked_budget: 10_000,
@@ -1162,28 +1156,34 @@ mod tests {
         assert!(matches!(
             parsed.data,
             NexusEventKind::AgentSkillPaymentCreated(AgentSkillPaymentCreatedEvent {
-                source_kind: TapPaymentSourceKind::AgentVault,
+                source_kind: PaymentSourceKind::AgentVault,
                 locked_budget: 10_000,
                 ..
             })
         ));
 
-        let grant_event = wrapped_nexus_event(
+        let authorization_required_event = wrapped_nexus_event(
             &objects,
             emitter_package,
             objects.workflow_pkg_id,
             "dag",
-            "VertexAuthorizationGrantCreatedEvent",
-            VertexAuthorizationGrantCreatedEvent {
-                grant_id: sui::types::Address::from_static("0x44"),
-                execution_id: sui::types::Address::from_static("0x45"),
+            "AgentVertexAuthorizationRequiredEvent",
+            AgentVertexAuthorizationRequiredEvent {
+                dag: sui::types::Address::from_static("0x44"),
+                execution: sui::types::Address::from_static("0x45"),
+                walk_index: 0,
                 vertex: RuntimeVertex::plain("transfer"),
+                tool_fqn: "tool::run".to_string(),
+                agent_id: Some(sui::types::Address::from_static("0x1")),
+                skill_id: Some(2),
             },
         );
-        let parsed = NexusEvent::from_sui_grpc_event(2, digest, &grant_event, &objects).unwrap();
+        let parsed =
+            NexusEvent::from_sui_grpc_event(2, digest, &authorization_required_event, &objects)
+                .unwrap();
         assert!(matches!(
             parsed.data,
-            NexusEventKind::VertexAuthorizationGrantCreated(VertexAuthorizationGrantCreatedEvent {
+            NexusEventKind::AgentVertexAuthorizationRequired(AgentVertexAuthorizationRequiredEvent {
                 vertex,
                 ..
             }) if vertex == RuntimeVertex::plain("transfer")
@@ -1213,15 +1213,11 @@ mod tests {
                     walk_index: 1,
                     next_vertex: RuntimeVertex::plain("transfer"),
                     evaluations: sui::types::Address::from_static("0xd"),
-                    tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
-                    tap_skill_id: Some(2).into(),
-                    tap_interface_revision: Some(InterfaceRevision(3)).into(),
-                    tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
-                    tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
-                    tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
-                    tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
-                    tap_scheduled_task_id: None.into(),
-                    tap_scheduled_occurrence_index: None.into(),
+                    agent_id: sui::types::Address::from_static("0x1"),
+                    skill_id: 2,
+                    interface_version: InterfaceRevision(3),
+                    scheduled_task_id: None.into(),
+                    scheduled_occurrence_index: None.into(),
                 },
                 priority: 1,
                 request_ms: 2,
@@ -1374,13 +1370,17 @@ mod tests {
     }
 
     #[test]
-    fn standard_tap_samples_cover_current_move_option_layouts() {
-        let samples = current_standard_tap_samples();
+    fn samples_cover_current_move_option_layouts() {
+        let samples = tap_event_samples();
         let names = samples.iter().map(|(name, _)| *name).collect::<Vec<_>>();
 
         assert!(names.contains(&"RequestWalkExecutionEvent"));
         assert!(names.contains(&"RequestScheduledWalkEvent"));
         assert!(names.contains(&"AgentSkillExecutionRequestedEvent"));
+        assert!(names.contains(&"ScheduledSkillPaymentRefilledEvent"));
+        assert!(names.contains(&"ScheduledOccurrencePaymentCreatedEvent"));
+        assert!(names.contains(&"ScheduledSkillPaymentCanceledEvent"));
+        assert!(names.contains(&"ScheduledOccurrencePaymentFinalizedEvent"));
 
         for (name, bytes) in samples {
             let (event, distribution) =
@@ -1393,25 +1393,20 @@ mod tests {
             match event {
                 NexusEventKind::RequestWalkExecution(event) => {
                     let context = event
-                        .standard_tap_context()
+                        .to_context()
                         .expect("standard TAP context should validate")
                         .expect("standard TAP context should be present");
                     assert_eq!(context.agent_id, sui::types::Address::from_static("0x1"));
                     assert_eq!(context.interface_revision, InterfaceRevision(3));
-                    assert_eq!(context.authorization_plan_commitment, Some(vec![1, 2, 3]));
                 }
                 NexusEventKind::RequestScheduledWalk(event) => {
                     let context = event
                         .request
-                        .standard_tap_context()
+                        .to_context()
                         .expect("scheduled standard TAP context should validate")
                         .expect("scheduled standard TAP context should be present");
                     assert_eq!(context.agent_id, sui::types::Address::from_static("0xa"));
                     assert_eq!(context.interface_revision, InterfaceRevision(1));
-                    assert_eq!(
-                        context.authorization_plan_commitment,
-                        Some(vec![1, 2, 3, 4])
-                    );
                     assert_eq!(
                         context.scheduled_task_id,
                         Some(sui::types::Address::from_static("0x12"))
@@ -1421,12 +1416,33 @@ mod tests {
                 NexusEventKind::AgentSkillExecutionRequested(event) => {
                     assert_eq!(event.payment_id, sui::types::Address::from_static("0x23"));
                 }
+                NexusEventKind::ScheduledSkillPaymentRefilled(event) => {
+                    assert_eq!(event.reserve_id, sui::types::Address::from_static("0x45"));
+                    assert_eq!(event.refill_amount, 500);
+                    assert_eq!(event.remaining_funds, 1500);
+                }
+                NexusEventKind::ScheduledOccurrencePaymentCreated(event) => {
+                    assert_eq!(event.payment_id, sui::types::Address::from_static("0x48"));
+                    assert_eq!(event.budget, 300);
+                    assert_eq!(event.remaining_funds, 1200);
+                }
+                NexusEventKind::ScheduledSkillPaymentCanceled(event) => {
+                    assert_eq!(event.refunded_amount, 1200);
+                    assert_eq!(event.remaining_funds, 0);
+                }
+                NexusEventKind::ScheduledOccurrencePaymentFinalized(event) => {
+                    assert_eq!(
+                        event.final_state,
+                        CurrentScheduledOccurrenceFinalState::Accomplished
+                    );
+                    assert_eq!(event.remaining_funds, 900);
+                }
                 _ => {}
             }
         }
     }
 
-    fn current_standard_tap_samples() -> Vec<(&'static str, Vec<u8>)> {
+    fn tap_event_samples() -> Vec<(&'static str, Vec<u8>)> {
         vec![
             (
                 "AgentCreatedEvent",
@@ -1445,7 +1461,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         dag_id: sui::types::Address::from_static("0x1a"),
-                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static(
+                        dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static(
                             "0x1a",
                         )),
                     },
@@ -1469,10 +1485,10 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         current_interface_revision: InterfaceRevision(9),
-                        dag_binding: TapDagBinding::pinned(sui::types::Address::from_static(
+                        dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static(
                             "0x1d",
                         )),
-                        requirements: TapSkillRequirements::default(),
+                        requirements: SkillRequirements::default(),
                     },
                 })
                 .expect("SkillContractRevisionedEvent sample serializes"),
@@ -1512,7 +1528,7 @@ mod tests {
                         skill_id: 2,
                         interface_revision: InterfaceRevision(9),
                         payer: sui::types::Address::from_static("0x38"),
-                        source_kind: TapPaymentSourceKind::Invoker,
+                        source_kind: PaymentSourceKind::Invoker,
                         source_identity: sui::types::Address::from_static("0x38"),
                         max_budget: 10_000,
                         locked_budget: 10_000,
@@ -1563,26 +1579,6 @@ mod tests {
                 .expect("ExecutionRefundedEvent sample serializes"),
             ),
             (
-                "ScheduledSkillExecutionCreatedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: ScheduledSkillExecutionCreatedEvent {
-                        scheduled_task_id: sui::types::Address::from_static("0x3f"),
-                        scheduler_task_id: sui::types::Address::from_static("0x44"),
-                        agent_id: sui::types::Address::from_static("0x1"),
-                        skill_id: 2,
-                        long_term_gas_coin_id: sui::types::Address::from_static("0x40"),
-                        schedule_entries_commitment: vec![1, 4, 9],
-                        first_after_ms: 1000,
-                        max_occurrences: 5,
-                        source_kind: TapPaymentSourceKind::Invoker,
-                        source_identity: sui::types::Address::from_static("0x40"),
-                        prepaid_amount: 50,
-                        occurrence_budget: 10,
-                    },
-                })
-                .expect("ScheduledSkillExecutionCreatedEvent sample serializes"),
-            ),
-            (
                 "ScheduledSkillExecutionTriggeredEvent",
                 bcs::to_bytes(&Wrapper {
                     event: ScheduledSkillExecutionTriggeredEvent {
@@ -1609,6 +1605,82 @@ mod tests {
                 .expect("ScheduledSkillExecutionCompletedEvent sample serializes"),
             ),
             (
+                "ScheduledSkillPaymentRefilledEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledSkillPaymentRefilledEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x43"),
+                        reserve_id: sui::types::Address::from_static("0x45"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_version: InterfaceRevision(9),
+                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                            agent_id: sui::types::Address::from_static("0x1"),
+                        },
+                        refill_amount: 500,
+                        occurrence_budget: 300,
+                        remaining_funds: 1500,
+                    },
+                })
+                .expect("ScheduledSkillPaymentRefilledEvent sample serializes"),
+            ),
+            (
+                "ScheduledOccurrencePaymentCreatedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledOccurrencePaymentCreatedEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x43"),
+                        reserve_id: sui::types::Address::from_static("0x45"),
+                        occurrence_index: 3,
+                        execution_id: sui::types::Address::from_static("0x47"),
+                        payment_id: sui::types::Address::from_static("0x48"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_version: InterfaceRevision(9),
+                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                            agent_id: sui::types::Address::from_static("0x1"),
+                        },
+                        budget: 300,
+                        remaining_funds: 1200,
+                    },
+                })
+                .expect("ScheduledOccurrencePaymentCreatedEvent sample serializes"),
+            ),
+            (
+                "ScheduledSkillPaymentCanceledEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledSkillPaymentCanceledEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x43"),
+                        reserve_id: sui::types::Address::from_static("0x45"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_version: InterfaceRevision(9),
+                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                            agent_id: sui::types::Address::from_static("0x1"),
+                        },
+                        refunded_amount: 1200,
+                        remaining_funds: 0,
+                    },
+                })
+                .expect("ScheduledSkillPaymentCanceledEvent sample serializes"),
+            ),
+            (
+                "ScheduledOccurrencePaymentFinalizedEvent",
+                bcs::to_bytes(&Wrapper {
+                    event: ScheduledOccurrencePaymentFinalizedEvent {
+                        scheduled_task_id: sui::types::Address::from_static("0x43"),
+                        reserve_id: sui::types::Address::from_static("0x45"),
+                        occurrence_index: 3,
+                        execution_id: sui::types::Address::from_static("0x47"),
+                        payment_id: sui::types::Address::from_static("0x48"),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_version: InterfaceRevision(9),
+                        final_state: CurrentScheduledOccurrenceFinalState::Accomplished,
+                        remaining_funds: 900,
+                    },
+                })
+                .expect("ScheduledOccurrencePaymentFinalizedEvent sample serializes"),
+            ),
+            (
                 "RequestWalkExecutionEvent",
                 bcs::to_bytes(&Wrapper {
                     event: RequestWalkExecutionEventBcs {
@@ -1618,15 +1690,11 @@ mod tests {
                         walk_index: 1,
                         next_vertex: RuntimeVertex::plain("vertex"),
                         evaluations: sui::types::Address::from_static("0xd"),
-                        tap_agent_id: Some(sui::types::Address::from_static("0x1")).into(),
-                        tap_skill_id: Some(2).into(),
-                        tap_interface_revision: Some(InterfaceRevision(3)).into(),
-                        tap_payment_id: Some(sui::types::Address::from_static("0x10")).into(),
-                        tap_selected_dag_id: Some(sui::types::Address::from_static("0x11")).into(),
-                        tap_authorization_plan_commitment: Some(vec![1, 2, 3]).into(),
-                        tap_authorization_plan: Vec::<TapVertexAuthorizationPlanEntry>::new(),
-                        tap_scheduled_task_id: None.into(),
-                        tap_scheduled_occurrence_index: None.into(),
+                        agent_id: sui::types::Address::from_static("0x1"),
+                        skill_id: 2,
+                        interface_version: InterfaceRevision(3),
+                        scheduled_task_id: None.into(),
+                        scheduled_occurrence_index: None.into(),
                     },
                 })
                 .expect("RequestWalkExecutionEvent sample serializes"),
@@ -1642,17 +1710,12 @@ mod tests {
                             walk_index: 0,
                             next_vertex: RuntimeVertex::plain("dummy"),
                             evaluations: sui::types::Address::from_static("0x4"),
-                            tap_agent_id: Some(sui::types::Address::from_static("0xa")).into(),
-                            tap_skill_id: Some(11).into(),
-                            tap_interface_revision: Some(InterfaceRevision(1)).into(),
-                            tap_payment_id: Some(sui::types::Address::from_static("0xd")).into(),
-                            tap_selected_dag_id: Some(sui::types::Address::from_static("0xe"))
+                            agent_id: sui::types::Address::from_static("0xa"),
+                            skill_id: 11,
+                            interface_version: InterfaceRevision(1),
+                            scheduled_task_id: Some(sui::types::Address::from_static("0x12"))
                                 .into(),
-                            tap_authorization_plan_commitment: Some(vec![1, 2, 3, 4]).into(),
-                            tap_authorization_plan: Vec::new(),
-                            tap_scheduled_task_id: Some(sui::types::Address::from_static("0x12"))
-                                .into(),
-                            tap_scheduled_occurrence_index: Some(7).into(),
+                            scheduled_occurrence_index: Some(7).into(),
                         },
                         priority: 1,
                         request_ms: 2,
@@ -1894,17 +1957,6 @@ mod tests {
                 ],
             ),
             (
-                "ScheduledSkillExecutionCreatedEvent",
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 3, 1,
-                    4, 9, 232, 3, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
-                ],
-            ),
-            (
                 "ScheduledSkillExecutionTriggeredEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2032,7 +2084,7 @@ mod tests {
                 ],
             ),
             (
-                "TaskCreatedEvent",
+                "ScheduledSkillExecutionCreatedEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2040,21 +2092,21 @@ mod tests {
                 ],
             ),
             (
-                "TaskPausedEvent",
+                "ScheduledSkillExecutionPausedEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 92,
                 ],
             ),
             (
-                "TaskResumedEvent",
+                "ScheduledSkillExecutionResumedEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 93,
                 ],
             ),
             (
-                "TaskCanceledEvent",
+                "ScheduledSkillExecutionCanceledEvent",
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 94,
@@ -2090,14 +2142,13 @@ mod tests {
                     | "GasPaymentConsumedEvent"
                     | "ExecutionAccomplishedEvent"
                     | "ExecutionRefundedEvent"
-                    | "ScheduledSkillExecutionCreatedEvent"
                     | "ScheduledSkillExecutionTriggeredEvent"
                     | "ScheduledSkillExecutionCompletedEvent"
                     | "RequestWalkExecutionEvent"
                     | "RequestScheduledWalkEvent"
             )
         });
-        samples.extend(current_standard_tap_samples());
+        samples.extend(tap_event_samples());
         samples
     }
 

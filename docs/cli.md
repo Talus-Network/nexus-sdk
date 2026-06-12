@@ -325,7 +325,7 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
 - `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-priority-fee-per-gas-unit` sets the priority fee for that initial occurrence.
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
-- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`BeginAgentExecutionWitness`) instead of the default DAG-execution policy, so the task can be paired with `tap schedule-from-vault`, `tap schedule-address-funded`, or `tap schedule-default-address-funded` to fund and trigger occurrences.
+- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`BeginAgentExecutionWitness`) instead of the default DAG-execution policy. Use `nexus tap schedule-task` when task creation and TAP funding should happen in one transaction.
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
 
@@ -711,31 +711,9 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-address-funded --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
+**`nexus tap schedule-task --agent-id <OBJECT_ID> --skill-id <U64> --payment-source <address-funded|agent-vault> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--input-json <JSON>] [--entry-group <NAME>] [--remote <VERTEX.PORT,...>] [--metadata <KEY=VALUE>] [--refund-recipient <ADDRESS>] [--schedule-start-ms <MS>|--schedule-start-offset-ms <MS>] [--schedule-deadline-offset-ms <MS>] [--schedule-priority-fee-per-gas-unit <AMOUNT>] [--generator <queue|periodic>]`**
 
-Creates a durable address-funded `ScheduledSkillTask` for a specific agent + skill, attaches it to the existing scheduler task via `TapScheduledTaskLink`, and shares the scheduled TAP task — all in one transaction. `--prepay-amount` MIST are split from the signer's gas coin to prepay the schedule; `--refund-recipient` defaults to the signer. JSON output includes the `scheduled_task_id`, `scheduler_task_id`, agent and skill ids, prepay amount, occurrence budget, and transaction digest/checkpoint.
-
-Replaces hand-rolled scheduler PTBs that combine `agent_registry::schedule_skill_execution_address_funded` with `scheduler::attach_tap_scheduled_task_link` and a `public_share_object` move call.
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI...
-{% endhint %}
-
----
-
-**`nexus tap schedule-from-vault --scheduler-task-id <OBJECT_ID> --agent-id <OBJECT_ID> --skill-id <U64> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
-
-Creates a durable agent-vault-funded `ScheduledSkillTask` for a specific agent + skill, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. `--prepay-amount` MIST are drawn from the agent's payment vault; pair with `nexus tap vault deposit` when the vault needs to be funded first. JSON output mirrors `tap schedule-address-funded` minus `refund_recipient`.
-
-{% hint style="info" %}
-This command requires that a wallet is connected to the CLI...
-{% endhint %}
-
----
-
-**`nexus tap schedule-default-address-funded --scheduler-task-id <OBJECT_ID> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--refund-recipient <ADDRESS>] [--recurrence-kind <KIND>] [--min-interval-ms <MS>] [--max-occurrences <COUNT>] [--allow-recursive] [--refill-policy-hex <HEX>] [--schedule-entries-commitment-hex <HEX>] [--first-after-ms <MS>]`**
-
-Creates a durable address-funded `ScheduledSkillTask` tied to the registry-owned default agent, attaches it to the existing scheduler task, and shares the scheduled TAP task — all in one transaction. Unlike `tap schedule-address-funded`, no `--agent-id`/`--skill-id` flags are required: the configured default agent is used. JSON output mirrors `tap schedule-address-funded`.
+Creates a scheduler task for a registered TAP agent skill and attaches TAP payment components in the same transaction. Use `--payment-source address-funded` to split `--prepay-amount` from the signer gas coin, or `--payment-source agent-vault` after funding the agent vault. JSON output includes one `task_id` plus a `tap_payment` block with agent id, skill id, prepay amount, and occurrence budget.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

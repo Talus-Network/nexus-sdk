@@ -1,4 +1,8 @@
-use {super::*, nexus_sdk::sui::build::Environment};
+use {
+    super::*,
+    crate::tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
+    nexus_sdk::sui::build::Environment,
+};
 
 /// Parse `<package_path>/Move.toml` and pick the `[environments]` entry whose
 /// chain id matches the connected RPC's chain id. Returns `Some(Environment)`
@@ -53,7 +57,7 @@ pub(crate) async fn publish_skill(
 ) -> AnyResult<(), NexusCliError> {
     let config = validate_skill(config_path.clone()).await?;
     let dag_path = resolve_relative(&config_path, config.dag_path.clone());
-    let tap_package_path = resolve_relative(&config_path, config.tap_package_path.clone());
+    let tap_package_path = tap_package_path_for_config(&config_path);
     let dag_text = tokio::fs::read_to_string(&dag_path)
         .await
         .map_err(NexusCliError::Io)?;
@@ -71,6 +75,8 @@ pub(crate) async fn publish_skill(
         .get_chain_id()
         .await
         .map_err(NexusCliError::Any)?;
+    let package_name = validate_tap_package_manifest(&tap_package_path.join("Move.toml"))
+        .map_err(NexusCliError::Any)?;
     let environment = pick_publish_environment(&tap_package_path, &chain_id)?;
     let publish = nexus_client
         .tap()
@@ -79,10 +85,7 @@ pub(crate) async fn publish_skill(
             dag,
             TapPackagePublishOptions {
                 package_path: tap_package_path,
-                named_address_overrides: vec![(
-                    config.tap_package_name.clone(),
-                    sui::types::Address::ZERO,
-                )],
+                named_address_overrides: vec![(package_name, sui::types::Address::ZERO)],
                 environment: environment.map(|environment| environment.name().clone()),
             },
         )

@@ -308,7 +308,7 @@ pub fn parse_u64_value(value: &serde_json::Value) -> anyhow::Result<Option<u64>>
                 return parse_u64_value(&unwrapped);
             }
 
-            for key in ["value", "u64", "number"] {
+            for key in ["value", "inner", "u64", "number"] {
                 if let Some(nested) = object.get(key) {
                     return parse_u64_value(nested);
                 }
@@ -635,6 +635,10 @@ mod tests {
         assert_eq!(
             parse_u64_value(&json!({"fields": {"number": "9"}})).unwrap(),
             Some(9)
+        );
+        assert_eq!(
+            parse_u64_value(&json!({"fields": {"inner": "10"}})).unwrap(),
+            Some(10)
         );
         assert_eq!(
             parse_string_value(&json!({"fields": {"ascii": [98, 111, 111, 109]}})).unwrap(),

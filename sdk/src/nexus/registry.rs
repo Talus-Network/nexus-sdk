@@ -124,7 +124,10 @@ struct VerifierRegistryBcs {
 
 #[derive(Clone, Debug, Deserialize)]
 enum VerifierImplementationBcs {
-    BuiltIn,
+    BuiltIn {
+        #[allow(dead_code)]
+        witness: sui::types::Address,
+    },
     ExternalV1 {
         witness: sui::types::Address,
         #[allow(dead_code)]
@@ -228,7 +231,7 @@ pub async fn fetch_external_verifier_runtime_metadata(
 
     let witness_id = match record.implementation {
         VerifierImplementationBcs::ExternalV1 { witness, .. } => witness,
-        VerifierImplementationBcs::BuiltIn => {
+        VerifierImplementationBcs::BuiltIn { .. } => {
             bail!(
                 "Verifier method '{}' is not an external verifier contract",
                 verifier.method
