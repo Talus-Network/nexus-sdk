@@ -2,11 +2,7 @@ use super::*;
 
 pub(crate) async fn dry_run_skill(config: PathBuf) -> AnyResult<(), NexusCliError> {
     let config = validate_skill(config).await?;
-    let digest = config
-        .digest_input()
-        .digest_hex()
-        .map_err(NexusCliError::Any)?;
-    json_output(&dry_run_result_json(&config, digest))
+    json_output(&dry_run_result_json(&config))
 }
 
 #[cfg(test)]
@@ -14,7 +10,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn dry_run_valid_scaffolded_skill_computes_zero_package_digest() {
+    async fn dry_run_valid_scaffolded_skill_validates_contract_metadata() {
         let tempdir = tempfile::tempdir().expect("tempdir");
         scaffold_tap_skill("weather skill".to_string(), tempdir.path().to_path_buf())
             .await

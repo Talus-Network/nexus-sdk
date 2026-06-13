@@ -18,12 +18,12 @@ pub(crate) async fn schedule_skill_execution(
     let refill_policy = decode_hex_arg(&refill_policy_hex, "refill-policy")?;
     let schedule_entries_commitment =
         decode_hex_arg(&schedule_entries_commitment_hex, "schedule-entries-hash")?;
-    let schedule_policy = nexus_sdk::types::TapSchedulePolicy {
-        recurrence_kind,
+    let schedule_policy = schedule_policy_from_cli(
+        &recurrence_kind,
         min_interval_ms,
         max_occurrences,
         allow_recursive,
-    };
+    )?;
 
     command_title!("Scheduling TAP skill execution for '{agent_id}:{skill_id}'");
 
