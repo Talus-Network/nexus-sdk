@@ -14,7 +14,7 @@ use {
             NexusEventKind,
             TerminalErrEvalRecordedEvent,
         },
-        idents::workflow,
+        idents::{sui_framework, workflow},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, Response},
@@ -24,6 +24,7 @@ use {
                 DagEdge,
                 DagEdgeBcs,
                 DagExecution,
+                DagExecutionWalk,
                 DagOutputVariantPort,
                 DagVertexInfo,
                 DagVertexInfoBcs,
@@ -33,8 +34,10 @@ use {
             tap,
         },
         sui,
-        transactions::dag,
+        transactions::{dag, gas},
         types::{
+            derive_tool_gas_id,
+            deserialize_sui_u64,
             resolve_active_tap_skill_execution_target,
             resolve_default_tap_dag_executor,
             tap_payment_source_for_address,
@@ -50,6 +53,7 @@ use {
             StorageConf,
             TapDagBinding,
             TapExecutionPayment,
+            TapExecutionPaymentVertexLock,
             TapRegistry,
             TapSkillRevisionKey,
             TapVertexAuthorizationPlan,
@@ -61,6 +65,7 @@ use {
         },
     },
     anyhow::anyhow,
+    sha2::{Digest as _, Sha256},
     std::collections::HashMap,
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
@@ -92,6 +97,35 @@ pub struct TapExecutionSubmitMetadata {
     pub payment_max_budget: u64,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: TapVertexAuthorizationPlan,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolGasAbortCandidate {
+    pub tool_fqn: crate::ToolFqn,
+    pub tool_gas_ref: sui::types::ObjectReference,
+    pub matching_walks: Vec<ToolGasAbortCandidateWalk>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolGasAbortCandidateWalk {
+    pub walk_index: usize,
+    pub vertex: RuntimeVertex,
+    pub payment_vertex_key: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AbortExpiredExecutionResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub dag_id: sui::types::Address,
+    pub dag_execution_id: sui::types::Address,
+    pub selected_candidate: ToolGasAbortCandidate,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct SuiClock {
+    #[serde(deserialize_with = "deserialize_sui_u64")]
+    timestamp_ms: u64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1116,6 +1150,165 @@ impl WorkflowActions {
 
         Ok(ExecutionCostResult::from_payment(payment))
     }
+
+    /// Return ToolGas refs that can be passed to
+    /// `gas_extension::abort_expired_execution_with_tool_gas` for the current
+    /// execution state. This is an advisory snapshot; Move still verifies
+    /// timeout and lock state on chain.
+    pub async fn abort_expired_execution_tool_gas_candidates(
+        &self,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
+        let crawler = self.client.crawler();
+        let execution = crawler
+            .get_object::<DagExecution>(dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let context = execution
+            .standard_tap_context()
+            .map_err(NexusError::Parsing)?
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!(
+                    "DAG execution '{dag_execution_id}' has no TAP payment context"
+                ))
+            })?;
+        let dag = crawler
+            .get_object::<Dag>(context.selected_dag_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let clock = crawler
+            .get_object::<SuiClock>(sui_framework::CLOCK_OBJECT_ID)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let payment = tap::fetch_tap_execution_payment(crawler, context.payment_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let gas_service_id = *self.client.nexus_objects.gas_service.object_id();
+        let refs = fetch_tool_gas_refs_for_abort_candidates(
+            crawler,
+            gas_service_id,
+            filter_tool_gas_abort_candidate_walks(
+                dag_execution_id,
+                &vertices,
+                &execution.walks,
+                &payment.locked_vertices,
+                clock.timestamp_ms,
+            )
+            .map_err(NexusError::Parsing)?,
+        )
+        .await?;
+
+        Ok(refs)
+    }
+
+    /// Submit `gas_extension::abort_expired_execution_with_tool_gas` for one
+    /// eligible ToolGas candidate. Candidate discovery is advisory; Move still
+    /// verifies timeout and lock state on chain.
+    pub async fn abort_expired_execution_with_tool_gas(
+        &self,
+        dag_execution_id: sui::types::Address,
+        tool_gas_id: Option<sui::types::Address>,
+    ) -> Result<AbortExpiredExecutionResult, NexusError> {
+        let candidates = self
+            .abort_expired_execution_tool_gas_candidates(dag_execution_id)
+            .await?;
+        let selected_candidate = select_tool_gas_abort_candidate(candidates, tool_gas_id)?;
+        let crawler = self.client.crawler();
+        let execution = crawler
+            .get_object::<DagExecution>(dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let context = execution
+            .standard_tap_context()
+            .map_err(NexusError::Parsing)?
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!(
+                    "DAG execution '{dag_execution_id}' has no TAP payment context"
+                ))
+            })?;
+        let dag_id = context.selected_dag_id;
+        let dag_ref = crawler
+            .get_object_metadata(dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let execution_ref = crawler
+            .get_object_metadata(dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        let address = self.client.signer.get_active_address();
+        let nexus_objects = &self.client.nexus_objects;
+        let mut tx = sui::tx::TransactionBuilder::new();
+        gas::abort_expired_execution_with_tool_gas(
+            &mut tx,
+            nexus_objects,
+            &selected_candidate.tool_gas_ref,
+            &dag_ref,
+            &execution_ref,
+        );
+
+        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.client.gas.get_budget());
+        tx.set_gas_price(self.client.reference_gas_price);
+        tx.add_gas_objects(vec![sui::tx::Input::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .finish()
+            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
+        let signature = self.client.signer.sign_tx(&tx).await?;
+        let response = self
+            .client
+            .signer
+            .execute_tx(tx, signature, &mut gas_coin)
+            .await?;
+
+        self.client.gas.release_gas_coin(gas_coin).await;
+
+        Ok(AbortExpiredExecutionResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            dag_id,
+            dag_execution_id,
+            selected_candidate,
+        })
+    }
+}
+
+fn select_tool_gas_abort_candidate(
+    candidates: Vec<ToolGasAbortCandidate>,
+    tool_gas_id: Option<sui::types::Address>,
+) -> Result<ToolGasAbortCandidate, NexusError> {
+    if let Some(tool_gas_id) = tool_gas_id {
+        candidates
+            .into_iter()
+            .find(|candidate| *candidate.tool_gas_ref.object_id() == tool_gas_id)
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!(
+                    "ToolGas '{tool_gas_id}' is not currently eligible to abort this execution"
+                ))
+            })
+    } else {
+        candidates.into_iter().next().ok_or_else(|| {
+            NexusError::Parsing(anyhow!(
+                "No ToolGas abort candidates are currently eligible for this execution"
+            ))
+        })
+    }
 }
 
 impl ExecutionCostResult {
@@ -1130,6 +1323,81 @@ impl ExecutionCostResult {
             refunded: payment.refunded,
         }
     }
+}
+
+fn payment_vertex_key(
+    execution_id: sui::types::Address,
+    vertex: &RuntimeVertex,
+    tool_fqn: &crate::ToolFqn,
+) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"nexus.payment.vertex.v1");
+    bytes.extend(bcs::to_bytes(&execution_id)?);
+    bytes.extend(bcs::to_bytes(vertex)?);
+    bytes.extend(tool_fqn.to_string().as_bytes());
+    Ok(Sha256::digest(bytes).to_vec())
+}
+
+fn filter_tool_gas_abort_candidate_walks(
+    execution_id: sui::types::Address,
+    vertices: &HashMap<crate::types::TypeName, DagVertexInfo>,
+    walks: &[DagExecutionWalk],
+    locks: &[TapExecutionPaymentVertexLock],
+    clock_ms: u64,
+) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>> {
+    let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>::new();
+    for (walk_index, walk) in walks.iter().enumerate() {
+        let Some(vertex) = walk.expired_active_vertex(clock_ms) else {
+            continue;
+        };
+        let vertex_info = vertices.get(&vertex.name()).ok_or_else(|| {
+            anyhow!(
+                "DAG vertex '{}' missing from fetched DAG",
+                vertex.name().name
+            )
+        })?;
+        let tool_fqn = vertex_info.kind.tool_fqn().clone();
+        let vertex_key = payment_vertex_key(execution_id, vertex, &tool_fqn)?;
+        let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
+        if locks
+            .iter()
+            .any(|lock| lock.vertex_key == vertex_key && lock.tool_fqn == tool_fqn_bytes)
+        {
+            candidates
+                .entry(tool_fqn)
+                .or_default()
+                .push(ToolGasAbortCandidateWalk {
+                    walk_index,
+                    vertex: vertex.clone(),
+                    payment_vertex_key: vertex_key,
+                });
+        }
+    }
+    Ok(candidates)
+}
+
+async fn fetch_tool_gas_refs_for_abort_candidates(
+    crawler: &Crawler,
+    gas_service_id: sui::types::Address,
+    candidates: HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>,
+) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
+    let mut result = Vec::new();
+    for (tool_fqn, matching_walks) in candidates {
+        let tool_gas_id =
+            derive_tool_gas_id(gas_service_id, &tool_fqn).map_err(NexusError::Parsing)?;
+        let tool_gas_ref = crawler
+            .get_object_metadata(tool_gas_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        result.push(ToolGasAbortCandidate {
+            tool_fqn,
+            tool_gas_ref,
+            matching_walks,
+        });
+    }
+    result.sort_by_key(|candidate| candidate.tool_fqn.to_string());
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -1170,6 +1438,7 @@ mod tests {
                 TapSchedulePolicy,
                 TapSkillRecord,
                 TapSkillRequirements,
+                TapVertexExecutionPaymentSettlementKind,
                 TypeName,
                 VerifierConfig,
                 VerifierMode,
@@ -2361,6 +2630,313 @@ mod tests {
         assert!(!result.refunded);
     }
 
+    #[tokio::test]
+    async fn test_abort_expired_execution_tool_gas_candidates_returns_empty_snapshot() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let payment_ref = sui_mocks::mock_sui_object_ref();
+        let vertices = DynamicMap::new(sui_mocks::mock_sui_address(), 0);
+        let dag = Dag {
+            vertices,
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!({
+                "invoker": "0x1",
+                "tap_agent_id": { "vec": ["0xa"] },
+                "tap_skill_id": { "vec": ["11"] },
+                "tap_interface_revision": { "vec": ["7"] },
+                "tap_payment_id": { "vec": [payment_ref.object_id().to_string()] },
+                "tap_selected_dag_id": { "vec": [dag_ref.object_id().to_string()] },
+                "tap_authorization_plan_commitment": { "vec": [] },
+                "tap_authorization_plan": [],
+                "tap_scheduled_task_id": { "vec": [] },
+                "tap_scheduled_occurrence_index": { "vec": [] },
+                "walks": []
+            }),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref,
+            sui::types::Owner::Shared(0),
+            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<TypeName>(&mut state_service_mock, vec![]);
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs::<
+            TypeName,
+            LinkedTableNodeBcs<TypeName, DagVertexInfoBcs>,
+        >(&mut ledger_service_mock, vec![]);
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                sui_framework::CLOCK_OBJECT_ID,
+                1,
+                sui::types::Digest::from([1; 32]),
+            ),
+            sui::types::Owner::Shared(1),
+            json!({ "timestamp_ms": "61000" }),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            payment_ref.clone(),
+            sui::types::Owner::Shared(0),
+            json!({
+                "id": payment_ref.object_id().to_string(),
+                "execution_id": execution_ref.object_id().to_string(),
+                "agent_id": "0xa",
+                "skill_id": "11",
+                "interface_revision": "7",
+                "payer": "0x1",
+                "payment_mode": "user_funded",
+                "source_kind": "invoker",
+                "source_identity": "0x1",
+                "max_budget": "100000",
+                "locked_budget": "0",
+                "consumed": "0",
+                "refund_mode": 0,
+                "payment_source_hash": [],
+                "accomplished": false,
+                "refunded": false,
+                "final_state": "pending",
+                "locked_vertices": []
+            }),
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let candidates = client
+            .workflow()
+            .abort_expired_execution_tool_gas_candidates(*execution_ref.object_id())
+            .await
+            .expect("empty candidate snapshot should parse");
+
+        assert!(candidates.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_abort_expired_execution_with_tool_gas_submits_selected_candidate() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let payment_ref = sui_mocks::mock_sui_object_ref();
+        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
+        let tool_gas_id =
+            derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &tool_fqn).unwrap();
+        let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
+        let vertex = RuntimeVertex::plain("payable");
+        let field_ref = sui_mocks::mock_sui_object_ref();
+        let dag = Dag {
+            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        };
+        let execution_json = json!({
+            "invoker": "0x1",
+            "tap_agent_id": { "vec": ["0xa"] },
+            "tap_skill_id": { "vec": ["11"] },
+            "tap_interface_revision": { "vec": ["7"] },
+            "tap_payment_id": { "vec": [payment_ref.object_id().to_string()] },
+            "tap_selected_dag_id": { "vec": [dag_ref.object_id().to_string()] },
+            "tap_authorization_plan_commitment": { "vec": [] },
+            "tap_authorization_plan": [],
+            "tap_scheduled_task_id": { "vec": [] },
+            "tap_scheduled_occurrence_index": { "vec": [] },
+            "walks": [{
+                "Active": {
+                    "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
+                    "timeout_ms": "30000",
+                    "created_at": "1000"
+                }
+            }]
+        });
+        let payment_vertex_key =
+            payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
+        let locked_vertices = serde_json::to_value(vec![TapExecutionPaymentVertexLock {
+            vertex_key: payment_vertex_key.clone(),
+            tool_fqn: tool_fqn.to_string().into_bytes(),
+            amount: 10,
+            settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+        }])
+        .expect("payment lock should serialize");
+        let payment_json = json!({
+            "id": payment_ref.object_id().to_string(),
+            "execution_id": execution_ref.object_id().to_string(),
+            "agent_id": "0xa",
+            "skill_id": "11",
+            "interface_revision": "7",
+            "payer": "0x1",
+            "payment_mode": "user_funded",
+            "source_kind": "invoker",
+            "source_identity": "0x1",
+            "max_budget": "100000",
+            "locked_budget": "10",
+            "consumed": "0",
+            "refund_mode": 0,
+            "payment_source_hash": [],
+            "accomplished": false,
+            "refunded": false,
+            "final_state": "pending",
+            "locked_vertices": locked_vertices
+        });
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(0),
+            execution_json.clone(),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(0),
+            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("payable"), *field_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                field_ref,
+                sui::types::Owner::Shared(1),
+                TypeName::new("payable"),
+                LinkedTableNodeBcs {
+                    prev: crate::types::MoveOption(None::<TypeName>),
+                    next: crate::types::MoveOption(None::<TypeName>),
+                    value: DagVertexInfoBcs {
+                        kind: crate::nexus::models::DagVertexKindBcs::OffChain {
+                            _variant_name: "OffChain".to_string(),
+                            tool_fqn: tool_fqn.to_string(),
+                        },
+                        input_ports: crate::types::MoveVecSet { contents: vec![] },
+                        post_failure_action: crate::types::MoveOption(
+                            None::<crate::nexus::models::PostFailureActionBcs>,
+                        ),
+                        leader_verifier: crate::types::MoveOption(
+                            None::<crate::nexus::models::VerifierConfigBcs>,
+                        ),
+                        tool_verifier: crate::types::MoveOption(
+                            None::<crate::nexus::models::VerifierConfigBcs>,
+                        ),
+                    },
+                },
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                sui_framework::CLOCK_OBJECT_ID,
+                1,
+                sui::types::Digest::from([1; 32]),
+            ),
+            sui::types::Owner::Shared(1),
+            json!({ "timestamp_ms": "61000" }),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            payment_ref.clone(),
+            sui::types::Owner::Shared(0),
+            payment_json,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(tool_gas_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(0),
+            execution_json,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(execution_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            state_service_mock: Some(state_service_mock),
+        });
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(nexus_objects.clone())
+            .with_gas(vec![gas_coin_ref], 1000)
+            .build()
+            .await
+            .expect("mock client should build");
+
+        let result = client
+            .workflow()
+            .abort_expired_execution_with_tool_gas(*execution_ref.object_id(), Some(tool_gas_id))
+            .await
+            .expect("abort transaction should submit");
+
+        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_checkpoint, 1);
+        assert_eq!(result.dag_id, *dag_ref.object_id());
+        assert_eq!(result.dag_execution_id, *execution_ref.object_id());
+        assert_eq!(result.selected_candidate.tool_fqn, tool_fqn);
+        assert_eq!(result.selected_candidate.tool_gas_ref, tool_gas_ref);
+        assert_eq!(result.selected_candidate.matching_walks.len(), 1);
+        assert_eq!(
+            result.selected_candidate.matching_walks[0].payment_vertex_key,
+            payment_vertex_key
+        );
+    }
+
     #[test]
     fn dag_vertex_requires_verifier_proof_prefers_vertex_override() {
         let dag = Dag {
@@ -2465,6 +3041,230 @@ mod tests {
             vertex.declared_input_port_names(),
             vec!["a_port".to_string(), "z_port".to_string()]
         );
+    }
+
+    #[test]
+    fn tool_gas_abort_filter_returns_exact_expired_locked_tool_vertices() {
+        let execution_id = sui::types::Address::from_static("0xabc");
+        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
+        let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
+        let payable_vertex = RuntimeVertex::plain("payable");
+        let idle_vertex = RuntimeVertex::plain("idle");
+        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
+        let mut vertices = HashMap::new();
+        vertices.insert(
+            TypeName::new("payable"),
+            DagVertexInfo {
+                kind: DagVertexKind::OffChain {
+                    tool_fqn: tool_fqn.clone(),
+                },
+                leader_verifier: None,
+                tool_verifier: None,
+                input_ports: Set::default(),
+            },
+        );
+        vertices.insert(
+            TypeName::new("idle"),
+            DagVertexInfo {
+                kind: DagVertexKind::OffChain {
+                    tool_fqn: other_tool_fqn,
+                },
+                leader_verifier: None,
+                tool_verifier: None,
+                input_ports: Set::default(),
+            },
+        );
+        let walks = vec![
+            DagExecutionWalk::Active {
+                next_vertex: payable_vertex.clone(),
+                timeout_ms: 30_000,
+                requires_vertex_authorization_grant: false,
+                created_at: 1_000,
+            },
+            DagExecutionWalk::Active {
+                next_vertex: idle_vertex,
+                timeout_ms: 30_000,
+                requires_vertex_authorization_grant: false,
+                created_at: 61_000,
+            },
+            DagExecutionWalk::PendingAbort {
+                at_vertex: RuntimeVertex::plain("already_pending"),
+            },
+        ];
+        let locks = vec![TapExecutionPaymentVertexLock {
+            vertex_key: matching_key.clone(),
+            tool_fqn: tool_fqn.to_string().into_bytes(),
+            amount: 10,
+            settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+        }];
+
+        let candidates =
+            filter_tool_gas_abort_candidate_walks(execution_id, &vertices, &walks, &locks, 61_000)
+                .unwrap();
+        let matching = candidates
+            .get(&tool_fqn)
+            .expect("candidate for locked tool");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].walk_index, 0);
+        assert_eq!(matching[0].vertex, payable_vertex);
+        assert_eq!(matching[0].payment_vertex_key, matching_key);
+    }
+
+    #[test]
+    fn tool_gas_abort_filter_ignores_nonmatching_payment_locks() {
+        let execution_id = sui::types::Address::from_static("0xabc");
+        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
+        let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
+        let payable_vertex = RuntimeVertex::plain("payable");
+        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
+        let mut vertices = HashMap::new();
+        vertices.insert(
+            TypeName::new("payable"),
+            DagVertexInfo {
+                kind: DagVertexKind::OffChain {
+                    tool_fqn: tool_fqn.clone(),
+                },
+                leader_verifier: None,
+                tool_verifier: None,
+                input_ports: Set::default(),
+            },
+        );
+        let walks = vec![DagExecutionWalk::Active {
+            next_vertex: payable_vertex,
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        }];
+        let locks = vec![
+            TapExecutionPaymentVertexLock {
+                vertex_key: matching_key,
+                tool_fqn: other_tool_fqn.to_string().into_bytes(),
+                amount: 10,
+                settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+            },
+            TapExecutionPaymentVertexLock {
+                vertex_key: vec![1, 2, 3],
+                tool_fqn: tool_fqn.to_string().into_bytes(),
+                amount: 10,
+                settlement_kind: TapVertexExecutionPaymentSettlementKind::Paid,
+            },
+        ];
+
+        let candidates =
+            filter_tool_gas_abort_candidate_walks(execution_id, &vertices, &walks, &locks, 61_000)
+                .unwrap();
+
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn tool_gas_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
+        let execution_id = sui::types::Address::from_static("0xabc");
+        let walks = vec![DagExecutionWalk::Active {
+            next_vertex: RuntimeVertex::plain("missing"),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        }];
+
+        let error = filter_tool_gas_abort_candidate_walks(
+            execution_id,
+            &HashMap::new(),
+            &walks,
+            &[],
+            61_000,
+        )
+        .expect_err("expired walk should require a fetched DAG vertex");
+
+        assert!(error
+            .to_string()
+            .contains("DAG vertex 'missing' missing from fetched DAG"));
+    }
+
+    #[tokio::test]
+    async fn fetch_tool_gas_refs_for_abort_candidates_derives_metadata_refs() {
+        let gas_service_id = sui::types::Address::from_static("0xabc");
+        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
+        let tool_gas_id = derive_tool_gas_id(gas_service_id, &tool_fqn).unwrap();
+        let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
+        let candidate_walk = ToolGasAbortCandidateWalk {
+            walk_index: 2,
+            vertex: RuntimeVertex::plain("payable"),
+            payment_vertex_key: vec![1, 2, 3],
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            tool_gas_ref.clone(),
+            sui::types::Owner::Shared(tool_gas_ref.version()),
+            None,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let candidates = fetch_tool_gas_refs_for_abort_candidates(
+            &crawler,
+            gas_service_id,
+            HashMap::from([(tool_fqn.clone(), vec![candidate_walk.clone()])]),
+        )
+        .await
+        .expect("candidate refs should be fetched");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].tool_fqn, tool_fqn);
+        assert_eq!(candidates[0].tool_gas_ref, tool_gas_ref);
+        assert_eq!(candidates[0].matching_walks, vec![candidate_walk]);
+    }
+
+    #[test]
+    fn select_tool_gas_abort_candidate_uses_first_or_required_candidate() {
+        let first_id = sui::types::Address::from_static("0x111");
+        let second_id = sui::types::Address::from_static("0x222");
+        let candidates = vec![
+            ToolGasAbortCandidate {
+                tool_fqn: fqn!("xyz.taluslabs.first@1"),
+                tool_gas_ref: sui::types::ObjectReference::new(
+                    first_id,
+                    1,
+                    sui::types::Digest::default(),
+                ),
+                matching_walks: Vec::new(),
+            },
+            ToolGasAbortCandidate {
+                tool_fqn: fqn!("xyz.taluslabs.second@1"),
+                tool_gas_ref: sui::types::ObjectReference::new(
+                    second_id,
+                    1,
+                    sui::types::Digest::default(),
+                ),
+                matching_walks: Vec::new(),
+            },
+        ];
+
+        let selected = select_tool_gas_abort_candidate(candidates.clone(), None).unwrap();
+        assert_eq!(*selected.tool_gas_ref.object_id(), first_id);
+
+        let selected =
+            select_tool_gas_abort_candidate(candidates.clone(), Some(second_id)).unwrap();
+        assert_eq!(*selected.tool_gas_ref.object_id(), second_id);
+
+        let missing = sui::types::Address::from_static("0x333");
+        let error = select_tool_gas_abort_candidate(candidates, Some(missing)).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("is not currently eligible to abort this execution"));
+
+        let error = select_tool_gas_abort_candidate(Vec::new(), None).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("No ToolGas abort candidates are currently eligible"));
     }
 
     #[test]

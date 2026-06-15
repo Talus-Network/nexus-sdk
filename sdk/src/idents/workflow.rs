@@ -1129,6 +1129,13 @@ const GAS_EXTENSION_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("gas_extension");
 
 impl GasExtension {
+    /// Abort an expired DAG execution using the matching ToolGas.
+    ///
+    /// `nexus_workflow::gas_extension::abort_expired_execution_with_tool_gas`
+    pub const ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: GAS_EXTENSION_MODULE,
+        name: sui::types::Identifier::from_static("abort_expired_execution_with_tool_gas"),
+    };
     /// Buy an expiry gas extension ticket.
     ///
     /// `nexus_workflow::gas_extension::buy_expiry_gas_ticket`
