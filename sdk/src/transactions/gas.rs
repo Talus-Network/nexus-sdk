@@ -205,6 +205,65 @@ pub fn settle_payment_state_for_vertex(
     )
 }
 
+/// PTB template to abort an expired execution by first unlocking/refunding the
+/// matching ToolGas vertex payment.
+#[allow(clippy::too_many_arguments)]
+pub fn abort_expired_execution_with_tool_gas(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    tool_gas: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    execution: &sui::types::ObjectReference,
+) -> sui::types::Argument {
+    let tool_gas_arg = tx.input(sui::tx::Input::shared(
+        *tool_gas.object_id(),
+        tool_gas.version(),
+        true,
+    ));
+    let dag_arg = tx.input(sui::tx::Input::shared(
+        *dag.object_id(),
+        dag.version(),
+        false,
+    ));
+    let execution_arg = tx.input(sui::tx::Input::shared(
+        *execution.object_id(),
+        execution.version(),
+        true,
+    ));
+    let tool_registry_arg = tx.input(sui::tx::Input::shared(
+        *objects.tool_registry.object_id(),
+        objects.tool_registry.version(),
+        false,
+    ));
+    let leader_registry_arg = tx.input(sui::tx::Input::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+    let clock_arg = tx.input(sui::tx::Input::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.module,
+            workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.name,
+            vec![],
+        ),
+        vec![
+            tool_gas_arg,
+            dag_arg,
+            execution_arg,
+            tool_registry_arg,
+            leader_registry_arg,
+            clock_arg,
+        ],
+    )
+}
+
 /// PTB template to refund payment settlement for a vertex.
 #[allow(clippy::too_many_arguments)]
 pub fn refund_payment_state_for_vertex(
@@ -583,6 +642,81 @@ mod tests {
             workflow::Gas::SETTLE_PAYMENT_STATE_FOR_VERTEX.name
         );
         assert_eq!(call.arguments.len(), 4);
+    }
+
+    #[test]
+    fn test_abort_expired_execution_with_tool_gas() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_gas = sui_mocks::mock_sui_object_ref();
+        let dag = sui_mocks::mock_sui_object_ref();
+        let execution = sui_mocks::mock_sui_object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        abort_expired_execution_with_tool_gas(&mut tx, &objects, &tool_gas, &dag, &execution);
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { commands, inputs },
+        ) = tx.kind
+        else {
+            panic!("Expected a ProgrammableTransaction");
+        };
+
+        let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
+            panic!("Expected last command to be a MoveCall to abort with ToolGas");
+        };
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.name
+        );
+        assert_eq!(call.arguments.len(), 6);
+
+        let expect_shared = |argument: &sui::types::Argument,
+                             expected: &sui::types::ObjectReference,
+                             expected_mutable: bool| {
+            let sui::types::Argument::Input(index) = argument else {
+                panic!("expected input argument, got {argument:?}");
+            };
+            let Some(sui::types::Input::Shared {
+                object_id,
+                initial_shared_version,
+                mutable,
+            }) = inputs.get(*index as usize)
+            else {
+                panic!("expected shared input at index {index}");
+            };
+            assert_eq!(object_id, expected.object_id());
+            assert_eq!(*initial_shared_version, expected.version());
+            assert_eq!(*mutable, expected_mutable);
+        };
+        let expect_clock = |argument: &sui::types::Argument| {
+            let sui::types::Argument::Input(index) = argument else {
+                panic!("expected input argument, got {argument:?}");
+            };
+            let Some(sui::types::Input::Shared {
+                object_id,
+                initial_shared_version,
+                mutable,
+            }) = inputs.get(*index as usize)
+            else {
+                panic!("expected shared clock input at index {index}");
+            };
+            assert_eq!(*object_id, sui_framework::CLOCK_OBJECT_ID);
+            assert_eq!(*initial_shared_version, 1);
+            assert!(!*mutable, "clock object must be immutable");
+        };
+
+        expect_shared(&call.arguments[0], &tool_gas, true);
+        expect_shared(&call.arguments[1], &dag, false);
+        expect_shared(&call.arguments[2], &execution, true);
+        expect_shared(&call.arguments[3], &objects.tool_registry, false);
+        expect_shared(&call.arguments[4], &objects.leader_registry, false);
+        expect_clock(&call.arguments[5]);
     }
 
     #[test]
