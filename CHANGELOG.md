@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## `Uncommitted`
 
+### `nexus-cli`
+
+#### Added
+
+- `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
+
+### `nexus-sdk`
+
+#### Added
+
+- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+
 ## [`2.0.0-rc.2`] - 2026-06-10
 
 ### `nexus-cli`
