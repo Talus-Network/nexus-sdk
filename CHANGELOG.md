@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
-- `ToolFqn` now correctly throws when tool version is 0
+- `ToolFqn` now returns an error when tool version is `0`
 
 ## [`2.0.0-rc.2`] - 2026-06-10
 
