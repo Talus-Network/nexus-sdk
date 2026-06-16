@@ -281,21 +281,21 @@ optional = true
 
 # === Sui deps ===
 [dependencies.sui-rpc]
-version = "0.1.1"
+version = "0.3.1"
 optional = true
 
 [dependencies.sui-sdk-types]
-version = "0.1.1"
+version = "0.3.1"
 features = ["rand", "serde"]
 optional = true
 
 [dependencies.sui-crypto]
-version = "0.1.0"
+version = "0.3.0"
 features = ["ed25519", "pem"]
 optional = true
 
 [dependencies.sui-transaction-builder]
-version = "0.1.0"
+version = "0.3.1"
 optional = true
 
 [dependencies.sui_move_build]

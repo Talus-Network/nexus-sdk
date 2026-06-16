@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, pure_arg, ModuleAndNameIdent},
+    idents::{move_std, ModuleAndNameIdent},
     sui,
 };
 
@@ -52,7 +52,7 @@ impl Data {
         tx: &mut sui::tx::TransactionBuilder,
         primitives_pkg_id: sui::types::Address,
         json: &T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         Self::nexus_data_from_json(
             tx,
             primitives_pkg_id,
@@ -67,7 +67,7 @@ impl Data {
         tx: &mut sui::tx::TransactionBuilder,
         primitives_pkg_id: sui::types::Address,
         json: &T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         Self::nexus_data_from_json(
             tx,
             primitives_pkg_id,
@@ -84,7 +84,7 @@ impl Data {
         json: &T,
         one: &ModuleAndNameIdent,
         many: &ModuleAndNameIdent,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         if let serde_json::Value::Array(arr) = serde_json::to_value(json)? {
             let type_params = vec![sui::types::TypeTag::Vector(Box::new(
                 sui::types::TypeTag::U8,
@@ -95,14 +95,14 @@ impl Data {
                     move_std::PACKAGE_ID,
                     move_std::Vector::EMPTY.module,
                     move_std::Vector::EMPTY.name,
-                    type_params.clone(),
-                ),
+                )
+                .with_type_args(type_params.clone()),
                 vec![],
             );
 
             for data in arr {
                 // `bytes: vector<u8>`
-                let data_bytes = tx.input(pure_arg(&serde_json::to_vec(&data)?)?);
+                let data_bytes = tx.pure(&serde_json::to_vec(&data)?);
 
                 // `vector<vector<u8>>::push_back`
                 tx.move_call(
@@ -110,32 +110,22 @@ impl Data {
                         move_std::PACKAGE_ID,
                         move_std::Vector::PUSH_BACK.module,
                         move_std::Vector::PUSH_BACK.name,
-                        type_params.clone(),
-                    ),
+                    )
+                    .with_type_args(type_params.clone()),
                     vec![vec, data_bytes],
                 );
             }
 
             return Ok(tx.move_call(
-                sui::tx::Function::new(
-                    primitives_pkg_id,
-                    many.module.clone(),
-                    many.name.clone(),
-                    vec![],
-                ),
+                sui::tx::Function::new(primitives_pkg_id, many.module.clone(), many.name.clone()),
                 vec![vec],
             ));
         }
 
-        let json = tx.input(pure_arg(&serde_json::to_vec(json)?)?);
+        let json = tx.pure(&serde_json::to_vec(json)?);
 
         Ok(tx.move_call(
-            sui::tx::Function::new(
-                primitives_pkg_id,
-                one.module.clone(),
-                one.name.clone(),
-                vec![],
-            ),
+            sui::tx::Function::new(primitives_pkg_id, one.module.clone(), one.name.clone()),
             vec![json],
         ))
     }

@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 
+#### Changed
+
+- Bumped the MystenLabs sui-rust-sdk dependencies to `0.3.1` (`sui-rpc`, `sui-sdk-types`, `sui-transaction-builder`) and `0.3.0` (`sui-crypto`), adopting the redesigned `sui-transaction-builder` API. This is a breaking change for consumers that build PTBs through `nexus_sdk::sui::tx`: `tx.input(...)` is replaced by `tx.object(sui::tx::ObjectInput::…)` for objects and `tx.pure(&value)` for pure inputs (the `idents::pure_arg` helper is removed); `TransactionBuilder::finish()` becomes `try_build()`; `sui::tx::Function::new(pkg, module, name)` drops its type-args parameter in favour of `.with_type_args(vec![…])`; and transaction-builder arguments are now the opaque `sui::tx::Argument` type rather than the resolved `sui::types::Argument` enum.
+
 ## [`2.0.0-rc.2`] - 2026-06-10
 
 ### `nexus-cli`

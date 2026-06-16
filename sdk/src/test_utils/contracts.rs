@@ -145,13 +145,13 @@ pub async fn publish_move_package_with_overrides(
     tx.set_sender(addr);
     tx.set_gas_budget(1_000_000_000);
     tx.set_gas_price(reference_gas_price);
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
+    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
         *gas_coin.object_id(),
         gas_coin.version(),
         *gas_coin.digest(),
     )]);
 
-    let tx = tx.finish().expect("Failed to finish transaction.");
+    let tx = tx.try_build().expect("Failed to finish transaction.");
 
     let signature = signer
         .sign_tx(&tx)

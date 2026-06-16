@@ -612,13 +612,13 @@ mod tests {
         tx.set_sender(client.signer.get_active_address());
         tx.set_gas_budget(1000);
         tx.set_gas_price(1000);
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
-        let tx = tx.finish().unwrap();
+        let tx = tx.try_build().unwrap();
         let signature = client.signer.sign_tx(&tx).await.unwrap();
 
         let response = client

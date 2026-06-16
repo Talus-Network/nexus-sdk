@@ -1,5 +1,5 @@
 use crate::{
-    idents::{pure_arg, ModuleAndNameIdent},
+    idents::ModuleAndNameIdent,
     sui,
     types::{
         EdgeKind,
@@ -627,7 +627,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
         Ok(tx.move_call(
@@ -635,7 +635,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::ENTRY_GROUP_FROM_STRING.module,
                 Self::ENTRY_GROUP_FROM_STRING.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -646,7 +645,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
         Ok(tx.move_call(
@@ -654,7 +653,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::INPUT_PORT_FROM_STRING.module,
                 Self::INPUT_PORT_FROM_STRING.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -665,7 +663,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
         Ok(tx.move_call(
@@ -673,7 +671,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::OUTPUT_PORT_FROM_STRING.module,
                 Self::OUTPUT_PORT_FROM_STRING.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -684,7 +681,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
         Ok(tx.move_call(
@@ -692,7 +689,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::OUTPUT_VARIANT_FROM_STRING.module,
                 Self::OUTPUT_VARIANT_FROM_STRING.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -703,7 +699,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         str: T,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
 
         Ok(tx.move_call(
@@ -711,7 +707,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::VERTEX_FROM_STRING.module,
                 Self::VERTEX_FROM_STRING.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -722,7 +717,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         fqn: &ToolFqn,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
         Ok(tx.move_call(
@@ -730,7 +725,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::VERTEX_OFF_CHAIN.module,
                 Self::VERTEX_OFF_CHAIN.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -740,7 +734,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         fqn: &ToolFqn,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
         Ok(tx.move_call(
@@ -748,7 +742,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::VERTEX_ON_CHAIN.module,
                 Self::VERTEX_ON_CHAIN.name,
-                vec![],
             ),
             vec![str],
         ))
@@ -759,7 +752,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         edge_kind: &EdgeKind,
-    ) -> sui::types::Argument {
+    ) -> sui::tx::Argument {
         let ident = match edge_kind {
             EdgeKind::Normal => Self::EDGE_KIND_NORMAL,
             EdgeKind::ForEach => Self::EDGE_KIND_FOR_EACH,
@@ -770,7 +763,7 @@ impl Dag {
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -780,14 +773,14 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         action: &PostFailureAction,
-    ) -> sui::types::Argument {
+    ) -> sui::tx::Argument {
         let ident = match action {
             PostFailureAction::Terminate => Self::POST_FAILURE_ACTION_TERMINATE,
             PostFailureAction::TransientContinue => Self::POST_FAILURE_ACTION_TRANSIENT_CONTINUE,
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -797,14 +790,14 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         evidence_kind: &FailureEvidenceKind,
-    ) -> sui::types::Argument {
+    ) -> sui::tx::Argument {
         let ident = match evidence_kind {
             FailureEvidenceKind::ToolEvidence => Self::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE,
             FailureEvidenceKind::LeaderEvidence => Self::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE,
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -814,7 +807,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         mode: &VerifierMode,
-    ) -> sui::types::Argument {
+    ) -> sui::tx::Argument {
         let ident = match mode {
             VerifierMode::None => Self::VERIFIER_MODE_NONE,
             VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
@@ -824,7 +817,7 @@ impl Dag {
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name, vec![]),
+            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -834,7 +827,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         config: &VerifierConfig,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let mode = Self::verifier_mode_from_enum(tx, workflow_pkg_id, &config.mode);
         let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
 
@@ -843,7 +836,6 @@ impl Dag {
                 workflow_pkg_id,
                 Self::VERIFIER_CONFIG.module,
                 Self::VERIFIER_CONFIG.name,
-                vec![],
             ),
             vec![mode, method],
         ))
@@ -854,7 +846,7 @@ impl Dag {
         tx: &mut sui::tx::TransactionBuilder,
         workflow_pkg_id: sui::types::Address,
         runtime_vertex: &RuntimeVertex,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         match runtime_vertex {
             RuntimeVertex::Plain { vertex } => {
                 let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
@@ -864,7 +856,6 @@ impl Dag {
                         workflow_pkg_id,
                         Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module,
                         Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.name,
-                        vec![],
                     ),
                     vec![name],
                 ))
@@ -876,15 +867,14 @@ impl Dag {
             } => {
                 let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
 
-                let iteration = tx.input(pure_arg(iteration)?);
-                let out_of = tx.input(pure_arg(out_of)?);
+                let iteration = tx.pure(iteration);
+                let out_of = tx.pure(out_of);
 
                 Ok(tx.move_call(
                     sui::tx::Function::new(
                         workflow_pkg_id,
                         Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module,
                         Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.name,
-                        vec![],
                     ),
                     vec![name, iteration, out_of],
                 ))
