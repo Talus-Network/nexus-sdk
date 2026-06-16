@@ -159,6 +159,11 @@ impl Coin {
         module: COIN_MODULE,
         name: sui::types::Identifier::from_static("Coin"),
     };
+    /// `sui::coin::destroy_zero`
+    pub const DESTROY_ZERO: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::types::Identifier::from_static("destroy_zero"),
+    };
     /// `sui::coin::from_balance`
     pub const FROM_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: COIN_MODULE,
